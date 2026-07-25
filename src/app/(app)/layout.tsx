@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { cerrarSesion } from "@/lib/actions/auth";
+import EstadoSync from "@/components/estado-sync";
 
 const NAV = [
   { href: "/", label: "Inicio" },
@@ -36,6 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <span className="font-bold leading-tight">{nombreOptica}</span>
           </Link>
           <div className="ml-auto flex items-center gap-3 text-sm">
+            <EstadoSync />
             <span className="hidden text-tinta-suave sm:inline">
               {perfil?.nombre} · {perfil?.rol}
             </span>

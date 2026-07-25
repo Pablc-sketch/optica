@@ -69,12 +69,13 @@ export async function registrarVenta(input: {
     if (pagoError) throw pagoError;
   }
 
-  // Descuento de stock para los ítems con producto físico.
+  // Salida de inventario por ítem físico; el trigger trg_movimiento_stock
+  // aplica el descuento sobre inventario.stock_actual.
   for (const item of items) {
     if (!item.productoId) continue;
     const { data: inv } = await supabase
       .from("inventario")
-      .select("id, sucursal_id, stock_actual")
+      .select("sucursal_id")
       .eq("producto_id", item.productoId)
       .limit(1)
       .maybeSingle();
@@ -88,10 +89,6 @@ export async function registrarVenta(input: {
       cantidad: item.cantidad,
       referencia: `venta:${venta.id}`,
     });
-    await supabase
-      .from("inventario")
-      .update({ stock_actual: inv.stock_actual - item.cantidad })
-      .eq("id", inv.id);
   }
 
   revalidatePath("/ventas");

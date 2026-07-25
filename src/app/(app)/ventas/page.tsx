@@ -11,8 +11,11 @@ const ESTADO_PAGO: Record<string, { label: string; clase: string }> = {
 
 export default async function VentasPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes] = await Promise.all([
+  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes] = await Promise.all([
     supabase.from("pacientes").select("id, nombre, rut").order("nombre").limit(200),
     supabase
       .from("productos")
@@ -29,6 +32,8 @@ export default async function VentasPage() {
       .select("id, fecha, total, estado_pago, pacientes:paciente_id (nombre), pagos_abonos (monto)")
       .order("fecha", { ascending: false })
       .limit(20),
+    supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
+    supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
   ]);
 
   const ventas = ventasRes.data ?? [];
@@ -42,6 +47,9 @@ export default async function VentasPage() {
           productos={productosRes.data ?? []}
           costos={costosRes.data ?? []}
           factorVenta={tenantRes.data?.factor_venta_cristales ?? 6}
+          tenantId={perfilRes.data?.tenant_id ?? ""}
+          sucursalId={sucursalRes.data?.id ?? null}
+          vendedorId={user?.id ?? null}
         />
       </div>
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarVenta } from "@/lib/actions/ventas";
+import { encolar, type CambioSync } from "@/lib/offline/outbox";
 import { clp } from "@/lib/clp";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
@@ -22,11 +23,17 @@ export default function PuntoDeVenta({
   productos,
   costos,
   factorVenta,
+  tenantId,
+  sucursalId,
+  vendedorId,
 }: {
   pacientes: Paciente[];
   productos: Producto[];
   costos: CostoCristal[];
   factorVenta: number;
+  tenantId: string;
+  sucursalId: string | null;
+  vendedorId: string | null;
 }) {
   const router = useRouter();
   const [pacienteId, setPacienteId] = useState<string>("");
@@ -91,9 +98,102 @@ export default function PuntoDeVenta({
     setCarrito((prev) => prev.filter((l) => l.key !== key));
   }
 
+  // Sin señal (operativo en terreno, spec 8.2): la venta se arma completa
+  // en el dispositivo con UUIDs locales y va al outbox; se sincroniza sola
+  // al reconectar. Los IDs locales hacen el reintento idempotente.
+  function cobrarOffline() {
+    const abonoMonto = Math.round(Number(abono.replace(/\./g, "")) || 0);
+    const abonoReal = Math.max(0, Math.min(abonoMonto, total));
+    const estadoPago = abonoReal >= total ? "pagada" : abonoReal > 0 ? "abono_parcial" : "pendiente";
+    const ventaId = crypto.randomUUID();
+    const ahora = new Date().toISOString();
+
+    const cambios: CambioSync[] = [
+      {
+        tabla: "ventas",
+        op: "insert",
+        id: ventaId,
+        datos: {
+          tenant_id: tenantId,
+          paciente_id: pacienteId || null,
+          sucursal_id: sucursalId,
+          vendedor_id: vendedorId,
+          fecha: ahora,
+          total,
+          estado_pago: estadoPago,
+        },
+      },
+      ...carrito.map((l) => {
+        const itemId = crypto.randomUUID();
+        return {
+          tabla: "venta_items",
+          op: "insert" as const,
+          id: itemId,
+          datos: {
+            tenant_id: tenantId,
+            venta_id: ventaId,
+            producto_id: l.productoId ?? null,
+            descripcion: l.descripcion,
+            cantidad: l.cantidad,
+            precio_unitario: l.precioUnitario,
+            descuento: 0,
+          },
+        };
+      }),
+    ];
+
+    if (abonoReal > 0) {
+      cambios.push({
+        tabla: "pagos_abonos",
+        op: "insert",
+        id: crypto.randomUUID(),
+        datos: {
+          tenant_id: tenantId,
+          venta_id: ventaId,
+          monto: abonoReal,
+          medio_pago: medioPago,
+          fecha: ahora,
+        },
+      });
+    }
+
+    if (sucursalId) {
+      for (const l of carrito) {
+        if (!l.productoId) continue;
+        cambios.push({
+          tabla: "movimientos_inventario",
+          op: "insert",
+          id: crypto.randomUUID(),
+          datos: {
+            tenant_id: tenantId,
+            producto_id: l.productoId,
+            sucursal_id: sucursalId,
+            tipo: "salida",
+            cantidad: l.cantidad,
+            referencia: `venta:${ventaId}`,
+            fecha: ahora,
+          },
+        });
+      }
+    }
+
+    encolar(cambios);
+    setCarrito([]);
+    setAbono("");
+    setPacienteId("");
+    setMensaje("✓ Venta guardada sin conexión — se sincronizará sola al volver la señal");
+  }
+
   async function cobrar() {
     setGuardando(true);
     setMensaje(null);
+
+    if (!navigator.onLine) {
+      cobrarOffline();
+      setGuardando(false);
+      return;
+    }
+
     try {
       const resultado = await registrarVenta({
         pacienteId: pacienteId || null,
