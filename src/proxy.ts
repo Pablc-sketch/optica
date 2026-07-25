@@ -1,9 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
-// Refresca el access token (~15 min de vida, spec 8.1) en cada request
-// server-side, antes de que llegue a cualquier página o route handler.
-export async function middleware(request: NextRequest) {
+// Next 16: proxy.ts reemplaza a middleware.ts. Refresca el access token
+// (~15 min de vida, spec 8.1) y protege todas las rutas de la app:
+// sin sesión → /login.
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -25,9 +26,23 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Importante: esto dispara el refresh de la sesión si el access token
-  // expiró. No borrar ni mover este await.
-  await supabase.auth.getUser();
+  // Dispara el refresh de la sesión si el access token expiró.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const esLogin = request.nextUrl.pathname.startsWith("/login");
+
+  if (!user && !esLogin) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+  if (user && esLogin) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
 
   return response;
 }

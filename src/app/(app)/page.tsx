@@ -1,0 +1,108 @@
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { clp } from "@/lib/clp";
+
+const ESTADOS_OT: Record<string, string> = {
+  recepcion: "Recepción",
+  laboratorio: "Laboratorio",
+  montaje: "Montaje",
+  listo: "Listo",
+};
+
+export default async function Dashboard() {
+  const supabase = await createClient();
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  const [ventasHoy, otsPendientes, inventario] = await Promise.all([
+    supabase.from("ventas").select("total, estado_pago").gte("fecha", hoy.toISOString()),
+    supabase
+      .from("ordenes_trabajo")
+      .select("id, folio, estado, fecha_entrega_estimada, pacientes:paciente_id (nombre)")
+      .neq("estado", "entregado")
+      .order("fecha_ingreso", { ascending: true }),
+    supabase
+      .from("inventario")
+      .select("stock_actual, stock_minimo, productos:producto_id (nombre, marca)"),
+  ]);
+
+  const totalHoy = (ventasHoy.data ?? []).reduce((s, v) => s + v.total, 0);
+  const numVentasHoy = ventasHoy.data?.length ?? 0;
+  const ots = otsPendientes.data ?? [];
+  const stockCritico = (inventario.data ?? []).filter((i) => i.stock_actual <= i.stock_minimo);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <h1 className="text-xl font-bold">Hoy</h1>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl bg-crema-claro p-4 shadow-sm">
+          <p className="text-sm text-tinta-suave">Ventas del día</p>
+          <p className="mt-1 text-2xl font-bold">{clp(totalHoy)}</p>
+          <p className="text-xs text-tinta-suave">{numVentasHoy} venta{numVentasHoy === 1 ? "" : "s"}</p>
+        </div>
+        <div className="rounded-2xl bg-crema-claro p-4 shadow-sm">
+          <p className="text-sm text-tinta-suave">OTs en curso</p>
+          <p className="mt-1 text-2xl font-bold">{ots.length}</p>
+          <Link href="/ot" className="text-xs font-medium text-brand hover:underline">
+            Ver tablero →
+          </Link>
+        </div>
+        <div className="col-span-2 rounded-2xl bg-crema-claro p-4 shadow-sm sm:col-span-1">
+          <p className="text-sm text-tinta-suave">Stock crítico</p>
+          <p className={`mt-1 text-2xl font-bold ${stockCritico.length > 0 ? "text-brand-dark" : ""}`}>
+            {stockCritico.length}
+          </p>
+          <p className="text-xs text-tinta-suave">productos en o bajo mínimo</p>
+        </div>
+      </div>
+
+      <section>
+        <h2 className="mb-3 font-semibold">Órdenes de trabajo pendientes</h2>
+        {ots.length === 0 ? (
+          <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
+            No hay órdenes pendientes. 🎉
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {ots.slice(0, 8).map((ot) => (
+              <li key={ot.id} className="flex items-center gap-3 rounded-xl bg-crema-claro px-4 py-3 shadow-sm">
+                <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-bold text-brand-dark">
+                  #{ot.folio}
+                </span>
+                <span className="flex-1 truncate text-sm font-medium">
+                  {(ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—"}
+                </span>
+                <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-medium text-tinta-suave">
+                  {ESTADOS_OT[ot.estado] ?? ot.estado}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {stockCritico.length > 0 && (
+        <section>
+          <h2 className="mb-3 font-semibold">Alertas de stock</h2>
+          <ul className="flex flex-col gap-2">
+            {stockCritico.map((item, i) => {
+              const p = item.productos as unknown as { nombre: string; marca: string | null } | null;
+              return (
+                <li key={i} className="flex items-center gap-3 rounded-xl bg-brand/10 px-4 py-3">
+                  <span className="flex-1 text-sm font-medium">
+                    {p?.marca ? `${p.marca} ` : ""}{p?.nombre ?? "Producto"}
+                  </span>
+                  <span className="text-sm font-bold text-brand-dark">
+                    {item.stock_actual} / mín {item.stock_minimo}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
