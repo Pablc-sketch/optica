@@ -30,8 +30,9 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 
 let tenantAId: string;
 let tenantBId: string;
+let userAId: string;
+let userBId: string;
 let userAEmail: string;
-let userBEmail: string;
 let pacienteBId: string;
 let pacienteAId: string;
 let clientA: SupabaseClient;
@@ -61,7 +62,7 @@ async function crearTenantConUsuario(nombre: string) {
   });
   if (profileError) throw profileError;
 
-  return { tenantId: tenant.id as string, email };
+  return { tenantId: tenant.id as string, email, userId: authUser.user.id };
 }
 
 beforeAll(async () => {
@@ -69,8 +70,9 @@ beforeAll(async () => {
   const tenantB = await crearTenantConUsuario("Óptica Tenant B");
   tenantAId = tenantA.tenantId;
   tenantBId = tenantB.tenantId;
+  userAId = tenantA.userId;
+  userBId = tenantB.userId;
   userAEmail = tenantA.email;
-  userBEmail = tenantB.email;
 
   const { data: pacienteB, error: pacienteBError } = await admin
     .from("pacientes")
@@ -109,10 +111,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (!tenantAId || !tenantBId) return;
   await admin.from("pacientes").delete().in("tenant_id", [tenantAId, tenantBId]);
   await admin.from("users").delete().in("tenant_id", [tenantAId, tenantBId]);
-  await admin.auth.admin.deleteUser((await admin.auth.admin.listUsers()).data.users.find((u) => u.email === userAEmail)!.id);
-  await admin.auth.admin.deleteUser((await admin.auth.admin.listUsers()).data.users.find((u) => u.email === userBEmail)!.id);
+  if (userAId) await admin.auth.admin.deleteUser(userAId);
+  if (userBId) await admin.auth.admin.deleteUser(userBId);
   await admin.from("tenants").delete().in("id", [tenantAId, tenantBId]);
 });
 

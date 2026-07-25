@@ -48,6 +48,13 @@ alter table public.tenants enable row level security;
 alter table public.users enable row level security;
 alter table public.pacientes enable row level security;
 
+-- Supabase moderno es "secure by default": las tablas nuevas no traen grants
+-- de DML. Se otorgan explícitamente; RLS sigue filtrando por tenant encima.
+grant select on public.tenants to authenticated;
+grant select on public.users to authenticated;
+grant select, insert, update, delete on public.pacientes to authenticated;
+grant all on public.tenants, public.users, public.pacientes to service_role;
+
 -- ---------------------------------------------------------------------------
 -- Auth Hook: inyecta tenant_id y rol como custom claims en el JWT al login.
 -- Esto es lo que le permite a las policies de abajo confiar en auth.jwt()
