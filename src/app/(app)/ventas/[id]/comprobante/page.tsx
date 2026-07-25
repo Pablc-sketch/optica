@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import BotonImprimir from "@/components/boton-imprimir";
+import CopiarParaSII from "@/components/copiar-para-sii";
 
 // Comprobante de venta imprimible (uso interno / respaldo para el cliente).
 // NOTA: no es boleta electrónica del SII — esa se emite vía un proveedor
@@ -35,19 +36,44 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const pagos = venta.pagos_abonos ?? [];
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
   const saldo = venta.total - abonado;
+  // La relación llega como objeto o arreglo según el shape que infiera
+  // supabase-js; normalizamos antes de listar los folios.
   const folios = [
     ...new Set(
-      items
-        .map((i: { ordenes_trabajo?: { folio: number } | null }) => i.ordenes_trabajo?.folio)
-        .filter((f: number | undefined): f is number => f !== undefined && f !== null)
+      items.flatMap((i) => {
+        const rel = (i as { ordenes_trabajo?: unknown }).ordenes_trabajo;
+        const filas = (Array.isArray(rel) ? rel : rel ? [rel] : []) as { folio: number }[];
+        return filas.map((f) => f.folio).filter((f): f is number => typeof f === "number");
+      })
     ),
   ];
 
+  // Texto listo para pegar en el portal del SII (a nombre del paciente:
+  // es lo que exige la isapre para reembolsar lentes ópticos).
+  const textoSII = [
+    `Cliente: ${paciente?.nombre ?? "Consumidor final"}`,
+    paciente?.rut ? `RUT: ${paciente.rut}` : null,
+    `Fecha: ${new Date(venta.fecha).toLocaleDateString("es-CL")}`,
+    "",
+    "Detalle (precios finales, IVA incluido):",
+    ...items.map(
+      (i: { descripcion: string; cantidad: number; precio_unitario: number }) =>
+        `${i.cantidad} x ${i.descripcion} — $${i.precio_unitario.toLocaleString("es-CL")}`
+    ),
+    "",
+    `TOTAL: $${venta.total.toLocaleString("es-CL")}`,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-xl font-bold">Comprobante de venta</h1>
-        <BotonImprimir />
+        <div className="flex flex-wrap items-center gap-2">
+          <CopiarParaSII texto={textoSII} />
+          <BotonImprimir />
+        </div>
       </div>
 
       <div className="rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">

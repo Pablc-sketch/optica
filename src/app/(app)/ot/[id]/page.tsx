@@ -29,7 +29,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       .select(
         `id, folio, estado, tipo_lente, rango_receta, tratamiento, origen_cristal,
          fecha_ingreso, fecha_entrega_estimada, fecha_entrega_real, notas,
-         pacientes:paciente_id (nombre, rut, telefono),
+         pacientes:paciente_id (nombre, rut, telefono, diabetes, hipertension, glaucoma, cirugia_ocular, alergias),
          recetas:receta_id (fecha, tipo, od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, av_od, av_oi, dp, altura, notas),
          productos:armazon_producto_id (sku, nombre, marca, color)`
       )
@@ -41,7 +41,18 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
   const ot = otRes.data;
   if (!ot) notFound();
 
-  const paciente = ot.pacientes as unknown as { nombre: string; rut: string | null; telefono: string | null } | null;
+  const paciente = ot.pacientes as unknown as {
+    nombre: string; rut: string | null; telefono: string | null;
+    diabetes: boolean; hipertension: boolean; glaucoma: boolean;
+    cirugia_ocular: boolean; alergias: string | null;
+  } | null;
+  const antecedentes = [
+    paciente?.diabetes && "Diabetes",
+    paciente?.hipertension && "Hipertensión",
+    paciente?.glaucoma && "Glaucoma",
+    paciente?.cirugia_ocular && "Cirugía ocular previa",
+    paciente?.alergias && `Alergias: ${paciente.alergias}`,
+  ].filter(Boolean) as string[];
   const receta = ot.recetas as unknown as {
     fecha: string; tipo: string;
     od_esfera: number | null; od_cilindro: number | null; od_eje: number | null; od_add: number | null;
@@ -80,6 +91,12 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
             <p><span className="font-semibold">Fecha receta:</span> {new Date(receta.fecha + "T00:00:00").toLocaleDateString("es-CL")}</p>
           )}
         </div>
+
+        {antecedentes.length > 0 && (
+          <p className="mb-4 rounded border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm">
+            <span className="font-semibold">Antecedentes:</span> {antecedentes.join(" · ")}
+          </p>
+        )}
 
         {receta ? (
           <table className="mb-4 w-full border-collapse text-sm">

@@ -42,6 +42,32 @@ export async function crearPaciente(formData: FormData) {
   redirect(`/pacientes/${data.id}`);
 }
 
+export async function actualizarFichaClinica(formData: FormData) {
+  const { supabase } = await tenantDelUsuario();
+  const pacienteId = String(formData.get("paciente_id"));
+  const texto = (k: string) => String(formData.get(k) ?? "").trim() || null;
+
+  const { error } = await supabase
+    .from("pacientes")
+    .update({
+      diabetes: formData.get("diabetes") === "on",
+      hipertension: formData.get("hipertension") === "on",
+      glaucoma: formData.get("glaucoma") === "on",
+      cirugia_ocular: formData.get("cirugia_ocular") === "on",
+      usa_lentes_contacto: formData.get("usa_lentes_contacto") === "on",
+      alergias: texto("alergias"),
+      medicamentos: texto("medicamentos"),
+      ocupacion: texto("ocupacion"),
+      horas_pantalla: texto("horas_pantalla"),
+      antecedentes_otros: texto("antecedentes_otros"),
+      notas: texto("notas"),
+    })
+    .eq("id", pacienteId);
+
+  if (error) throw error;
+  revalidatePath(`/pacientes/${pacienteId}`);
+}
+
 export async function crearReceta(formData: FormData) {
   const { supabase, tenantId, userId } = await tenantDelUsuario();
 
@@ -72,5 +98,10 @@ export async function crearReceta(formData: FormData) {
   });
 
   if (error) throw error;
+
+  // La receta recién cargada es la que tomará la OT al cobrar en el POS.
+  await supabase.from("pacientes").update({ ultima_visita: new Date().toISOString().slice(0, 10) }).eq("id", pacienteId);
+
   revalidatePath(`/pacientes/${pacienteId}`);
+  revalidatePath("/ventas");
 }

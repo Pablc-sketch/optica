@@ -22,6 +22,13 @@ type LineaCarrito = {
   descripcion: string;
   cantidad: number;
   precioUnitario: number;
+  // Datos del cristal: con esto la venta crea sola la orden de trabajo.
+  cristal?: {
+    tipoLente: string;
+    rangoReceta: string;
+    tratamiento: string;
+    costoLaboratorio: number;
+  };
 };
 
 export default function PuntoDeVenta({
@@ -32,6 +39,7 @@ export default function PuntoDeVenta({
   tenantId,
   sucursalId,
   vendedorId,
+  ultimaRecetaPorPaciente,
 }: {
   pacientes: Paciente[];
   productos: Producto[];
@@ -40,6 +48,7 @@ export default function PuntoDeVenta({
   tenantId: string;
   sucursalId: string | null;
   vendedorId: string | null;
+  ultimaRecetaPorPaciente: Record<string, string>;
 }) {
   const router = useRouter();
   const [pacienteId, setPacienteId] = useState<string>("");
@@ -63,8 +72,13 @@ export default function PuntoDeVenta({
     [costos, tipoLente, rango]
   );
   const [tratamiento, setTratamiento] = useState("");
+  const [origenCristal, setOrigenCristal] = useState<"laboratorio" | "stock">("laboratorio");
 
   const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
+  const lineaCristal = carrito.find((l) => l.cristal);
+  const lineaArmazon = carrito.find((l) => l.productoId);
+  const creaOT = Boolean(pacienteId && lineaCristal);
+  const recetaPacienteId = pacienteId ? ultimaRecetaPorPaciente[pacienteId] : undefined;
 
   function agregarProducto(p: Producto) {
     setCarrito((prev) => {
@@ -91,12 +105,18 @@ export default function PuntoDeVenta({
     // Precio editable de la óptica (/precios); el factor es solo respaldo.
     const precio = combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
     setCarrito((prev) => [
-      ...prev,
+      ...prev.filter((l) => !l.cristal), // un par de cristales por venta/OT
       {
         key: `cristal-${Date.now()}`,
         descripcion: `Cristales ${combo.tipo_lente} ${combo.tratamiento} ${combo.rango_receta}`,
         cantidad: 1,
         precioUnitario: precio,
+        cristal: {
+          tipoLente: combo.tipo_lente,
+          rangoReceta: combo.rango_receta,
+          tratamiento: combo.tratamiento,
+          costoLaboratorio: combo.costo,
+        },
       },
     ]);
   }
@@ -115,6 +135,12 @@ export default function PuntoDeVenta({
     const ventaId = crypto.randomUUID();
     const ahora = new Date().toISOString();
 
+    // Misma regla que online: con paciente y cristales, la OT viaja en el
+    // mismo lote (el servidor la enlaza cuando vuelve la señal).
+    const otId = creaOT ? crypto.randomUUID() : null;
+    const entrega = new Date();
+    entrega.setDate(entrega.getDate() + 7);
+
     const cambios: CambioSync[] = [
       {
         tabla: "ventas",
@@ -130,24 +156,48 @@ export default function PuntoDeVenta({
           estado_pago: estadoPago,
         },
       },
-      ...carrito.map((l) => {
-        const itemId = crypto.randomUUID();
-        return {
-          tabla: "venta_items",
-          op: "insert" as const,
-          id: itemId,
-          datos: {
-            tenant_id: tenantId,
-            venta_id: ventaId,
-            producto_id: l.productoId ?? null,
-            descripcion: l.descripcion,
-            cantidad: l.cantidad,
-            precio_unitario: l.precioUnitario,
-            descuento: 0,
-          },
-        };
-      }),
     ];
+
+    if (otId && lineaCristal?.cristal) {
+      cambios.push({
+        tabla: "ordenes_trabajo",
+        op: "insert",
+        id: otId,
+        datos: {
+          tenant_id: tenantId,
+          paciente_id: pacienteId,
+          receta_id: recetaPacienteId ?? null,
+          sucursal_id: sucursalId,
+          estado: "recepcion",
+          armazon_producto_id: lineaArmazon?.productoId ?? null,
+          tipo_lente: lineaCristal.cristal.tipoLente,
+          rango_receta: lineaCristal.cristal.rangoReceta,
+          tratamiento: lineaCristal.cristal.tratamiento,
+          origen_cristal: origenCristal,
+          costo_laboratorio: lineaCristal.cristal.costoLaboratorio,
+          fecha_ingreso: ahora,
+          fecha_entrega_estimada: entrega.toISOString().slice(0, 10),
+        },
+      });
+    }
+
+    cambios.push(
+      ...carrito.map((l) => ({
+        tabla: "venta_items",
+        op: "insert" as const,
+        id: crypto.randomUUID(),
+        datos: {
+          tenant_id: tenantId,
+          venta_id: ventaId,
+          producto_id: l.productoId ?? null,
+          ot_id: l.cristal ? otId : null,
+          descripcion: l.descripcion,
+          cantidad: l.cantidad,
+          precio_unitario: l.precioUnitario,
+          descuento: 0,
+        },
+      }))
+    );
 
     if (abonoReal > 0) {
       cambios.push({
@@ -204,20 +254,29 @@ export default function PuntoDeVenta({
     try {
       const resultado = await registrarVenta({
         pacienteId: pacienteId || null,
-        items: carrito.map(({ productoId, descripcion, cantidad, precioUnitario }) => ({
+        items: carrito.map(({ productoId, descripcion, cantidad, precioUnitario, cristal }) => ({
           productoId,
           descripcion,
           cantidad,
           precioUnitario,
+          esCristal: Boolean(cristal),
         })),
         abonoInicial: Math.round(Number(abono.replace(/\./g, "")) || 0),
         medioPago,
+        cristal: creaOT && lineaCristal?.cristal
+          ? { ...lineaCristal.cristal, origen: origenCristal }
+          : null,
+        armazonProductoId: lineaArmazon?.productoId ?? null,
       });
       if (resultado.ok) {
         setCarrito([]);
         setAbono("");
         setPacienteId("");
-        setMensaje("✓ Venta registrada");
+        setMensaje(
+          resultado.otFolio
+            ? `✓ Venta registrada · Orden de trabajo #${resultado.otFolio} creada`
+            : "✓ Venta registrada"
+        );
         router.refresh();
       } else {
         setMensaje(resultado.error ?? "No se pudo registrar la venta.");
@@ -286,6 +345,20 @@ export default function PuntoDeVenta({
                 </option>
               ))}
             </select>
+            <div className="flex gap-2 text-sm">
+              {(["laboratorio", "stock"] as const).map((op) => (
+                <label key={op} className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-1.5 has-checked:border-brand has-checked:bg-brand/10">
+                  <input
+                    type="radio"
+                    name="origen_cristal"
+                    checked={origenCristal === op}
+                    onChange={() => setOrigenCristal(op)}
+                    className="accent-brand"
+                  />
+                  {op === "laboratorio" ? "Pedir al lab" : "De stock"}
+                </label>
+              ))}
+            </div>
             <button
               type="button"
               onClick={agregarCristal}
@@ -320,6 +393,18 @@ export default function PuntoDeVenta({
             <span className="font-bold">Total</span>
             <span className="text-xl font-bold">{clp(total)}</span>
           </div>
+
+          {creaOT && (
+            <p className="mt-2 rounded-lg bg-brand/10 px-3 py-2 text-xs font-medium text-brand-dark">
+              Al cobrar se crea la orden de trabajo automáticamente
+              {recetaPacienteId ? " con la última receta del paciente" : " (el paciente aún no tiene receta cargada)"}.
+            </p>
+          )}
+          {!creaOT && lineaCristal && !pacienteId && (
+            <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800">
+              Elegí un paciente para que se cree la orden de trabajo.
+            </p>
+          )}
         </section>
 
         <section className="rounded-2xl bg-crema-claro p-4 shadow-sm">

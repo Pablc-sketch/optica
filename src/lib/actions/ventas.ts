@@ -9,6 +9,15 @@ type ItemVenta = {
   descripcion: string;
   cantidad: number;
   precioUnitario: number;
+  esCristal?: boolean;
+};
+
+export type DatosCristal = {
+  tipoLente: string;
+  rangoReceta: string;
+  tratamiento: string;
+  costoLaboratorio: number;
+  origen: "stock" | "laboratorio";
 };
 
 export async function registrarVenta(input: {
@@ -16,6 +25,9 @@ export async function registrarVenta(input: {
   items: ItemVenta[];
   abonoInicial: number;
   medioPago: string;
+  cristal?: DatosCristal | null;
+  armazonProductoId?: string | null;
+  diasEntrega?: number;
 }) {
   const supabase = await createClient();
   const {
@@ -47,11 +59,58 @@ export async function registrarVenta(input: {
     .single();
   if (ventaError) throw ventaError;
 
+  // Si la venta lleva cristales y hay paciente, la orden de trabajo se crea
+  // sola: en el mesón (y sobre todo en un operativo) no hay tiempo para
+  // cargar dos veces los mismos datos.
+  let otId: string | null = null;
+  let otFolio: number | null = null;
+  if (input.pacienteId && input.cristal) {
+    const [recetaRes, sucursalRes, proveedorRes] = await Promise.all([
+      supabase
+        .from("recetas")
+        .select("id")
+        .eq("paciente_id", input.pacienteId)
+        .order("fecha", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
+      input.cristal.origen === "laboratorio"
+        ? supabase.from("proveedores").select("id").eq("tipo", "laboratorio").limit(1).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const entrega = new Date();
+    entrega.setDate(entrega.getDate() + (input.diasEntrega ?? 7));
+
+    const { data: ot, error: otError } = await supabase
+      .from("ordenes_trabajo")
+      .insert({
+        tenant_id: tenantId,
+        paciente_id: input.pacienteId,
+        receta_id: recetaRes.data?.id ?? null,
+        sucursal_id: sucursalRes.data?.id ?? null,
+        armazon_producto_id: input.armazonProductoId ?? null,
+        tipo_lente: input.cristal.tipoLente,
+        rango_receta: input.cristal.rangoReceta,
+        tratamiento: input.cristal.tratamiento,
+        origen_cristal: input.cristal.origen,
+        proveedor_lab_id: proveedorRes.data?.id ?? null,
+        costo_laboratorio: input.cristal.costoLaboratorio,
+        fecha_entrega_estimada: entrega.toISOString().slice(0, 10),
+      })
+      .select("id, folio")
+      .single();
+    if (otError) throw otError;
+    otId = ot.id;
+    otFolio = ot.folio;
+  }
+
   const { error: itemsError } = await supabase.from("venta_items").insert(
     items.map((i) => ({
       tenant_id: tenantId,
       venta_id: venta.id,
       producto_id: i.productoId ?? null,
+      ot_id: i.esCristal ? otId : null,
       descripcion: i.descripcion,
       cantidad: i.cantidad,
       precio_unitario: i.precioUnitario,
@@ -92,8 +151,10 @@ export async function registrarVenta(input: {
   }
 
   revalidatePath("/ventas");
+  revalidatePath("/ot");
+  revalidatePath("/laboratorio");
   revalidatePath("/");
-  return { ok: true, ventaId: venta.id as string };
+  return { ok: true, ventaId: venta.id as string, otFolio };
 }
 
 export async function registrarAbono(formData: FormData) {

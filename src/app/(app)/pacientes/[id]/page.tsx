@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { crearReceta } from "@/lib/actions/pacientes";
+import { actualizarFichaClinica, crearReceta } from "@/lib/actions/pacientes";
 
 function fmtDioptria(v: number | null): string {
   if (v === null) return "—";
@@ -28,10 +28,25 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
 
   const { data: paciente } = await supabase
     .from("pacientes")
-    .select("id, nombre, rut, telefono, email, fecha_nacimiento, notas")
+    .select("*")
     .eq("id", id)
     .single();
   if (!paciente) notFound();
+
+  const alertas = [
+    paciente.diabetes && "Diabetes",
+    paciente.hipertension && "Hipertensión",
+    paciente.glaucoma && "Glaucoma",
+    paciente.cirugia_ocular && "Cirugía ocular previa",
+    paciente.usa_lentes_contacto && "Usa lentes de contacto",
+  ].filter(Boolean) as string[];
+
+  const edad = paciente.fecha_nacimiento
+    ? Math.floor(
+        (Date.now() - new Date(paciente.fecha_nacimiento + "T00:00:00").getTime()) /
+          (365.25 * 24 * 3600 * 1000)
+      )
+    : null;
 
   const { data: recetas } = await supabase
     .from("recetas")
@@ -44,9 +59,98 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       <div>
         <h1 className="text-xl font-bold">{paciente.nombre}</h1>
         <p className="text-sm text-tinta-suave">
-          {[paciente.rut, paciente.telefono, paciente.email].filter(Boolean).join(" · ") || "Sin datos de contacto"}
+          {[
+            paciente.rut,
+            edad !== null ? `${edad} años` : null,
+            paciente.telefono,
+            paciente.email,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Sin datos de contacto"}
         </p>
+        {alertas.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {alertas.map((a) => (
+              <span key={a} className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                ⚠ {a}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
+
+      <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
+        <summary className="cursor-pointer font-semibold text-brand-dark">
+          Ficha clínica y antecedentes
+        </summary>
+        <form action={actualizarFichaClinica} className="mt-4 flex flex-col gap-4">
+          <input type="hidden" name="paciente_id" value={paciente.id} />
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {[
+              { name: "diabetes", label: "Diabetes", checked: paciente.diabetes },
+              { name: "hipertension", label: "Hipertensión", checked: paciente.hipertension },
+              { name: "glaucoma", label: "Glaucoma", checked: paciente.glaucoma },
+              { name: "cirugia_ocular", label: "Cirugía ocular", checked: paciente.cirugia_ocular },
+              { name: "usa_lentes_contacto", label: "Lentes de contacto", checked: paciente.usa_lentes_contacto },
+            ].map((c) => (
+              <label
+                key={c.name}
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-tinta-suave/25 bg-white px-3 py-2 text-sm has-checked:border-brand has-checked:bg-brand/10"
+              >
+                <input type="checkbox" name={c.name} defaultChecked={c.checked} className="accent-brand" />
+                {c.label}
+              </label>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Alergias
+              <input name="alergias" defaultValue={paciente.alergias ?? ""} placeholder="Níquel, látex…" className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand" />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Medicamentos
+              <input name="medicamentos" defaultValue={paciente.medicamentos ?? ""} className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand" />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Ocupación
+              <input name="ocupacion" defaultValue={paciente.ocupacion ?? ""} placeholder="Profesor, conductor…" className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand" />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Horas de pantalla al día
+              <select name="horas_pantalla" defaultValue={paciente.horas_pantalla ?? ""} className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand">
+                <option value="">—</option>
+                <option value="menos de 2">Menos de 2</option>
+                <option value="2 a 4">2 a 4</option>
+                <option value="4 a 8">4 a 8</option>
+                <option value="mas de 8">Más de 8</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Otros antecedentes
+            <textarea name="antecedentes_otros" rows={2} defaultValue={paciente.antecedentes_otros ?? ""} className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-base outline-none focus:border-brand" />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Observaciones
+            <textarea name="notas" rows={2} defaultValue={paciente.notas ?? ""} className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-base outline-none focus:border-brand" />
+          </label>
+
+          <div className="flex items-center gap-3">
+            <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-brand-dark">
+              Guardar ficha
+            </button>
+            {paciente.ultima_visita && (
+              <span className="text-xs text-tinta-suave">
+                Última visita: {new Date(paciente.ultima_visita + "T00:00:00").toLocaleDateString("es-CL")}
+              </span>
+            )}
+          </div>
+        </form>
+      </details>
 
       <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
         <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nueva receta</summary>

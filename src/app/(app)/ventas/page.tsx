@@ -16,7 +16,7 @@ export default async function VentasPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes] = await Promise.all([
+  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes, recetasRes] = await Promise.all([
     supabase.from("pacientes").select("id, nombre, rut").order("nombre").limit(200),
     supabase
       .from("productos")
@@ -35,9 +35,17 @@ export default async function VentasPage() {
       .limit(20),
     supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
+    supabase.from("recetas").select("id, paciente_id, fecha").order("fecha", { ascending: false }),
   ]);
 
   const ventas = ventasRes.data ?? [];
+
+  // Última receta por paciente: la OT creada desde el POS la enlaza sola,
+  // también cuando la venta se captura sin conexión.
+  const ultimaRecetaPorPaciente: Record<string, string> = {};
+  for (const r of recetasRes.data ?? []) {
+    if (!ultimaRecetaPorPaciente[r.paciente_id]) ultimaRecetaPorPaciente[r.paciente_id] = r.id;
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -51,6 +59,7 @@ export default async function VentasPage() {
           tenantId={perfilRes.data?.tenant_id ?? ""}
           sucursalId={sucursalRes.data?.id ?? null}
           vendedorId={user?.id ?? null}
+          ultimaRecetaPorPaciente={ultimaRecetaPorPaciente}
         />
       </div>
 
