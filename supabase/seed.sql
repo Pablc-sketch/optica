@@ -81,11 +81,11 @@ insert into public.recetas (id, tenant_id, paciente_id, profesional_id, od_esfer
   ('c0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', 0.50, null, null, 0.75, null, null, 1.00, 1.00, 60, 18, 'cerca');
 
 -- OTs en distintos estados para el kanban
-insert into public.ordenes_trabajo (tenant_id, paciente_id, receta_id, sucursal_id, estado, armazon_producto_id, tipo_lente, rango_receta, tratamiento, origen_cristal, proveedor_lab_id, costo_laboratorio, fecha_entrega_estimada) values
-  ('11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'recepcion',   'a0000000-0000-0000-0000-000000000003', 'Monofocal',  '±2.00 / ±2.00', 'Orgánico Antirreflejo',           'laboratorio', '44444444-4444-4444-4444-444444444444', 2740,  current_date + 7),
-  ('11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002', '33333333-3333-3333-3333-333333333333', 'laboratorio', 'a0000000-0000-0000-0000-000000000001', 'Multifocal', '±4.00 / ±2.00', 'Fotocromático Gris Filtro Azul',  'laboratorio', '44444444-4444-4444-4444-444444444444', 62000, current_date + 5),
-  ('11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000003', '33333333-3333-3333-3333-333333333333', 'montaje',     'a0000000-0000-0000-0000-000000000005', 'Monofocal',  '±2.00 / ±2.00', 'Orgánico Filtro Azul',            'stock',       null, 0, current_date + 2),
-  ('11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000004', null, '33333333-3333-3333-3333-333333333333', 'listo',       'a0000000-0000-0000-0000-000000000002', 'Multifocal', '±4.00 / ±4.00', 'Multifocal Antirreflejo',         'laboratorio', '44444444-4444-4444-4444-444444444444', 39000, current_date - 1);
+insert into public.ordenes_trabajo (id, tenant_id, paciente_id, receta_id, sucursal_id, estado, armazon_producto_id, tipo_lente, rango_receta, tratamiento, origen_cristal, proveedor_lab_id, costo_laboratorio, fecha_entrega_estimada) values
+  ('e0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'recepcion',   'a0000000-0000-0000-0000-000000000003', 'Monofocal',  '±2.00 / ±2.00', 'Orgánico Antirreflejo',           'laboratorio', '44444444-4444-4444-4444-444444444444', 2740,  current_date + 7),
+  ('e0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002', '33333333-3333-3333-3333-333333333333', 'laboratorio', 'a0000000-0000-0000-0000-000000000001', 'Multifocal', '±4.00 / ±2.00', 'Fotocromático Gris Filtro Azul',  'laboratorio', '44444444-4444-4444-4444-444444444444', 62000, current_date + 5),
+  ('e0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000003', '33333333-3333-3333-3333-333333333333', 'montaje',     'a0000000-0000-0000-0000-000000000005', 'Monofocal',  '±2.00 / ±2.00', 'Orgánico Filtro Azul',            'stock',       null, 0, current_date + 2),
+  ('e0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-0000-0000-000000000004', null, '33333333-3333-3333-3333-333333333333', 'listo',       'a0000000-0000-0000-0000-000000000002', 'Multifocal', '±4.00 / ±4.00', 'Multifocal Antirreflejo',         'laboratorio', '44444444-4444-4444-4444-444444444444', 39000, current_date - 1);
 
 -- Una venta de hoy con abono parcial (para el dashboard)
 insert into public.ventas (id, tenant_id, paciente_id, sucursal_id, vendedor_id, fecha, total, estado_pago)
@@ -93,9 +93,9 @@ values ('d0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-1111111
         'b0000000-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333',
         '22222222-2222-2222-2222-222222222222', now(), 86440, 'abono_parcial');
 
-insert into public.venta_items (tenant_id, venta_id, producto_id, descripcion, cantidad, precio_unitario) values
-  ('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000003', 'Armazón Luxe Oval Slim Negro', 1, 70000),
-  ('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000001', null, 'Cristales Monofocal Orgánico Antirreflejo ±2.00/±2.00', 1, 16440);
+insert into public.venta_items (tenant_id, venta_id, producto_id, ot_id, descripcion, cantidad, precio_unitario) values
+  ('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000003', null, 'Armazón Luxe Oval Slim Negro', 1, 70000),
+  ('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000001', null, 'e0000000-0000-0000-0000-000000000001', 'Cristales Monofocal Orgánico Antirreflejo ±2.00/±2.00', 1, 16440);
 
 insert into public.pagos_abonos (tenant_id, venta_id, monto, medio_pago)
 values ('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000001', 50000, 'efectivo');

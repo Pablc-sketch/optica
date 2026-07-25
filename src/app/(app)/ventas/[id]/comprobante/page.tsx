@@ -18,7 +18,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       .select(
         `id, fecha, total, estado_pago,
          pacientes:paciente_id (nombre, rut),
-         venta_items (descripcion, cantidad, precio_unitario, descuento),
+         venta_items (descripcion, cantidad, precio_unitario, descuento, ordenes_trabajo:ot_id (folio)),
          pagos_abonos (monto, medio_pago, fecha)`
       )
       .eq("id", id)
@@ -35,6 +35,13 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const pagos = venta.pagos_abonos ?? [];
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
   const saldo = venta.total - abonado;
+  const folios = [
+    ...new Set(
+      items
+        .map((i: { ordenes_trabajo?: { folio: number } | null }) => i.ordenes_trabajo?.folio)
+        .filter((f: number | undefined): f is number => f !== undefined && f !== null)
+    ),
+  ];
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -103,6 +110,13 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
               <span>{saldo > 0 ? "Saldo pendiente" : "Pagado"}</span>
               <span>{saldo > 0 ? clp(saldo) : "✓"}</span>
             </p>
+          </div>
+        )}
+
+        {folios.length > 0 && (
+          <div className="mt-4 rounded-lg border border-neutral-300 p-3 text-center text-sm font-semibold print:mt-5">
+            Orden de trabajo N° {folios.map((f) => `${f}`).join(", ")} — presente este
+            comprobante al momento de retirar su trabajo.
           </div>
         )}
 
