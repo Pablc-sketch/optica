@@ -8,7 +8,13 @@ import { clp } from "@/lib/clp";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
 type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number };
-type CostoCristal = { tipo_lente: string; rango_receta: string; tratamiento: string; costo: number };
+type CostoCristal = {
+  tipo_lente: string;
+  rango_receta: string;
+  tratamiento: string;
+  costo: number;
+  precio_venta: number;
+};
 
 type LineaCarrito = {
   key: string;
@@ -82,7 +88,8 @@ export default function PuntoDeVenta({
   function agregarCristal() {
     const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
     if (!combo) return;
-    const precio = combo.costo * factorVenta;
+    // Precio editable de la óptica (/precios); el factor es solo respaldo.
+    const precio = combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
     setCarrito((prev) => [
       ...prev,
       {
@@ -261,7 +268,7 @@ export default function PuntoDeVenta({
         </section>
 
         <section className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-bold">Cristales (matriz de costos × {factorVenta})</h2>
+          <h2 className="mb-2 text-sm font-bold">Cristales</h2>
           <div className="flex flex-col gap-2">
             <select value={tipoLente} onChange={(e) => { setTipoLente(e.target.value); setRango(""); setTratamiento(""); }} className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-brand">
               <option value="">Tipo de lente…</option>
@@ -275,7 +282,7 @@ export default function PuntoDeVenta({
               <option value="">Tratamiento…</option>
               {tratamientos.map((c) => (
                 <option key={c.tratamiento} value={c.tratamiento}>
-                  {c.tratamiento} — {clp(c.costo * factorVenta)}
+                  {c.tratamiento} — {clp(c.precio_venta > 0 ? c.precio_venta : c.costo * factorVenta)}
                 </option>
               ))}
             </select>

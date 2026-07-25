@@ -42,9 +42,10 @@ insert into public.proveedores (id, tenant_id, nombre, tipo)
 values ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111',
         'Optiland', 'laboratorio');
 
--- Matriz de costos del tenant demo: copia de la plantilla real
-insert into public.costos_cristales (tenant_id, tipo_lente, rango_receta, tratamiento, costo)
-select '11111111-1111-1111-1111-111111111111', tipo_lente, rango_receta, tratamiento, costo
+-- Matriz de costos del tenant demo: copia de la plantilla real, con
+-- precio de venta inicial = costo × 6 (editable después en /precios)
+insert into public.costos_cristales (tenant_id, tipo_lente, rango_receta, tratamiento, costo, precio_venta)
+select '11111111-1111-1111-1111-111111111111', tipo_lente, rango_receta, tratamiento, costo, costo * 6
 from public.plantilla_costos_cristales;
 
 -- Armazones de la hoja INVENTARIO del SGO (marca, modelo, color, costo, precio en CLP)

@@ -10,6 +10,8 @@ const NAV = [
   { href: "/pacientes", label: "Pacientes" },
   { href: "/ot", label: "Órdenes" },
   { href: "/ventas", label: "Ventas" },
+  { href: "/laboratorio", label: "Laboratorio" },
+  { href: "/precios", label: "Precios" },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -30,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-10 border-b border-tinta-suave/15 bg-crema-claro/95 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-tinta-suave/15 bg-crema-claro/95 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <Link href="/" className="flex items-center gap-2.5">
             <Image src="/logo.svg" alt="" width={36} height={36} className="rounded-xl" />

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
@@ -24,7 +25,7 @@ export default async function VentasPage() {
       .limit(200),
     supabase
       .from("costos_cristales")
-      .select("tipo_lente, rango_receta, tratamiento, costo")
+      .select("tipo_lente, rango_receta, tratamiento, costo, precio_venta")
       .order("tipo_lente"),
     supabase.from("tenants").select("factor_venta_cristales").single(),
     supabase
@@ -76,6 +77,12 @@ export default async function VentasPage() {
                       {estado.label}
                     </span>
                     <span className="font-bold">{clp(v.total)}</span>
+                    <Link
+                      href={`/ventas/${v.id}/comprobante`}
+                      className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-tinta-suave transition hover:bg-white"
+                    >
+                      🖨 Comprobante
+                    </Link>
                   </div>
                   {saldo > 0 && (
                     <form action={registrarAbono} className="mt-2 flex flex-wrap items-center gap-2">
