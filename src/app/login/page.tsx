@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -82,6 +83,13 @@ export default function LoginPage() {
           >
             {cargando ? "Ingresando…" : "Ingresar"}
           </button>
+
+          <p className="text-center text-sm text-tinta-suave">
+            ¿Tu óptica todavía no está registrada?{" "}
+            <Link href="/registro" className="font-semibold text-brand hover:underline">
+              Creá tu cuenta
+            </Link>
+          </p>
         </form>
       </div>
     </main>

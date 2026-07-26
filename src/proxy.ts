@@ -31,14 +31,16 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const esLogin = request.nextUrl.pathname.startsWith("/login");
+  // /registro es pública: quien la abre todavía no tiene cuenta.
+  const ruta = request.nextUrl.pathname;
+  const esPublica = ruta.startsWith("/login") || ruta.startsWith("/registro");
 
-  if (!user && !esLogin) {
+  if (!user && !esPublica) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
-  if (user && esLogin) {
+  if (user && ruta.startsWith("/login")) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

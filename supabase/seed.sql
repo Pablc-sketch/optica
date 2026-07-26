@@ -29,9 +29,13 @@ insert into auth.identities (
   'email', '22222222-2222-2222-2222-222222222222', now(), now(), now()
 );
 
-insert into public.users (id, tenant_id, nombre, email, rol)
+-- Pablo es dueño de la óptica demo y además equipo de soporte del producto.
+insert into public.users (id, tenant_id, nombre, email, rol, es_superadmin)
 values ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111',
-        'Pablo', 'demo@optica.cl', 'admin');
+        'Pablo', 'demo@optica.cl', 'admin', true);
+
+insert into public.suscripciones (tenant_id, plan, estado, fecha_renovacion)
+values ('11111111-1111-1111-1111-111111111111', 'trial', 'trial', current_date + 30);
 
 -- Sucursal y proveedor
 insert into public.sucursales (id, tenant_id, nombre, direccion)
