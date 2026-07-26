@@ -18,15 +18,30 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 const emailsCreados: string[] = [];
 const tenantsCreados: string[] = [];
 
+// La cuenta se crea con la API de administración y no con signUp() a
+// propósito: signUp dispara un correo de confirmación y el plan gratuito
+// de Supabase permite muy pocos por hora, así que los tests quedarían a
+// merced de esa cuota. Lo que importa verificar acá es crear_optica(), que
+// es nuestra lógica; el alta de la cuenta la resuelve Supabase.
 async function registrarOptica(nombreOptica: string) {
-  const email = `${crypto.randomUUID()}@onboarding.test`;
+  const email = `${crypto.randomUUID()}@onboarding.example.com`;
   emailsCreados.push(email);
+
+  const { error: altaError } = await admin.auth.admin.createUser({
+    email,
+    password: TEST_PASSWORD,
+    email_confirm: true,
+  });
+  if (altaError) throw altaError;
 
   const cliente = createClient(SUPABASE_URL, ANON_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const { error: signUpError } = await cliente.auth.signUp({ email, password: TEST_PASSWORD });
-  if (signUpError) throw signUpError;
+  const { error: loginError } = await cliente.auth.signInWithPassword({
+    email,
+    password: TEST_PASSWORD,
+  });
+  if (loginError) throw loginError;
 
   const { data: tenantId, error } = await cliente.rpc("crear_optica", {
     p_nombre_comercial: nombreOptica,
@@ -40,6 +55,9 @@ async function registrarOptica(nombreOptica: string) {
 }
 
 let opticaA: { cliente: SupabaseClient; email: string; tenantId: string };
+// Paciente de la óptica vecina: sirve para comprobar que ni siquiera el
+// superadmin del producto ve fichas clínicas de otra óptica.
+let pacienteAjenoId: string;
 
 beforeAll(async () => {
   opticaA = await registrarOptica("Óptica Recién Registrada");
@@ -136,8 +154,9 @@ describe("Registro de óptica nueva", () => {
       .insert({ tenant_id: opticaB.tenantId, nombre: "Paciente de la óptica vecina" })
       .select()
       .single();
+    pacienteAjenoId = paciente!.id;
 
-    const { data: visto } = await opticaA.cliente.from("pacientes").select("id").eq("id", paciente!.id);
+    const { data: visto } = await opticaA.cliente.from("pacientes").select("id").eq("id", pacienteAjenoId);
     expect(visto).toHaveLength(0);
 
     const { data: suscripciones } = await opticaA.cliente.from("suscripciones").select("tenant_id");
@@ -207,9 +226,14 @@ describe("Registro de óptica nueva", () => {
     const ids = (data as { tenant_id: string }[]).map((o) => o.tenant_id);
     for (const t of tenantsCreados) expect(ids).toContain(t);
 
-    // Ver el panel no rompe el aislamiento de datos clínicos.
-    const { data: pacientes } = await opticaA.cliente.from("pacientes").select("id");
-    expect(pacientes).toHaveLength(0);
+    // Ver el panel no rompe el aislamiento de datos clínicos: el superadmin
+    // sabe qué ópticas existen y cuánto usan el sistema, pero las fichas de
+    // sus pacientes le siguen estando vedadas.
+    const { data: fichaAjena } = await opticaA.cliente
+      .from("pacientes")
+      .select("id")
+      .eq("id", pacienteAjenoId);
+    expect(fichaAjena).toHaveLength(0);
 
     await admin.from("users").update({ es_superadmin: false }).eq("id", perfil!.id);
   });

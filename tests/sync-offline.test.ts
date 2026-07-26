@@ -39,7 +39,7 @@ beforeAll(async () => {
     .single();
   tenantAjenoId = ajeno!.id;
 
-  const email = `${crypto.randomUUID()}@sync.test`;
+  const email = `${crypto.randomUUID()}@sync.example.com`;
   const { data: authUser, error: authError } = await admin.auth.admin.createUser({
     email,
     password: TEST_PASSWORD,

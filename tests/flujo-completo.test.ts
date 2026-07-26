@@ -36,7 +36,7 @@ beforeAll(async () => {
   if (tenantError) throw tenantError;
   tenantId = tenant.id;
 
-  const email = `${crypto.randomUUID()}@flujo.test`;
+  const email = `${crypto.randomUUID()}@flujo.example.com`;
   const { data: authUser, error: authError } = await admin.auth.admin.createUser({
     email,
     password: TEST_PASSWORD,

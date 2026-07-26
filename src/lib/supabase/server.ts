@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { CLAVE_PUBLICA, URL_SUPABASE } from "./config";
 
 // Cliente para Server Components / Route Handlers / Server Actions.
 // El tenant_id efectivo de cada request sale del JWT validado en esta
@@ -9,8 +10,8 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    URL_SUPABASE,
+    CLAVE_PUBLICA,
     {
       cookies: {
         getAll() {

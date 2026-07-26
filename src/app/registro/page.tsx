@@ -39,10 +39,18 @@ export default function RegistroPage() {
       password: form.password,
     });
     if (signUpError) {
+      // Un mensaje genérico obliga a adivinar; cada causa tiene arreglo distinto.
+      const codigo = (signUpError as { code?: string }).code ?? "";
+      const texto = signUpError.message.toLowerCase();
+
       setError(
-        signUpError.message.includes("already registered")
+        texto.includes("already registered") || codigo === "user_already_exists"
           ? "Ese correo ya tiene una cuenta. Iniciá sesión."
-          : "No se pudo crear la cuenta. Revisá el correo y la contraseña."
+          : codigo === "over_email_send_rate_limit" || texto.includes("rate limit")
+            ? "El servicio de correo alcanzó su límite por hora. Esperá un rato o desactivá la confirmación por correo en Supabase (Authentication → Sign In / Providers → Email)."
+            : texto.includes("invalid")
+              ? "El correo no es válido. Revisalo e intentá de nuevo."
+              : `No se pudo crear la cuenta: ${signUpError.message}`
       );
       setCargando(false);
       return;

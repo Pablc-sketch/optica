@@ -45,7 +45,7 @@ async function crearTenantConUsuario(nombre: string) {
     .single();
   if (tenantError) throw tenantError;
 
-  const email = `${crypto.randomUUID()}@tenant-isolation.test`;
+  const email = `${crypto.randomUUID()}@aislamiento.example.com`;
   const { data: authUser, error: authError } = await admin.auth.admin.createUser({
     email,
     password: TEST_PASSWORD,

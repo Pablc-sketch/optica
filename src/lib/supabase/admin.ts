@@ -11,10 +11,11 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 // importa este archivo desde un Client Component: la clave nunca puede
 // terminar en el navegador.
 export function createAdminClient() {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // `secret` es el nombre nuevo de Supabase; `service_role`, el anterior.
+  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) {
     throw new Error(
-      "Falta SUPABASE_SERVICE_ROLE_KEY. Sin esa clave no se pueden crear usuarios."
+      "Falta SUPABASE_SECRET_KEY en .env.local. Sin esa clave no se pueden crear usuarios."
     );
   }
   return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {

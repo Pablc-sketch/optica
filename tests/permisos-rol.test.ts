@@ -23,7 +23,7 @@ const userIds: string[] = [];
 const clientes: Record<string, SupabaseClient> = {};
 
 async function crearUsuarioConRol(rol: string) {
-  const email = `${crypto.randomUUID()}@permisos.test`;
+  const email = `${crypto.randomUUID()}@permisos.example.com`;
   const { data: cuenta, error } = await admin.auth.admin.createUser({
     email,
     password: TEST_PASSWORD,
