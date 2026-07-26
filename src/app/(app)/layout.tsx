@@ -12,8 +12,11 @@ const NAV = [
   { href: "/ot", label: "Órdenes" },
   { href: "/ventas", label: "Ventas" },
   { href: "/laboratorio", label: "Laboratorio" },
+  { href: "/inventario", label: "Inventario" },
+  { href: "/reportes", label: "Reportes" },
   { href: "/boleta", label: "Boleta" },
   { href: "/precios", label: "Precios" },
+  { href: "/configuracion", label: "Configuración" },
   { href: "/suscripcion", label: "Suscripción" },
 ];
 
