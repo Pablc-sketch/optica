@@ -14,9 +14,11 @@ const CATEGORIAS = [
 export default function NuevoProducto({
   sucursales,
   sucursalActiva,
+  proveedores,
 }: {
   sucursales: { id: string; nombre: string }[];
   sucursalActiva?: string;
+  proveedores: { id: string; nombre: string }[];
 }) {
   const router = useRouter();
   const [mensaje, setMensaje] = useState<string | null>(null);
@@ -70,6 +72,17 @@ export default function NuevoProducto({
           SKU / código
           <input name="sku" className={input} />
         </label>
+        {proveedores.length > 0 && (
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Proveedor
+            <select name="proveedor_id" defaultValue="" className={input}>
+              <option value="">— Sin especificar —</option>
+              {proveedores.map((p) => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-sm font-medium">
           Costo
           <input name="costo" inputMode="numeric" defaultValue={0} className={input} />

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { actualizarStockMinimo, registrarMovimiento } from "@/lib/actions/inventario";
 import { clp } from "@/lib/clp";
 import NuevoProducto from "./nuevo-producto";
+import NuevoProveedor from "./nuevo-proveedor";
 
 type Producto = { nombre: string; marca: string | null; color: string | null; sku: string | null; precio_venta: number };
 
@@ -26,7 +27,7 @@ export default async function InventarioPage({
   const { data: sucursales } = await supabase.from("sucursales").select("id, nombre").order("nombre");
   const sucursalActiva = sucursal || sucursales?.[0]?.id;
 
-  const [stockRes, movimientosRes] = await Promise.all([
+  const [stockRes, movimientosRes, proveedoresRes] = await Promise.all([
     supabase
       .from("inventario")
       .select("id, stock_actual, stock_minimo, producto_id, sucursal_id, productos:producto_id (nombre, marca, color, sku, precio_venta)")
@@ -38,7 +39,9 @@ export default async function InventarioPage({
       .eq("sucursal_id", sucursalActiva ?? "")
       .order("fecha", { ascending: false })
       .limit(15),
+    supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
   ]);
+  const proveedores = proveedoresRes.data ?? [];
 
   const stock = stockRes.data ?? [];
   const movimientos = movimientosRes.data ?? [];
@@ -87,7 +90,24 @@ export default async function InventarioPage({
         </div>
       </div>
 
-      <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} />
+      <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} />
+
+      <section>
+        <h2 className="mb-2 font-semibold">Proveedores</h2>
+        <div className="flex flex-col gap-2">
+          <NuevoProveedor />
+          {proveedores.length > 0 && (
+            <ul className="flex flex-col gap-1.5 rounded-2xl bg-crema-claro p-3 shadow-sm">
+              {proveedores.map((p) => (
+                <li key={p.id} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm">
+                  <span className="font-medium">{p.nombre}</span>
+                  <span className="text-xs text-tinta-suave capitalize">{p.tipo}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
       <section>
         <h2 className="mb-2 font-semibold">Stock</h2>

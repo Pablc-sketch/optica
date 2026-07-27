@@ -70,13 +70,25 @@ export async function crearProducto(formData: FormData) {
   const precioVenta = Math.max(0, Math.round(Number(formData.get("precio_venta")) || 0));
   const stockInicial = Math.max(0, Math.round(Number(formData.get("stock_inicial")) || 0));
   const sucursalId = String(formData.get("sucursal_id") ?? "");
+  const proveedorId = String(formData.get("proveedor_id") ?? "").trim() || null;
 
   if (!nombre) return { ok: false, error: "El nombre es obligatorio." };
   if (!(CATEGORIAS as readonly string[]).includes(categoria)) return { ok: false, error: "Categoría inválida." };
 
   const { data: producto, error } = await supabase
     .from("productos")
-    .insert({ tenant_id: perfil.tenant_id, categoria, nombre, marca, modelo, color, sku, costo, precio_venta: precioVenta })
+    .insert({
+      tenant_id: perfil.tenant_id,
+      categoria,
+      nombre,
+      marca,
+      modelo,
+      color,
+      sku,
+      costo,
+      precio_venta: precioVenta,
+      proveedor_id: proveedorId,
+    })
     .select("id")
     .single();
   if (error) return { ok: false, error: "No se pudo crear el producto." };
@@ -107,6 +119,31 @@ export async function crearProducto(formData: FormData) {
 
   revalidatePath("/inventario");
   revalidatePath("/precios");
+  return { ok: true };
+}
+
+const TIPOS_PROVEEDOR = ["laboratorio", "armazones", "otro"] as const;
+
+export async function crearProveedor(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
+  if (!perfil) throw new Error("Perfil no encontrado");
+
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "otro");
+
+  if (!nombre) return { ok: false, error: "El nombre es obligatorio." };
+  if (!(TIPOS_PROVEEDOR as readonly string[]).includes(tipo)) return { ok: false, error: "Tipo inválido." };
+
+  const { error } = await supabase.from("proveedores").insert({ tenant_id: perfil.tenant_id, nombre, tipo });
+  if (error) return { ok: false, error: "No se pudo crear el proveedor." };
+
+  revalidatePath("/inventario");
   return { ok: true };
 }
 
