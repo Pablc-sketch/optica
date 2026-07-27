@@ -16,7 +16,7 @@ export default async function VentasPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes, recetasRes] = await Promise.all([
+  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes, recetasRes, laboratoriosRes] = await Promise.all([
     supabase.from("pacientes").select("id, nombre, rut").order("nombre").limit(200),
     supabase
       .from("productos")
@@ -36,6 +36,7 @@ export default async function VentasPage() {
     supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
     supabase.from("recetas").select("id, paciente_id, fecha").order("fecha", { ascending: false }),
+    supabase.from("proveedores").select("id, nombre").eq("tipo", "laboratorio").order("nombre"),
   ]);
 
   const ventas = ventasRes.data ?? [];
@@ -55,6 +56,7 @@ export default async function VentasPage() {
           pacientes={pacientesRes.data ?? []}
           productos={productosRes.data ?? []}
           costos={costosRes.data ?? []}
+          laboratorios={laboratoriosRes.data ?? []}
           factorVenta={tenantRes.data?.factor_venta_cristales ?? 6}
           tenantId={perfilRes.data?.tenant_id ?? ""}
           sucursalId={sucursalRes.data?.id ?? null}

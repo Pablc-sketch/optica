@@ -28,6 +28,7 @@ export async function registrarVenta(input: {
   cristal?: DatosCristal | null;
   armazonProductoId?: string | null;
   diasEntrega?: number;
+  proveedorLabId?: string | null;
 }) {
   const supabase = await createClient();
   const {
@@ -74,7 +75,10 @@ export async function registrarVenta(input: {
         .limit(1)
         .maybeSingle(),
       supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
-      input.cristal.origen === "laboratorio"
+      // El vendedor elige el laboratorio en el POS; si no llegó ninguno (venta
+      // vieja o sincronizada desde offline sin ese dato) se cae al primero
+      // que haya registrado la óptica, para no dejar la OT sin laboratorio.
+      input.cristal.origen === "laboratorio" && !input.proveedorLabId
         ? supabase.from("proveedores").select("id").eq("tipo", "laboratorio").limit(1).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
@@ -94,7 +98,7 @@ export async function registrarVenta(input: {
         rango_receta: input.cristal.rangoReceta,
         tratamiento: input.cristal.tratamiento,
         origen_cristal: input.cristal.origen,
-        proveedor_lab_id: proveedorRes.data?.id ?? null,
+        proveedor_lab_id: input.proveedorLabId ?? proveedorRes.data?.id ?? null,
         costo_laboratorio: input.cristal.costoLaboratorio,
         fecha_entrega_estimada: entrega.toISOString().slice(0, 10),
       })

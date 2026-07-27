@@ -36,6 +36,7 @@ export default function PuntoDeVenta({
   pacientes,
   productos,
   costos,
+  laboratorios,
   factorVenta,
   tenantId,
   sucursalId,
@@ -45,6 +46,7 @@ export default function PuntoDeVenta({
   pacientes: Paciente[];
   productos: Producto[];
   costos: CostoCristal[];
+  laboratorios: { id: string; nombre: string }[];
   factorVenta: number;
   tenantId: string;
   sucursalId: string | null;
@@ -56,6 +58,7 @@ export default function PuntoDeVenta({
   const [carrito, setCarrito] = useState<LineaCarrito[]>([]);
   const [abono, setAbono] = useState<string>("");
   const [medioPago, setMedioPago] = useState("efectivo");
+  const [laboratorioId, setLaboratorioId] = useState<string>(laboratorios[0]?.id ?? "");
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
 
@@ -178,6 +181,7 @@ export default function PuntoDeVenta({
           rango_receta: lineaCristal.cristal.rangoReceta,
           tratamiento: lineaCristal.cristal.tratamiento,
           origen_cristal: origenCristal,
+          proveedor_lab_id: origenCristal === "laboratorio" ? laboratorioId || null : null,
           costo_laboratorio: lineaCristal.cristal.costoLaboratorio,
           fecha_ingreso: ahora,
           fecha_entrega_estimada: entrega.toISOString().slice(0, 10),
@@ -271,6 +275,7 @@ export default function PuntoDeVenta({
           ? { ...lineaCristal.cristal, origen: origenCristal }
           : null,
         armazonProductoId: lineaArmazon?.productoId ?? null,
+        proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
       });
       if (resultado.ok) {
         setCarrito([]);
@@ -363,6 +368,17 @@ export default function PuntoDeVenta({
                 </label>
               ))}
             </div>
+            {origenCristal === "laboratorio" && laboratorios.length > 0 && (
+              <select
+                value={laboratorioId}
+                onChange={(e) => setLaboratorioId(e.target.value)}
+                className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              >
+                {laboratorios.map((l) => (
+                  <option key={l.id} value={l.id}>{l.nombre}</option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               onClick={agregarCristal}
