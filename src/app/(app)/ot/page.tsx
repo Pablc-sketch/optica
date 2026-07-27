@@ -50,7 +50,12 @@ export default async function TableroOT() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Órdenes de trabajo</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">Órdenes de trabajo</h1>
+        <Link href="/ot/buscar" className="text-sm font-medium text-brand-dark hover:underline">
+          🔍 Buscar historial (incluye entregadas)
+        </Link>
+      </div>
 
       {/* Kanban: columnas con scroll horizontal en móvil/tablet (spec 8.3) */}
       <div className="flex gap-3 overflow-x-auto pb-2">
