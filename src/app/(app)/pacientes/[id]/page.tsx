@@ -43,7 +43,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
 
   const edad = paciente.fecha_nacimiento
     ? Math.floor(
-        (Date.now() - new Date(paciente.fecha_nacimiento + "T00:00:00").getTime()) /
+        (new Date().getTime() - new Date(paciente.fecha_nacimiento + "T00:00:00").getTime()) /
           (365.25 * 24 * 3600 * 1000)
       )
     : null;

@@ -27,7 +27,9 @@ export default async function LaboratorioPage({
   const hasta = params.hasta || hoyISO();
   const desde =
     params.desde ||
-    new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    new Date(new Date(hasta + "T00:00:00").getTime() - 7 * 24 * 3600 * 1000)
+      .toISOString()
+      .slice(0, 10);
 
   const supabase = await createClient();
 
