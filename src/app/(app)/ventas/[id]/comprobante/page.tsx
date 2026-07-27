@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
+import { formatearRut } from "@/lib/rut";
 import BotonImprimir from "@/components/boton-imprimir";
 import CopiarParaSII from "@/components/copiar-para-sii";
 
@@ -52,7 +53,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   // es lo que exige la isapre para reembolsar lentes ópticos).
   const textoSII = [
     `Cliente: ${paciente?.nombre ?? "Consumidor final"}`,
-    paciente?.rut ? `RUT: ${paciente.rut}` : null,
+    paciente?.rut ? `RUT: ${formatearRut(paciente.rut)}` : null,
     `Fecha: ${new Date(venta.fecha).toLocaleDateString("es-CL")}`,
     "",
     "Detalle (precios finales, IVA incluido):",
@@ -79,7 +80,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       <div className="rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
         <div className="mb-4 border-b border-neutral-300 pb-3">
           <h2 className="text-lg font-bold">{optica?.nombre_comercial}</h2>
-          {optica?.rut_empresa && <p className="text-sm">RUT: {optica.rut_empresa}</p>}
+          {optica?.rut_empresa && <p className="text-sm">RUT: {formatearRut(optica.rut_empresa)}</p>}
           <p className="mt-1 text-sm">
             Comprobante de venta · {new Date(venta.fecha).toLocaleDateString("es-CL")}{" "}
             {new Date(venta.fecha).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}
@@ -87,7 +88,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
           {paciente && (
             <p className="text-sm">
               Cliente: {paciente.nombre}
-              {paciente.rut ? ` · ${paciente.rut}` : ""}
+              {paciente.rut ? ` · ${formatearRut(paciente.rut)}` : ""}
             </p>
           )}
         </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { crearPaciente } from "@/lib/actions/pacientes";
+import { formatearRut } from "@/lib/rut";
 
 export default async function PacientesPage({
   searchParams,
@@ -81,7 +82,7 @@ export default async function PacientesPage({
                 className="flex items-center gap-3 rounded-xl bg-crema-claro px-4 py-3 shadow-sm transition hover:bg-white"
               >
                 <span className="flex-1 truncate font-medium">{p.nombre}</span>
-                <span className="text-sm text-tinta-suave">{p.rut ?? ""}</span>
+                <span className="text-sm text-tinta-suave">{formatearRut(p.rut)}</span>
                 <span className="hidden text-sm text-tinta-suave sm:inline">{p.telefono ?? ""}</span>
               </Link>
             </li>

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
+import { formatearRut } from "@/lib/rut";
 
 // Detalle imprimible de la orden de trabajo: receta completa, paciente
 // con RUT, tipo de lente, cristal/tratamiento, altura, DP y código del
@@ -85,7 +86,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
 
         <div className="mb-4 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
           <p><span className="font-semibold">Paciente:</span> {paciente?.nombre ?? "—"}</p>
-          <p><span className="font-semibold">RUT:</span> {paciente?.rut ?? "—"}</p>
+          <p><span className="font-semibold">RUT:</span> {formatearRut(paciente?.rut) || "—"}</p>
           <p><span className="font-semibold">Teléfono:</span> {paciente?.telefono ?? "—"}</p>
           {receta && (
             <p><span className="font-semibold">Fecha receta:</span> {new Date(receta.fecha + "T00:00:00").toLocaleDateString("es-CL")}</p>

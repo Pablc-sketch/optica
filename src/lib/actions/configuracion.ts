@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatearRut } from "@/lib/rut";
 
 const ROLES = ["admin", "clinico", "ventas", "bodega"] as const;
 type Rol = (typeof ROLES)[number];
@@ -153,7 +154,7 @@ export async function actualizarOptica(formData: FormData) {
     .from("tenants")
     .update({
       nombre_comercial: nombre,
-      rut_empresa: String(formData.get("rut_empresa") ?? "").trim() || null,
+      rut_empresa: formatearRut(String(formData.get("rut_empresa") ?? "")) || null,
       ...(Number.isFinite(factor) && factor > 0 ? { factor_venta_cristales: factor } : {}),
     })
     .eq("id", tenantId);

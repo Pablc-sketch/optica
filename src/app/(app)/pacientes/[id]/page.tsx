@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarFichaClinica, crearReceta } from "@/lib/actions/pacientes";
+import { formatearRut } from "@/lib/rut";
 
 function fmtDioptria(v: number | null): string {
   if (v === null) return "—";
@@ -60,7 +61,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
         <h1 className="text-xl font-bold">{paciente.nombre}</h1>
         <p className="text-sm text-tinta-suave">
           {[
-            paciente.rut,
+            formatearRut(paciente.rut) || null,
             edad !== null ? `${edad} años` : null,
             paciente.telefono,
             paciente.email,

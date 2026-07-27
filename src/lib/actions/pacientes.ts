@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { formatearRut } from "@/lib/rut";
 
 // El tenant_id NO viaja en el formulario: el insert va sin tenant y la
 // base lo exige vía RLS; lo tomamos del perfil del usuario autenticado
@@ -29,7 +30,7 @@ export async function crearPaciente(formData: FormData) {
     .insert({
       tenant_id: tenantId,
       nombre,
-      rut: String(formData.get("rut") ?? "").trim() || null,
+      rut: formatearRut(String(formData.get("rut") ?? "")) || null,
       telefono: String(formData.get("telefono") ?? "").trim() || null,
       email: String(formData.get("email") ?? "").trim() || null,
       fecha_nacimiento: String(formData.get("fecha_nacimiento") ?? "") || null,

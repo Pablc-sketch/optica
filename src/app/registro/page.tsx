@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { formatearRut } from "@/lib/rut";
 
 export default function RegistroPage() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export default function RegistroPage() {
 
     const { error: rpcError } = await supabase.rpc("crear_optica", {
       p_nombre_comercial: form.optica,
-      p_rut_empresa: form.rut,
+      p_rut_empresa: formatearRut(form.rut),
       p_nombre_usuario: form.nombre,
     });
     if (rpcError) {
@@ -97,7 +98,12 @@ export default function RegistroPage() {
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
             RUT de la empresa
-            <input value={form.rut} onChange={set("rut")} placeholder="77.123.456-7" className={input} />
+            <input
+              value={form.rut}
+              onChange={(e) => setForm((f) => ({ ...f, rut: formatearRut(e.target.value) }))}
+              placeholder="77.123.456-7"
+              className={input}
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
             Tu nombre *

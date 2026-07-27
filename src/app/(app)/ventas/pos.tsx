@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { registrarVenta } from "@/lib/actions/ventas";
 import { encolar, type CambioSync } from "@/lib/offline/outbox";
 import { clp } from "@/lib/clp";
+import { formatearRut } from "@/lib/rut";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
 type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number };
@@ -304,7 +305,7 @@ export default function PuntoDeVenta({
             <option value="">— Venta sin paciente —</option>
             {pacientes.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.nombre}{p.rut ? ` (${p.rut})` : ""}
+                {p.nombre}{p.rut ? ` (${formatearRut(p.rut)})` : ""}
               </option>
             ))}
           </select>

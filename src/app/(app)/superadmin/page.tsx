@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { formatearRut } from "@/lib/rut";
 
 // Panel del equipo que vende el producto (spec pantalla 12). La RPC valida
 // el flag es_superadmin contra la tabla, así que a un usuario de óptica le
@@ -67,7 +68,7 @@ export default async function SuperadminPage() {
                 <td className="px-2 py-2">
                   <p className="font-medium">{o.nombre_comercial}</p>
                   <p className="text-xs text-tinta-suave">
-                    {o.rut_empresa ?? "sin RUT"} · alta{" "}
+                    {o.rut_empresa ? formatearRut(o.rut_empresa) : "sin RUT"} · alta{" "}
                     {new Date(o.creada).toLocaleDateString("es-CL")}
                   </p>
                 </td>
