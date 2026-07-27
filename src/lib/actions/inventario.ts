@@ -42,6 +42,74 @@ export async function registrarMovimiento(formData: FormData) {
   revalidatePath("/");
 }
 
+const CATEGORIAS = ["armazon", "cristal", "lente_contacto", "otro"] as const;
+
+// Alta de un producto nuevo (armazón, lente de contacto, etc.). Crea también
+// su fila de inventario en cada sucursal (en 0) para que después los
+// movimientos de stock tengan sobre qué aplicarse: sin esa fila, un
+// "entrada" no tiene qué actualizar. El stock inicial no se escribe a mano
+// en `inventario`, se registra como el primer movimiento (mismo camino que
+// cualquier otro ajuste de stock, con su historial).
+export async function crearProducto(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
+  if (!perfil) throw new Error("Perfil no encontrado");
+
+  const categoria = String(formData.get("categoria") ?? "armazon");
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  const marca = String(formData.get("marca") ?? "").trim() || null;
+  const modelo = String(formData.get("modelo") ?? "").trim() || null;
+  const color = String(formData.get("color") ?? "").trim() || null;
+  const sku = String(formData.get("sku") ?? "").trim() || null;
+  const costo = Math.max(0, Math.round(Number(formData.get("costo")) || 0));
+  const precioVenta = Math.max(0, Math.round(Number(formData.get("precio_venta")) || 0));
+  const stockInicial = Math.max(0, Math.round(Number(formData.get("stock_inicial")) || 0));
+  const sucursalId = String(formData.get("sucursal_id") ?? "");
+
+  if (!nombre) return { ok: false, error: "El nombre es obligatorio." };
+  if (!(CATEGORIAS as readonly string[]).includes(categoria)) return { ok: false, error: "Categoría inválida." };
+
+  const { data: producto, error } = await supabase
+    .from("productos")
+    .insert({ tenant_id: perfil.tenant_id, categoria, nombre, marca, modelo, color, sku, costo, precio_venta: precioVenta })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: "No se pudo crear el producto." };
+
+  const { data: sucursales } = await supabase.from("sucursales").select("id").eq("tenant_id", perfil.tenant_id);
+  const filasInventario = (sucursales ?? []).map((s) => ({
+    tenant_id: perfil.tenant_id,
+    sucursal_id: s.id,
+    producto_id: producto.id,
+    stock_actual: 0,
+    stock_minimo: 0,
+  }));
+  if (filasInventario.length > 0) {
+    const { error: invError } = await supabase.from("inventario").insert(filasInventario);
+    if (invError) return { ok: false, error: "El producto se creó, pero no se pudo preparar el inventario." };
+  }
+
+  if (stockInicial > 0 && sucursalId) {
+    await supabase.from("movimientos_inventario").insert({
+      tenant_id: perfil.tenant_id,
+      producto_id: producto.id,
+      sucursal_id: sucursalId,
+      tipo: "entrada",
+      cantidad: stockInicial,
+      referencia: "Carga inicial",
+    });
+  }
+
+  revalidatePath("/inventario");
+  revalidatePath("/precios");
+  return { ok: true };
+}
+
 export async function actualizarStockMinimo(formData: FormData) {
   const supabase = await createClient();
   const id = String(formData.get("inventario_id"));
