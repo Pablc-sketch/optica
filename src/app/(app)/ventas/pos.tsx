@@ -75,6 +75,9 @@ export default function PuntoDeVenta({
   const [origenCristal, setOrigenCristal] = useState<"laboratorio" | "stock">("laboratorio");
 
   const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
+  const abonoNum = Math.max(0, Math.min(Math.round(Number(abono.replace(/\./g, "")) || 0), total));
+  const esAbonoParcial = abonoNum > 0 && abonoNum < total;
+  const montoACobrar = esAbonoParcial ? abonoNum : total;
   const lineaCristal = carrito.find((l) => l.cristal);
   const lineaArmazon = carrito.find((l) => l.productoId);
   const creaOT = Boolean(pacienteId && lineaCristal);
@@ -429,6 +432,12 @@ export default function PuntoDeVenta({
               </select>
             </label>
           </div>
+          {esAbonoParcial && (
+            <p className="mt-2 text-xs font-medium text-amber-800">
+              Se cobra el abono de {clp(abonoNum)} ahora. Queda un saldo de {clp(total - abonoNum)} por
+              cobrar cuando se entreguen los lentes.
+            </p>
+          )}
           {mensaje && (
             <p className={`mt-2 text-sm font-medium ${mensaje.startsWith("✓") ? "text-green-700" : "text-red-700"}`}>
               {mensaje}
@@ -440,7 +449,7 @@ export default function PuntoDeVenta({
             disabled={guardando || carrito.length === 0}
             className="mt-3 w-full rounded-lg bg-brand px-4 py-3 text-base font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
           >
-            {guardando ? "Registrando…" : `Cobrar ${clp(total)}`}
+            {guardando ? "Registrando…" : `Cobrar ${clp(montoACobrar)}`}
           </button>
         </section>
       </div>

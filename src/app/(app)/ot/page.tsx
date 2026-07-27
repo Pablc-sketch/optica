@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { avanzarOT } from "@/lib/actions/ot";
+import { registrarAbono } from "@/lib/actions/ventas";
+import { clp } from "@/lib/clp";
 
 const COLUMNAS = [
   { estado: "recepcion", titulo: "Recepción", accion: "→ Laboratorio" },
@@ -24,6 +26,25 @@ export default async function TableroOT() {
   ]);
   const ots = otsRes.data;
   const nombreOptica = tenantRes.data?.nombre_comercial ?? "la óptica";
+
+  // La OT no sabe de plata; la venta que la creó sí. Buscamos, para cada OT
+  // de este tablero, la venta enlazada y cuánto le falta pagar, así al
+  // entregar los lentes se ve altiro si queda saldo pendiente por cobrar.
+  const otIds = (ots ?? []).map((o) => o.id);
+  const ventaPorOT = new Map<string, { ventaId: string; saldo: number }>();
+  if (otIds.length > 0) {
+    const { data: itemsConVenta } = await supabase
+      .from("venta_items")
+      .select("ot_id, ventas:venta_id (id, total, pagos_abonos (monto))")
+      .in("ot_id", otIds);
+
+    for (const item of itemsConVenta ?? []) {
+      const venta = item.ventas as unknown as { id: string; total: number; pagos_abonos: { monto: number }[] } | null;
+      if (!venta || !item.ot_id) continue;
+      const abonado = (venta.pagos_abonos ?? []).reduce((s, p) => s + p.monto, 0);
+      ventaPorOT.set(item.ot_id, { ventaId: venta.id, saldo: venta.total - abonado });
+    }
+  }
 
   const porEstado = (estado: string) => (ots ?? []).filter((o) => o.estado === estado);
 
@@ -58,6 +79,8 @@ export default async function TableroOT() {
                     new Date(ot.fecha_entrega_estimada + "T23:59:59") < new Date();
                   const paciente = ot.pacientes as unknown as { nombre: string; telefono: string | null } | null;
                   const telefonoWsp = paciente?.telefono?.replace(/\D/g, "");
+                  const venta = ventaPorOT.get(ot.id);
+                  const saldo = venta?.saldo ?? 0;
                   const linkWsp =
                     col.estado === "listo" && telefonoWsp
                       ? `https://wa.me/${telefonoWsp.length === 9 ? "56" + telefonoWsp : telefonoWsp}?text=${encodeURIComponent(
@@ -84,6 +107,39 @@ export default async function TableroOT() {
                       <p className="truncate text-xs text-tinta-suave">
                         {[ot.tipo_lente, ot.tratamiento].filter(Boolean).join(" · ")}
                       </p>
+                      {saldo > 0 && (
+                        <p className="mt-1 rounded-lg bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
+                          Debe {clp(saldo)}
+                        </p>
+                      )}
+                      {col.estado === "listo" && venta && saldo > 0 && (
+                        <form action={registrarAbono} className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <input type="hidden" name="venta_id" value={venta.ventaId} />
+                          <input
+                            name="monto"
+                            inputMode="numeric"
+                            placeholder={`Cobrar hasta ${clp(saldo)}`}
+                            className="w-28 flex-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand"
+                          />
+                          <select name="medio_pago" className="rounded-lg border border-tinta-suave/30 bg-white px-1.5 py-1 text-xs outline-none focus:border-brand">
+                            <option value="efectivo">Efectivo</option>
+                            <option value="debito">Débito</option>
+                            <option value="credito">Crédito</option>
+                            <option value="transferencia">Transferencia</option>
+                          </select>
+                          <button className="rounded-lg bg-brand/10 px-2 py-1 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
+                            Cobrar
+                          </button>
+                        </form>
+                      )}
+                      {col.estado === "listo" && venta && saldo <= 0 && (
+                        <Link
+                          href={`/ventas/${venta.ventaId}/comprobante`}
+                          className="mt-2 block w-full rounded-lg border border-tinta-suave/30 px-2 py-1.5 text-center text-xs font-medium text-tinta-suave transition hover:bg-crema"
+                        >
+                          🖨 Pagado — ver comprobante
+                        </Link>
+                      )}
                       {linkWsp && (
                         <a
                           href={linkWsp}
