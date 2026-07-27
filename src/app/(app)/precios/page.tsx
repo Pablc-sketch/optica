@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { actualizarPrecioProducto } from "@/lib/actions/precios";
+import { actualizarPrecioProducto, actualizarCostoCristal } from "@/lib/actions/precios";
 import { clp } from "@/lib/clp";
 
 // Precios de venta de la óptica (armazones y productos), con búsqueda y
-// pestañas por marca. Los costos de cristales del laboratorio viven solo
-// en la base de datos (costos_cristales): el punto de venta los usa para
-// calcular el precio y más adelante alimentan los reportes de utilidad,
-// pero no se exponen acá.
+// pestañas por marca, más el costo/precio de cada combinación de cristal
+// del laboratorio (costos_cristales) — el punto de venta los usa para
+// calcular el precio y los reportes de utilidad, así que necesitan poder
+// ajustarse al laboratorio real de cada óptica, no quedar fijos en la
+// plantilla de referencia con la que se creó la óptica.
 
 export default async function PreciosPage({
   searchParams,
@@ -17,11 +18,19 @@ export default async function PreciosPage({
   const { q, marca } = await searchParams;
   const supabase = await createClient();
 
-  const { data: todos } = await supabase
-    .from("productos")
-    .select("id, nombre, marca, color, sku, categoria, costo, precio_venta")
-    .order("marca")
-    .order("nombre");
+  const [{ data: todos }, { data: cristales }] = await Promise.all([
+    supabase
+      .from("productos")
+      .select("id, nombre, marca, color, sku, categoria, costo, precio_venta")
+      .order("marca")
+      .order("nombre"),
+    supabase
+      .from("costos_cristales")
+      .select("id, tipo_lente, rango_receta, tratamiento, costo, precio_venta")
+      .order("tipo_lente")
+      .order("rango_receta")
+      .order("tratamiento"),
+  ]);
 
   const productos = (todos ?? []).filter((p) => {
     if (marca && (p.marca ?? "Sin marca") !== marca) return false;
@@ -33,6 +42,8 @@ export default async function PreciosPage({
   });
 
   const marcas = [...new Set((todos ?? []).map((p) => p.marca ?? "Sin marca"))].sort();
+
+  const tiposLente = [...new Set((cristales ?? []).map((c) => c.tipo_lente))];
 
   return (
     <div className="flex flex-col gap-5">
@@ -111,6 +122,66 @@ export default async function PreciosPage({
             );
           })}
         </ul>
+      )}
+
+      <div>
+        <h2 className="text-xl font-bold">Costos de cristales (laboratorio)</h2>
+        <p className="text-sm text-tinta-suave">
+          Lo que te cobra tu laboratorio por cada combinación y lo que le cobras al cliente. Esto
+          llegó precargado como referencia al crear la óptica — ajústalo al costo real de tu
+          laboratorio para que la utilidad de los reportes sea la correcta.
+        </p>
+      </div>
+
+      {tiposLente.length === 0 ? (
+        <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
+          Todavía no hay costos de cristales cargados.
+        </p>
+      ) : (
+        tiposLente.map((tipo) => (
+          <details key={tipo} className="rounded-2xl bg-crema-claro p-4 shadow-sm">
+            <summary className="cursor-pointer font-semibold text-brand-dark">{tipo}</summary>
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {(cristales ?? [])
+                .filter((c) => c.tipo_lente === tipo)
+                .map((c) => {
+                  const margen = c.precio_venta - c.costo;
+                  return (
+                    <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
+                      <span className="min-w-56 flex-1 text-sm">
+                        {c.rango_receta} · {c.tratamiento}
+                      </span>
+                      <span className="text-xs text-tinta-suave">margen {clp(margen)}</span>
+                      <form action={actualizarCostoCristal} className="flex items-center gap-1.5">
+                        <input type="hidden" name="id" value={c.id} />
+                        <label className="flex items-center gap-1 text-xs text-tinta-suave">
+                          Costo
+                          <input
+                            name="costo"
+                            inputMode="numeric"
+                            defaultValue={c.costo}
+                            className="w-20 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-right text-sm outline-none focus:border-brand"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-xs text-tinta-suave">
+                          Venta
+                          <input
+                            name="precio"
+                            inputMode="numeric"
+                            defaultValue={c.precio_venta}
+                            className="w-20 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-right text-sm outline-none focus:border-brand"
+                          />
+                        </label>
+                        <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
+                          Guardar
+                        </button>
+                      </form>
+                    </li>
+                  );
+                })}
+            </ul>
+          </details>
+        ))
       )}
     </div>
   );

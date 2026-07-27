@@ -9,14 +9,21 @@ function parsearMonto(valor: FormDataEntryValue | null): number | null {
   return n;
 }
 
-// RLS limita ambos updates al tenant del usuario autenticado.
-export async function actualizarPrecioCristal(formData: FormData) {
+// Costo (lo que cobra el laboratorio) y precio de venta de cada combinación
+// tipo de lente x rango x tratamiento. El costo llega precargado desde una
+// plantilla genérica al registrar la óptica (spec: sirve de punto de
+// partida), pero cada óptica puede usar un laboratorio distinto — sin poder
+// editarlo acá, la utilidad de los reportes queda calculada con el costo
+// de otro laboratorio, no el real.
+// RLS limita el update al tenant del usuario autenticado.
+export async function actualizarCostoCristal(formData: FormData) {
   const supabase = await createClient();
   const id = String(formData.get("id"));
+  const costo = parsearMonto(formData.get("costo"));
   const precio = parsearMonto(formData.get("precio"));
-  if (precio === null) return;
+  if (costo === null || precio === null) return;
 
-  const { error } = await supabase.from("costos_cristales").update({ precio_venta: precio }).eq("id", id);
+  const { error } = await supabase.from("costos_cristales").update({ costo, precio_venta: precio }).eq("id", id);
   if (error) throw error;
   revalidatePath("/precios");
   revalidatePath("/ventas");
