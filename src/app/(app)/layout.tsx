@@ -118,7 +118,7 @@ function SuscripcionVencida({ suscripcion }: { suscripcion: Suscripcion }) {
       </h1>
       <p className="mt-2 text-sm text-tinta-suave">
         Los datos de tu óptica están guardados y seguros. Para volver a usar el sistema,
-        renová la suscripción.
+        renueva la suscripción.
       </p>
       <p className="mt-1 text-sm text-tinta-suave">
         Venció el{" "}

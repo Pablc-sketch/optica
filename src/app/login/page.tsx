@@ -41,7 +41,7 @@ export default function LoginPage() {
           <Image src="/logo.svg" alt="Logo" width={88} height={88} className="rounded-3xl shadow-sm" priority />
           <div className="text-center">
             <h1 className="text-2xl font-bold">Gestión Óptica</h1>
-            <p className="text-sm text-tinta-suave">Ingresá con tu cuenta</p>
+            <p className="text-sm text-tinta-suave">Ingresa con tu cuenta</p>
           </div>
         </div>
 
@@ -87,7 +87,7 @@ export default function LoginPage() {
           <p className="text-center text-sm text-tinta-suave">
             ¿Tu óptica todavía no está registrada?{" "}
             <Link href="/registro" className="font-semibold text-brand hover:underline">
-              Creá tu cuenta
+              Crea tu cuenta
             </Link>
           </p>
         </form>

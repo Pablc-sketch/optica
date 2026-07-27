@@ -48,7 +48,7 @@ export default function CopiarParaSII({ texto }: { texto: string }) {
       {estado === "manual" && (
         <div className="w-full max-w-md">
           <p className="mb-1 text-xs text-tinta-suave">
-            No se pudo copiar solo. Seleccioná el texto y copialo con Ctrl+C:
+            No se pudo copiar solo. Selecciona el texto y cópialo con Ctrl+C:
           </p>
           <textarea
             readOnly

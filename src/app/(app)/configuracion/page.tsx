@@ -46,8 +46,8 @@ export default async function ConfiguracionPage() {
       <div className="flex flex-col gap-4">
         <h1 className="text-xl font-bold">Configuración</h1>
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
-          Solo el administrador de la óptica puede cambiar la configuración. Si necesitás un
-          cambio, pedíselo a quien administre la cuenta.
+          Solo el administrador de la óptica puede cambiar la configuración. Si necesitas un
+          cambio, pídeselo a quien administre la cuenta.
         </p>
         <section>
           <h2 className="mb-2 font-semibold">Qué puede hacer cada rol</h2>

@@ -123,8 +123,8 @@ export default async function SuscripcionPage() {
             activa manualmente por soporte una vez recibida la transferencia.
           </p>
           <p className="mt-2 text-tinta-suave">
-            Escribinos a <b>proldan643@gmail.com</b> indicando el nombre de tu óptica y el plan que
-            querés.
+            Escríbenos a <b>proldan643@gmail.com</b> indicando el nombre de tu óptica y el plan que
+            quieres.
           </p>
         </section>
       </main>

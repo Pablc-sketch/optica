@@ -18,7 +18,7 @@ const PASOS = [
   },
   {
     titulo: "Certificado digital",
-    detalle: "Es la firma electrónica de la empresa; cuesta alrededor de $12.000 al año. Sin esto ningún programa puede emitir por vos.",
+    detalle: "Es la firma electrónica de la empresa; cuesta alrededor de $12.000 al año. Sin esto ningún programa puede emitir en tu nombre.",
   },
   {
     titulo: "Cuenta en un proveedor con API",

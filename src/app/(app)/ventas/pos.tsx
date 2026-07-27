@@ -375,7 +375,7 @@ export default function PuntoDeVenta({
         <section className="flex-1 rounded-2xl bg-crema-claro p-4 shadow-sm">
           <h2 className="mb-2 text-sm font-bold">Carrito</h2>
           {carrito.length === 0 ? (
-            <p className="text-sm text-tinta-suave">Agregá productos o cristales.</p>
+            <p className="text-sm text-tinta-suave">Agrega productos o cristales.</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {carrito.map((l) => (
@@ -402,7 +402,7 @@ export default function PuntoDeVenta({
           )}
           {!creaOT && lineaCristal && !pacienteId && (
             <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800">
-              Elegí un paciente para que se cree la orden de trabajo.
+              Elige un paciente para que se cree la orden de trabajo.
             </p>
           )}
         </section>

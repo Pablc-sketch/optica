@@ -75,7 +75,7 @@ export default function EstadoSync() {
       {nConflictos > 0 && (
         <button
           type="button"
-          title="Cambios que no se aplicaron porque otro dispositivo modificó el mismo dato. Revisá y volvé a cargar si corresponde."
+          title="Cambios que no se aplicaron porque otro dispositivo modificó el mismo dato. Revisa y vuelve a cargar si corresponde."
           onClick={() => {
             descartarConflictos();
             refrescarContadores();

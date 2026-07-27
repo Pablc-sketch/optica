@@ -39,7 +39,7 @@ export default async function PreciosPage({
       <div>
         <h1 className="text-xl font-bold">Precios de venta</h1>
         <p className="text-sm text-tinta-suave">
-          Lo que cobra tu óptica por armazones y productos. Editá el precio y guardá.
+          Lo que cobra tu óptica por armazones y productos. Edita el precio y guarda.
         </p>
       </div>
 

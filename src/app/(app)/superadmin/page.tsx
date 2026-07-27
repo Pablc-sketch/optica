@@ -31,7 +31,7 @@ export default async function SuperadminPage() {
   if (error) {
     return (
       <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-700">
-        No tenés acceso a este panel.
+        No tienes acceso a este panel.
       </div>
     );
   }

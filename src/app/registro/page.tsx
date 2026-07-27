@@ -45,11 +45,11 @@ export default function RegistroPage() {
 
       setError(
         texto.includes("already registered") || codigo === "user_already_exists"
-          ? "Ese correo ya tiene una cuenta. Iniciá sesión."
+          ? "Ese correo ya tiene una cuenta. Inicia sesión."
           : codigo === "over_email_send_rate_limit" || texto.includes("rate limit")
-            ? "El servicio de correo alcanzó su límite por hora. Esperá un rato o desactivá la confirmación por correo en Supabase (Authentication → Sign In / Providers → Email)."
+            ? "El servicio de correo alcanzó su límite por hora. Espera un rato o desactiva la confirmación por correo en Supabase (Authentication → Sign In / Providers → Email)."
             : texto.includes("invalid")
-              ? "El correo no es válido. Revisalo e intentá de nuevo."
+              ? "El correo no es válido. Revísalo e intenta de nuevo."
               : `No se pudo crear la cuenta: ${signUpError.message}`
       );
       setCargando(false);
@@ -85,7 +85,7 @@ export default function RegistroPage() {
         <div className="mb-6 flex flex-col items-center gap-3">
           <Image src="/logo.svg" alt="" width={72} height={72} className="rounded-3xl shadow-sm" priority />
           <div className="text-center">
-            <h1 className="text-2xl font-bold">Registrá tu óptica</h1>
+            <h1 className="text-2xl font-bold">Registra tu óptica</h1>
             <p className="text-sm text-tinta-suave">30 días de prueba, sin tarjeta.</p>
           </div>
         </div>
@@ -127,9 +127,9 @@ export default function RegistroPage() {
           </button>
 
           <p className="text-center text-sm text-tinta-suave">
-            ¿Ya tenés cuenta?{" "}
+            ¿Ya tienes cuenta?{" "}
             <Link href="/login" className="font-semibold text-brand hover:underline">
-              Iniciá sesión
+              Inicia sesión
             </Link>
           </p>
         </form>
