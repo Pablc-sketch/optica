@@ -17,6 +17,13 @@ alter table public.tenants
   add column if not exists direccion text,
   add column if not exists dias_entrega_default integer not null default 7;
 
-alter table public.tenants
-  add constraint tenants_dias_entrega_positivo
-  check (dias_entrega_default > 0 and dias_entrega_default <= 90);
+-- Guardado para poder aplicar el bloque a mano en una base que ya lo tenga
+-- (add constraint no admite "if not exists").
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'tenants_dias_entrega_positivo') then
+    alter table public.tenants
+      add constraint tenants_dias_entrega_positivo
+      check (dias_entrega_default > 0 and dias_entrega_default <= 90);
+  end if;
+end $$;
