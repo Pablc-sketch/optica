@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { crearPaciente } from "@/lib/actions/pacientes";
 import { formatearRut } from "@/lib/rut";
+import { formatearTelefono } from "@/lib/formato";
+import NuevoPaciente from "./nuevo-paciente";
 
 export default async function PacientesPage({
   searchParams,
@@ -10,6 +11,9 @@ export default async function PacientesPage({
 }) {
   const { q } = await searchParams;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   let query = supabase
     .from("pacientes")
@@ -18,7 +22,16 @@ export default async function PacientesPage({
     .limit(50);
   if (q) query = query.or(`nombre.ilike.%${q}%,rut.ilike.%${q}%`);
 
-  const { data: pacientes } = await query;
+  const [{ data: pacientes }, perfilRes] = await Promise.all([
+    query,
+    supabase.from("users").select("rol").eq("id", user!.id).single(),
+  ]);
+
+  // Bodega no ve fichas clínicas (RLS, migración de permisos por rol): sin
+  // avisarlo, la lista simplemente sale vacía y parece que se perdieron los
+  // pacientes en vez de ser una restricción de permisos.
+  const rol = perfilRes.data?.rol ?? "";
+  const puedeVerFichas = ["admin", "clinico", "ventas"].includes(rol);
 
   return (
     <div className="flex flex-col gap-6">
@@ -38,36 +51,15 @@ export default async function PacientesPage({
         </form>
       </div>
 
-      <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-        <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nuevo paciente</summary>
-        <form action={crearPaciente} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">
-            Nombre completo *
-            <input name="nombre" required className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand" />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            RUT
-            <input name="rut" placeholder="12.345.678-9" className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand" />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Teléfono
-            <input name="telefono" type="tel" inputMode="tel" placeholder="+56 9 …" className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand" />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Email
-            <input name="email" type="email" className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand" />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Fecha de nacimiento
-            <input name="fecha_nacimiento" type="date" className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand" />
-          </label>
-          <div className="sm:col-span-2">
-            <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-brand-dark">
-              Guardar paciente
-            </button>
-          </div>
-        </form>
-      </details>
+      {puedeVerFichas ? (
+        <NuevoPaciente />
+      ) : (
+        <p className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
+          Tu rol es <b>{rol}</b>, que no tiene acceso a las fichas clínicas de los pacientes (es
+          una restricción de la base de datos, por tratarse de datos de salud). Para ver y cargar
+          pacientes necesitas rol Administrador, Clínico o Ventas.
+        </p>
+      )}
 
       {!pacientes || pacientes.length === 0 ? (
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
@@ -83,7 +75,9 @@ export default async function PacientesPage({
               >
                 <span className="flex-1 truncate font-medium">{p.nombre}</span>
                 <span className="text-sm text-tinta-suave">{formatearRut(p.rut)}</span>
-                <span className="hidden text-sm text-tinta-suave sm:inline">{p.telefono ?? ""}</span>
+                <span className="hidden text-sm text-tinta-suave sm:inline">
+                  {formatearTelefono(p.telefono)}
+                </span>
               </Link>
             </li>
           ))}

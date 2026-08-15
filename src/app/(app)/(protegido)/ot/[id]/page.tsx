@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
 import { formatearRut } from "@/lib/rut";
+import { formatearTelefono } from "@/lib/formato";
 
 // Detalle imprimible de la orden de trabajo: receta completa, paciente
 // con RUT, tipo de lente, cristal/tratamiento, altura, DP y código del
@@ -36,7 +37,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       )
       .eq("id", id)
       .single(),
-    supabase.from("tenants").select("nombre_comercial").single(),
+    supabase.from("tenants").select("nombre_comercial, telefono, direccion").single(),
   ]);
 
   const ot = otRes.data;
@@ -74,6 +75,13 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
           <div>
             <h2 className="text-lg font-bold">ORDEN DE TRABAJO #{ot.folio}</h2>
             <p className="text-sm">{tenantRes.data?.nombre_comercial}</p>
+            {(tenantRes.data?.direccion || tenantRes.data?.telefono) && (
+              <p className="text-xs">
+                {[tenantRes.data.direccion, formatearTelefono(tenantRes.data.telefono)]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
           </div>
           <div className="text-right text-sm">
             <p className="font-semibold">{ESTADOS[ot.estado] ?? ot.estado}</p>
@@ -87,7 +95,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
         <div className="mb-4 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
           <p><span className="font-semibold">Paciente:</span> {paciente?.nombre ?? "—"}</p>
           <p><span className="font-semibold">RUT:</span> {formatearRut(paciente?.rut) || "—"}</p>
-          <p><span className="font-semibold">Teléfono:</span> {paciente?.telefono ?? "—"}</p>
+          <p><span className="font-semibold">Teléfono:</span> {formatearTelefono(paciente?.telefono) || "—"}</p>
           {receta && (
             <p><span className="font-semibold">Fecha receta:</span> {new Date(receta.fecha + "T00:00:00").toLocaleDateString("es-CL")}</p>
           )}

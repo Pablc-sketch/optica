@@ -6,6 +6,7 @@ import {
   crearSucursal,
 } from "@/lib/actions/configuracion";
 import NuevoUsuario from "./nuevo-usuario";
+import { CampoRut, CampoTelefono } from "@/components/campos";
 
 const ROLES = [
   { valor: "admin", etiqueta: "Administrador" },
@@ -38,6 +39,15 @@ export default async function ConfiguracionPage() {
 
   const esAdmin = perfilRes.data?.rol === "admin";
   const optica = opticaRes.data;
+
+  // Los campos de contacto y plazo de entrega llegaron en una migración
+  // posterior. Se piden aparte para que, si esa migración todavía no está
+  // aplicada en la base, el formulario siga mostrando bien los datos que sí
+  // existen en vez de quedar todo en blanco.
+  const { data: contacto } = await supabase
+    .from("tenants")
+    .select("telefono, direccion, dias_entrega_default")
+    .single();
   const usuarios = usuariosRes.data ?? [];
   const sucursales = sucursalesRes.data ?? [];
 
@@ -79,7 +89,31 @@ export default async function ConfiguracionPage() {
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
             RUT de la empresa
-            <input name="rut_empresa" defaultValue={optica?.rut_empresa ?? ""} placeholder="77.123.456-7" className={input} />
+            <CampoRut name="rut_empresa" defaultValue={optica?.rut_empresa} placeholder="77.123.456-7" className={input} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Teléfono
+            <CampoTelefono name="telefono" defaultValue={contacto?.telefono} className={input} />
+            <span className="text-xs font-normal text-tinta-suave">
+              Aparece en el comprobante y la orden de trabajo que se lleva el cliente.
+            </span>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Dirección
+            <input name="direccion" defaultValue={contacto?.direccion ?? ""} className={input} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Días de entrega
+            <input
+              name="dias_entrega_default"
+              inputMode="numeric"
+              defaultValue={contacto?.dias_entrega_default ?? 7}
+              className={input}
+            />
+            <span className="text-xs font-normal text-tinta-suave">
+              Cuánto demora tu laboratorio. Con esto se calcula la fecha de entrega estimada de
+              cada orden de trabajo.
+            </span>
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
             Factor de venta de cristales
@@ -94,7 +128,7 @@ export default async function ConfiguracionPage() {
               nuevos. Los precios ya guardados no cambian.
             </span>
           </label>
-          <div className="flex items-end">
+          <div className="sm:col-span-2">
             <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white transition hover:bg-brand-dark">
               Guardar
             </button>
@@ -113,6 +147,11 @@ export default async function ConfiguracionPage() {
                 <div className="min-w-40 flex-1">
                   <p className="text-sm font-medium">
                     {u.nombre}
+                    {u.id === user!.id && (
+                      <span className="ml-2 rounded-full bg-brand/15 px-2 py-0.5 text-xs font-semibold text-brand-dark">
+                        tú
+                      </span>
+                    )}
                     {u.estado === "inactivo" && (
                       <span className="ml-2 rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-semibold text-neutral-600">
                         inactivo

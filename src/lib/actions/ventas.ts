@@ -83,8 +83,16 @@ export async function registrarVenta(input: {
         : Promise.resolve({ data: null }),
     ]);
 
+    // El plazo lo define cada óptica en Configuración según lo que demore
+    // su laboratorio; 7 días es solo el respaldo si aún no lo ajustó.
+    const { data: config } = await supabase
+      .from("tenants")
+      .select("dias_entrega_default")
+      .eq("id", tenantId)
+      .single();
+
     const entrega = new Date();
-    entrega.setDate(entrega.getDate() + (input.diasEntrega ?? 7));
+    entrega.setDate(entrega.getDate() + (input.diasEntrega ?? config?.dias_entrega_default ?? 7));
 
     const { data: ot, error: otError } = await supabase
       .from("ordenes_trabajo")

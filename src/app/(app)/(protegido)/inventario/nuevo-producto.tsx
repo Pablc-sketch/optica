@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearProducto } from "@/lib/actions/inventario";
+import { CampoMonto } from "@/components/campos";
 
 const CATEGORIAS = [
   { valor: "armazon", etiqueta: "Armazón (marco)" },
@@ -84,12 +85,12 @@ export default function NuevoProducto({
           </label>
         )}
         <label className="flex flex-col gap-1 text-sm font-medium">
-          Costo
-          <input name="costo" inputMode="numeric" defaultValue={0} className={input} />
+          Costo (lo que te cuesta)
+          <CampoMonto name="costo" />
         </label>
         <label className="flex flex-col gap-1 text-sm font-medium">
           Precio de venta
-          <input name="precio_venta" inputMode="numeric" defaultValue={0} className={input} />
+          <CampoMonto name="precio_venta" />
         </label>
 
         {sucursales.length > 1 ? (

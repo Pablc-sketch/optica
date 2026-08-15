@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
+import { formatearTelefono } from "@/lib/formato";
 
 // El tenant_id NO viaja en el formulario: el insert va sin tenant y la
 // base lo exige vía RLS; lo tomamos del perfil del usuario autenticado
@@ -23,7 +24,7 @@ export async function crearPaciente(formData: FormData) {
   const { supabase, tenantId } = await tenantDelUsuario();
 
   const nombre = String(formData.get("nombre") ?? "").trim();
-  if (!nombre) return;
+  if (!nombre) return { ok: false as const, error: "El nombre es obligatorio." };
 
   const { data, error } = await supabase
     .from("pacientes")
@@ -31,16 +32,29 @@ export async function crearPaciente(formData: FormData) {
       tenant_id: tenantId,
       nombre,
       rut: formatearRut(String(formData.get("rut") ?? "")) || null,
-      telefono: String(formData.get("telefono") ?? "").trim() || null,
+      telefono: formatearTelefono(String(formData.get("telefono") ?? "")) || null,
       email: String(formData.get("email") ?? "").trim() || null,
       fecha_nacimiento: String(formData.get("fecha_nacimiento") ?? "") || null,
     })
     .select("id")
     .single();
 
-  if (error) throw error;
+  // Antes esto lanzaba la excepción tal cual y la pantalla se caía con un
+  // error de servidor. El caso más común no es un fallo técnico sino de
+  // permisos: bodega no puede tocar fichas clínicas (RLS), así que conviene
+  // decirlo en castellano en vez de mostrar una pantalla rota.
+  if (error) {
+    const esPermiso = error.code === "42501" || /row-level security|policy/i.test(error.message);
+    return {
+      ok: false as const,
+      error: esPermiso
+        ? "Tu rol no permite crear pacientes. Solo Administrador y Clínico pueden hacerlo; pídele a quien administra la óptica que te cambie el rol en Configuración."
+        : "No se pudo guardar el paciente. Revisa los datos e inténtalo de nuevo.",
+    };
+  }
+
   revalidatePath("/pacientes");
-  redirect(`/pacientes/${data.id}`);
+  return { ok: true as const, id: data.id as string };
 }
 
 export async function actualizarFichaClinica(formData: FormData) {

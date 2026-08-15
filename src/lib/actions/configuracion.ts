@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatearRut } from "@/lib/rut";
+import { formatearTelefono } from "@/lib/formato";
 
 const ROLES = ["admin", "clinico", "ventas", "bodega"] as const;
 type Rol = (typeof ROLES)[number];
@@ -149,13 +150,17 @@ export async function actualizarOptica(formData: FormData) {
   if (!nombre) return;
 
   const factor = Math.round(Number(formData.get("factor_venta_cristales")));
+  const dias = Math.round(Number(formData.get("dias_entrega_default")));
 
   const { error } = await supabase
     .from("tenants")
     .update({
       nombre_comercial: nombre,
       rut_empresa: formatearRut(String(formData.get("rut_empresa") ?? "")) || null,
+      telefono: formatearTelefono(String(formData.get("telefono") ?? "")) || null,
+      direccion: String(formData.get("direccion") ?? "").trim() || null,
       ...(Number.isFinite(factor) && factor > 0 ? { factor_venta_cristales: factor } : {}),
+      ...(Number.isFinite(dias) && dias > 0 && dias <= 90 ? { dias_entrega_default: dias } : {}),
     })
     .eq("id", tenantId);
   if (error) throw error;

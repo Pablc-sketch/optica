@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
+import { formatearTelefono } from "@/lib/formato";
 import BotonImprimir from "@/components/boton-imprimir";
 import CopiarParaSII from "@/components/copiar-para-sii";
 
@@ -25,7 +26,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       )
       .eq("id", id)
       .single(),
-    supabase.from("tenants").select("nombre_comercial, rut_empresa").single(),
+    supabase.from("tenants").select("nombre_comercial, rut_empresa, telefono, direccion").single(),
   ]);
 
   const venta = ventaRes.data;
@@ -81,6 +82,11 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         <div className="mb-4 border-b border-neutral-300 pb-3">
           <h2 className="text-lg font-bold">{optica?.nombre_comercial}</h2>
           {optica?.rut_empresa && <p className="text-sm">RUT: {formatearRut(optica.rut_empresa)}</p>}
+          {(optica?.direccion || optica?.telefono) && (
+            <p className="text-sm">
+              {[optica.direccion, formatearTelefono(optica.telefono)].filter(Boolean).join(" · ")}
+            </p>
+          )}
           <p className="mt-1 text-sm">
             Comprobante de venta · {new Date(venta.fecha).toLocaleDateString("es-CL")}{" "}
             {new Date(venta.fecha).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarPrecioProducto, actualizarCostoCristal } from "@/lib/actions/precios";
 import { clp } from "@/lib/clp";
+import { nombreCristal, tratamientoAplica } from "@/lib/cristales";
+import { CampoMonto } from "@/components/campos";
 
 // Precios de venta de la óptica (armazones y productos), con búsqueda y
 // pestañas por marca, más el costo/precio de cada combinación de cristal
@@ -43,7 +45,13 @@ export default async function PreciosPage({
 
   const marcas = [...new Set((todos ?? []).map((p) => p.marca ?? "Sin marca"))].sort();
 
-  const tiposLente = [...new Set((cristales ?? []).map((c) => c.tipo_lente))];
+  // Mismo criterio que el punto de venta: no se editan precios de
+  // combinaciones que no existen como producto (un monofocal con
+  // tratamiento "Multifocal ...").
+  const cristalesReales = (cristales ?? []).filter((c) =>
+    tratamientoAplica(c.tipo_lente, c.tratamiento)
+  );
+  const tiposLente = [...new Set(cristalesReales.map((c) => c.tipo_lente))];
 
   return (
     <div className="flex flex-col gap-5">
@@ -108,11 +116,10 @@ export default async function PreciosPage({
                 </span>
                 <form action={actualizarPrecioProducto} className="flex items-center gap-2">
                   <input type="hidden" name="id" value={p.id} />
-                  <input
+                  <CampoMonto
                     name="precio"
-                    inputMode="numeric"
                     defaultValue={p.precio_venta}
-                    className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-right text-sm outline-none focus:border-brand"
+                    className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
                   />
                   <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
                     Guardar
@@ -142,34 +149,32 @@ export default async function PreciosPage({
           <details key={tipo} className="rounded-2xl bg-crema-claro p-4 shadow-sm">
             <summary className="cursor-pointer font-semibold text-brand-dark">{tipo}</summary>
             <ul className="mt-3 flex flex-col gap-1.5">
-              {(cristales ?? [])
+              {cristalesReales
                 .filter((c) => c.tipo_lente === tipo)
                 .map((c) => {
                   const margen = c.precio_venta - c.costo;
                   return (
                     <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
                       <span className="min-w-56 flex-1 text-sm">
-                        {c.rango_receta} · {c.tratamiento}
+                        {c.rango_receta} · {nombreCristal(c.tipo_lente, c.tratamiento)}
                       </span>
                       <span className="text-xs text-tinta-suave">margen {clp(margen)}</span>
                       <form action={actualizarCostoCristal} className="flex items-center gap-1.5">
                         <input type="hidden" name="id" value={c.id} />
                         <label className="flex items-center gap-1 text-xs text-tinta-suave">
                           Costo
-                          <input
+                          <CampoMonto
                             name="costo"
-                            inputMode="numeric"
                             defaultValue={c.costo}
-                            className="w-20 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-right text-sm outline-none focus:border-brand"
+                            className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
                           />
                         </label>
                         <label className="flex items-center gap-1 text-xs text-tinta-suave">
                           Venta
-                          <input
+                          <CampoMonto
                             name="precio"
-                            inputMode="numeric"
                             defaultValue={c.precio_venta}
-                            className="w-20 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-right text-sm outline-none focus:border-brand"
+                            className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
                           />
                         </label>
                         <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">

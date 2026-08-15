@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { montoANumero } from "@/lib/formato";
 
 // El stock nunca se escribe a mano: se registra un movimiento y el trigger
 // trg_movimiento_stock lo aplica. Así queda historial de por qué cambió.
@@ -66,8 +67,10 @@ export async function crearProducto(formData: FormData) {
   const modelo = String(formData.get("modelo") ?? "").trim() || null;
   const color = String(formData.get("color") ?? "").trim() || null;
   const sku = String(formData.get("sku") ?? "").trim() || null;
-  const costo = Math.max(0, Math.round(Number(formData.get("costo")) || 0));
-  const precioVenta = Math.max(0, Math.round(Number(formData.get("precio_venta")) || 0));
+  // Los montos llegan con separador de miles ("45.000"): Number() los
+  // leería como NaN y el producto quedaría con costo 0.
+  const costo = montoANumero(formData.get("costo"));
+  const precioVenta = montoANumero(formData.get("precio_venta"));
   const stockInicial = Math.max(0, Math.round(Number(formData.get("stock_inicial")) || 0));
   const sucursalId = String(formData.get("sucursal_id") ?? "");
   const proveedorId = String(formData.get("proveedor_id") ?? "").trim() || null;
