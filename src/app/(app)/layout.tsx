@@ -32,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [perfilRes, suscripcionRes] = await Promise.all([
+  const [perfilRes, suscripcionRes, rolTokenRes] = await Promise.all([
     supabase
       .from("users")
       .select("nombre, rol, es_superadmin, tenants:tenant_id (nombre_comercial)")
@@ -42,6 +42,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .from("suscripciones")
       .select("plan, estado, fecha_inicio, fecha_renovacion, medio_pago")
       .maybeSingle(),
+    // El rol que efectivamente lleva la sesión. RLS decide con este valor
+    // (viene del JWT, puesto por el auth hook al iniciar sesión), no con el
+    // de la tabla users.
+    supabase.rpc("jwt_rol"),
   ]);
 
   const perfil = perfilRes.data;
@@ -53,6 +57,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const nombreOptica =
     (perfil.tenants as unknown as { nombre_comercial: string } | null)?.nombre_comercial ?? "Óptica";
+
+  // Al cambiar el rol de alguien, la tabla se actualiza al instante pero su
+  // sesión sigue con el rol anterior hasta que vuelve a entrar. Eso deja a
+  // la persona viendo "admin" en la cabecera mientras la base le rechaza
+  // todo, sin ninguna pista de por qué. Se detecta y se le dice qué hacer.
+  const rolToken = (rolTokenRes.data as string | null) ?? "";
+  const sesionDesactualizada = !rolTokenRes.error && rolToken !== perfil.rol;
 
   const vigente = estaVigente(suscripcion);
   const dias = suscripcion ? diasRestantes(suscripcion.fecha_renovacion) : null;
@@ -94,6 +105,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           ))}
         </nav>
       </header>
+
+      {sesionDesactualizada && (
+        <div className="border-b border-amber-300 bg-amber-100 px-4 py-3 text-center text-sm text-amber-900 print:hidden">
+          Tu rol cambió a <b>{perfil.rol}</b>, pero esta sesión sigue con los permisos de{" "}
+          <b>{rolToken || "antes"}</b>. Cierra sesión y vuelve a entrar para aplicarlo.{" "}
+          <form action={cerrarSesion} className="mt-2 inline-block sm:mt-0">
+            <button className="rounded-lg bg-amber-900 px-3 py-1.5 font-semibold text-white transition hover:bg-amber-800">
+              Cerrar sesión y volver a entrar
+            </button>
+          </form>
+        </div>
+      )}
 
       {porVencer && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900 print:hidden">
