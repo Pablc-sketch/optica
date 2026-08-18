@@ -1,5 +1,15 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
+import {
+  ZONA_CHILE,
+  diaEnChile,
+  fechaLegible,
+  finDelDia,
+  hoyEnChile,
+  inicioDelDia,
+  restarDias,
+} from "@/lib/fechas";
 
 // Hoja de pedido de cristales al laboratorio (como la hoja LABORATORIO
 // del SGO Excel). Neutra y sin logo: sirve para pedir a cualquier
@@ -14,26 +24,18 @@ function fmtOjo(esf: number | null, cil: number | null, eje: number | null): str
   return partes.join(" ");
 }
 
-function hoyISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default async function LaboratorioPage({
   searchParams,
 }: {
   searchParams: Promise<{ desde?: string; hasta?: string }>;
 }) {
   const params = await searchParams;
-  const hasta = params.hasta || hoyISO();
-  const desde =
-    params.desde ||
-    new Date(new Date(hasta + "T00:00:00").getTime() - 7 * 24 * 3600 * 1000)
-      .toISOString()
-      .slice(0, 10);
+  const hasta = params.hasta || hoyEnChile();
+  const desde = params.desde || restarDias(hasta, 7);
 
   const supabase = await createClient();
 
-  const [otsRes, tenantRes] = await Promise.all([
+  const [otsRes, tenantRes, ultimaRes] = await Promise.all([
     supabase
       .from("ordenes_trabajo")
       .select(
@@ -43,14 +45,30 @@ export default async function LaboratorioPage({
          productos:armazon_producto_id (sku, nombre, marca, color)`
       )
       .eq("origen_cristal", "laboratorio")
-      .gte("fecha_ingreso", `${desde}T00:00:00`)
-      .lte("fecha_ingreso", `${hasta}T23:59:59`)
+      // Los límites llevan el desfase de Chile. Sin él, Postgres interpreta
+      // la hora como UTC y deja fuera las órdenes de la tarde.
+      .gte("fecha_ingreso", inicioDelDia(desde))
+      .lte("fecha_ingreso", finDelDia(hasta))
       .order("folio", { ascending: true }),
     supabase.from("tenants").select("nombre_comercial").single(),
+    // Para poder decir "hay órdenes, pero fuera de este período" en vez de
+    // dejar la hoja vacía sin explicación.
+    supabase
+      .from("ordenes_trabajo")
+      .select("fecha_ingreso")
+      .eq("origen_cristal", "laboratorio")
+      .order("fecha_ingreso", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const ots = otsRes.data ?? [];
   const nombreOptica = tenantRes.data?.nombre_comercial ?? "";
+
+  const ultimaFecha = ultimaRes.data?.fecha_ingreso
+    ? diaEnChile(ultimaRes.data.fecha_ingreso)
+    : null;
+  const hayFueraDelPeriodo = ots.length === 0 && ultimaFecha !== null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -74,13 +92,42 @@ export default async function LaboratorioPage({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5 print:hidden">
+        {[
+          { dias: 7, texto: "Últimos 7 días" },
+          { dias: 30, texto: "Últimos 30 días" },
+          { dias: 365, texto: "Último año" },
+        ].map((r) => (
+          <Link
+            key={r.dias}
+            href={`/laboratorio?desde=${restarDias(hoyEnChile(), r.dias)}&hasta=${hoyEnChile()}`}
+            className="rounded-full bg-crema-claro px-3 py-1.5 text-xs font-medium text-tinta-suave transition hover:bg-brand hover:text-white"
+          >
+            {r.texto}
+          </Link>
+        ))}
+      </div>
+
+      {hayFueraDelPeriodo && (
+        <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 print:hidden">
+          No hay órdenes en el período elegido ({fechaLegible(desde)} al {fechaLegible(hasta)}), pero
+          sí las hay fuera de él: la más reciente es del <b>{fechaLegible(ultimaFecha!)}</b>.{" "}
+          <Link
+            href={`/laboratorio?desde=${ultimaFecha}&hasta=${hoyEnChile()}`}
+            className="font-semibold underline"
+          >
+            Ver desde esa fecha
+          </Link>
+        </div>
+      )}
+
       {/* Hoja imprimible: texto plano, sin logo ni colores de marca */}
       <div className="rounded-2xl bg-white p-5 shadow-sm print:rounded-none print:p-0 print:shadow-none">
         <div className="mb-4 border-b border-neutral-300 pb-3 text-neutral-900">
           <h2 className="text-lg font-bold uppercase tracking-wide">Pedido de cristales</h2>
           <p className="text-sm">
-            Solicitante: {nombreOptica} · Período: {desde} al {hasta} · Emitido:{" "}
-            {new Date().toLocaleDateString("es-CL")}
+            Solicitante: {nombreOptica} · Período: {fechaLegible(desde)} al {fechaLegible(hasta)} ·
+            Emitido: {new Date().toLocaleDateString("es-CL", { timeZone: ZONA_CHILE })}
           </p>
         </div>
 
