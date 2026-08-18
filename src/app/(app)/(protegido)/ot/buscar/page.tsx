@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
+import { diaEnChile, fechaLegible } from "@/lib/fechas";
 
 // Historial completo de órdenes de trabajo (spec: garantía y refacción de
 // cristales). El tablero de /ot solo muestra las que están en proceso; acá
@@ -131,13 +132,13 @@ export default async function BuscarOT({
                   {[ot.tipo_lente, ot.tratamiento].filter(Boolean).join(" · ") || "Sin detalle de cristal"}
                 </p>
                 <p className="mt-1 text-xs text-tinta-suave">
-                  Ingreso: {new Date(ot.fecha_ingreso).toLocaleDateString("es-CL")}
+                  Ingreso: {fechaLegible(diaEnChile(ot.fecha_ingreso))}
                   {ot.fecha_entrega_real && (
-                    <> · Entregado: {new Date(ot.fecha_entrega_real).toLocaleDateString("es-CL")}</>
+                    <> · Entregado: {fechaLegible(diaEnChile(ot.fecha_entrega_real))}</>
                   )}
                   {venta && (
                     <>
-                      {" "}· Compra del {new Date(venta.fecha).toLocaleDateString("es-CL")} por {clp(venta.total)}
+                      {" "}· Compra del {fechaLegible(diaEnChile(venta.fecha))} por {clp(venta.total)}
                       {venta.saldo > 0 && <> (saldo {clp(venta.saldo)})</>}
                     </>
                   )}

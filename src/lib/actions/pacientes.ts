@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
-import { formatearTelefono } from "@/lib/formato";
+import { fechaCortaAISO, formatearTelefono } from "@/lib/formato";
+import { hoyEnChile } from "@/lib/fechas";
 
 // El tenant_id NO viaja en el formulario: el insert va sin tenant y la
 // base lo exige vía RLS; lo tomamos del perfil del usuario autenticado
@@ -34,7 +35,7 @@ export async function crearPaciente(formData: FormData) {
       rut: formatearRut(String(formData.get("rut") ?? "")) || null,
       telefono: formatearTelefono(String(formData.get("telefono") ?? "")) || null,
       email: String(formData.get("email") ?? "").trim() || null,
-      fecha_nacimiento: String(formData.get("fecha_nacimiento") ?? "") || null,
+      fecha_nacimiento: fechaCortaAISO(String(formData.get("fecha_nacimiento") ?? "")),
     })
     .select("id")
     .single();
@@ -55,6 +56,31 @@ export async function crearPaciente(formData: FormData) {
 
   revalidatePath("/pacientes");
   return { ok: true as const, id: data.id as string };
+}
+
+// Las recetas se borran en cascada con el paciente (están pensadas como
+// datos suyos), pero ventas y órdenes de trabajo no: son comprobantes y
+// garantías, así que la base rechaza el borrado si existen (foreign key
+// 23503) en vez de arrastrarlas o dejarlas huérfanas. Es la protección
+// correcta: se explica en vez de mostrar el error tal cual.
+export async function eliminarPaciente(formData: FormData) {
+  const { supabase } = await tenantDelUsuario();
+  const pacienteId = String(formData.get("paciente_id"));
+
+  const { error } = await supabase.from("pacientes").delete().eq("id", pacienteId);
+
+  if (error) {
+    const tieneHistorial = error.code === "23503";
+    return {
+      ok: false as const,
+      error: tieneHistorial
+        ? "No se puede eliminar: este paciente tiene ventas u órdenes de trabajo registradas. Son comprobantes y garantías que hay que conservar."
+        : "No se pudo eliminar el paciente.",
+    };
+  }
+
+  revalidatePath("/pacientes");
+  return { ok: true as const };
 }
 
 export async function actualizarFichaClinica(formData: FormData) {
@@ -96,6 +122,10 @@ export async function crearReceta(formData: FormData) {
     tenant_id: tenantId,
     paciente_id: pacienteId,
     profesional_id: userId,
+    // Explícita en vez de dejarla en el default de la columna
+    // (current_date): ese default lo evalúa Postgres en UTC, así que una
+    // receta tomada de noche en Chile quedaba fechada al día siguiente.
+    fecha: hoyEnChile(),
     od_esfera: num("od_esfera"),
     od_cilindro: num("od_cilindro"),
     od_eje: num("od_eje"),
@@ -115,7 +145,7 @@ export async function crearReceta(formData: FormData) {
   if (error) throw error;
 
   // La receta recién cargada es la que tomará la OT al cobrar en el POS.
-  await supabase.from("pacientes").update({ ultima_visita: new Date().toISOString().slice(0, 10) }).eq("id", pacienteId);
+  await supabase.from("pacientes").update({ ultima_visita: hoyEnChile() }).eq("id", pacienteId);
 
   revalidatePath(`/pacientes/${pacienteId}`);
   revalidatePath("/ventas");

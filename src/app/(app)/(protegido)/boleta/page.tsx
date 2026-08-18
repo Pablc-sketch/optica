@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
+import { diaEnChile, fechaLegible } from "@/lib/fechas";
 
 // Estado de la emisión de boletas electrónicas. Hoy el flujo es manual
 // asistido (copiar datos → portal del SII). Para emitir automáticamente
@@ -92,7 +93,7 @@ export default async function BoletaPage() {
               return (
                 <li key={v.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-crema-claro px-4 py-3 shadow-sm">
                   <span className="text-xs text-tinta-suave">
-                    {new Date(v.fecha).toLocaleDateString("es-CL")}
+                    {fechaLegible(diaEnChile(v.fecha))}
                   </span>
                   <span className="flex-1 truncate text-sm font-medium">
                     {p?.nombre ?? "Sin paciente"}

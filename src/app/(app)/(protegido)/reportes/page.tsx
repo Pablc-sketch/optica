@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import BotonImprimir from "@/components/boton-imprimir";
+import { fechaLegible, finDelDia, hoyEnChile, inicioDelDia } from "@/lib/fechas";
 
 // Reportes (spec pantalla 10). Acá recién sirven los costos que quedaron
 // guardados sin mostrarse en la interfaz: el costo del armazón y el costo
@@ -8,12 +9,8 @@ import BotonImprimir from "@/components/boton-imprimir";
 // período, no solo lo facturado.
 
 function inicioDeMes(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-}
-
-function hoy(): string {
-  return new Date().toISOString().slice(0, 10);
+  const hoy = hoyEnChile();
+  return `${hoy.slice(0, 7)}-01`;
 }
 
 type ItemVenta = {
@@ -60,7 +57,7 @@ export default async function ReportesPage({
 }) {
   const params = await searchParams;
   const desde = params.desde || inicioDeMes();
-  const hasta = params.hasta || hoy();
+  const hasta = params.hasta || hoyEnChile();
 
   const supabase = await createClient();
 
@@ -68,8 +65,8 @@ export default async function ReportesPage({
     supabase
       .from("ventas")
       .select("id, total, estado_pago, vendedor_id, users:vendedor_id (nombre)")
-      .gte("fecha", `${desde}T00:00:00`)
-      .lte("fecha", `${hasta}T23:59:59`),
+      .gte("fecha", inicioDelDia(desde))
+      .lte("fecha", finDelDia(hasta)),
     supabase
       .from("venta_items")
       .select(
@@ -78,13 +75,13 @@ export default async function ReportesPage({
          ordenes_trabajo:ot_id (costo_laboratorio, tipo_lente, tratamiento),
          ventas!inner (fecha)`
       )
-      .gte("ventas.fecha", `${desde}T00:00:00`)
-      .lte("ventas.fecha", `${hasta}T23:59:59`),
+      .gte("ventas.fecha", inicioDelDia(desde))
+      .lte("ventas.fecha", finDelDia(hasta)),
     supabase
       .from("pagos_abonos")
       .select("monto")
-      .gte("fecha", `${desde}T00:00:00`)
-      .lte("fecha", `${hasta}T23:59:59`),
+      .gte("fecha", inicioDelDia(desde))
+      .lte("fecha", finDelDia(hasta)),
   ]);
 
   const ventas = ventasRes.data ?? [];
@@ -160,8 +157,7 @@ export default async function ReportesPage({
       </div>
 
       <p className="text-sm text-tinta-suave">
-        Período: {new Date(desde + "T00:00:00").toLocaleDateString("es-CL")} al{" "}
-        {new Date(hasta + "T00:00:00").toLocaleDateString("es-CL")}
+        Período: {fechaLegible(desde)} al {fechaLegible(hasta)}
       </p>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

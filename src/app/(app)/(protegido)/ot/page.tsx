@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { avanzarOT } from "@/lib/actions/ot";
 import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
+import { diaEnChile, fechaLegible } from "@/lib/fechas";
 
 const COLUMNAS = [
   { estado: "recepcion", titulo: "Recepción", accion: "→ Laboratorio" },
@@ -18,7 +19,7 @@ export default async function TableroOT() {
     supabase
       .from("ordenes_trabajo")
       .select(
-        "id, folio, estado, tipo_lente, tratamiento, fecha_entrega_estimada, pacientes:paciente_id (nombre, telefono)"
+        "id, folio, estado, tipo_lente, tratamiento, fecha_ingreso, fecha_entrega_estimada, pacientes:paciente_id (nombre, telefono)"
       )
       .neq("estado", "entregado")
       .order("fecha_ingreso", { ascending: true }),
@@ -100,10 +101,7 @@ export default async function TableroOT() {
                         </Link>
                         {ot.fecha_entrega_estimada && (
                           <span className={`text-xs ${atrasada ? "font-bold text-red-600" : "text-tinta-suave"}`}>
-                            {new Date(ot.fecha_entrega_estimada + "T00:00:00").toLocaleDateString("es-CL", {
-                              day: "numeric",
-                              month: "short",
-                            })}
+                            Entrega {fechaLegible(ot.fecha_entrega_estimada)}
                             {atrasada ? " ⚠" : ""}
                           </span>
                         )}
@@ -111,6 +109,9 @@ export default async function TableroOT() {
                       <p className="truncate text-sm font-medium">{paciente?.nombre ?? "—"}</p>
                       <p className="truncate text-xs text-tinta-suave">
                         {[ot.tipo_lente, ot.tratamiento].filter(Boolean).join(" · ")}
+                      </p>
+                      <p className="text-xs text-tinta-suave">
+                        Tomada el {fechaLegible(diaEnChile(ot.fecha_ingreso))}
                       </p>
                       {saldo > 0 && (
                         <p className="mt-1 rounded-lg bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">

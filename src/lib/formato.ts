@@ -30,3 +30,56 @@ export function montoANumero(valor: FormDataEntryValue | string | null | undefin
   const digitos = String(valor ?? "").replace(/\D/g, "");
   return digitos ? Number(digitos) : 0;
 }
+
+// Dioptrías (esfera, cilindro, adición): el signo es parte del dato clínico,
+// así que se muestra mientras se escribe en vez de recién al guardar.
+// "signo" fuerza siempre el mismo signo (cilindro es siempre negativo,
+// adición siempre positiva); "libre" respeta el que haya escrito la persona,
+// con "+" por omisión si no escribió ninguno.
+export function formatearDioptria(
+  valor: string | null | undefined,
+  signo: "+" | "-" | "libre"
+): string {
+  const texto = String(valor ?? "").replace(",", ".");
+  const negativo = signo === "-" || (signo === "libre" && texto.trim().startsWith("-"));
+  const numero = texto.replace(/[^0-9.]/g, "");
+  if (!numero) return "";
+  return `${negativo ? "-" : "+"}${numero}`;
+}
+
+// Agudeza visual como fracción (20/20, 6/9…): inserta el "/" solo si la
+// persona no lo escribió ella misma, apenas hay 2 dígitos en el numerador
+// (el caso más común, "20/xx"); con un numerador de un dígito ("6/9") basta
+// con escribir el "/" a mano.
+export function formatearAgudezaVisual(valor: string | null | undefined): string {
+  const texto = String(valor ?? "");
+  if (texto.includes("/")) return texto.replace(/[^0-9/]/g, "");
+  const digitos = texto.replace(/\D/g, "");
+  if (digitos.length <= 2) return digitos;
+  return `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}`;
+}
+
+// Fecha corta día/mes/año, como se escribe a mano en Chile. Mucho más
+// rápido en el mesón que el selector nativo de calendario.
+export function formatearFechaCorta(valor: string | null | undefined): string {
+  const digitos = String(valor ?? "").replace(/\D/g, "").slice(0, 8);
+  const partes = [digitos.slice(0, 2), digitos.slice(2, 4), digitos.slice(4, 8)].filter(Boolean);
+  return partes.join("/");
+}
+
+// "15/08/1990" → "1990-08-15", el formato que espera la columna date. null
+// si todavía no está completa (se sigue escribiendo).
+export function fechaCortaAISO(valor: string | null | undefined): string | null {
+  const m = String(valor ?? "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, dd, mm, aaaa] = m;
+  return `${aaaa}-${mm}-${dd}`;
+}
+
+// Inverso, para precargar el campo cuando ya existe una fecha guardada.
+export function isoAFechaCorta(valor: string | null | undefined): string {
+  const m = String(valor ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const [, aaaa, mm, dd] = m;
+  return `${dd}/${mm}/${aaaa}`;
+}

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
+import { diaEnChile, fechaLegible } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 import CopiarParaSII from "@/components/copiar-para-sii";
 
@@ -55,7 +56,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const textoSII = [
     `Cliente: ${paciente?.nombre ?? "Consumidor final"}`,
     paciente?.rut ? `RUT: ${formatearRut(paciente.rut)}` : null,
-    `Fecha: ${new Date(venta.fecha).toLocaleDateString("es-CL")}`,
+    `Fecha: ${fechaLegible(diaEnChile(venta.fecha))}`,
     "",
     "Detalle (precios finales, IVA incluido):",
     ...items.map(
@@ -88,8 +89,12 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
             </p>
           )}
           <p className="mt-1 text-sm">
-            Comprobante de venta · {new Date(venta.fecha).toLocaleDateString("es-CL")}{" "}
-            {new Date(venta.fecha).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}
+            Comprobante de venta · {fechaLegible(diaEnChile(venta.fecha))}{" "}
+            {new Date(venta.fecha).toLocaleTimeString("es-CL", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: "America/Santiago",
+            })}
           </p>
           {paciente && (
             <p className="text-sm">
@@ -134,7 +139,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
             {pagos.map((p: { monto: number; medio_pago: string; fecha: string }, i: number) => (
               <p key={i} className="flex justify-between">
                 <span className="capitalize">
-                  {new Date(p.fecha).toLocaleDateString("es-CL")} · {p.medio_pago}
+                  {fechaLegible(diaEnChile(p.fecha))} · {p.medio_pago}
                 </span>
                 <span>{clp(p.monto)}</span>
               </p>

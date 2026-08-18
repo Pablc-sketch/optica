@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { formatearRut } from "@/lib/rut";
-import { formatearMonto, formatearTelefono } from "@/lib/formato";
+import {
+  formatearAgudezaVisual,
+  formatearDioptria,
+  formatearFechaCorta,
+  formatearMonto,
+  formatearTelefono,
+  isoAFechaCorta,
+} from "@/lib/formato";
 
 // Campos que corrigen el formato mientras se escribe, para que nadie tenga
 // que acordarse de los puntos del RUT ni del +56. El valor que viaja en el
@@ -47,6 +54,55 @@ export function CampoTelefono({ name, defaultValue, required, placeholder, class
       inputMode="tel"
       placeholder={placeholder ?? "+56 9 1234 5678"}
       className={className ?? BASE}
+    />
+  );
+}
+
+// Dioptria: esfera va con signo libre (miopía o hipermetropía, lo decide
+// quien toma la receta), cilindro siempre negativo, adición siempre
+// positiva. El signo se ve en pantalla desde el primer dígito.
+export function CampoDioptria({
+  name,
+  signo,
+  placeholder,
+}: Pick<Props, "name" | "placeholder"> & { signo: "+" | "-" | "libre" }) {
+  const [valor, setValor] = useState("");
+  return (
+    <input
+      name={name}
+      value={valor}
+      onChange={(e) => setValor(formatearDioptria(e.target.value, signo))}
+      inputMode="decimal"
+      placeholder={placeholder ?? (signo === "-" ? "-0.50" : signo === "+" ? "+1.50" : "±1.75")}
+      className="w-full rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand"
+    />
+  );
+}
+
+export function CampoAgudezaVisual({ name }: Pick<Props, "name">) {
+  const [valor, setValor] = useState("");
+  return (
+    <input
+      name={name}
+      value={valor}
+      onChange={(e) => setValor(formatearAgudezaVisual(e.target.value))}
+      inputMode="numeric"
+      placeholder="20/20"
+      className="w-full rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand"
+    />
+  );
+}
+
+export function CampoFechaNacimiento({ name, defaultValue }: Pick<Props, "name" | "defaultValue">) {
+  const [valor, setValor] = useState(isoAFechaCorta(String(defaultValue ?? "")));
+  return (
+    <input
+      name={name}
+      value={valor}
+      onChange={(e) => setValor(formatearFechaCorta(e.target.value))}
+      inputMode="numeric"
+      placeholder="15/08/1990"
+      className={BASE}
     />
   );
 }

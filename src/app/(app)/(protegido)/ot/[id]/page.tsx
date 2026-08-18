@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
+import { diaEnChile, fechaLegible } from "@/lib/fechas";
 
 // Detalle imprimible de la orden de trabajo: receta completa, paciente
 // con RUT, tipo de lente, cristal/tratamiento, altura, DP y código del
@@ -85,7 +86,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
           </div>
           <div className="text-right text-sm">
             <p className="font-semibold">{ESTADOS[ot.estado] ?? ot.estado}</p>
-            <p>Ingreso: {new Date(ot.fecha_ingreso).toLocaleDateString("es-CL")}</p>
+            <p>Ingreso: {fechaLegible(diaEnChile(ot.fecha_ingreso))}</p>
             {ot.fecha_entrega_estimada && (
               <p>Entrega est.: {new Date(ot.fecha_entrega_estimada + "T00:00:00").toLocaleDateString("es-CL")}</p>
             )}
@@ -146,9 +147,10 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
           <p><span className="font-semibold">DP:</span> {receta?.dp ?? "—"} mm</p>
           <p><span className="font-semibold">Altura:</span> {receta?.altura ?? "—"} mm</p>
           <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente ?? "—"}</p>
-          <p><span className="font-semibold">Rango:</span> {ot.rango_receta ?? "—"}</p>
+          {/* Rango de receta y origen (stock/laboratorio) son datos de
+              trabajo interno, no algo que el cliente necesite ver en su
+              copia; el laboratorio los sigue recibiendo en /laboratorio. */}
           <p className="col-span-2"><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento ?? "—"}</p>
-          <p><span className="font-semibold">Origen:</span> {ot.origen_cristal === "laboratorio" ? "Laboratorio" : "Stock"}</p>
           <p className="col-span-2">
             <span className="font-semibold">Marco:</span>{" "}
             {marco ? `${marco.sku ? `[${marco.sku}] ` : ""}${marco.marca ?? ""} ${marco.nombre} ${marco.color ?? ""}`.trim() : "—"}

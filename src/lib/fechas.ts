@@ -55,6 +55,10 @@ export function restarDias(fechaISO: string, dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export function sumarDias(fechaISO: string, dias: number): string {
+  return restarDias(fechaISO, -dias);
+}
+
 export function fechaLegible(fechaISO: string): string {
   return new Date(`${fechaISO}T12:00:00Z`).toLocaleDateString("es-CL", { timeZone: ZONA_CHILE });
 }

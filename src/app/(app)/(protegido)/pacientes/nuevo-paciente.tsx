@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearPaciente } from "@/lib/actions/pacientes";
-import { CampoRut, CampoTelefono } from "@/components/campos";
+import { CampoFechaNacimiento, CampoRut, CampoTelefono } from "@/components/campos";
 
 export default function NuevoPaciente() {
   const router = useRouter();
@@ -47,7 +47,7 @@ export default function NuevoPaciente() {
         </label>
         <label className="flex flex-col gap-1 text-sm font-medium">
           Fecha de nacimiento
-          <input name="fecha_nacimiento" type="date" className={input} />
+          <CampoFechaNacimiento name="fecha_nacimiento" />
         </label>
 
         {error && (

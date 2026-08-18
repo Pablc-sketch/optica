@@ -8,6 +8,7 @@ import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
 import { nombreCristal, tratamientoAplica } from "@/lib/cristales";
+import { hoyEnChile, sumarDias } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
 type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number };
@@ -188,8 +189,11 @@ export default function PuntoDeVenta({
     // Misma regla que online: con paciente y cristales, la OT viaja en el
     // mismo lote (el servidor la enlaza cuando vuelve la señal).
     const otId = creaOT ? crypto.randomUUID() : null;
-    const entrega = new Date();
-    entrega.setDate(entrega.getDate() + 7);
+    // hoyEnChile() en vez del reloj/huso del dispositivo, para que la
+    // estimación no dependa de que el celular tenga bien puesta la zona
+    // horaria (frecuente justo en el escenario para el que existe este modo:
+    // vendiendo en terreno).
+    const entregaISO = sumarDias(hoyEnChile(), 7);
 
     const cambios: CambioSync[] = [
       {
@@ -227,7 +231,7 @@ export default function PuntoDeVenta({
           proveedor_lab_id: origenCristal === "laboratorio" ? laboratorioId || null : null,
           costo_laboratorio: lineaCristal.cristal.costoLaboratorio,
           fecha_ingreso: ahora,
-          fecha_entrega_estimada: entrega.toISOString().slice(0, 10),
+          fecha_entrega_estimada: entregaISO,
         },
       });
     }

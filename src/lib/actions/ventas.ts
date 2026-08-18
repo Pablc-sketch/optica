@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { hoyEnChile, sumarDias } from "@/lib/fechas";
 
 type ItemVenta = {
   productoId?: string;
@@ -91,8 +92,11 @@ export async function registrarVenta(input: {
       .eq("id", tenantId)
       .single();
 
-    const entrega = new Date();
-    entrega.setDate(entrega.getDate() + (input.diasEntrega ?? config?.dias_entrega_default ?? 7));
+    // "Hoy" tiene que ser el de Chile: entrada en el servidor (UTC) usaba
+    // getDate()/setDate() con el reloj del servidor, así que una venta de
+    // noche en Chile (ya "mañana" en UTC) calculaba la entrega un día de
+    // más.
+    const entregaISO = sumarDias(hoyEnChile(), input.diasEntrega ?? config?.dias_entrega_default ?? 7);
 
     const { data: ot, error: otError } = await supabase
       .from("ordenes_trabajo")
@@ -108,7 +112,7 @@ export async function registrarVenta(input: {
         origen_cristal: input.cristal.origen,
         proveedor_lab_id: input.proveedorLabId ?? proveedorRes.data?.id ?? null,
         costo_laboratorio: input.cristal.costoLaboratorio,
-        fecha_entrega_estimada: entrega.toISOString().slice(0, 10),
+        fecha_entrega_estimada: entregaISO,
       })
       .select("id, folio")
       .single();

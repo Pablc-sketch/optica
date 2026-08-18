@@ -2,13 +2,16 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarFichaClinica, crearReceta } from "@/lib/actions/pacientes";
 import { formatearRut } from "@/lib/rut";
+import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
+import EliminarPaciente from "./eliminar-paciente";
 
 function fmtDioptria(v: number | null): string {
   if (v === null) return "—";
   return (v > 0 ? "+" : "") + v.toFixed(2);
 }
 
-// Campo óptico: teclado decimal automático (spec 8.3 — velocidad de carga).
+// Campo óptico numérico simple (eje en grados, DP, altura): sin signo, solo
+// teclado decimal para cargar rápido.
 function CampoOptico({ name, label, placeholder }: { name: string; label: string; placeholder?: string }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium">
@@ -57,28 +60,31 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">{paciente.nombre}</h1>
-        <p className="text-sm text-tinta-suave">
-          {[
-            formatearRut(paciente.rut) || null,
-            edad !== null ? `${edad} años` : null,
-            paciente.telefono,
-            paciente.email,
-          ]
-            .filter(Boolean)
-            .join(" · ") || "Sin datos de contacto"}
-        </p>
-        {alertas.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {alertas.map((a) => (
-              <span key={a} className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
-                ⚠ {a}
-              </span>
-            ))}
-          </div>
-        )}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold">{paciente.nombre}</h1>
+          <p className="text-sm text-tinta-suave">
+            {[
+              formatearRut(paciente.rut) || null,
+              edad !== null ? `${edad} años` : null,
+              paciente.telefono,
+              paciente.email,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "Sin datos de contacto"}
+          </p>
+        </div>
+        <EliminarPaciente pacienteId={paciente.id} nombre={paciente.nombre} />
       </div>
+      {alertas.length > 0 && (
+        <div className="-mt-4 flex flex-wrap gap-1.5">
+          {alertas.map((a) => (
+            <span key={a} className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+              ⚠ {a}
+            </span>
+          ))}
+        </div>
+      )}
 
       <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
         <summary className="cursor-pointer font-semibold text-brand-dark">
@@ -161,20 +167,38 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
           <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
             <legend className="px-1 text-sm font-bold">OD (ojo derecho)</legend>
             <div className="grid grid-cols-4 gap-2">
-              <CampoOptico name="od_esfera" label="Esfera" placeholder="-1.25" />
-              <CampoOptico name="od_cilindro" label="Cilindro" placeholder="-0.50" />
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                Esfera
+                <CampoDioptria name="od_esfera" signo="libre" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                Cilindro
+                <CampoDioptria name="od_cilindro" signo="-" />
+              </label>
               <CampoOptico name="od_eje" label="Eje °" placeholder="180" />
-              <CampoOptico name="od_add" label="ADD" placeholder="+1.50" />
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                ADD
+                <CampoDioptria name="od_add" signo="+" />
+              </label>
             </div>
           </fieldset>
 
           <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
             <legend className="px-1 text-sm font-bold">OI (ojo izquierdo)</legend>
             <div className="grid grid-cols-4 gap-2">
-              <CampoOptico name="oi_esfera" label="Esfera" placeholder="-1.00" />
-              <CampoOptico name="oi_cilindro" label="Cilindro" placeholder="-0.25" />
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                Esfera
+                <CampoDioptria name="oi_esfera" signo="libre" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                Cilindro
+                <CampoDioptria name="oi_cilindro" signo="-" />
+              </label>
               <CampoOptico name="oi_eje" label="Eje °" placeholder="175" />
-              <CampoOptico name="oi_add" label="ADD" placeholder="+1.50" />
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                ADD
+                <CampoDioptria name="oi_add" signo="+" />
+              </label>
             </div>
           </fieldset>
 
@@ -183,11 +207,11 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
             <CampoOptico name="altura" label="Altura (mm)" placeholder="20" />
             <label className="flex flex-col gap-1 text-xs font-medium">
               AV OD
-              <input name="av_od" placeholder="20/20" className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand" />
+              <CampoAgudezaVisual name="av_od" />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium">
               AV OI
-              <input name="av_oi" placeholder="20/20" className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand" />
+              <CampoAgudezaVisual name="av_oi" />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium">
               Tipo
