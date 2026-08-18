@@ -11,9 +11,28 @@ import {
   restarDias,
 } from "@/lib/fechas";
 
-// Hoja de pedido de cristales al laboratorio (como la hoja LABORATORIO
-// del SGO Excel). Neutra y sin logo: sirve para pedir a cualquier
-// laboratorio. Filtrable por fecha de ingreso de la OT.
+// Hoja de pedido de cristales (como la hoja LABORATORIO del SGO Excel).
+// Neutra y sin logo: sirve para pedir a cualquier proveedor.
+//
+// El flujo real: los cristales "de stock" y los "de laboratorio" van al
+// mismo distribuidor pero en cajas separadas (una la resuelve con
+// existencias propias del distribuidor, la otra la manda a fabricar) — así
+// que cada origen necesita su propia hoja para imprimir y meter en su caja,
+// no una hoja mezclada.
+//
+// Por default se muestra lo pendiente (todavía no volvió del distribuidor,
+// es decir sigue en "recepción" o "laboratorio"): apenas se registra una
+// venta aparece acá solo, y al avanzar la OT a "montaje" desaparece sola,
+// sin que nadie tenga que acordarse de un rango de fechas. El filtro por
+// fecha queda como pestaña aparte para reimprimir algo puntual o revisar
+// un período ya cerrado.
+
+const ORIGENES = [
+  { valor: "laboratorio" as const, etiqueta: "Laboratorio", titulo: "Pedido de laboratorio" },
+  { valor: "stock" as const, etiqueta: "Stock", titulo: "Pedido de stock" },
+];
+
+const ESTADOS_PENDIENTES = ["recepcion", "laboratorio"];
 
 function fmtOjo(esf: number | null, cil: number | null, eje: number | null): string {
   if (esf === null && cil === null) return "—";
@@ -27,95 +46,140 @@ function fmtOjo(esf: number | null, cil: number | null, eje: number | null): str
 export default async function LaboratorioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ desde?: string; hasta?: string }>;
+  searchParams: Promise<{ origen?: string; modo?: string; desde?: string; hasta?: string }>;
 }) {
   const params = await searchParams;
+  const origen = params.origen === "stock" ? "stock" : "laboratorio";
+  const modoFecha = params.modo === "fecha";
+
   const hasta = params.hasta || hoyEnChile();
   const desde = params.desde || restarDias(hasta, 7);
 
   const supabase = await createClient();
 
-  const [otsRes, tenantRes, ultimaRes] = await Promise.all([
-    supabase
-      .from("ordenes_trabajo")
-      .select(
-        `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento,
-         pacientes:paciente_id (nombre),
-         recetas:receta_id (od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, dp, altura),
-         productos:armazon_producto_id (sku, nombre, marca, color)`
-      )
-      .eq("origen_cristal", "laboratorio")
-      // Los límites llevan el desfase de Chile. Sin él, Postgres interpreta
+  let query = supabase
+    .from("ordenes_trabajo")
+    .select(
+      `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento,
+       pacientes:paciente_id (nombre),
+       recetas:receta_id (od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, dp, altura),
+       productos:armazon_producto_id (sku, nombre, marca, color)`
+    )
+    .eq("origen_cristal", origen);
+
+  query = modoFecha
+    ? // Los límites llevan el desfase de Chile. Sin él, Postgres interpreta
       // la hora como UTC y deja fuera las órdenes de la tarde.
-      .gte("fecha_ingreso", inicioDelDia(desde))
-      .lte("fecha_ingreso", finDelDia(hasta))
-      .order("folio", { ascending: true }),
+      query.gte("fecha_ingreso", inicioDelDia(desde)).lte("fecha_ingreso", finDelDia(hasta))
+    : query.in("estado", ESTADOS_PENDIENTES);
+
+  const [otsRes, tenantRes, ultimaRes] = await Promise.all([
+    query.order("folio", { ascending: true }),
     supabase.from("tenants").select("nombre_comercial").single(),
     // Para poder decir "hay órdenes, pero fuera de este período" en vez de
-    // dejar la hoja vacía sin explicación.
-    supabase
-      .from("ordenes_trabajo")
-      .select("fecha_ingreso")
-      .eq("origen_cristal", "laboratorio")
-      .order("fecha_ingreso", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    // dejar la hoja vacía sin explicación (solo aplica en modo fecha).
+    modoFecha
+      ? supabase
+          .from("ordenes_trabajo")
+          .select("fecha_ingreso")
+          .eq("origen_cristal", origen)
+          .order("fecha_ingreso", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const ots = otsRes.data ?? [];
   const nombreOptica = tenantRes.data?.nombre_comercial ?? "";
+  const tituloOrigen = ORIGENES.find((o) => o.valor === origen)!;
 
-  const ultimaFecha = ultimaRes.data?.fecha_ingreso
-    ? diaEnChile(ultimaRes.data.fecha_ingreso)
-    : null;
-  const hayFueraDelPeriodo = ots.length === 0 && ultimaFecha !== null;
+  const ultimaFecha = ultimaRes.data?.fecha_ingreso ? diaEnChile(ultimaRes.data.fecha_ingreso) : null;
+  const hayFueraDelPeriodo = modoFecha && ots.length === 0 && ultimaFecha !== null;
+
+  const conParam = (extra: Record<string, string>) => {
+    const p = new URLSearchParams({ origen, ...(modoFecha ? { modo: "fecha", desde, hasta } : {}), ...extra });
+    return `/laboratorio?${p.toString()}`;
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <h1 className="text-xl font-bold">Pedido al laboratorio</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <form className="flex flex-wrap items-center gap-2" action="/laboratorio">
-            <label className="flex items-center gap-1 text-sm">
-              Desde
-              <input type="date" name="desde" defaultValue={desde} className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand" />
-            </label>
-            <label className="flex items-center gap-1 text-sm">
-              Hasta
-              <input type="date" name="hasta" defaultValue={hasta} className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand" />
-            </label>
-            <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
-              Filtrar
-            </button>
-          </form>
-          <BotonImprimir />
-        </div>
+        <h1 className="text-xl font-bold">Pedido de cristales</h1>
+        <BotonImprimir />
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 print:hidden">
-        {[
-          { dias: 7, texto: "Últimos 7 días" },
-          { dias: 30, texto: "Últimos 30 días" },
-          { dias: 365, texto: "Último año" },
-        ].map((r) => (
+        {ORIGENES.map((o) => (
           <Link
-            key={r.dias}
-            href={`/laboratorio?desde=${restarDias(hoyEnChile(), r.dias)}&hasta=${hoyEnChile()}`}
-            className="rounded-full bg-crema-claro px-3 py-1.5 text-xs font-medium text-tinta-suave transition hover:bg-brand hover:text-white"
+            key={o.valor}
+            href={conParam({ origen: o.valor })}
+            className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+              origen === o.valor ? "bg-brand text-white" : "bg-crema-claro text-tinta-suave hover:bg-white"
+            }`}
           >
-            {r.texto}
+            {o.etiqueta}
           </Link>
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5 print:hidden">
+        <Link
+          href={conParam({ modo: "pendientes" })}
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+            !modoFecha ? "bg-brand/15 text-brand-dark" : "bg-crema-claro text-tinta-suave hover:bg-white"
+          }`}
+        >
+          Pendientes
+        </Link>
+        <Link
+          href={conParam({ modo: "fecha" })}
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+            modoFecha ? "bg-brand/15 text-brand-dark" : "bg-crema-claro text-tinta-suave hover:bg-white"
+          }`}
+        >
+          Por fecha
+        </Link>
+
+        {modoFecha && (
+          <>
+            <form className="flex flex-wrap items-center gap-2" action="/laboratorio">
+              <input type="hidden" name="origen" value={origen} />
+              <input type="hidden" name="modo" value="fecha" />
+              <label className="flex items-center gap-1 text-sm">
+                Desde
+                <input type="date" name="desde" defaultValue={desde} className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand" />
+              </label>
+              <label className="flex items-center gap-1 text-sm">
+                Hasta
+                <input type="date" name="hasta" defaultValue={hasta} className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand" />
+              </label>
+              <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
+                Filtrar
+              </button>
+            </form>
+            {[
+              { dias: 7, texto: "Últimos 7 días" },
+              { dias: 30, texto: "Últimos 30 días" },
+              { dias: 365, texto: "Último año" },
+            ].map((r) => (
+              <Link
+                key={r.dias}
+                href={conParam({ modo: "fecha", desde: restarDias(hoyEnChile(), r.dias), hasta: hoyEnChile() })}
+                className="rounded-full bg-crema-claro px-3 py-1.5 text-xs font-medium text-tinta-suave transition hover:bg-brand hover:text-white"
+              >
+                {r.texto}
+              </Link>
+            ))}
+          </>
+        )}
+      </div>
+
       {hayFueraDelPeriodo && (
         <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 print:hidden">
-          No hay órdenes en el período elegido ({fechaLegible(desde)} al {fechaLegible(hasta)}), pero
-          sí las hay fuera de él: la más reciente es del <b>{fechaLegible(ultimaFecha!)}</b>.{" "}
-          <Link
-            href={`/laboratorio?desde=${ultimaFecha}&hasta=${hoyEnChile()}`}
-            className="font-semibold underline"
-          >
+          No hay órdenes de {tituloOrigen.etiqueta.toLowerCase()} en el período elegido ({fechaLegible(desde)}{" "}
+          al {fechaLegible(hasta)}), pero sí las hay fuera de él: la más reciente es del{" "}
+          <b>{fechaLegible(ultimaFecha!)}</b>.{" "}
+          <Link href={conParam({ modo: "fecha", desde: ultimaFecha!, hasta: hoyEnChile() })} className="font-semibold underline">
             Ver desde esa fecha
           </Link>
         </div>
@@ -124,16 +188,23 @@ export default async function LaboratorioPage({
       {/* Hoja imprimible: texto plano, sin logo ni colores de marca */}
       <div className="rounded-2xl bg-white p-5 shadow-sm print:rounded-none print:p-0 print:shadow-none">
         <div className="mb-4 border-b border-neutral-300 pb-3 text-neutral-900">
-          <h2 className="text-lg font-bold uppercase tracking-wide">Pedido de cristales</h2>
+          <h2 className="text-lg font-bold uppercase tracking-wide">{tituloOrigen.titulo}</h2>
           <p className="text-sm">
-            Solicitante: {nombreOptica} · Período: {fechaLegible(desde)} al {fechaLegible(hasta)} ·
+            Solicitante: {nombreOptica} ·{" "}
+            {modoFecha ? (
+              <>Período: {fechaLegible(desde)} al {fechaLegible(hasta)} · </>
+            ) : (
+              "Pendientes de recibir · "
+            )}
             Emitido: {new Date().toLocaleDateString("es-CL", { timeZone: ZONA_CHILE })}
           </p>
         </div>
 
         {ots.length === 0 ? (
           <p className="text-sm text-neutral-500">
-            No hay órdenes con cristales de laboratorio en este período.
+            {modoFecha
+              ? `No hay órdenes de ${tituloOrigen.etiqueta.toLowerCase()} en este período.`
+              : `No hay cristales de ${tituloOrigen.etiqueta.toLowerCase()} pendientes de recibir.`}
           </p>
         ) : (
           <div className="overflow-x-auto">
