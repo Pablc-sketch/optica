@@ -118,6 +118,12 @@ export async function crearReceta(formData: FormData) {
     return v === "" ? null : Number(v);
   };
 
+  // La adición se carga una sola vez (casi siempre es la misma para los dos
+  // ojos) pero la tabla igual guarda od_add/oi_add por separado, para no
+  // tener que migrar todo lo que ya lee esas dos columnas (receta impresa,
+  // historial, etc.).
+  const add = num("add");
+
   const { error } = await supabase.from("recetas").insert({
     tenant_id: tenantId,
     paciente_id: pacienteId,
@@ -129,11 +135,11 @@ export async function crearReceta(formData: FormData) {
     od_esfera: num("od_esfera"),
     od_cilindro: num("od_cilindro"),
     od_eje: num("od_eje"),
-    od_add: num("od_add"),
+    od_add: add,
     oi_esfera: num("oi_esfera"),
     oi_cilindro: num("oi_cilindro"),
     oi_eje: num("oi_eje"),
-    oi_add: num("oi_add"),
+    oi_add: add,
     av_od: String(formData.get("av_od") ?? "").trim() || null,
     av_oi: String(formData.get("av_oi") ?? "").trim() || null,
     dp: num("dp"),

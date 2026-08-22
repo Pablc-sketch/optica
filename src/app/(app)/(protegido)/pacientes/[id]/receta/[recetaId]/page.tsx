@@ -158,9 +158,9 @@ export default async function RecetaImprimible({
               como se ve en la mayoría de las recetas ópticas. */}
           <p className="rounded border border-neutral-300 px-3 py-1.5 text-sm">
             <span className="font-semibold">ADD:</span>{" "}
-            {receta.od_add !== null || receta.oi_add !== null
-              ? `OD ${fmtD(receta.od_add)} · OI ${fmtD(receta.oi_add)}`
-              : "—"}
+            {receta.od_add === receta.oi_add
+              ? fmtD(receta.od_add)
+              : `OD ${fmtD(receta.od_add)} · OI ${fmtD(receta.oi_add)}`}
           </p>
         </div>
 

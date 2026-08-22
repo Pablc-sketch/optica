@@ -167,7 +167,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
 
           <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
             <legend className="px-1 text-sm font-bold">OD (ojo derecho)</legend>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <label className="flex flex-col gap-1 text-xs font-medium">
                 Esfera
                 <CampoDioptria name="od_esfera" signo="libre" />
@@ -177,16 +177,12 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
                 <CampoDioptria name="od_cilindro" signo="-" />
               </label>
               <CampoOptico name="od_eje" label="Eje °" placeholder="180" />
-              <label className="flex flex-col gap-1 text-xs font-medium">
-                ADD
-                <CampoDioptria name="od_add" signo="+" />
-              </label>
             </div>
           </fieldset>
 
           <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
             <legend className="px-1 text-sm font-bold">OI (ojo izquierdo)</legend>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <label className="flex flex-col gap-1 text-xs font-medium">
                 Esfera
                 <CampoDioptria name="oi_esfera" signo="libre" />
@@ -196,12 +192,16 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
                 <CampoDioptria name="oi_cilindro" signo="-" />
               </label>
               <CampoOptico name="oi_eje" label="Eje °" placeholder="175" />
-              <label className="flex flex-col gap-1 text-xs font-medium">
-                ADD
-                <CampoDioptria name="oi_add" signo="+" />
-              </label>
             </div>
           </fieldset>
+
+          {/* La adición casi siempre es la misma para los dos ojos: un solo
+              campo que se aplica a toda la receta, no dos que casi siempre
+              terminan repitiendo el mismo número. */}
+          <label className="flex w-32 flex-col gap-1 text-xs font-medium">
+            Adición (ADD)
+            <CampoDioptria name="add" signo="+" />
+          </label>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             <CampoOptico name="dp" label="DP (mm)" placeholder="63" />
