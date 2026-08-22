@@ -5,18 +5,20 @@ import { useState } from "react";
 // Sin un servicio de envío de correo configurado (Resend, SendGrid, etc.)
 // no hay forma de mandar el correo automático con el PDF adjunto desde el
 // servidor. Mientras tanto abre Gmail directo (el link de "compose" de
-// mail.google.com, no un mailto:) con el destinatario y el mensaje ya
-// cargados — mailto: depende de que el dispositivo tenga una app de
-// correo asociada como default, y en varios celulares Android no hace
-// nada; el link de Gmail es una URL común, así que siempre abre.
+// mail.google.com, no un mailto:) con el destinatario y la receta completa
+// ya escrita en el cuerpo — mailto: depende de que el dispositivo tenga una
+// app de correo asociada como default, y en varios celulares Android no
+// hace nada; el link de Gmail es una URL común, así que siempre abre. No
+// es posible adjuntar un archivo (imagen o PDF) desde este link, por eso
+// la receta va escrita como texto en vez de solo un link.
 export default function EnviarRecetaCorreo({
   pacienteNombre,
   emailDefault,
-  urlReceta,
+  textoReceta,
 }: {
   pacienteNombre: string;
   emailDefault: string;
-  urlReceta: string;
+  textoReceta: string;
 }) {
   const [email, setEmail] = useState(emailDefault);
   const [abierto, setAbierto] = useState(false);
@@ -25,7 +27,7 @@ export default function EnviarRecetaCorreo({
   function enviar() {
     const destino = email.trim();
     if (!destino) {
-      setError("Escribí el correo del paciente primero.");
+      setError("Escribe el correo del paciente primero.");
       return;
     }
     if (!destino.includes("@")) {
@@ -34,9 +36,8 @@ export default function EnviarRecetaCorreo({
     }
     setError(null);
 
-    const urlCompleta = typeof window !== "undefined" ? `${window.location.origin}${urlReceta}` : urlReceta;
     const asunto = `Receta óptica — ${pacienteNombre}`;
-    const cuerpo = `Hola ${pacienteNombre.split(" ")[0]},\n\nAdjuntamos el link de tu receta óptica:\n${urlCompleta}\n\nDesde ahí podés verla o guardarla como PDF.`;
+    const cuerpo = `Hola ${pacienteNombre.split(" ")[0]},\n\nAquí tienes tu receta óptica:\n\n${textoReceta}`;
 
     const gmail =
       "https://mail.google.com/mail/?view=cm&fs=1" +
@@ -79,7 +80,6 @@ export default function EnviarRecetaCorreo({
         </button>
       </div>
       {error && <p className="text-xs font-medium text-red-700">{error}</p>}
-      <p className="text-xs text-tinta-suave">Abre Gmail con el correo ya redactado.</p>
     </div>
   );
 }

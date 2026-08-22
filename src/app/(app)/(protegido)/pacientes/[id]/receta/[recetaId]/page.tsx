@@ -6,6 +6,7 @@ import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 import EnviarRecetaCorreo from "./enviar-correo";
+import DescargarPdf from "./descargar-pdf";
 
 // Receta óptica imprimible/descargable: lo que se le entrega en mano al
 // paciente. Con el logo propio de la óptica y todos los antecedentes de la
@@ -73,6 +74,64 @@ export default async function RecetaImprimible({
 
   const emailDestino = paciente.email ?? "";
 
+  const tipoVisionTexto = TIPOS[receta.tipo] ?? receta.tipo;
+  const addTexto =
+    receta.od_add === receta.oi_add ? fmtD(receta.od_add) : `OD ${fmtD(receta.od_add)} · OI ${fmtD(receta.oi_add)}`;
+
+  const datosPdf = {
+    opticaNombre: optica?.nombre_comercial ?? "",
+    opticaDireccion: optica?.direccion ?? null,
+    opticaTelefono: optica?.telefono ? formatearTelefono(optica.telefono) : null,
+    logoUrl: optica?.logo_url ?? null,
+    pacienteNombre: paciente.nombre,
+    rut: formatearRut(paciente.rut) || "—",
+    edad,
+    tipoVision: tipoVisionTexto,
+    fecha: fechaLegible(receta.fecha),
+    od: {
+      esfera: fmtD(receta.od_esfera),
+      cilindro: fmtD(receta.od_cilindro),
+      eje: receta.od_eje !== null ? `${receta.od_eje}°` : "—",
+      av: receta.av_od ?? "—",
+    },
+    oi: {
+      esfera: fmtD(receta.oi_esfera),
+      cilindro: fmtD(receta.oi_cilindro),
+      eje: receta.oi_eje !== null ? `${receta.oi_eje}°` : "—",
+      av: receta.av_oi ?? "—",
+    },
+    dp: receta.dp !== null ? String(receta.dp) : "—",
+    altura: receta.altura !== null ? String(receta.altura) : "—",
+    add: addTexto,
+    alertas,
+    observaciones,
+    notas: receta.notas,
+  };
+
+  // Texto plano de la receta completa, para escribirla directo en el
+  // cuerpo del correo (no solo mandar un link).
+  const textoReceta = [
+    `${optica?.nombre_comercial ?? ""} — Receta óptica`,
+    `Fecha: ${fechaLegible(receta.fecha)}`,
+    "",
+    `Paciente: ${paciente.nombre}`,
+    `RUT: ${formatearRut(paciente.rut) || "—"}`,
+    edad !== null ? `Edad: ${edad} años` : null,
+    `Tipo de visión: ${tipoVisionTexto}`,
+    "",
+    "            Esfera    Cilindro    Eje       Agudeza visual",
+    `OD          ${datosPdf.od.esfera}      ${datosPdf.od.cilindro}        ${datosPdf.od.eje}      ${datosPdf.od.av}`,
+    `OI          ${datosPdf.oi.esfera}      ${datosPdf.oi.cilindro}        ${datosPdf.oi.eje}      ${datosPdf.oi.av}`,
+    "",
+    `DP: ${datosPdf.dp} mm · Altura: ${datosPdf.altura} mm`,
+    `ADD: ${addTexto}`,
+    alertas.length > 0 ? `\nObservaciones: ${alertas.join(" · ")}` : null,
+    observaciones.length > 0 ? observaciones.join("\n") : null,
+    receta.notas ? `\nNotas: ${receta.notas}` : null,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
@@ -81,15 +140,12 @@ export default async function RecetaImprimible({
           <EnviarRecetaCorreo
             pacienteNombre={paciente.nombre}
             emailDefault={emailDestino}
-            urlReceta={`/pacientes/${id}/receta/${recetaId}`}
+            textoReceta={textoReceta}
           />
+          <DescargarPdf datos={datosPdf} />
           <BotonImprimir />
         </div>
       </div>
-      <p className="text-xs text-tinta-suave print:hidden">
-        &quot;Imprimir&quot; también sirve para guardarla como PDF: en el cuadro que aparece, elegí
-        &quot;Guardar como PDF&quot; en vez de una impresora.
-      </p>
 
       <div className="rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
         <div className="mb-5 flex items-start justify-between gap-4 border-b-2 border-neutral-800 pb-4">
