@@ -4,9 +4,11 @@ import { useState } from "react";
 
 // Sin un servicio de envío de correo configurado (Resend, SendGrid, etc.)
 // no hay forma de mandar el correo automático con el PDF adjunto desde el
-// servidor. Mientras tanto, esto abre la app de correo del propio celular
-// con el destinatario y el link a la receta ya cargados — el dueño de la
-// óptica manda el correo desde su cuenta, en dos toques.
+// servidor. Mientras tanto abre Gmail directo (el link de "compose" de
+// mail.google.com, no un mailto:) con el destinatario y el mensaje ya
+// cargados — mailto: depende de que el dispositivo tenga una app de
+// correo asociada como default, y en varios celulares Android no hace
+// nada; el link de Gmail es una URL común, así que siempre abre.
 export default function EnviarRecetaCorreo({
   pacienteNombre,
   emailDefault,
@@ -35,18 +37,14 @@ export default function EnviarRecetaCorreo({
     const urlCompleta = typeof window !== "undefined" ? `${window.location.origin}${urlReceta}` : urlReceta;
     const asunto = `Receta óptica — ${pacienteNombre}`;
     const cuerpo = `Hola ${pacienteNombre.split(" ")[0]},\n\nAdjuntamos el link de tu receta óptica:\n${urlCompleta}\n\nDesde ahí podés verla o guardarla como PDF.`;
-    const mailto = `mailto:${encodeURIComponent(destino)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
 
-    // window.location.href a veces no dispara nada en navegadores móviles
-    // (Chrome/Android sobre todo) si no hay un cliente de correo asociado
-    // como "default"; un <a> real con click() lo abre de forma más
-    // confiable, y sirve como respaldo copiar el link a mano si igual falla.
-    const enlace = document.createElement("a");
-    enlace.href = mailto;
-    enlace.rel = "noopener";
-    document.body.appendChild(enlace);
-    enlace.click();
-    document.body.removeChild(enlace);
+    const gmail =
+      "https://mail.google.com/mail/?view=cm&fs=1" +
+      `&to=${encodeURIComponent(destino)}` +
+      `&su=${encodeURIComponent(asunto)}` +
+      `&body=${encodeURIComponent(cuerpo)}`;
+
+    window.open(gmail, "_blank", "noopener");
   }
 
   if (!abierto) {
@@ -81,10 +79,7 @@ export default function EnviarRecetaCorreo({
         </button>
       </div>
       {error && <p className="text-xs font-medium text-red-700">{error}</p>}
-      <p className="text-xs text-tinta-suave">
-        Si no abre tu app de correo sola, mandale el link a mano:{" "}
-        <span className="font-mono">{typeof window !== "undefined" ? window.location.href : urlReceta}</span>
-      </p>
+      <p className="text-xs text-tinta-suave">Abre Gmail con el correo ya redactado.</p>
     </div>
   );
 }

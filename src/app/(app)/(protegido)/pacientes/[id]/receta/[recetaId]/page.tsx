@@ -47,7 +47,6 @@ export default async function RecetaImprimible({
   if (!paciente || !receta) notFound();
 
   const optica = tenantRes.data;
-  const profesional = receta.profesionales as unknown as { nombre: string } | null;
 
   const edad = paciente.fecha_nacimiento
     ? Math.floor(
