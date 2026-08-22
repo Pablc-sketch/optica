@@ -120,7 +120,7 @@ export default function SelectorPlanes({ planes }: { planes: Plan[] }) {
             </div>
 
             <p className="mt-4 rounded-xl bg-brand/10 p-3 text-xs text-tinta">
-              Después de transferir, mandá el comprobante a <b>proldan643@gmail.com</b> indicando el
+              Después de transferir, envía el comprobante a <b>proldan643@gmail.com</b>. Indica el
               nombre de tu óptica y el plan elegido (&quot;{plan.nombre}&quot;) — lo activamos a mano
               apenas lo recibimos. El pago en línea automático todavía no está conectado.
             </p>

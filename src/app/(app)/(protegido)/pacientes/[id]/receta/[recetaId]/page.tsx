@@ -7,6 +7,7 @@ import { fechaLegible } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 import EnviarRecetaCorreo from "./enviar-correo";
 import DescargarPdf from "./descargar-pdf";
+import type { DatosRecetaImpresion } from "@/lib/receta-datos";
 
 // Receta óptica imprimible/descargable: lo que se le entrega en mano al
 // paciente. Con el logo propio de la óptica y todos los antecedentes de la
@@ -78,7 +79,7 @@ export default async function RecetaImprimible({
   const addTexto =
     receta.od_add === receta.oi_add ? fmtD(receta.od_add) : `OD ${fmtD(receta.od_add)} · OI ${fmtD(receta.oi_add)}`;
 
-  const datosPdf = {
+  const datosPdf: DatosRecetaImpresion = {
     opticaNombre: optica?.nombre_comercial ?? "",
     opticaDireccion: optica?.direccion ?? null,
     opticaTelefono: optica?.telefono ? formatearTelefono(optica.telefono) : null,
@@ -108,30 +109,6 @@ export default async function RecetaImprimible({
     notas: receta.notas,
   };
 
-  // Texto plano de la receta completa, para escribirla directo en el
-  // cuerpo del correo (no solo mandar un link).
-  const textoReceta = [
-    `${optica?.nombre_comercial ?? ""} — Receta óptica`,
-    `Fecha: ${fechaLegible(receta.fecha)}`,
-    "",
-    `Paciente: ${paciente.nombre}`,
-    `RUT: ${formatearRut(paciente.rut) || "—"}`,
-    edad !== null ? `Edad: ${edad} años` : null,
-    `Tipo de visión: ${tipoVisionTexto}`,
-    "",
-    "            Esfera    Cilindro    Eje       Agudeza visual",
-    `OD          ${datosPdf.od.esfera}      ${datosPdf.od.cilindro}        ${datosPdf.od.eje}      ${datosPdf.od.av}`,
-    `OI          ${datosPdf.oi.esfera}      ${datosPdf.oi.cilindro}        ${datosPdf.oi.eje}      ${datosPdf.oi.av}`,
-    "",
-    `DP: ${datosPdf.dp} mm · Altura: ${datosPdf.altura} mm`,
-    `ADD: ${addTexto}`,
-    alertas.length > 0 ? `\nObservaciones: ${alertas.join(" · ")}` : null,
-    observaciones.length > 0 ? observaciones.join("\n") : null,
-    receta.notas ? `\nNotas: ${receta.notas}` : null,
-  ]
-    .filter((l) => l !== null)
-    .join("\n");
-
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
@@ -140,7 +117,7 @@ export default async function RecetaImprimible({
           <EnviarRecetaCorreo
             pacienteNombre={paciente.nombre}
             emailDefault={emailDestino}
-            textoReceta={textoReceta}
+            datos={datosPdf}
           />
           <DescargarPdf datos={datosPdf} />
           <BotonImprimir />
@@ -240,9 +217,10 @@ export default async function RecetaImprimible({
           </p>
         )}
 
-        <div className="mt-10 grid grid-cols-1 gap-8 text-center text-xs text-neutral-500 sm:grid-cols-2 print:mt-16">
-          <p className="border-t border-neutral-300 pt-1">Firma del profesional</p>
-          <p className="border-t border-neutral-300 pt-1">Firma y timbre</p>
+        <div className="mt-10 flex justify-end print:mt-16">
+          <p className="w-56 border-t border-neutral-300 pt-1 text-center text-xs text-neutral-500">
+            Firma y timbre del profesional
+          </p>
         </div>
       </div>
     </div>
