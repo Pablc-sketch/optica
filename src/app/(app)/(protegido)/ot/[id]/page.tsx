@@ -38,7 +38,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       )
       .eq("id", id)
       .single(),
-    supabase.from("tenants").select("nombre_comercial, telefono, direccion").single(),
+    supabase.from("tenants").select("nombre_comercial, telefono, direccion, logo_url").single(),
   ]);
 
   const ot = otRes.data;
@@ -73,16 +73,22 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
 
       <div className="rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
         <div className="mb-4 flex items-start justify-between border-b border-neutral-300 pb-3">
-          <div>
-            <h2 className="text-lg font-bold">ORDEN DE TRABAJO #{ot.folio}</h2>
-            <p className="text-sm">{tenantRes.data?.nombre_comercial}</p>
-            {(tenantRes.data?.direccion || tenantRes.data?.telefono) && (
-              <p className="text-xs">
-                {[tenantRes.data.direccion, formatearTelefono(tenantRes.data.telefono)]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
+          <div className="flex items-center gap-3">
+            {tenantRes.data?.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={tenantRes.data.logo_url} alt="" className="h-12 w-12 object-contain" />
             )}
+            <div>
+              <h2 className="text-lg font-bold">ORDEN DE TRABAJO #{ot.folio}</h2>
+              <p className="text-sm">{tenantRes.data?.nombre_comercial}</p>
+              {(tenantRes.data?.direccion || tenantRes.data?.telefono) && (
+                <p className="text-xs">
+                  {[tenantRes.data.direccion, formatearTelefono(tenantRes.data.telefono)]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
+            </div>
           </div>
           <div className="text-right text-sm">
             <p className="font-semibold">{ESTADOS[ot.estado] ?? ot.estado}</p>

@@ -32,6 +32,20 @@ async function requerirAdmin() {
   return { supabase, tenantId: perfil.tenant_id as string, userId: user.id };
 }
 
+// La URL ya viene subida a Storage (eso se hace desde el navegador, en
+// SubirLogo); acá solo se guarda el dato, con el mismo control de admin que
+// el resto de la configuración.
+export async function guardarLogoOptica(url: string) {
+  const { supabase, tenantId } = await requerirAdmin();
+
+  const { error } = await supabase.from("tenants").update({ logo_url: url }).eq("id", tenantId);
+  if (error) return { ok: false as const, error: "No se pudo guardar el logo." };
+
+  revalidatePath("/configuracion");
+  revalidatePath("/", "layout");
+  return { ok: true as const };
+}
+
 export async function crearUsuario(formData: FormData) {
   const { tenantId } = await requerirAdmin();
 

@@ -32,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [perfilRes, suscripcionRes, rolTokenRes] = await Promise.all([
+  const [perfilRes, suscripcionRes, rolTokenRes, logoRes] = await Promise.all([
     supabase
       .from("users")
       .select("nombre, rol, es_superadmin, tenants:tenant_id (nombre_comercial)")
@@ -46,6 +46,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // (viene del JWT, puesto por el auth hook al iniciar sesión), no con el
     // de la tabla users.
     supabase.rpc("jwt_rol"),
+    // Aparte de la consulta principal: si logo_url todavía no existe en esta
+    // base (migración pendiente), que falle sola sin tumbar el layout entero.
+    supabase.from("tenants").select("logo_url").single(),
   ]);
 
   const perfil = perfilRes.data;
@@ -57,6 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const nombreOptica =
     (perfil.tenants as unknown as { nombre_comercial: string } | null)?.nombre_comercial ?? "Óptica";
+  const logoOptica = logoRes.data?.logo_url ?? null;
 
   // Al cambiar el rol de alguien, la tabla se actualiza al instante pero su
   // sesión sigue con el rol anterior hasta que vuelve a entrar. Eso deja a
@@ -78,7 +82,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="sticky top-0 z-10 border-b border-tinta-suave/15 bg-crema-claro/95 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.svg" alt="" width={36} height={36} className="rounded-xl" />
+            {logoOptica ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoOptica} alt="" width={36} height={36} className="h-9 w-9 rounded-xl object-contain" />
+            ) : (
+              <Image src="/logo.svg" alt="" width={36} height={36} className="rounded-xl" />
+            )}
             <span className="font-bold leading-tight">{nombreOptica}</span>
           </Link>
           <div className="ml-auto flex items-center gap-3 text-sm">

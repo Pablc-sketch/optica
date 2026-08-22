@@ -6,6 +6,7 @@ import {
   crearSucursal,
 } from "@/lib/actions/configuracion";
 import NuevoUsuario from "./nuevo-usuario";
+import SubirLogo from "./subir-logo";
 import { CampoRut, CampoTelefono } from "@/components/campos";
 
 const ROLES = [
@@ -31,7 +32,7 @@ export default async function ConfiguracionPage() {
   } = await supabase.auth.getUser();
 
   const [perfilRes, opticaRes, usuariosRes, sucursalesRes] = await Promise.all([
-    supabase.from("users").select("rol").eq("id", user!.id).single(),
+    supabase.from("users").select("rol, tenant_id").eq("id", user!.id).single(),
     supabase.from("tenants").select("nombre_comercial, rut_empresa, factor_venta_cristales").single(),
     supabase.from("users").select("id, nombre, email, rol, estado").order("nombre"),
     supabase.from("sucursales").select("id, nombre, direccion").order("nombre"),
@@ -46,7 +47,7 @@ export default async function ConfiguracionPage() {
   // existen en vez de quedar todo en blanco.
   const { data: contacto } = await supabase
     .from("tenants")
-    .select("telefono, direccion, dias_entrega_default")
+    .select("telefono, direccion, dias_entrega_default, logo_url")
     .single();
   const usuarios = usuariosRes.data ?? [];
   const sucursales = sucursalesRes.data ?? [];
@@ -80,8 +81,9 @@ export default async function ConfiguracionPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-bold">Configuración</h1>
 
-      <section>
-        <h2 className="mb-2 font-semibold">Datos de la óptica</h2>
+      <section className="flex flex-col gap-3">
+        <h2 className="font-semibold">Datos de la óptica</h2>
+        <SubirLogo tenantId={perfilRes.data!.tenant_id} logoActual={contacto?.logo_url ?? null} />
         <form action={actualizarOptica} className="grid grid-cols-1 gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm font-medium">
             Nombre comercial

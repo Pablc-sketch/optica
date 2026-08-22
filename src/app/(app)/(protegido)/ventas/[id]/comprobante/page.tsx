@@ -27,7 +27,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       )
       .eq("id", id)
       .single(),
-    supabase.from("tenants").select("nombre_comercial, rut_empresa, telefono, direccion").single(),
+    supabase.from("tenants").select("nombre_comercial, rut_empresa, telefono, direccion, logo_url").single(),
   ]);
 
   const venta = ventaRes.data;
@@ -80,15 +80,23 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       </div>
 
       <div className="rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
-        <div className="mb-4 border-b border-neutral-300 pb-3">
-          <h2 className="text-lg font-bold">{optica?.nombre_comercial}</h2>
-          {optica?.rut_empresa && <p className="text-sm">RUT: {formatearRut(optica.rut_empresa)}</p>}
-          {(optica?.direccion || optica?.telefono) && (
-            <p className="text-sm">
-              {[optica.direccion, formatearTelefono(optica.telefono)].filter(Boolean).join(" · ")}
-            </p>
+        <div className="mb-4 flex items-center gap-3 border-b border-neutral-300 pb-3">
+          {optica?.logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={optica.logo_url} alt="" className="h-12 w-12 object-contain" />
           )}
-          <p className="mt-1 text-sm">
+          <div>
+            <h2 className="text-lg font-bold">{optica?.nombre_comercial}</h2>
+            {optica?.rut_empresa && <p className="text-sm">RUT: {formatearRut(optica.rut_empresa)}</p>}
+            {(optica?.direccion || optica?.telefono) && (
+              <p className="text-sm">
+                {[optica.direccion, formatearTelefono(optica.telefono)].filter(Boolean).join(" · ")}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="mb-4 border-b border-neutral-300 pb-3">
+          <p className="text-sm">
             Comprobante de venta · {fechaLegible(diaEnChile(venta.fecha))}{" "}
             {new Date(venta.fecha).toLocaleTimeString("es-CL", {
               hour: "2-digit",

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarFichaClinica, crearReceta } from "@/lib/actions/pacientes";
@@ -246,7 +247,15 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
               <li key={r.id} className="rounded-2xl bg-crema-claro p-4 shadow-sm">
                 <div className="mb-2 flex items-center justify-between text-sm">
                   <span className="font-semibold">{new Date(r.fecha + "T00:00:00").toLocaleDateString("es-CL")}</span>
-                  <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-medium capitalize text-tinta-suave">{r.tipo}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-medium capitalize text-tinta-suave">{r.tipo}</span>
+                    <Link
+                      href={`/pacientes/${paciente.id}/receta/${r.id}`}
+                      className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-brand-dark transition hover:bg-white"
+                    >
+                      🖨 Ver / Imprimir
+                    </Link>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-105 text-sm">
