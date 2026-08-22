@@ -35,7 +35,7 @@ export default async function RecetaImprimible({
     supabase.from("pacientes").select("*").eq("id", id).single(),
     supabase
       .from("recetas")
-      .select("*, profesionales:profesional_id (nombre)")
+      .select("*")
       .eq("id", recetaId)
       .eq("paciente_id", id)
       .single(),
@@ -130,7 +130,6 @@ export default async function RecetaImprimible({
               <th className="border border-neutral-300 px-2 py-1.5">Esfera</th>
               <th className="border border-neutral-300 px-2 py-1.5">Cilindro</th>
               <th className="border border-neutral-300 px-2 py-1.5">Eje</th>
-              <th className="border border-neutral-300 px-2 py-1.5">Adición</th>
               <th className="border border-neutral-300 px-2 py-1.5">Agudeza visual</th>
             </tr>
           </thead>
@@ -140,7 +139,6 @@ export default async function RecetaImprimible({
               <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.od_esfera)}</td>
               <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.od_cilindro)}</td>
               <td className="border border-neutral-300 px-2 py-2">{receta.od_eje !== null ? `${receta.od_eje}°` : "—"}</td>
-              <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.od_add)}</td>
               <td className="border border-neutral-300 px-2 py-2">{receta.av_od ?? "—"}</td>
             </tr>
             <tr>
@@ -148,14 +146,24 @@ export default async function RecetaImprimible({
               <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.oi_esfera)}</td>
               <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.oi_cilindro)}</td>
               <td className="border border-neutral-300 px-2 py-2">{receta.oi_eje !== null ? `${receta.oi_eje}°` : "—"}</td>
-              <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.oi_add)}</td>
               <td className="border border-neutral-300 px-2 py-2">{receta.av_oi ?? "—"}</td>
             </tr>
           </tbody>
         </table>
-        <p className="mb-5 text-xs text-neutral-600">
-          DP: {receta.dp ?? "—"} mm · Altura: {receta.altura ?? "—"} mm
-        </p>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-neutral-600">
+            DP: {receta.dp ?? "—"} mm · Altura: {receta.altura ?? "—"} mm
+          </p>
+          {/* La adición no va en la tabla: solo aplica a algunos pacientes
+              (présbicia) y queda como anexo aparte de la receta de lejos,
+              como se ve en la mayoría de las recetas ópticas. */}
+          <p className="rounded border border-neutral-300 px-3 py-1.5 text-sm">
+            <span className="font-semibold">ADD:</span>{" "}
+            {receta.od_add !== null || receta.oi_add !== null
+              ? `OD ${fmtD(receta.od_add)} · OI ${fmtD(receta.oi_add)}`
+              : "—"}
+          </p>
+        </div>
 
         {(alertas.length > 0 || observaciones.length > 0) && (
           <div className="mb-5 rounded border border-neutral-300 bg-neutral-50 p-3 text-sm">
@@ -178,9 +186,7 @@ export default async function RecetaImprimible({
         )}
 
         <div className="mt-10 grid grid-cols-1 gap-8 text-center text-xs text-neutral-500 sm:grid-cols-2 print:mt-16">
-          <p className="border-t border-neutral-300 pt-1">
-            {profesional?.nombre ?? "Profesional responsable"}
-          </p>
+          <p className="border-t border-neutral-300 pt-1">Firma del profesional</p>
           <p className="border-t border-neutral-300 pt-1">Firma y timbre</p>
         </div>
       </div>

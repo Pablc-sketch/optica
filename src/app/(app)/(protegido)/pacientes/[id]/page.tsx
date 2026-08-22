@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { actualizarFichaClinica, crearReceta } from "@/lib/actions/pacientes";
 import { formatearRut } from "@/lib/rut";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
-import EliminarPaciente from "./eliminar-paciente";
+import EliminarPaciente from "../eliminar-paciente";
 
 function fmtDioptria(v: number | null): string {
   if (v === null) return "—";
@@ -75,7 +75,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
               .join(" · ") || "Sin datos de contacto"}
           </p>
         </div>
-        <EliminarPaciente pacienteId={paciente.id} nombre={paciente.nombre} />
+        <EliminarPaciente pacienteId={paciente.id} nombre={paciente.nombre} irALista />
       </div>
       {alertas.length > 0 && (
         <div className="-mt-4 flex flex-wrap gap-1.5">

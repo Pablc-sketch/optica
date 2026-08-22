@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
 import NuevoPaciente from "./nuevo-paciente";
+import EliminarPaciente from "./eliminar-paciente";
 
 export default async function PacientesPage({
   searchParams,
@@ -68,17 +69,19 @@ export default async function PacientesPage({
       ) : (
         <ul className="flex flex-col gap-2">
           {pacientes.map((p) => (
-            <li key={p.id}>
-              <Link
-                href={`/pacientes/${p.id}`}
-                className="flex items-center gap-3 rounded-xl bg-crema-claro px-4 py-3 shadow-sm transition hover:bg-white"
-              >
+            <li key={p.id} className="flex items-center gap-1 rounded-xl bg-crema-claro shadow-sm transition hover:bg-white">
+              <Link href={`/pacientes/${p.id}`} className="flex flex-1 items-center gap-3 px-4 py-3">
                 <span className="flex-1 truncate font-medium">{p.nombre}</span>
                 <span className="text-sm text-tinta-suave">{formatearRut(p.rut)}</span>
                 <span className="hidden text-sm text-tinta-suave sm:inline">
                   {formatearTelefono(p.telefono)}
                 </span>
               </Link>
+              {puedeVerFichas && (
+                <div className="pr-2">
+                  <EliminarPaciente pacienteId={p.id} nombre={p.nombre} compacto />
+                </div>
+              )}
             </li>
           ))}
         </ul>
