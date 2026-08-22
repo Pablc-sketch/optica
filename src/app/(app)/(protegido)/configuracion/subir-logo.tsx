@@ -39,7 +39,10 @@ export default function SubirLogo({ tenantId, logoActual }: { tenantId: string; 
       .upload(ruta, archivo, { upsert: true, cacheControl: "3600" });
 
     if (subeError) {
-      setError("No se pudo subir la imagen.");
+      // El mensaje real de Supabase (bucket inexistente, política de RLS
+      // que no matchea, etc.) es mucho más útil para diagnosticar que un
+      // genérico "no se pudo".
+      setError(`No se pudo subir la imagen: ${subeError.message}`);
       setSubiendo(false);
       return;
     }
