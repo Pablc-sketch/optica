@@ -34,6 +34,36 @@ export default function SubirLogo({ tenantId, logoActual }: { tenantId: string; 
     const ruta = `${tenantId}/logo.${extension}`;
 
     const supabase = createClient();
+
+    // Diagnóstico: si el navegador no tiene sesión (o tiene una con otra
+    // óptica) al momento de subir, la política de seguridad la rechaza sin
+    // dar más detalle que "row-level security policy" — este chequeo previo
+    // dice exactamente por qué en vez de dejar ese mensaje genérico.
+    const { data: sesionData } = await supabase.auth.getSession();
+    const token = sesionData.session?.access_token;
+    let tenantEnSesion: string | undefined;
+    if (token) {
+      try {
+        const payload = token.split(".")[1];
+        tenantEnSesion = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))).tenant_id;
+      } catch {
+        // sigue sin tenantEnSesion; se reporta más abajo si hace falta
+      }
+    }
+
+    if (!token) {
+      setError("No hay una sesión activa en este navegador ahora mismo. Cierra sesión y vuelve a entrar, luego prueba de nuevo.");
+      setSubiendo(false);
+      return;
+    }
+    if (tenantEnSesion && tenantEnSesion !== tenantId) {
+      setError(
+        `Tu sesión está asociada a otra óptica (${tenantEnSesion}) en vez de la tuya (${tenantId}). Cierra sesión y vuelve a entrar.`
+      );
+      setSubiendo(false);
+      return;
+    }
+
     const { error: subeError } = await supabase.storage
       .from("logos")
       .upload(ruta, archivo, { upsert: true, cacheControl: "3600" });
@@ -41,8 +71,10 @@ export default function SubirLogo({ tenantId, logoActual }: { tenantId: string; 
     if (subeError) {
       // El mensaje real de Supabase (bucket inexistente, política de RLS
       // que no matchea, etc.) es mucho más útil para diagnosticar que un
-      // genérico "no se pudo".
-      setError(`No se pudo subir la imagen: ${subeError.message}`);
+      // genérico "no se pudo". Se agrega también qué óptica traía la
+      // sesión al momento de subir, para descartar de una vez si el
+      // problema es la sesión o los permisos en la base.
+      setError(`No se pudo subir la imagen: ${subeError.message} (sesión: óptica ${tenantEnSesion ?? "desconocida"})`);
       setSubiendo(false);
       return;
     }
