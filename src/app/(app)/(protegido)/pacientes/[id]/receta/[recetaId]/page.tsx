@@ -217,10 +217,14 @@ export default async function RecetaImprimible({
           </p>
         )}
 
+        {/* Un solo espacio en blanco para firma y timbre superpuestos, sin
+            ningún nombre impreso: así se usa en Chile, y evita que quede el
+            nombre de quien probó la app en vez de un espacio en blanco real. */}
         <div className="mt-10 flex justify-end print:mt-16">
-          <p className="w-56 border-t border-neutral-300 pt-1 text-center text-xs text-neutral-500">
-            Firma y timbre del profesional
-          </p>
+          <div className="flex w-56 flex-col items-center gap-1">
+            <div className="h-20 w-full rounded border border-neutral-300" />
+            <p className="text-xs text-neutral-500">Firma profesional</p>
+          </div>
         </div>
       </div>
     </div>

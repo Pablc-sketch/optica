@@ -1,14 +1,31 @@
 import type { DatosRecetaImpresion } from "./receta-datos";
 
+// Paleta de la marca (src/app/globals.css) — la misma que usa el resto de
+// la app, para que el correo se sienta parte de lo mismo y no un mail
+// genérico de sistema.
+const BRAND = "#d97756";
+const BRAND_DARK = "#b85c3e";
+const CREMA = "#f0eee6";
+const TINTA = "#3d3929";
+const TINTA_SUAVE = "#6b6553";
+
 function escapar(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function filaDato(etiqueta: string, valor: string): string {
+  return `
+    <td style="padding:0 18px 0 0;">
+      <p style="margin:0;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:${TINTA_SUAVE};">${escapar(etiqueta)}</p>
+      <p style="margin:2px 0 0;font-size:14px;font-weight:600;color:${TINTA};">${escapar(valor)}</p>
+    </td>`;
+}
+
 // Cuerpo del correo en HTML: los clientes de correo sí saben mostrar una
 // tabla con bordes (a diferencia del link de Gmail, que solo manda texto
-// plano), así que acá la receta queda "cuadrada" como una hoja carta, igual
-// a como se ve impresa. Todo con estilos inline: los clientes de correo
-// ignoran las hojas de estilo externas.
+// plano), así que acá la receta queda cuadrada como una hoja carta, con la
+// misma paleta de colores del resto de la app. Todo con estilos inline: los
+// clientes de correo ignoran las hojas de estilo externas.
 export function construirHtmlReceta(datos: DatosRecetaImpresion, saludoNombre: string): string {
   const filaObs = [
     datos.alertas.length > 0 ? `<b>${escapar(datos.alertas.join(" · "))}</b>` : null,
@@ -18,89 +35,106 @@ export function construirHtmlReceta(datos: DatosRecetaImpresion, saludoNombre: s
     .join("<br>");
 
   return `
-<div style="max-width:650px;margin:0 auto;padding:24px;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;">
-  <p style="font-size:15px;margin:0 0 16px;">Hola ${escapar(saludoNombre)},</p>
-  <p style="font-size:14px;margin:0 0 20px;">Aquí tienes tu receta óptica de ${escapar(datos.opticaNombre)}. También va adjunta en PDF para que la guardes o la imprimas.</p>
+<div style="background:${CREMA};padding:32px 16px;font-family:Helvetica,Arial,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;">
+    <p style="font-size:15px;line-height:1.5;color:${TINTA};margin:0 0 20px;">
+      Hola ${escapar(saludoNombre)}, aquí tienes tu receta óptica de <b>${escapar(datos.opticaNombre)}</b>.
+      También va adjunta en PDF para que la guardes o la imprimes.
+    </p>
 
-  <table style="width:100%;border-collapse:collapse;border:2px solid #333;">
-    <tr>
-      <td style="padding:16px 16px 10px;border-bottom:2px solid #333;">
-        <table style="width:100%;border-collapse:collapse;">
-          <tr>
-            <td style="vertical-align:top;">
-              <p style="margin:0;font-size:16px;font-weight:bold;">${escapar(datos.opticaNombre)}</p>
-              ${
-                datos.opticaDireccion || datos.opticaTelefono
-                  ? `<p style="margin:2px 0 0;font-size:11px;color:#555;">${escapar(
-                      [datos.opticaDireccion, datos.opticaTelefono].filter(Boolean).join(" · ")
-                    )}</p>`
-                  : ""
-              }
-            </td>
-            <td style="vertical-align:top;text-align:right;">
-              <p style="margin:0;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.03em;">Receta óptica</p>
-              <p style="margin:2px 0 0;font-size:11px;color:#555;">${escapar(datos.fecha)}</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:14px 16px;border-bottom:1px solid #999;font-size:13px;">
-        <b>Paciente:</b> ${escapar(datos.pacienteNombre)} &nbsp;·&nbsp;
-        <b>RUT:</b> ${escapar(datos.rut)}${datos.edad !== null ? ` &nbsp;·&nbsp; <b>Edad:</b> ${datos.edad} años` : ""} &nbsp;·&nbsp;
-        <b>Tipo de visión:</b> ${escapar(datos.tipoVision)}
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:14px 16px 6px;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <tr style="background:#eee;">
-            <th style="border:1px solid #999;padding:6px 8px;text-align:left;"></th>
-            <th style="border:1px solid #999;padding:6px 8px;text-align:left;">Esfera</th>
-            <th style="border:1px solid #999;padding:6px 8px;text-align:left;">Cilindro</th>
-            <th style="border:1px solid #999;padding:6px 8px;text-align:left;">Eje</th>
-            <th style="border:1px solid #999;padding:6px 8px;text-align:left;">Agudeza visual</th>
-          </tr>
-          <tr>
-            <td style="border:1px solid #999;padding:6px 8px;font-weight:bold;">OD</td>
-            <td style="border:1px solid #999;padding:6px 8px;">${escapar(datos.od.esfera)}</td>
-            <td style="border:1px solid #999;padding:6px 8px;">${escapar(datos.od.cilindro)}</td>
-            <td style="border:1px solid #999;padding:6px 8px;">${escapar(datos.od.eje)}</td>
-            <td style="border:1px solid #999;padding:6px 8px;">${escapar(datos.od.av)}</td>
-          </tr>
-          <tr>
-            <td style="border:1px solid #999;padding:6px 8px;font-weight:bold;">OI</td>
-            <td style="border:1px solid #999;padding:6px 8px;">${escapar(datos.oi.esfera)}</td>
-            <td style="border:1px solid #999;padding:6px 8px;">${escapar(datos.oi.cilindro)}</td>
-            <td style="border:1px solid #999;padding:6px 8px;">${escapar(datos.oi.eje)}</td>
-            <td style="border:1px solid #999;padding:6px 8px;">${escapar(datos.oi.av)}</td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:6px 16px 14px;font-size:12px;color:#333;">
-        DP: ${escapar(datos.dp)} mm &nbsp;·&nbsp; Altura: ${escapar(datos.altura)} mm &nbsp;·&nbsp; <b>ADD:</b> ${escapar(datos.add)}
-      </td>
-    </tr>
-    ${
-      filaObs
-        ? `<tr><td style="padding:12px 16px;border-top:1px solid #999;font-size:12px;background:#fafafa;">
-             <p style="margin:0 0 4px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.03em;color:#555;">Observaciones</p>
-             ${filaObs}
-           </td></tr>`
-        : ""
-    }
-    ${
-      datos.notas
-        ? `<tr><td style="padding:12px 16px;border-top:1px solid #999;font-size:12px;">
-             <b>Notas de la receta:</b> ${escapar(datos.notas)}
-           </td></tr>`
-        : ""
-    }
-  </table>
+    <table style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(61,57,41,.12);">
+      <tr>
+        <td style="background:${BRAND};padding:20px 24px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="vertical-align:middle;">
+                <p style="margin:0;font-size:17px;font-weight:700;color:#ffffff;">${escapar(datos.opticaNombre)}</p>
+                ${
+                  datos.opticaDireccion || datos.opticaTelefono
+                    ? `<p style="margin:3px 0 0;font-size:11px;color:#ffffff;opacity:.9;">${escapar(
+                        [datos.opticaDireccion, datos.opticaTelefono].filter(Boolean).join(" · ")
+                      )}</p>`
+                    : ""
+                }
+              </td>
+              <td style="vertical-align:middle;text-align:right;">
+                <p style="margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#ffffff;">Receta óptica</p>
+                <p style="margin:3px 0 0;font-size:11px;color:#ffffff;opacity:.9;">${escapar(datos.fecha)}</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
 
-  <p style="margin:20px 0 0;font-size:11px;color:#888;">Este correo se generó automáticamente desde ${escapar(datos.opticaNombre)}.</p>
+      <tr>
+        <td style="padding:20px 24px 4px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              ${filaDato("Paciente", datos.pacienteNombre)}
+              ${filaDato("RUT", datos.rut)}
+              ${datos.edad !== null ? filaDato("Edad", `${datos.edad} años`) : `<td></td>`}
+              ${filaDato("Tipo de visión", datos.tipoVision)}
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:16px 24px 8px;">
+          <table style="width:100%;border-collapse:collapse;border:1px solid #e4e0d5;border-radius:8px;overflow:hidden;font-size:13px;">
+            <tr style="background:${CREMA};">
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:${TINTA_SUAVE};border-bottom:1px solid #e4e0d5;"></th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:${TINTA_SUAVE};border-bottom:1px solid #e4e0d5;">Esfera</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:${TINTA_SUAVE};border-bottom:1px solid #e4e0d5;">Cilindro</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:${TINTA_SUAVE};border-bottom:1px solid #e4e0d5;">Eje</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:${TINTA_SUAVE};border-bottom:1px solid #e4e0d5;">Agudeza visual</th>
+            </tr>
+            <tr>
+              <td style="padding:10px;font-weight:700;color:${BRAND_DARK};border-bottom:1px solid #f0eee6;">OD</td>
+              <td style="padding:10px;color:${TINTA};border-bottom:1px solid #f0eee6;">${escapar(datos.od.esfera)}</td>
+              <td style="padding:10px;color:${TINTA};border-bottom:1px solid #f0eee6;">${escapar(datos.od.cilindro)}</td>
+              <td style="padding:10px;color:${TINTA};border-bottom:1px solid #f0eee6;">${escapar(datos.od.eje)}</td>
+              <td style="padding:10px;color:${TINTA};border-bottom:1px solid #f0eee6;">${escapar(datos.od.av)}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px;font-weight:700;color:${BRAND_DARK};">OI</td>
+              <td style="padding:10px;color:${TINTA};">${escapar(datos.oi.esfera)}</td>
+              <td style="padding:10px;color:${TINTA};">${escapar(datos.oi.cilindro)}</td>
+              <td style="padding:10px;color:${TINTA};">${escapar(datos.oi.eje)}</td>
+              <td style="padding:10px;color:${TINTA};">${escapar(datos.oi.av)}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:4px 24px 18px;font-size:12px;color:${TINTA_SUAVE};">
+          DP: <b style="color:${TINTA};">${escapar(datos.dp)} mm</b> &nbsp;·&nbsp;
+          Altura: <b style="color:${TINTA};">${escapar(datos.altura)} mm</b> &nbsp;·&nbsp;
+          ADD: <b style="color:${TINTA};">${escapar(datos.add)}</b>
+        </td>
+      </tr>
+
+      ${
+        filaObs
+          ? `<tr><td style="padding:14px 24px;border-top:1px solid #e4e0d5;background:${CREMA};font-size:12px;color:${TINTA};">
+               <p style="margin:0 0 5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${TINTA_SUAVE};">Observaciones</p>
+               ${filaObs}
+             </td></tr>`
+          : ""
+      }
+      ${
+        datos.notas
+          ? `<tr><td style="padding:14px 24px;border-top:1px solid #e4e0d5;font-size:12px;color:${TINTA};">
+               <b>Notas de la receta:</b> ${escapar(datos.notas)}
+             </td></tr>`
+          : ""
+      }
+    </table>
+
+    <p style="margin:18px 0 0;font-size:11px;color:${TINTA_SUAVE};text-align:center;">
+      Enviado automáticamente por ${escapar(datos.opticaNombre)}.
+    </p>
+  </div>
 </div>`.trim();
 }

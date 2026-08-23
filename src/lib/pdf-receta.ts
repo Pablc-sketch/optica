@@ -123,12 +123,14 @@ export async function construirPdfReceta(datos: DatosRecetaImpresion) {
     y += texto.length * 5 + 4;
   }
 
-  y = Math.max(y + 25, 250);
+  // Un solo espacio en blanco para firma y timbre superpuestos, sin ningún
+  // nombre impreso encima: así se usa en Chile.
+  y = Math.max(y + 15, 225);
   doc.setDrawColor(180, 180, 180);
-  doc.line(139, y, 195, y);
+  doc.rect(139, y, 56, 22);
   doc.setFontSize(8);
   doc.setTextColor(120, 120, 120);
-  doc.text("Firma y timbre del profesional", 167, y + 4, { align: "center" });
+  doc.text("Firma profesional", 167, y + 27, { align: "center" });
 
   return doc;
 }
