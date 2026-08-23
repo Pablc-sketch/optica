@@ -25,16 +25,33 @@ export function nombreArchivoReceta(pacienteNombre: string): string {
   return `receta-${pacienteNombre.replace(/\s+/g, "-").toLowerCase()}.pdf`;
 }
 
-// Alternativa en texto plano para el link de Gmail (ese cuadro de "compose"
-// solo acepta texto, no HTML), alineada con espacios en columnas fijas. En
-// Gmail no queda tan cuadrada como la tabla del correo automático o el PDF
-// porque el compose usa una fuente proporcional, pero es lo más parecido
-// que se puede lograr sin HTML.
-function col(s: string, ancho: number): string {
-  return s.length >= ancho ? s + " " : s.padEnd(ancho);
+// Alternativa en texto plano para el link de Gmail: ese cuadro de "compose"
+// solo acepta texto, no HTML ni colores (limitación de Gmail, no hay forma
+// de mandar la tabla a color por ese link). Para que igual se vea como una
+// rejilla en vez de texto suelto, se arma con caracteres de línea (┌─┬─┐):
+// no queda perfecto porque Gmail usa una fuente proporcional (no
+// monoespaciada), pero es lo más parecido a una tabla que se puede lograr
+// sin HTML.
+function construirTablaTexto(encabezados: string[], filas: string[][]): string {
+  const anchos = encabezados.map((h, i) => Math.max(h.length, ...filas.map((f) => f[i].length)));
+  const linea = (izq: string, medio: string, der: string) =>
+    izq + anchos.map((a) => "─".repeat(a + 2)).join(medio) + der;
+  const fila = (celdas: string[]) => "│ " + celdas.map((c, i) => c.padEnd(anchos[i])).join(" │ ") + " │";
+
+  return [linea("┌", "┬", "┐"), fila(encabezados), linea("├", "┼", "┤"), ...filas.map(fila), linea("└", "┴", "┘")].join(
+    "\n"
+  );
 }
 
 export function construirTextoReceta(datos: DatosRecetaImpresion): string {
+  const tabla = construirTablaTexto(
+    ["", "Esfera", "Cilindro", "Eje", "Agudeza visual"],
+    [
+      ["OD", datos.od.esfera, datos.od.cilindro, datos.od.eje, datos.od.av],
+      ["OI", datos.oi.esfera, datos.oi.cilindro, datos.oi.eje, datos.oi.av],
+    ]
+  );
+
   return [
     `${datos.opticaNombre} — Receta óptica`,
     `Fecha: ${datos.fecha}`,
@@ -44,12 +61,9 @@ export function construirTextoReceta(datos: DatosRecetaImpresion): string {
     datos.edad !== null ? `Edad: ${datos.edad} años` : null,
     `Tipo de visión: ${datos.tipoVision}`,
     "",
-    col("", 5) + col("Esfera", 10) + col("Cilindro", 10) + col("Eje", 8) + "Agudeza visual",
-    col("OD", 5) + col(datos.od.esfera, 10) + col(datos.od.cilindro, 10) + col(datos.od.eje, 8) + datos.od.av,
-    col("OI", 5) + col(datos.oi.esfera, 10) + col(datos.oi.cilindro, 10) + col(datos.oi.eje, 8) + datos.oi.av,
+    tabla,
     "",
-    `DP: ${datos.dp} mm · Altura: ${datos.altura} mm`,
-    `ADD: ${datos.add}`,
+    `DP: ${datos.dp} mm · Altura: ${datos.altura} mm · ADD: ${datos.add}`,
     datos.alertas.length > 0 ? `\nObservaciones: ${datos.alertas.join(" · ")}` : null,
     datos.observaciones.length > 0 ? datos.observaciones.join("\n") : null,
     datos.notas ? `\nNotas: ${datos.notas}` : null,
