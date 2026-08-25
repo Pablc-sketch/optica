@@ -132,6 +132,10 @@ export async function crearReceta(formData: FormData) {
     // (current_date): ese default lo evalúa Postgres en UTC, así que una
     // receta tomada de noche en Chile quedaba fechada al día siguiente.
     fecha: hoyEnChile(),
+    // Dónde se tomó el examen (local u operativo en terreno): sirve para
+    // filtrar reportes por operativo y para el seguimiento de exámenes que
+    // todavía no se convirtieron en venta.
+    sucursal_id: String(formData.get("sucursal_id") ?? "").trim() || null,
     od_esfera: num("od_esfera"),
     od_cilindro: num("od_cilindro"),
     od_eje: num("od_eje"),

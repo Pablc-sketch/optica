@@ -4,12 +4,13 @@ import {
   actualizarPerfilProfesional,
   cambiarEstadoUsuario,
   cambiarRol,
-  crearSucursal,
 } from "@/lib/actions/configuracion";
 import NuevoUsuario from "./nuevo-usuario";
 import SubirLogo from "./subir-logo";
 import SesionDebug from "./sesion-debug";
+import NuevaSucursal from "./nueva-sucursal";
 import { CampoRut, CampoTelefono } from "@/components/campos";
+import { formatearTelefono } from "@/lib/formato";
 
 const ROLES = [
   { valor: "admin", etiqueta: "Administrador" },
@@ -41,7 +42,10 @@ export default async function ConfiguracionPage() {
       .single(),
     supabase.from("tenants").select("nombre_comercial, rut_empresa, factor_venta_cristales").single(),
     supabase.from("users").select("id, nombre, email, rol, estado").order("nombre"),
-    supabase.from("sucursales").select("id, nombre, direccion").order("nombre"),
+    supabase
+      .from("sucursales")
+      .select("id, nombre, direccion, tipo, fecha_operativo, contacto_nombre, contacto_telefono")
+      .order("nombre"),
   ]);
 
   const esAdmin = perfilRes.data?.rol === "admin";
@@ -254,35 +258,36 @@ export default async function ConfiguracionPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 font-semibold">Sucursales</h2>
+        <h2 className="mb-2 font-semibold">Sucursales y operativos</h2>
         <div className="flex flex-col gap-3">
           <ul className="flex flex-col gap-1.5 rounded-2xl bg-crema-claro p-3 shadow-sm">
             {sucursales.map((s) => (
               <li key={s.id} className="rounded-lg bg-white px-3 py-2 text-sm">
-                <p className="font-medium">{s.nombre}</p>
+                <p className="font-medium">
+                  {s.nombre}
+                  {s.tipo === "operativo" && (
+                    <span className="ml-2 rounded-full bg-brand/15 px-2 py-0.5 text-xs font-semibold text-brand-dark">
+                      Operativo
+                    </span>
+                  )}
+                </p>
                 {s.direccion && <p className="text-xs text-tinta-suave">{s.direccion}</p>}
+                {s.tipo === "operativo" && (
+                  <p className="text-xs text-tinta-suave">
+                    {[
+                      s.fecha_operativo ? new Date(s.fecha_operativo + "T00:00:00").toLocaleDateString("es-CL") : null,
+                      s.contacto_nombre,
+                      formatearTelefono(s.contacto_telefono),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
 
-          <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-            <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nueva sucursal</summary>
-            <form action={crearSucursal} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                Nombre *
-                <input name="nombre" required className={input} />
-              </label>
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                Dirección
-                <input name="direccion" className={input} />
-              </label>
-              <div className="sm:col-span-2">
-                <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white transition hover:bg-brand-dark">
-                  Crear sucursal
-                </button>
-              </div>
-            </form>
-          </details>
+          <NuevaSucursal />
         </div>
       </section>
     </div>
