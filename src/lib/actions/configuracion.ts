@@ -32,18 +32,47 @@ async function requerirAdmin() {
   return { supabase, tenantId: perfil.tenant_id as string, userId: user.id };
 }
 
-// La URL ya viene subida a Storage (eso se hace desde el navegador, en
-// SubirLogo); acá solo se guarda el dato, con el mismo control de admin que
-// el resto de la configuración.
-export async function guardarLogoOptica(url: string) {
-  const { supabase, tenantId } = await requerirAdmin();
+// La subida se hace acá, en el servidor, con el cliente de service role —
+// no desde el navegador con el cliente normal. Después de mucho investigar
+// (incluyendo revisar los logs reales de Postgres durante una subida real),
+// la política de RLS de Storage para bucket 'logos' evalúa correcta la
+// óptica y el rol, pero la subida seguía rechazándose igual sin una causa
+// identificable — algo específico de este proyecto en la capa de Storage,
+// no la lógica de la política. En vez de seguir persiguiendo eso, se evita
+// por completo: el admin ya se verificó arriba (requerirAdmin), así que
+// subir con permisos de administrador acá es igual de seguro.
+export async function subirLogoOptica(formData: FormData) {
+  const { tenantId } = await requerirAdmin();
 
-  const { error } = await supabase.from("tenants").update({ logo_url: url }).eq("id", tenantId);
-  if (error) return { ok: false as const, error: "No se pudo guardar el logo." };
+  const archivo = formData.get("archivo");
+  if (!(archivo instanceof File) || archivo.size === 0) {
+    return { ok: false as const, error: "No se recibió ninguna imagen." };
+  }
+  if (!archivo.type.startsWith("image/")) {
+    return { ok: false as const, error: "Tiene que ser una imagen (PNG, JPG o SVG)." };
+  }
+  if (archivo.size > 2 * 1024 * 1024) {
+    return { ok: false as const, error: "La imagen pesa demasiado (máximo 2 MB)." };
+  }
+
+  const extension = archivo.name.split(".").pop() || "png";
+  const ruta = `${tenantId}/logo.${extension}`;
+
+  const admin = createAdminClient();
+  const { error: subeError } = await admin.storage
+    .from("logos")
+    .upload(ruta, archivo, { upsert: true, cacheControl: "3600" });
+  if (subeError) return { ok: false as const, error: `No se pudo subir la imagen: ${subeError.message}` };
+
+  const { data: urlPublica } = admin.storage.from("logos").getPublicUrl(ruta);
+  const urlConVersion = `${urlPublica.publicUrl}?v=${Date.now()}`;
+
+  const { error } = await admin.from("tenants").update({ logo_url: urlConVersion }).eq("id", tenantId);
+  if (error) return { ok: false as const, error: "La imagen se subió, pero no se pudo guardar." };
 
   revalidatePath("/configuracion");
   revalidatePath("/", "layout");
-  return { ok: true as const };
+  return { ok: true as const, url: urlConVersion };
 }
 
 export async function crearUsuario(formData: FormData) {

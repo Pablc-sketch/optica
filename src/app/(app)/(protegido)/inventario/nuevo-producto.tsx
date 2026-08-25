@@ -17,12 +17,10 @@ export default function NuevoProducto({
   sucursales,
   sucursalActiva,
   proveedores,
-  tenantId,
 }: {
   sucursales: { id: string; nombre: string }[];
   sucursalActiva?: string;
   proveedores: { id: string; nombre: string }[];
-  tenantId: string;
 }) {
   const router = useRouter();
   const [mensaje, setMensaje] = useState<string | null>(null);
@@ -139,7 +137,7 @@ export default function NuevoProducto({
         {productoCreadoId && (
           <div className="flex flex-col gap-1 rounded-lg bg-white p-3 text-sm sm:col-span-2">
             <p className="text-xs font-medium text-tinta-suave">Agrega una foto del armazón (opcional):</p>
-            <SubirFotoMarco tenantId={tenantId} productoId={productoCreadoId} />
+            <SubirFotoMarco productoId={productoCreadoId} />
           </div>
         )}
 

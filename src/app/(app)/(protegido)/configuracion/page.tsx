@@ -147,7 +147,7 @@ export default async function ConfiguracionPage() {
       <section className="flex flex-col gap-3">
         <h2 className="font-semibold">Datos de la óptica</h2>
         <SesionDebug dbTenantId={perfilRes.data!.tenant_id} />
-        <SubirLogo tenantId={perfilRes.data!.tenant_id} logoActual={contacto?.logo_url ?? null} />
+        <SubirLogo logoActual={contacto?.logo_url ?? null} />
         <form action={actualizarOptica} className="grid grid-cols-1 gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm font-medium">
             Nombre comercial

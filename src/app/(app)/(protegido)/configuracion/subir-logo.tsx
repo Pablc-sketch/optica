@@ -2,13 +2,12 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { guardarLogoOptica } from "@/lib/actions/configuracion";
+import { subirLogoOptica } from "@/lib/actions/configuracion";
 
-// La subida a Storage se hace desde el navegador (necesita el archivo real,
-// no algo que pase por un campo de formulario de texto); una vez subido, se
-// guarda la URL pública en tenants.logo_url con una server action normal.
-export default function SubirLogo({ tenantId, logoActual }: { tenantId: string; logoActual: string | null }) {
+// El archivo se manda al servidor (subirLogoOptica) y se sube ahí con
+// permisos de administrador, no desde el navegador — ver el comentario en
+// esa función para la razón.
+export default function SubirLogo({ logoActual }: { logoActual: string | null }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -19,75 +18,13 @@ export default function SubirLogo({ tenantId, logoActual }: { tenantId: string; 
     setSubiendo(true);
     setError(null);
 
-    if (!archivo.type.startsWith("image/")) {
-      setError("Tiene que ser una imagen (PNG, JPG o SVG).");
-      setSubiendo(false);
-      return;
-    }
-    if (archivo.size > 2 * 1024 * 1024) {
-      setError("La imagen pesa demasiado (máximo 2 MB).");
-      setSubiendo(false);
-      return;
-    }
+    const formData = new FormData();
+    formData.set("archivo", archivo);
 
-    const extension = archivo.name.split(".").pop() || "png";
-    const ruta = `${tenantId}/logo.${extension}`;
-
-    const supabase = createClient();
-
-    // Diagnóstico: si el navegador no tiene sesión (o tiene una con otra
-    // óptica) al momento de subir, la política de seguridad la rechaza sin
-    // dar más detalle que "row-level security policy" — este chequeo previo
-    // dice exactamente por qué en vez de dejar ese mensaje genérico.
-    const { data: sesionData } = await supabase.auth.getSession();
-    const token = sesionData.session?.access_token;
-    let tenantEnSesion: string | undefined;
-    if (token) {
-      try {
-        const payload = token.split(".")[1];
-        tenantEnSesion = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))).tenant_id;
-      } catch {
-        // sigue sin tenantEnSesion; se reporta más abajo si hace falta
-      }
-    }
-
-    if (!token) {
-      setError("No hay una sesión activa en este navegador ahora mismo. Cierra sesión y vuelve a entrar, luego prueba de nuevo.");
-      setSubiendo(false);
-      return;
-    }
-    if (tenantEnSesion && tenantEnSesion !== tenantId) {
-      setError(
-        `Tu sesión está asociada a otra óptica (${tenantEnSesion}) en vez de la tuya (${tenantId}). Cierra sesión y vuelve a entrar.`
-      );
-      setSubiendo(false);
-      return;
-    }
-
-    const { error: subeError } = await supabase.storage
-      .from("logos")
-      .upload(ruta, archivo, { upsert: true, cacheControl: "3600" });
-
-    if (subeError) {
-      // El mensaje real de Supabase (bucket inexistente, política de RLS
-      // que no matchea, etc.) es mucho más útil para diagnosticar que un
-      // genérico "no se pudo". Se agrega también qué óptica traía la
-      // sesión al momento de subir, para descartar de una vez si el
-      // problema es la sesión o los permisos en la base.
-      setError(`No se pudo subir la imagen: ${subeError.message} (sesión: óptica ${tenantEnSesion ?? "desconocida"})`);
-      setSubiendo(false);
-      return;
-    }
-
-    const { data: urlPublica } = supabase.storage.from("logos").getPublicUrl(ruta);
-    // Cache-bust: mismo nombre de archivo si se reemplaza el logo, así que
-    // sin esto el navegador seguiría mostrando la imagen vieja.
-    const urlConVersion = `${urlPublica.publicUrl}?v=${Date.now()}`;
-
-    const resultado = await guardarLogoOptica(urlConVersion);
+    const resultado = await subirLogoOptica(formData);
     setSubiendo(false);
     if (resultado.ok) {
-      setPreview(urlConVersion);
+      setPreview(resultado.url);
       router.refresh();
     } else {
       setError(resultado.error);

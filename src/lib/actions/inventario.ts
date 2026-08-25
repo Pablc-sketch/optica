@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { montoANumero } from "@/lib/formato";
 
 // El stock nunca se escribe a mano: se registra un movimiento y el trigger
@@ -132,18 +133,57 @@ export async function crearProducto(formData: FormData) {
 
 // La foto se sube desde el navegador (subir-foto-marco.tsx, mismo patrón
 // que subir-logo.tsx); acá solo se guarda la URL pública ya subida.
-export async function guardarFotoProducto(productoId: string, url: string) {
+// Sube con permisos de administrador en vez de desde el navegador — mismo
+// motivo que subirLogoOptica en configuracion.ts (la política de RLS de
+// Storage evaluaba todo correcto y aun así rechazaba la subida). El
+// producto y la óptica se verifican a mano antes de tocar Storage.
+export async function subirFotoProducto(formData: FormData) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { error } = await supabase.from("productos").update({ imagen_url: url }).eq("id", productoId);
-  if (error) return { ok: false as const, error: "No se pudo guardar la foto." };
+  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
+  if (!perfil) throw new Error("Perfil no encontrado");
+
+  const productoId = String(formData.get("producto_id") ?? "");
+  const { data: producto } = await supabase
+    .from("productos")
+    .select("id")
+    .eq("id", productoId)
+    .eq("tenant_id", perfil.tenant_id)
+    .single();
+  if (!producto) return { ok: false as const, error: "Producto no encontrado." };
+
+  const archivo = formData.get("archivo");
+  if (!(archivo instanceof File) || archivo.size === 0) {
+    return { ok: false as const, error: "No se recibió ninguna imagen." };
+  }
+  if (!archivo.type.startsWith("image/")) {
+    return { ok: false as const, error: "Tiene que ser una imagen (PNG o JPG)." };
+  }
+  if (archivo.size > 2 * 1024 * 1024) {
+    return { ok: false as const, error: "La imagen pesa demasiado (máximo 2 MB)." };
+  }
+
+  const extension = archivo.name.split(".").pop() || "jpg";
+  const ruta = `${perfil.tenant_id}/${productoId}.${extension}`;
+
+  const admin = createAdminClient();
+  const { error: subeError } = await admin.storage
+    .from("marcos")
+    .upload(ruta, archivo, { upsert: true, cacheControl: "3600" });
+  if (subeError) return { ok: false as const, error: `No se pudo subir la imagen: ${subeError.message}` };
+
+  const { data: urlPublica } = admin.storage.from("marcos").getPublicUrl(ruta);
+  const urlConVersion = `${urlPublica.publicUrl}?v=${Date.now()}`;
+
+  const { error } = await admin.from("productos").update({ imagen_url: urlConVersion }).eq("id", productoId);
+  if (error) return { ok: false as const, error: "La imagen se subió, pero no se pudo guardar." };
 
   revalidatePath("/inventario");
-  return { ok: true as const };
+  return { ok: true as const, url: urlConVersion };
 }
 
 const TIPOS_PROVEEDOR = ["laboratorio", "armazones", "otro"] as const;

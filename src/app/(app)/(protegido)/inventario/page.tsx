@@ -31,16 +31,9 @@ export default async function InventarioPage({
 }) {
   const { sucursal } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  const [{ data: sucursales }, perfilRes] = await Promise.all([
-    supabase.from("sucursales").select("id, nombre").order("nombre"),
-    supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
-  ]);
+  const { data: sucursales } = await supabase.from("sucursales").select("id, nombre").order("nombre");
   const sucursalActiva = sucursal || sucursales?.[0]?.id;
-  const tenantId = perfilRes.data?.tenant_id ?? "";
 
   const [stockRes, movimientosRes, proveedoresRes] = await Promise.all([
     supabase
@@ -107,7 +100,7 @@ export default async function InventarioPage({
         </div>
       </div>
 
-      <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} tenantId={tenantId} />
+      <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} />
 
       <section>
         <h2 className="mb-2 font-semibold">Proveedores</h2>

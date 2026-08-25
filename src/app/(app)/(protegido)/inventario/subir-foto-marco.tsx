@@ -2,13 +2,12 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { guardarFotoProducto } from "@/lib/actions/inventario";
+import { subirFotoProducto } from "@/lib/actions/inventario";
 
-// Mismo patrón que subir-logo.tsx (configuracion/): la subida va desde el
-// navegador (necesita el archivo real), y una vez subida se guarda la URL
-// pública en productos.imagen_url vía server action.
-export default function SubirFotoMarco({ tenantId, productoId }: { tenantId: string; productoId: string }) {
+// El archivo se manda al servidor (subirFotoProducto) y se sube ahí con
+// permisos de administrador, no desde el navegador — ver el comentario en
+// esa función.
+export default function SubirFotoMarco({ productoId }: { productoId: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -19,50 +18,14 @@ export default function SubirFotoMarco({ tenantId, productoId }: { tenantId: str
     setSubiendo(true);
     setError(null);
 
-    if (!archivo.type.startsWith("image/")) {
-      setError("Tiene que ser una imagen (PNG o JPG).");
-      setSubiendo(false);
-      return;
-    }
-    if (archivo.size > 2 * 1024 * 1024) {
-      setError("La imagen pesa demasiado (máximo 2 MB).");
-      setSubiendo(false);
-      return;
-    }
+    const formData = new FormData();
+    formData.set("producto_id", productoId);
+    formData.set("archivo", archivo);
 
-    const extension = archivo.name.split(".").pop() || "jpg";
-    const ruta = `${tenantId}/${productoId}.${extension}`;
-
-    const supabase = createClient();
-
-    // Mismo chequeo previo que subir-logo.tsx: si el navegador no tiene
-    // sesión (o de otra óptica) al momento de subir, la política de
-    // seguridad la rechaza sin más detalle que "row-level security policy".
-    const { data: sesionData } = await supabase.auth.getSession();
-    const token = sesionData.session?.access_token;
-    if (!token) {
-      setError("No hay una sesión activa en este navegador ahora mismo. Cierra sesión y vuelve a entrar.");
-      setSubiendo(false);
-      return;
-    }
-
-    const { error: subeError } = await supabase.storage
-      .from("marcos")
-      .upload(ruta, archivo, { upsert: true, cacheControl: "3600" });
-
-    if (subeError) {
-      setError(`No se pudo subir la imagen: ${subeError.message}`);
-      setSubiendo(false);
-      return;
-    }
-
-    const { data: urlPublica } = supabase.storage.from("marcos").getPublicUrl(ruta);
-    const urlConVersion = `${urlPublica.publicUrl}?v=${Date.now()}`;
-
-    const resultado = await guardarFotoProducto(productoId, urlConVersion);
+    const resultado = await subirFotoProducto(formData);
     setSubiendo(false);
     if (resultado.ok) {
-      setPreview(urlConVersion);
+      setPreview(resultado.url);
       router.refresh();
     } else {
       setError(resultado.error);
