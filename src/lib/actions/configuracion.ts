@@ -170,10 +170,14 @@ export async function actualizarPerfilProfesional(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  if (!nombre) return;
+
   const admin = createAdminClient();
   const { error } = await admin
     .from("users")
     .update({
+      nombre,
       rut: formatearRut(String(formData.get("rut") ?? "")) || null,
       titulo_profesional: String(formData.get("titulo_profesional") ?? "").trim() || null,
       registro_profesional: String(formData.get("registro_profesional") ?? "").trim() || null,

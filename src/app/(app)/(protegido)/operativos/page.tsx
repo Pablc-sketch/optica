@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { crearOperativo, cambiarEstadoOperativo } from "@/lib/actions/operativos";
 import { formatearTelefono } from "@/lib/formato";
@@ -62,15 +63,15 @@ export default async function OperativosPage() {
       <section className="flex flex-col gap-3">
         <ul className="flex flex-col gap-2">
           {[...planificados, ...otros].map((o) => (
-            <li key={o.id} className="rounded-2xl bg-crema-claro p-4 shadow-sm">
+            <li key={o.id} className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-medium">
+                <Link href={`/operativos/${o.id}`} className="flex-1">
+                  <p className="font-medium text-sky-950">
                     {o.nombre}
                     <span
                       className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
                         o.estado === "planificado"
-                          ? "bg-brand/15 text-brand-dark"
+                          ? "bg-sky-200 text-sky-900"
                           : o.estado === "realizado"
                             ? "bg-green-100 text-green-800"
                             : "bg-neutral-200 text-neutral-600"
@@ -79,7 +80,7 @@ export default async function OperativosPage() {
                       {ESTADOS[o.estado] ?? o.estado}
                     </span>
                   </p>
-                  <p className="text-sm text-tinta-suave">
+                  <p className="text-sm text-sky-800">
                     {[
                       fechaLegible(o.fecha),
                       TIPOS_VENUE.find((t) => t.valor === o.tipo_venue)?.etiqueta,
@@ -89,12 +90,12 @@ export default async function OperativosPage() {
                       .join(" · ")}
                   </p>
                   {(o.contacto_nombre || o.contacto_telefono) && (
-                    <p className="text-xs text-tinta-suave">
+                    <p className="text-xs text-sky-700">
                       {[o.contacto_nombre, formatearTelefono(o.contacto_telefono)].filter(Boolean).join(" · ")}
                     </p>
                   )}
-                  {o.notas && <p className="mt-1 text-xs text-tinta-suave">{o.notas}</p>}
-                </div>
+                  {o.notas && <p className="mt-1 text-xs text-sky-700">{o.notas}</p>}
+                </Link>
                 {o.estado !== "cancelado" && (
                   <form action={cambiarEstadoOperativo} className="flex items-center gap-1">
                     <input type="hidden" name="id" value={o.id} />
@@ -118,8 +119,8 @@ export default async function OperativosPage() {
           )}
         </ul>
 
-        <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-          <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nuevo operativo</summary>
+        <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
+          <summary className="cursor-pointer font-semibold text-sky-800">＋ Nuevo operativo</summary>
           <form action={crearOperativo} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm font-medium">
               Nombre *
@@ -157,7 +158,7 @@ export default async function OperativosPage() {
               <textarea name="notas" rows={2} className={input} />
             </label>
             <div className="sm:col-span-2">
-              <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white transition hover:bg-brand-dark">
+              <button className="rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white transition hover:bg-sky-800">
                 Crear operativo
               </button>
             </div>

@@ -36,7 +36,7 @@ export default async function ConfiguracionPage() {
   const [perfilRes, opticaRes, usuariosRes, sucursalesRes] = await Promise.all([
     supabase
       .from("users")
-      .select("rol, tenant_id, rut, titulo_profesional, registro_profesional")
+      .select("rol, tenant_id, nombre, rut, titulo_profesional, registro_profesional")
       .eq("id", user!.id)
       .single(),
     supabase
@@ -81,6 +81,10 @@ export default async function ConfiguracionPage() {
         action={actualizarPerfilProfesional}
         className="grid grid-cols-1 gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm sm:grid-cols-2"
       >
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Nombre
+          <input name="nombre" defaultValue={perfilRes.data?.nombre ?? ""} required className={input} />
+        </label>
         <label className="flex flex-col gap-1 text-sm font-medium">
           RUT
           <CampoRut name="rut" defaultValue={perfilRes.data?.rut} placeholder="12.345.678-9" className={input} />
