@@ -39,7 +39,10 @@ export default async function ConfiguracionPage() {
       .select("rol, tenant_id, rut, titulo_profesional, registro_profesional")
       .eq("id", user!.id)
       .single(),
-    supabase.from("tenants").select("nombre_comercial, rut_empresa, factor_venta_cristales").single(),
+    supabase
+      .from("tenants")
+      .select("nombre_comercial, rut_empresa, factor_venta_cristales, factor_monofocal, factor_bifocal, factor_multifocal")
+      .single(),
     supabase.from("users").select("id, nombre, email, rol, estado").order("nombre"),
     supabase
       .from("sucursales")
@@ -175,16 +178,34 @@ export default async function ConfiguracionPage() {
             </span>
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
-            Factor de venta de cristales
+            Factor — Monofocal
             <input
-              name="factor_venta_cristales"
-              inputMode="numeric"
-              defaultValue={optica?.factor_venta_cristales ?? 6}
+              name="factor_monofocal"
+              inputMode="decimal"
+              defaultValue={optica?.factor_monofocal ?? 6}
+              className={input}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Factor — Bifocal
+            <input
+              name="factor_bifocal"
+              inputMode="decimal"
+              defaultValue={optica?.factor_bifocal ?? 4}
+              className={input}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">
+            Factor — Multifocal
+            <input
+              name="factor_multifocal"
+              inputMode="decimal"
+              defaultValue={optica?.factor_multifocal ?? 2}
               className={input}
             />
             <span className="text-xs font-normal text-tinta-suave">
-              Multiplica el costo del laboratorio para proponer el precio de venta de cristales
-              nuevos. Los precios ya guardados no cambian.
+              Multiplica el costo del laboratorio según el tipo de lente, para recalcular los
+              precios de venta desde Precios → Recalcular por factor.
             </span>
           </label>
           <div className="sm:col-span-2">

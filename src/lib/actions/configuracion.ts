@@ -194,6 +194,12 @@ export async function actualizarOptica(formData: FormData) {
 
   const factor = Math.round(Number(formData.get("factor_venta_cristales")));
   const dias = Math.round(Number(formData.get("dias_entrega_default")));
+  // Factor por tipo de lente (numeric, admite decimales): reemplaza al
+  // factor único de arriba para el recálculo de /precios, pero ese se deja
+  // como está para no romper el respaldo que ya usa el POS.
+  const factorMonofocal = Number(formData.get("factor_monofocal"));
+  const factorBifocal = Number(formData.get("factor_bifocal"));
+  const factorMultifocal = Number(formData.get("factor_multifocal"));
 
   const { error } = await supabase
     .from("tenants")
@@ -204,6 +210,9 @@ export async function actualizarOptica(formData: FormData) {
       direccion: String(formData.get("direccion") ?? "").trim() || null,
       ...(Number.isFinite(factor) && factor > 0 ? { factor_venta_cristales: factor } : {}),
       ...(Number.isFinite(dias) && dias > 0 && dias <= 90 ? { dias_entrega_default: dias } : {}),
+      ...(Number.isFinite(factorMonofocal) && factorMonofocal > 0 ? { factor_monofocal: factorMonofocal } : {}),
+      ...(Number.isFinite(factorBifocal) && factorBifocal > 0 ? { factor_bifocal: factorBifocal } : {}),
+      ...(Number.isFinite(factorMultifocal) && factorMultifocal > 0 ? { factor_multifocal: factorMultifocal } : {}),
     })
     .eq("id", tenantId);
   if (error) throw error;
