@@ -32,8 +32,11 @@ export default async function RecetaImprimible({
 }) {
   const { id, recetaId } = await params;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const [pacienteRes, recetaRes, tenantRes] = await Promise.all([
+  const [pacienteRes, recetaRes, tenantRes, profesionalRes] = await Promise.all([
     supabase.from("pacientes").select("*").eq("id", id).single(),
     supabase
       .from("recetas")
@@ -42,6 +45,13 @@ export default async function RecetaImprimible({
       .eq("paciente_id", id)
       .single(),
     supabase.from("tenants").select("nombre_comercial, telefono, direccion, logo_url").single(),
+    // Timbre del profesional: siempre el de quien tiene la sesión abierta al
+    // imprimir/enviar, mismo criterio que la orden de trabajo.
+    supabase
+      .from("users")
+      .select("nombre, rut, titulo_profesional, registro_profesional")
+      .eq("id", user!.id)
+      .single(),
   ]);
 
   const paciente = pacienteRes.data;
@@ -49,6 +59,7 @@ export default async function RecetaImprimible({
   if (!paciente || !receta) notFound();
 
   const optica = tenantRes.data;
+  const profesional = profesionalRes.data;
 
   const edad = paciente.fecha_nacimiento
     ? Math.floor(
@@ -107,6 +118,14 @@ export default async function RecetaImprimible({
     alertas,
     observaciones,
     notas: receta.notas,
+    profesional: profesional?.titulo_profesional
+      ? {
+          nombre: profesional.nombre,
+          rut: profesional.rut ? formatearRut(profesional.rut) : null,
+          tituloProfesional: profesional.titulo_profesional,
+          registroProfesional: profesional.registro_profesional,
+        }
+      : null,
   };
 
   return (
@@ -217,13 +236,26 @@ export default async function RecetaImprimible({
           </p>
         )}
 
-        {/* Un solo espacio en blanco para firma y timbre superpuestos, sin
-            ningún nombre impreso: así se usa en Chile, y evita que quede el
-            nombre de quien probó la app en vez de un espacio en blanco real. */}
+        {/* Espacio en blanco para la firma a mano, con los datos del
+            profesional impresos debajo a modo de timbre — solo si cargó su
+            título en Configuración; si no, queda solo el espacio en blanco. */}
         <div className="mt-10 flex justify-end print:mt-16">
-          <div className="flex w-56 flex-col items-center gap-1">
+          <div className="flex w-64 flex-col items-center gap-1">
             <div className="h-20 w-full rounded border border-neutral-300" />
-            <p className="text-xs text-neutral-500">Firma profesional</p>
+            <div className="w-full border-t border-neutral-300 pt-1 text-center text-xs text-neutral-600">
+              {datosPdf.profesional ? (
+                <>
+                  <p className="font-semibold text-neutral-800">{datosPdf.profesional.nombre}</p>
+                  <p>{datosPdf.profesional.tituloProfesional}</p>
+                  {datosPdf.profesional.rut && <p>RUT: {datosPdf.profesional.rut}</p>}
+                  {datosPdf.profesional.registroProfesional && (
+                    <p>Registro N.° {datosPdf.profesional.registroProfesional}</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-neutral-500">Firma profesional</p>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -123,14 +123,33 @@ export async function construirPdfReceta(datos: DatosRecetaImpresion) {
     y += texto.length * 5 + 4;
   }
 
-  // Un solo espacio en blanco para firma y timbre superpuestos, sin ningún
-  // nombre impreso encima: así se usa en Chile.
+  // Espacio en blanco para la firma a mano; debajo, los datos del
+  // profesional a modo de timbre (si los cargó en Configuración).
   y = Math.max(y + 15, 225);
   doc.setDrawColor(180, 180, 180);
   doc.rect(139, y, 56, 22);
+  let yTimbre = y + 27;
   doc.setFontSize(8);
-  doc.setTextColor(120, 120, 120);
-  doc.text("Firma profesional", 167, y + 27, { align: "center" });
+  if (datos.profesional) {
+    doc.setTextColor(60, 60, 60);
+    doc.setFont("helvetica", "bold");
+    doc.text(datos.profesional.nombre, 167, yTimbre, { align: "center" });
+    yTimbre += 4;
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(120, 120, 120);
+    doc.text(datos.profesional.tituloProfesional, 167, yTimbre, { align: "center" });
+    yTimbre += 4;
+    if (datos.profesional.rut) {
+      doc.text(`RUT: ${datos.profesional.rut}`, 167, yTimbre, { align: "center" });
+      yTimbre += 4;
+    }
+    if (datos.profesional.registroProfesional) {
+      doc.text(`Registro N.° ${datos.profesional.registroProfesional}`, 167, yTimbre, { align: "center" });
+    }
+  } else {
+    doc.setTextColor(120, 120, 120);
+    doc.text("Firma profesional", 167, yTimbre, { align: "center" });
+  }
 
   return doc;
 }

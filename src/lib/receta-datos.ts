@@ -19,6 +19,9 @@ export type DatosRecetaImpresion = {
   alertas: string[];
   observaciones: string[];
   notas: string | null;
+  // Solo si el profesional cargó su título en Configuración; si no, no se
+  // imprime ningún dato encima de la línea de firma.
+  profesional: { nombre: string; rut: string | null; tituloProfesional: string; registroProfesional: string | null } | null;
 };
 
 export function nombreArchivoReceta(pacienteNombre: string): string {
@@ -67,6 +70,17 @@ export function construirTextoReceta(datos: DatosRecetaImpresion): string {
     datos.alertas.length > 0 ? `\nObservaciones: ${datos.alertas.join(" · ")}` : null,
     datos.observaciones.length > 0 ? datos.observaciones.join("\n") : null,
     datos.notas ? `\nNotas: ${datos.notas}` : null,
+    datos.profesional
+      ? [
+          "",
+          datos.profesional.nombre,
+          datos.profesional.tituloProfesional,
+          datos.profesional.rut ? `RUT: ${datos.profesional.rut}` : null,
+          datos.profesional.registroProfesional ? `Registro N.° ${datos.profesional.registroProfesional}` : null,
+        ]
+          .filter((l) => l !== null)
+          .join("\n")
+      : null,
   ]
     .filter((l) => l !== null)
     .join("\n");

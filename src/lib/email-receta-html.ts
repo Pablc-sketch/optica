@@ -130,6 +130,16 @@ export function construirHtmlReceta(datos: DatosRecetaImpresion, saludoNombre: s
              </td></tr>`
           : ""
       }
+      ${
+        datos.profesional
+          ? `<tr><td style="padding:16px 24px;border-top:1px solid #e4e0d5;text-align:right;font-size:11px;color:${TINTA_SUAVE};">
+               <p style="margin:0;font-weight:700;color:${TINTA};">${escapar(datos.profesional.nombre)}</p>
+               <p style="margin:2px 0 0;">${escapar(datos.profesional.tituloProfesional)}</p>
+               ${datos.profesional.rut ? `<p style="margin:2px 0 0;">RUT: ${escapar(datos.profesional.rut)}</p>` : ""}
+               ${datos.profesional.registroProfesional ? `<p style="margin:2px 0 0;">Registro N.° ${escapar(datos.profesional.registroProfesional)}</p>` : ""}
+             </td></tr>`
+          : ""
+      }
     </table>
 
     <p style="margin:18px 0 0;font-size:11px;color:${TINTA_SUAVE};text-align:center;">
