@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatearRut } from "@/lib/rut";
 import {
   formatearAgudezaVisual,
@@ -29,6 +29,14 @@ type Props = {
 
 export function CampoRut({ name, defaultValue, required, placeholder, className }: Props) {
   const [valor, setValor] = useState(formatearRut(String(defaultValue ?? "")));
+  // useState solo lee defaultValue una vez, al montar. Si el dato cambia en
+  // el servidor (guardar, recalcular, etc.) sin que el componente se vuelva
+  // a montar, el input se quedaba mostrando el valor viejo mientras el
+  // resto de la pantalla ya mostraba el nuevo — se resincroniza acá.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza con el valor del servidor, no estado derivado de un evento
+    setValor(formatearRut(String(defaultValue ?? "")));
+  }, [defaultValue]);
   return (
     <input
       name={name}
@@ -44,6 +52,10 @@ export function CampoRut({ name, defaultValue, required, placeholder, className 
 
 export function CampoTelefono({ name, defaultValue, required, placeholder, className }: Props) {
   const [valor, setValor] = useState(formatearTelefono(String(defaultValue ?? "")));
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza con el valor del servidor, no estado derivado de un evento
+    setValor(formatearTelefono(String(defaultValue ?? "")));
+  }, [defaultValue]);
   return (
     <input
       name={name}
@@ -95,6 +107,10 @@ export function CampoAgudezaVisual({ name }: Pick<Props, "name">) {
 
 export function CampoFechaNacimiento({ name, defaultValue }: Pick<Props, "name" | "defaultValue">) {
   const [valor, setValor] = useState(isoAFechaCorta(String(defaultValue ?? "")));
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza con el valor del servidor, no estado derivado de un evento
+    setValor(isoAFechaCorta(String(defaultValue ?? "")));
+  }, [defaultValue]);
   return (
     <input
       name={name}
@@ -109,6 +125,10 @@ export function CampoFechaNacimiento({ name, defaultValue }: Pick<Props, "name" 
 
 export function CampoMonto({ name, defaultValue, required, placeholder, className }: Props) {
   const [valor, setValor] = useState(formatearMonto(defaultValue));
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza con el valor del servidor, no estado derivado de un evento
+    setValor(formatearMonto(defaultValue));
+  }, [defaultValue]);
   return (
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-tinta-suave">
