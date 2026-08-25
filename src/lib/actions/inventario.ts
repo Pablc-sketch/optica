@@ -66,6 +66,10 @@ export async function crearProducto(formData: FormData) {
   const marca = String(formData.get("marca") ?? "").trim() || null;
   const modelo = String(formData.get("modelo") ?? "").trim() || null;
   const color = String(formData.get("color") ?? "").trim() || null;
+  // Código corto del proveedor (ej. "C1"), distinto del nombre descriptivo
+  // en 'color' (ej. "Negro brillante"): sirve para pedir/identificar la
+  // variante exacta ante el proveedor.
+  const codigoColor = String(formData.get("codigo_color") ?? "").trim() || null;
   const sku = String(formData.get("sku") ?? "").trim() || null;
   // Los montos llegan con separador de miles ("45.000"): Number() los
   // leería como NaN y el producto quedaría con costo 0.
@@ -87,6 +91,7 @@ export async function crearProducto(formData: FormData) {
       marca,
       modelo,
       color,
+      codigo_color: codigoColor,
       sku,
       costo,
       precio_venta: precioVenta,
@@ -122,7 +127,23 @@ export async function crearProducto(formData: FormData) {
 
   revalidatePath("/inventario");
   revalidatePath("/precios");
-  return { ok: true };
+  return { ok: true, id: producto.id as string };
+}
+
+// La foto se sube desde el navegador (subir-foto-marco.tsx, mismo patrón
+// que subir-logo.tsx); acá solo se guarda la URL pública ya subida.
+export async function guardarFotoProducto(productoId: string, url: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { error } = await supabase.from("productos").update({ imagen_url: url }).eq("id", productoId);
+  if (error) return { ok: false as const, error: "No se pudo guardar la foto." };
+
+  revalidatePath("/inventario");
+  return { ok: true as const };
 }
 
 const TIPOS_PROVEEDOR = ["laboratorio", "armazones", "otro"] as const;

@@ -4,7 +4,15 @@ import { clp } from "@/lib/clp";
 import NuevoProducto from "./nuevo-producto";
 import NuevoProveedor from "./nuevo-proveedor";
 
-type Producto = { nombre: string; marca: string | null; color: string | null; sku: string | null; precio_venta: number };
+type Producto = {
+  nombre: string;
+  marca: string | null;
+  color: string | null;
+  sku: string | null;
+  precio_venta: number;
+  categoria: string;
+  imagen_url: string | null;
+};
 
 function uno<T>(rel: T | T[] | null): T | null {
   return Array.isArray(rel) ? rel[0] ?? null : rel;
@@ -23,14 +31,23 @@ export default async function InventarioPage({
 }) {
   const { sucursal } = await searchParams;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const { data: sucursales } = await supabase.from("sucursales").select("id, nombre").order("nombre");
+  const [{ data: sucursales }, perfilRes] = await Promise.all([
+    supabase.from("sucursales").select("id, nombre").order("nombre"),
+    supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
+  ]);
   const sucursalActiva = sucursal || sucursales?.[0]?.id;
+  const tenantId = perfilRes.data?.tenant_id ?? "";
 
   const [stockRes, movimientosRes, proveedoresRes] = await Promise.all([
     supabase
       .from("inventario")
-      .select("id, stock_actual, stock_minimo, producto_id, sucursal_id, productos:producto_id (nombre, marca, color, sku, precio_venta)")
+      .select(
+        "id, stock_actual, stock_minimo, producto_id, sucursal_id, productos:producto_id (nombre, marca, color, sku, precio_venta, categoria, imagen_url)"
+      )
       .eq("sucursal_id", sucursalActiva ?? "")
       .order("stock_actual"),
     supabase
@@ -90,7 +107,7 @@ export default async function InventarioPage({
         </div>
       </div>
 
-      <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} />
+      <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} tenantId={tenantId} />
 
       <section>
         <h2 className="mb-2 font-semibold">Proveedores</h2>
@@ -123,6 +140,15 @@ export default async function InventarioPage({
               return (
                 <li key={s.id} className={`rounded-xl px-3 py-2.5 ${critico ? "bg-brand/10" : "bg-white"}`}>
                   <div className="flex flex-wrap items-center gap-2">
+                    {p?.categoria === "armazon" &&
+                      (p.imagen_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.imagen_url} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+                      ) : (
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-crema text-base">
+                          🕶️
+                        </span>
+                      ))}
                     {p?.sku && (
                       <span className="rounded-md bg-brand/15 px-2 py-0.5 text-xs font-bold text-brand-dark">
                         {p.sku}
