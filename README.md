@@ -29,6 +29,21 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Tests
+
+```bash
+npm run test        # corre los tests una vez
+npm run test:watch  # los deja corriendo mientras editas
+```
+
+La mayoría de los tests en `tests/*.test.ts` son de integración: necesitan
+Supabase corriendo localmente (`npm run supabase:start`, apunta por defecto
+a `http://127.0.0.1:54321`) con `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`
+completados en `.env.test.local` — sin eso fallan con un error explicando
+justamente esto, no es necesario adivinarlo. Los tests puramente de lógica
+(`fechas`, `formato`, `campos-clinicos`) no necesitan nada de eso y corren
+siempre.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
