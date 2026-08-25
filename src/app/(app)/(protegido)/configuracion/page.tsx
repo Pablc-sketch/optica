@@ -204,7 +204,7 @@ export default async function ConfiguracionPage() {
             <input
               name="factor_multifocal"
               inputMode="decimal"
-              defaultValue={optica?.factor_multifocal ?? 2}
+              defaultValue={optica?.factor_multifocal ?? 4}
               className={input}
             />
             <span className="text-xs font-normal text-tinta-suave">
