@@ -2,7 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { crearOperativo, cambiarEstadoOperativo } from "@/lib/actions/operativos";
 import { formatearTelefono } from "@/lib/formato";
-import { fechaLegible } from "@/lib/fechas";
+import { fechaLegible, hoyEnChile } from "@/lib/fechas";
+import { clp } from "@/lib/clp";
 import { CampoTelefono } from "@/components/campos";
 
 const TIPOS_VENUE = [
@@ -20,6 +21,16 @@ const ESTADOS: Record<string, string> = {
   realizado: "Realizado",
   cancelado: "Cancelado",
 };
+
+function Tarjeta({ titulo, valor, detalle }: { titulo: string; valor: string; detalle?: string }) {
+  return (
+    <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+      <p className="text-sm text-sky-800">{titulo}</p>
+      <p className="mt-1 text-2xl font-bold text-sky-950">{valor}</p>
+      {detalle && <p className="text-xs text-sky-700">{detalle}</p>}
+    </div>
+  );
+}
 
 export default async function OperativosPage() {
   const supabase = await createClient();
@@ -42,16 +53,40 @@ export default async function OperativosPage() {
     );
   }
 
-  const { data: operativos } = await supabase
-    .from("operativos")
-    .select("id, nombre, tipo_venue, fecha, direccion, contacto_nombre, contacto_telefono, estado, notas")
-    .order("fecha", { ascending: false });
+  const [{ data: operativos }, { data: recetas }, { data: ventas }] = await Promise.all([
+    supabase
+      .from("operativos")
+      .select("id, nombre, tipo_venue, fecha, direccion, contacto_nombre, contacto_telefono, estado, notas")
+      .order("fecha", { ascending: false }),
+    supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
+    supabase.from("ventas").select("operativo_id, total").not("operativo_id", "is", null),
+  ]);
 
-  // Próximos (planificados) primero, ordenados por fecha más cercana;
-  // realizados y cancelados después, más reciente arriba.
+  // Un vistazo de cómo le fue a cada operativo sin tener que entrar: cuántos
+  // exámenes, cuántas ventas y cuánto se vendió — se arma en memoria en vez
+  // de una consulta por operativo.
+  const examenesPorOperativo = new Map<string, number>();
+  for (const r of recetas ?? []) {
+    if (!r.operativo_id) continue;
+    examenesPorOperativo.set(r.operativo_id, (examenesPorOperativo.get(r.operativo_id) ?? 0) + 1);
+  }
+  const ventasPorOperativo = new Map<string, { cantidad: number; total: number }>();
+  for (const v of ventas ?? []) {
+    if (!v.operativo_id) continue;
+    const actual = ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0 };
+    actual.cantidad += 1;
+    actual.total += v.total;
+    ventasPorOperativo.set(v.operativo_id, actual);
+  }
+
   const lista = operativos ?? [];
   const planificados = lista.filter((o) => o.estado === "planificado").sort((a, b) => a.fecha.localeCompare(b.fecha));
   const otros = lista.filter((o) => o.estado !== "planificado");
+
+  const hoy = hoyEnChile();
+  const proximo = planificados.find((o) => o.fecha >= hoy) ?? planificados[0];
+  const totalExaminados = [...examenesPorOperativo.values()].reduce((s, n) => s + n, 0);
+  const totalVendido = [...ventasPorOperativo.values()].reduce((s, v) => s + v.total, 0);
 
   const input =
     "rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand";
@@ -60,61 +95,86 @@ export default async function OperativosPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-bold">Operativos</h1>
 
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Tarjeta titulo="Operativos" valor={String(lista.length)} detalle={`${planificados.length} planificado${planificados.length === 1 ? "" : "s"}`} />
+        <Tarjeta
+          titulo="Próximo"
+          valor={proximo ? proximo.nombre : "—"}
+          detalle={proximo ? fechaLegible(proximo.fecha) : "Sin operativos planificados"}
+        />
+        <Tarjeta titulo="Examinados en total" valor={String(totalExaminados)} />
+        <Tarjeta titulo="Vendido en total" valor={clp(totalVendido)} />
+      </div>
+
       <section className="flex flex-col gap-3">
         <ul className="flex flex-col gap-2">
-          {[...planificados, ...otros].map((o) => (
-            <li key={o.id} className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Link href={`/operativos/${o.id}`} className="flex-1">
-                  <p className="font-medium text-sky-950">
-                    {o.nombre}
-                    <span
-                      className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        o.estado === "planificado"
-                          ? "bg-sky-200 text-sky-900"
-                          : o.estado === "realizado"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-neutral-200 text-neutral-600"
-                      }`}
-                    >
-                      {ESTADOS[o.estado] ?? o.estado}
-                    </span>
-                  </p>
-                  <p className="text-sm text-sky-800">
-                    {[
-                      fechaLegible(o.fecha),
-                      TIPOS_VENUE.find((t) => t.valor === o.tipo_venue)?.etiqueta,
-                      o.direccion,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                  {(o.contacto_nombre || o.contacto_telefono) && (
-                    <p className="text-xs text-sky-700">
-                      {[o.contacto_nombre, formatearTelefono(o.contacto_telefono)].filter(Boolean).join(" · ")}
+          {[...planificados, ...otros].map((o) => {
+            const examenes = examenesPorOperativo.get(o.id) ?? 0;
+            const venta = ventasPorOperativo.get(o.id);
+            return (
+              <li key={o.id} className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Link href={`/operativos/${o.id}`} className="flex-1">
+                    <p className="font-medium text-sky-950">
+                      {o.nombre}
+                      <span
+                        className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          o.estado === "planificado"
+                            ? "bg-sky-200 text-sky-900"
+                            : o.estado === "realizado"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-neutral-200 text-neutral-600"
+                        }`}
+                      >
+                        {ESTADOS[o.estado] ?? o.estado}
+                      </span>
                     </p>
+                    <p className="text-sm text-sky-800">
+                      {[
+                        fechaLegible(o.fecha),
+                        TIPOS_VENUE.find((t) => t.valor === o.tipo_venue)?.etiqueta,
+                        o.direccion,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    {(o.contacto_nombre || o.contacto_telefono) && (
+                      <p className="text-xs text-sky-700">
+                        {[o.contacto_nombre, formatearTelefono(o.contacto_telefono)].filter(Boolean).join(" · ")}
+                      </p>
+                    )}
+                    {o.notas && <p className="mt-1 text-xs text-sky-700">{o.notas}</p>}
+                    {(examenes > 0 || venta) && (
+                      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs font-semibold text-sky-800">
+                        <span className="rounded-full bg-white px-2 py-0.5">👥 {examenes} examinado{examenes === 1 ? "" : "s"}</span>
+                        {venta && (
+                          <span className="rounded-full bg-white px-2 py-0.5">
+                            💰 {clp(venta.total)} · {venta.cantidad} venta{venta.cantidad === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </p>
+                    )}
+                  </Link>
+                  {o.estado !== "cancelado" && (
+                    <form action={cambiarEstadoOperativo} className="flex items-center gap-1">
+                      <input type="hidden" name="id" value={o.id} />
+                      <input
+                        type="hidden"
+                        name="estado"
+                        value={o.estado === "planificado" ? "realizado" : "cancelado"}
+                      />
+                      <button className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-xs font-medium transition hover:bg-white">
+                        {o.estado === "planificado" ? "Marcar realizado" : "Cancelar"}
+                      </button>
+                    </form>
                   )}
-                  {o.notas && <p className="mt-1 text-xs text-sky-700">{o.notas}</p>}
-                </Link>
-                {o.estado !== "cancelado" && (
-                  <form action={cambiarEstadoOperativo} className="flex items-center gap-1">
-                    <input type="hidden" name="id" value={o.id} />
-                    <input
-                      type="hidden"
-                      name="estado"
-                      value={o.estado === "planificado" ? "realizado" : "cancelado"}
-                    />
-                    <button className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-xs font-medium transition hover:bg-white">
-                      {o.estado === "planificado" ? "Marcar realizado" : "Cancelar"}
-                    </button>
-                  </form>
-                )}
-              </div>
-            </li>
-          ))}
+                </div>
+              </li>
+            );
+          })}
           {lista.length === 0 && (
-            <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
-              Todavía no hay operativos creados.
+            <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-800">
+              Todavía no hay operativos creados. Crea el primero abajo.
             </p>
           )}
         </ul>
