@@ -10,7 +10,6 @@ import SubirLogo from "./subir-logo";
 import SesionDebug from "./sesion-debug";
 import NuevaSucursal from "./nueva-sucursal";
 import { CampoRut, CampoTelefono } from "@/components/campos";
-import { formatearTelefono } from "@/lib/formato";
 
 const ROLES = [
   { valor: "admin", etiqueta: "Administrador" },
@@ -44,7 +43,7 @@ export default async function ConfiguracionPage() {
     supabase.from("users").select("id, nombre, email, rol, estado").order("nombre"),
     supabase
       .from("sucursales")
-      .select("id, nombre, direccion, tipo, fecha_operativo, contacto_nombre, contacto_telefono")
+      .select("id, nombre, direccion")
       .order("nombre"),
   ]);
 
@@ -258,31 +257,13 @@ export default async function ConfiguracionPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 font-semibold">Sucursales y operativos</h2>
+        <h2 className="mb-2 font-semibold">Sucursales</h2>
         <div className="flex flex-col gap-3">
           <ul className="flex flex-col gap-1.5 rounded-2xl bg-crema-claro p-3 shadow-sm">
             {sucursales.map((s) => (
               <li key={s.id} className="rounded-lg bg-white px-3 py-2 text-sm">
-                <p className="font-medium">
-                  {s.nombre}
-                  {s.tipo === "operativo" && (
-                    <span className="ml-2 rounded-full bg-brand/15 px-2 py-0.5 text-xs font-semibold text-brand-dark">
-                      Operativo
-                    </span>
-                  )}
-                </p>
+                <p className="font-medium">{s.nombre}</p>
                 {s.direccion && <p className="text-xs text-tinta-suave">{s.direccion}</p>}
-                {s.tipo === "operativo" && (
-                  <p className="text-xs text-tinta-suave">
-                    {[
-                      s.fecha_operativo ? new Date(s.fecha_operativo + "T00:00:00").toLocaleDateString("es-CL") : null,
-                      s.contacto_nombre,
-                      formatearTelefono(s.contacto_telefono),
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                )}
               </li>
             ))}
           </ul>

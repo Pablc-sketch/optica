@@ -147,19 +147,10 @@ export async function crearSucursal(formData: FormData) {
   const nombre = String(formData.get("nombre") ?? "").trim();
   if (!nombre) return;
 
-  const tipo = String(formData.get("tipo") ?? "local");
-
   const { error } = await supabase.from("sucursales").insert({
     tenant_id: tenantId,
     nombre,
     direccion: String(formData.get("direccion") ?? "").trim() || null,
-    tipo: tipo === "operativo" ? "operativo" : "local",
-    // Los datos de operativo no aplican a una sucursal fija: se guardan
-    // igual si vienen en el formulario (por si el tipo cambia más
-    // adelante), pero solo tienen sentido cuando tipo = 'operativo'.
-    fecha_operativo: String(formData.get("fecha_operativo") ?? "").trim() || null,
-    contacto_nombre: String(formData.get("contacto_nombre") ?? "").trim() || null,
-    contacto_telefono: formatearTelefono(String(formData.get("contacto_telefono") ?? "")) || null,
   });
   if (error) throw error;
   revalidatePath("/configuracion");
