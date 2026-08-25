@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   actualizarOptica,
@@ -207,11 +208,16 @@ export default async function ConfiguracionPage() {
               defaultValue={optica?.factor_multifocal ?? 4}
               className={input}
             />
-            <span className="text-xs font-normal text-tinta-suave">
-              Multiplica el costo del laboratorio según el tipo de lente, para recalcular los
-              precios de venta desde Precios → Recalcular por factor.
-            </span>
           </label>
+          <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 sm:col-span-2">
+            <b>Importante:</b> guardar estos factores solo cambia la configuración, no los precios
+            que ya están guardados. Para que los cristales tomen el nuevo factor, después de
+            guardar acá anda a{" "}
+            <Link href="/precios" className="font-semibold underline">
+              Precios → Recalcular todos los precios
+            </Link>
+            .
+          </p>
           <div className="sm:col-span-2">
             <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white transition hover:bg-brand-dark">
               Guardar
