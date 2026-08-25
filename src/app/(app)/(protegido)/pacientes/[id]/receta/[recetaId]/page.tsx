@@ -143,27 +143,27 @@ export default async function RecetaImprimible({
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
-        <div className="mb-5 flex items-start justify-between gap-4 border-b-2 border-neutral-800 pb-4">
-          <div className="flex items-center gap-3">
+      <div className="rounded-2xl bg-white p-6 text-tinta shadow-sm print:rounded-none print:p-0 print:shadow-none">
+        <div className="mb-5 flex items-start justify-between gap-4 border-b-2 border-brand pb-4">
+          <div className="flex items-center gap-4">
             {optica?.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={optica.logo_url} alt="" className="h-14 w-14 object-contain" />
+              <img src={optica.logo_url} alt="" className="h-24 w-24 object-contain" />
             ) : (
-              <Image src="/logo.svg" alt="" width={56} height={56} className="rounded-xl" />
+              <Image src="/logo.svg" alt="" width={96} height={96} className="rounded-xl" />
             )}
             <div>
-              <h2 className="text-lg font-bold">{optica?.nombre_comercial}</h2>
+              <h2 className="text-lg font-bold text-tinta">{optica?.nombre_comercial}</h2>
               {(optica?.direccion || optica?.telefono) && (
-                <p className="text-xs text-neutral-600">
+                <p className="text-xs text-tinta-suave">
                   {[optica?.direccion, formatearTelefono(optica?.telefono)].filter(Boolean).join(" · ")}
                 </p>
               )}
             </div>
           </div>
           <div className="text-right">
-            <p className="text-sm font-bold uppercase tracking-wide">Receta óptica</p>
-            <p className="text-xs text-neutral-600">{fechaLegible(receta.fecha)}</p>
+            <p className="text-sm font-bold uppercase tracking-wide text-brand-dark">Receta óptica</p>
+            <p className="text-xs text-tinta-suave">{fechaLegible(receta.fecha)}</p>
           </div>
         </div>
 
@@ -176,39 +176,39 @@ export default async function RecetaImprimible({
 
         <table className="mb-1 w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-neutral-100 text-left text-xs uppercase">
-              <th className="border border-neutral-300 px-2 py-1.5"></th>
-              <th className="border border-neutral-300 px-2 py-1.5">Esfera</th>
-              <th className="border border-neutral-300 px-2 py-1.5">Cilindro</th>
-              <th className="border border-neutral-300 px-2 py-1.5">Eje</th>
-              <th className="border border-neutral-300 px-2 py-1.5">Agudeza visual</th>
+            <tr className="bg-crema text-left text-xs uppercase text-tinta-suave">
+              <th className="border border-brand/30 px-2 py-1.5"></th>
+              <th className="border border-brand/30 px-2 py-1.5">Esfera</th>
+              <th className="border border-brand/30 px-2 py-1.5">Cilindro</th>
+              <th className="border border-brand/30 px-2 py-1.5">Eje</th>
+              <th className="border border-brand/30 px-2 py-1.5">Agudeza visual</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td className="border border-neutral-300 px-2 py-2 font-bold">OD</td>
-              <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.od_esfera)}</td>
-              <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.od_cilindro)}</td>
-              <td className="border border-neutral-300 px-2 py-2">{receta.od_eje !== null ? `${receta.od_eje}°` : "—"}</td>
-              <td className="border border-neutral-300 px-2 py-2">{receta.av_od ?? "—"}</td>
+              <td className="border border-brand/30 px-2 py-2 font-bold text-brand-dark">OD</td>
+              <td className="border border-brand/30 px-2 py-2">{fmtD(receta.od_esfera)}</td>
+              <td className="border border-brand/30 px-2 py-2">{fmtD(receta.od_cilindro)}</td>
+              <td className="border border-brand/30 px-2 py-2">{receta.od_eje !== null ? `${receta.od_eje}°` : "—"}</td>
+              <td className="border border-brand/30 px-2 py-2">{receta.av_od ?? "—"}</td>
             </tr>
             <tr>
-              <td className="border border-neutral-300 px-2 py-2 font-bold">OI</td>
-              <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.oi_esfera)}</td>
-              <td className="border border-neutral-300 px-2 py-2">{fmtD(receta.oi_cilindro)}</td>
-              <td className="border border-neutral-300 px-2 py-2">{receta.oi_eje !== null ? `${receta.oi_eje}°` : "—"}</td>
-              <td className="border border-neutral-300 px-2 py-2">{receta.av_oi ?? "—"}</td>
+              <td className="border border-brand/30 px-2 py-2 font-bold text-brand-dark">OI</td>
+              <td className="border border-brand/30 px-2 py-2">{fmtD(receta.oi_esfera)}</td>
+              <td className="border border-brand/30 px-2 py-2">{fmtD(receta.oi_cilindro)}</td>
+              <td className="border border-brand/30 px-2 py-2">{receta.oi_eje !== null ? `${receta.oi_eje}°` : "—"}</td>
+              <td className="border border-brand/30 px-2 py-2">{receta.av_oi ?? "—"}</td>
             </tr>
           </tbody>
         </table>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-neutral-600">
+          <p className="text-xs text-tinta-suave">
             DP: {receta.dp ?? "—"} mm · Altura: {receta.altura ?? "—"} mm
           </p>
           {/* La adición no va en la tabla: solo aplica a algunos pacientes
               (présbicia) y queda como anexo aparte de la receta de lejos,
               como se ve en la mayoría de las recetas ópticas. */}
-          <p className="rounded border border-neutral-300 px-3 py-1.5 text-sm">
+          <p className="rounded border border-brand/30 px-3 py-1.5 text-sm">
             <span className="font-semibold">ADD:</span>{" "}
             {receta.od_add === receta.oi_add
               ? fmtD(receta.od_add)
@@ -217,8 +217,8 @@ export default async function RecetaImprimible({
         </div>
 
         {(alertas.length > 0 || observaciones.length > 0) && (
-          <div className="mb-5 rounded border border-neutral-300 bg-neutral-50 p-3 text-sm">
-            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-600">
+          <div className="mb-5 rounded border border-brand/30 bg-crema-claro p-3 text-sm">
+            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-dark">
               Observaciones
             </p>
             {alertas.length > 0 && <p className="font-medium">{alertas.join(" · ")}</p>}
@@ -236,16 +236,31 @@ export default async function RecetaImprimible({
           </p>
         )}
 
-        {/* Espacio en blanco para la firma a mano, con los datos del
-            profesional impresos debajo a modo de timbre — solo si cargó su
-            título en Configuración; si no, queda solo el espacio en blanco. */}
-        <div className="mt-10 flex justify-end print:mt-16">
-          <div className="flex w-64 flex-col items-center gap-1">
-            <div className="h-20 w-full rounded border border-neutral-300" />
-            <div className="w-full border-t border-neutral-300 pt-1 text-center text-xs text-neutral-600">
+        {/* Contacto (WhatsApp) a la izquierda, firma y timbre del
+            profesional en un solo recuadro a la derecha — los datos del
+            profesional van DENTRO del mismo borde, no debajo. */}
+        <div className="mt-10 flex flex-wrap items-end justify-between gap-4 print:mt-16">
+          {optica?.telefono && (
+            <a
+              href={`https://wa.me/${optica.telefono.replace(/\D/g, "")}`}
+              className="flex items-center gap-2 text-sm text-tinta-suave no-underline"
+            >
+              <svg viewBox="0 0 32 32" width="22" height="22" fill="#25D366" aria-hidden="true">
+                <circle cx="16" cy="16" r="16" />
+                <path
+                  fill="#fff"
+                  d="M23.47 8.52A10.6 10.6 0 0 0 16.02 5.3c-5.87 0-10.65 4.77-10.65 10.63 0 1.87.49 3.7 1.42 5.31L5.3 26.7l5.6-1.47a10.66 10.66 0 0 0 5.1 1.3h.01c5.87 0 10.65-4.77 10.65-10.63 0-2.84-1.1-5.51-3.19-7.38Zm-7.45 16.35h-.01a8.85 8.85 0 0 1-4.51-1.24l-.32-.19-3.32.87.89-3.24-.21-.33a8.79 8.79 0 0 1-1.35-4.71c0-4.87 3.97-8.83 8.85-8.83a8.8 8.8 0 0 1 8.83 8.85c0 4.87-3.97 8.82-8.85 8.82Zm4.85-6.62c-.27-.13-1.58-.78-1.82-.87-.24-.09-.42-.13-.6.13-.18.27-.68.87-.84 1.04-.15.18-.31.2-.58.07-.27-.13-1.12-.41-2.14-1.32a8.03 8.03 0 0 1-1.48-1.84c-.15-.27-.02-.41.12-.54.12-.12.27-.31.4-.47.13-.15.18-.27.27-.44.09-.18.04-.34-.02-.47-.07-.13-.6-1.45-.82-1.98-.22-.52-.44-.45-.6-.46h-.51c-.18 0-.47.07-.71.34-.24.27-.94.92-.94 2.24 0 1.32.96 2.6 1.1 2.78.13.18 1.9 2.9 4.6 4.06.64.28 1.15.44 1.54.57.65.2 1.24.18 1.71.11.52-.08 1.58-.65 1.81-1.28.22-.62.22-1.16.16-1.28-.07-.12-.24-.19-.51-.32Z"
+                />
+              </svg>
+              {formatearTelefono(optica.telefono)}
+            </a>
+          )}
+          <div className="ml-auto flex w-64 flex-col items-center gap-1 rounded border border-brand/40 px-3 py-2">
+            <div className="h-16 w-full" />
+            <div className="w-full border-t border-brand/30 pt-1 text-center text-xs text-tinta-suave">
               {datosPdf.profesional ? (
                 <>
-                  <p className="font-semibold text-neutral-800">{datosPdf.profesional.nombre}</p>
+                  <p className="font-semibold text-tinta">{datosPdf.profesional.nombre}</p>
                   <p>{datosPdf.profesional.tituloProfesional}</p>
                   {datosPdf.profesional.rut && <p>RUT: {datosPdf.profesional.rut}</p>}
                   {datosPdf.profesional.registroProfesional && (
@@ -253,7 +268,7 @@ export default async function RecetaImprimible({
                   )}
                 </>
               ) : (
-                <p className="text-neutral-500">Firma profesional</p>
+                <p className="text-tinta-suave">Firma profesional</p>
               )}
             </div>
           </div>
