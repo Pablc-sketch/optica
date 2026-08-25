@@ -157,6 +157,35 @@ export async function crearSucursal(formData: FormData) {
   revalidatePath("/inventario");
 }
 
+// A diferencia del resto de este archivo, esto no pasa por requerirAdmin:
+// son datos personales del profesional (para el timbre en la OT impresa),
+// no algo que dependa del rol. Las políticas de "users" solo dejan escribir
+// al administrador, así que se usa el cliente con service role — pero el id
+// sale siempre de la sesión (auth.getUser()), nunca del formulario, y solo
+// se tocan estas tres columnas: cada quien edita únicamente lo suyo.
+export async function actualizarPerfilProfesional(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("users")
+    .update({
+      rut: formatearRut(String(formData.get("rut") ?? "")) || null,
+      titulo_profesional: String(formData.get("titulo_profesional") ?? "").trim() || null,
+      registro_profesional: String(formData.get("registro_profesional") ?? "").trim() || null,
+    })
+    .eq("id", user.id);
+
+  if (error) throw error;
+
+  revalidatePath("/configuracion");
+  revalidatePath("/ot");
+}
+
 export async function actualizarOptica(formData: FormData) {
   const { supabase, tenantId } = await requerirAdmin();
 

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import {
   actualizarOptica,
+  actualizarPerfilProfesional,
   cambiarEstadoUsuario,
   cambiarRol,
   crearSucursal,
@@ -33,7 +34,11 @@ export default async function ConfiguracionPage() {
   } = await supabase.auth.getUser();
 
   const [perfilRes, opticaRes, usuariosRes, sucursalesRes] = await Promise.all([
-    supabase.from("users").select("rol, tenant_id").eq("id", user!.id).single(),
+    supabase
+      .from("users")
+      .select("rol, tenant_id, rut, titulo_profesional, registro_profesional")
+      .eq("id", user!.id)
+      .single(),
     supabase.from("tenants").select("nombre_comercial, rut_empresa, factor_venta_cristales").single(),
     supabase.from("users").select("id, nombre, email, rol, estado").order("nombre"),
     supabase.from("sucursales").select("id, nombre, direccion").order("nombre"),
@@ -53,13 +58,61 @@ export default async function ConfiguracionPage() {
   const usuarios = usuariosRes.data ?? [];
   const sucursales = sucursalesRes.data ?? [];
 
+  const input =
+    "rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand";
+
+  // Datos personales del profesional (para el timbre en la OT impresa): a
+  // diferencia del resto de esta pantalla, no depende del rol — cada quien
+  // ve y edita solo lo suyo, por eso esta sección se muestra tanto si es
+  // admin como si no.
+  const perfilProfesional = (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-semibold">Mi perfil profesional</h2>
+      <p className="-mt-2 text-xs text-tinta-suave">
+        Aparece como timbre en las órdenes de trabajo que imprimas.
+      </p>
+      <form
+        action={actualizarPerfilProfesional}
+        className="grid grid-cols-1 gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm sm:grid-cols-2"
+      >
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          RUT
+          <CampoRut name="rut" defaultValue={perfilRes.data?.rut} placeholder="12.345.678-9" className={input} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Título profesional
+          <input
+            name="titulo_profesional"
+            defaultValue={perfilRes.data?.titulo_profesional ?? ""}
+            placeholder="Tecnólogo Médico, mención Oftalmología"
+            className={input}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">
+          Registro profesional (opcional)
+          <input
+            name="registro_profesional"
+            defaultValue={perfilRes.data?.registro_profesional ?? ""}
+            className={input}
+          />
+        </label>
+        <div className="sm:col-span-2">
+          <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white transition hover:bg-brand-dark">
+            Guardar
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+
   if (!esAdmin) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
         <h1 className="text-xl font-bold">Configuración</h1>
+        {perfilProfesional}
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
-          Solo el administrador de la óptica puede cambiar la configuración. Si necesitas un
-          cambio, pídeselo a quien administre la cuenta.
+          Solo el administrador de la óptica puede cambiar el resto de la configuración. Si
+          necesitas un cambio, pídeselo a quien administre la cuenta.
         </p>
         <section>
           <h2 className="mb-2 font-semibold">Qué puede hacer cada rol</h2>
@@ -75,12 +128,11 @@ export default async function ConfiguracionPage() {
     );
   }
 
-  const input =
-    "rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand";
-
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-bold">Configuración</h1>
+
+      {perfilProfesional}
 
       <section className="flex flex-col gap-3">
         <h2 className="font-semibold">Datos de la óptica</h2>

@@ -26,7 +26,11 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const supabase = await createClient();
 
-  const [otRes, tenantRes] = await Promise.all([
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [otRes, tenantRes, profesionalRes] = await Promise.all([
     supabase
       .from("ordenes_trabajo")
       .select(
@@ -39,10 +43,19 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       .eq("id", id)
       .single(),
     supabase.from("tenants").select("nombre_comercial, telefono, direccion, logo_url").single(),
+    // Timbre del profesional: siempre el de quien tiene la sesión abierta al
+    // imprimir, no el de quien atendió al paciente originalmente.
+    supabase
+      .from("users")
+      .select("nombre, rut, titulo_profesional, registro_profesional")
+      .eq("id", user!.id)
+      .single(),
   ]);
 
   const ot = otRes.data;
   if (!ot) notFound();
+
+  const profesional = profesionalRes.data;
 
   const paciente = ot.pacientes as unknown as {
     nombre: string; rut: string | null; telefono: string | null;
@@ -167,6 +180,16 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
           <p className="mt-4 border-t border-neutral-200 pt-3 text-sm">
             <span className="font-semibold">Notas:</span> {[ot.notas, receta?.notas].filter(Boolean).join(" · ")}
           </p>
+        )}
+
+        {profesional?.titulo_profesional && (
+          <div className="mt-6 rounded border border-neutral-300 px-3 py-2 text-xs text-neutral-600 print:mt-10">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Timbre profesional</p>
+            <p className="mt-0.5 font-semibold text-neutral-800">{profesional.nombre}</p>
+            <p>{profesional.titulo_profesional}</p>
+            {profesional.rut && <p>RUT: {formatearRut(profesional.rut)}</p>}
+            {profesional.registro_profesional && <p>Registro N.° {profesional.registro_profesional}</p>}
+          </div>
         )}
 
         <div className="mt-8 grid grid-cols-2 gap-8 text-center text-xs text-neutral-500 print:mt-14">
