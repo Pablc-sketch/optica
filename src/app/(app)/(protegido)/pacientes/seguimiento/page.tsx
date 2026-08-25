@@ -5,9 +5,9 @@ import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible } from "@/lib/fechas";
 
 // Seguimiento de operativos: pacientes a los que se les tomó un examen en
-// un operativo (o localmente) pero todavía no compraron nada — para que
-// ventas los pueda llamar y cerrar la venta, en vez de que el examen quede
-// perdido en la ficha sin que nadie se entere.
+// un operativo pero todavía no compraron nada — para que ventas los pueda
+// llamar y cerrar la venta, en vez de que el examen quede perdido en la
+// ficha sin que nadie se entere.
 
 type Receta = {
   id: string;
@@ -23,9 +23,9 @@ function uno<T>(rel: T | T[] | null): T | null {
 export default async function SeguimientoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sucursal_id?: string }>;
+  searchParams: Promise<{ operativo_id?: string }>;
 }) {
-  const { sucursal_id } = await searchParams;
+  const { operativo_id } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -50,12 +50,11 @@ export default async function SeguimientoPage({
   }
 
   const { data: operativos } = await supabase
-    .from("sucursales")
-    .select("id, nombre, fecha_operativo")
-    .eq("tipo", "operativo")
-    .order("fecha_operativo", { ascending: false, nullsFirst: false });
+    .from("operativos")
+    .select("id, nombre, fecha")
+    .order("fecha", { ascending: false });
 
-  const sucursalId = sucursal_id || operativos?.[0]?.id || "";
+  const operativoId = operativo_id || operativos?.[0]?.id || "";
 
   let pendientes: {
     recetaId: string;
@@ -66,15 +65,15 @@ export default async function SeguimientoPage({
     fecha: string;
   }[] = [];
 
-  if (sucursalId) {
+  if (operativoId) {
     const [recetasRes, ventasRes] = await Promise.all([
       supabase
         .from("recetas")
         .select("id, fecha, paciente_id, pacientes:paciente_id (nombre, rut, telefono)")
-        .eq("sucursal_id", sucursalId)
+        .eq("operativo_id", operativoId)
         .order("fecha", { ascending: false }),
-      // paciente_id con al menos una venta, sea de esta sucursal o de
-      // cualquier otra: si ya compró, ya no es un pendiente de seguimiento.
+      // paciente_id con al menos una venta, sea de este operativo o de
+      // cualquier otro: si ya compró, ya no es un pendiente de seguimiento.
       supabase.from("ventas").select("paciente_id").not("paciente_id", "is", null),
     ]);
 
@@ -103,14 +102,13 @@ export default async function SeguimientoPage({
         {operativos && operativos.length > 0 && (
           <form className="flex items-center gap-2" action="/pacientes/seguimiento">
             <select
-              name="sucursal_id"
-              defaultValue={sucursalId}
+              name="operativo_id"
+              defaultValue={operativoId}
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
             >
               {operativos.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.nombre}
-                  {o.fecha_operativo ? ` — ${fechaLegible(o.fecha_operativo)}` : ""}
+                  {o.nombre} — {fechaLegible(o.fecha)}
                 </option>
               ))}
             </select>
@@ -123,8 +121,7 @@ export default async function SeguimientoPage({
 
       {!operativos || operativos.length === 0 ? (
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
-          Todavía no hay operativos creados. Se crean desde Configuración → Sucursales y
-          operativos.
+          Todavía no hay operativos creados. Se crean desde la pantalla Operativos.
         </p>
       ) : pendientes.length === 0 ? (
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">

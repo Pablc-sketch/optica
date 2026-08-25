@@ -53,15 +53,15 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       )
     : null;
 
-  const [{ data: recetas }, { data: sucursales }] = await Promise.all([
+  const [{ data: recetas }, { data: operativos }] = await Promise.all([
     supabase.from("recetas").select("*").eq("paciente_id", id).order("fecha", { ascending: false }),
-    // Operativos primero (el más reciente arriba), locales al final: es lo
-    // que más frecuentemente se va a elegir al cargar una receta nueva.
+    // Planificados/realizados primero (el más reciente arriba): es lo que
+    // más frecuentemente se va a elegir al cargar una receta nueva.
     supabase
-      .from("sucursales")
-      .select("id, nombre, tipo, fecha_operativo")
-      .order("tipo", { ascending: false })
-      .order("fecha_operativo", { ascending: false, nullsFirst: false }),
+      .from("operativos")
+      .select("id, nombre, fecha, estado")
+      .in("estado", ["planificado", "realizado"])
+      .order("fecha", { ascending: false }),
   ]);
 
   return (
@@ -229,18 +229,18 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
             </label>
           </div>
 
-          {sucursales && sucursales.length > 0 && (
+          {operativos && operativos.length > 0 && (
             <label className="flex flex-col gap-1 text-xs font-medium">
-              Dónde se tomó el examen
+              Operativo (si el examen fue en terreno)
               <select
-                name="sucursal_id"
+                name="operativo_id"
                 defaultValue=""
                 className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand"
               >
                 <option value="">— Sin especificar —</option>
-                {sucursales.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.tipo === "operativo" ? `Operativo — ${s.nombre}` : s.nombre}
+                {operativos.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
                   </option>
                 ))}
               </select>

@@ -16,7 +16,7 @@ export default async function VentasPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes, recetasRes, laboratoriosRes] = await Promise.all([
+  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes, recetasRes, laboratoriosRes, operativosRes] = await Promise.all([
     supabase.from("pacientes").select("id, nombre, rut").order("nombre").limit(200),
     supabase
       .from("productos")
@@ -37,6 +37,13 @@ export default async function VentasPage() {
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
     supabase.from("recetas").select("id, paciente_id, fecha").order("fecha", { ascending: false }),
     supabase.from("proveedores").select("id, nombre").eq("tipo", "laboratorio").order("nombre"),
+    // Independiente del selector de sucursal (que es para stock físico):
+    // planificados/realizados más recientes primero.
+    supabase
+      .from("operativos")
+      .select("id, nombre, fecha")
+      .in("estado", ["planificado", "realizado"])
+      .order("fecha", { ascending: false }),
   ]);
 
   const ventas = ventasRes.data ?? [];
@@ -62,6 +69,7 @@ export default async function VentasPage() {
           sucursalId={sucursalRes.data?.id ?? null}
           vendedorId={user?.id ?? null}
           ultimaRecetaPorPaciente={ultimaRecetaPorPaciente}
+          operativos={operativosRes.data ?? []}
         />
       </div>
 

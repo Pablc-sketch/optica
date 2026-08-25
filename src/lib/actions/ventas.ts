@@ -30,6 +30,7 @@ export async function registrarVenta(input: {
   armazonProductoId?: string | null;
   diasEntrega?: number;
   proveedorLabId?: string | null;
+  operativoId?: string | null;
 }) {
   const supabase = await createClient();
   const {
@@ -56,6 +57,7 @@ export async function registrarVenta(input: {
       vendedor_id: user.id,
       total,
       estado_pago: estadoPago,
+      operativo_id: input.operativoId ?? null,
     })
     .select("id")
     .single();
@@ -105,6 +107,7 @@ export async function registrarVenta(input: {
         paciente_id: input.pacienteId,
         receta_id: recetaRes.data?.id ?? null,
         sucursal_id: sucursalRes.data?.id ?? null,
+        operativo_id: input.operativoId ?? null,
         armazon_producto_id: input.armazonProductoId ?? null,
         tipo_lente: input.cristal.tipoLente,
         rango_receta: input.cristal.rangoReceta,

@@ -9,6 +9,7 @@ import { diasRestantes, estaVigente, type Suscripcion } from "@/lib/suscripcion"
 const NAV = [
   { href: "/", label: "Inicio" },
   { href: "/pacientes", label: "Pacientes" },
+  { href: "/operativos", label: "Operativos" },
   { href: "/ot", label: "Órdenes" },
   { href: "/ventas", label: "Ventas" },
   { href: "/laboratorio", label: "Laboratorio" },

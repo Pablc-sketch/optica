@@ -50,6 +50,7 @@ export default function PuntoDeVenta({
   sucursalId,
   vendedorId,
   ultimaRecetaPorPaciente,
+  operativos,
 }: {
   pacientes: Paciente[];
   productos: Producto[];
@@ -60,10 +61,12 @@ export default function PuntoDeVenta({
   sucursalId: string | null;
   vendedorId: string | null;
   ultimaRecetaPorPaciente: Record<string, string>;
+  operativos: { id: string; nombre: string; fecha: string }[];
 }) {
   const router = useRouter();
   const [paso, setPaso] = useState(0);
   const [pacienteId, setPacienteId] = useState<string>("");
+  const [operativoId, setOperativoId] = useState<string>("");
   const [buscaPaciente, setBuscaPaciente] = useState("");
   const [buscaProducto, setBuscaProducto] = useState("");
   const [carrito, setCarrito] = useState<LineaCarrito[]>([]);
@@ -169,6 +172,7 @@ export default function PuntoDeVenta({
     setCarrito([]);
     setAbono("");
     setPacienteId("");
+    setOperativoId("");
     setBuscaPaciente("");
     setBuscaProducto("");
     setTipoLente("");
@@ -204,6 +208,7 @@ export default function PuntoDeVenta({
           tenant_id: tenantId,
           paciente_id: pacienteId || null,
           sucursal_id: sucursalId,
+          operativo_id: operativoId || null,
           vendedor_id: vendedorId,
           fecha: ahora,
           total,
@@ -222,6 +227,7 @@ export default function PuntoDeVenta({
           paciente_id: pacienteId,
           receta_id: recetaPacienteId ?? null,
           sucursal_id: sucursalId,
+          operativo_id: operativoId || null,
           estado: "recepcion",
           armazon_producto_id: lineaArmazon?.productoId ?? null,
           tipo_lente: lineaCristal.cristal.tipoLente,
@@ -321,6 +327,7 @@ export default function PuntoDeVenta({
           : null,
         armazonProductoId: lineaArmazon?.productoId ?? null,
         proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
+        operativoId: operativoId || null,
       });
       if (resultado.ok) {
         reiniciar();
@@ -398,6 +405,20 @@ export default function PuntoDeVenta({
               venta de mesón sin ficha, puedes continuar sin paciente.
             </p>
           </div>
+
+          {operativos.length > 0 && (
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Operativo (si esta venta es en terreno)
+              <select value={operativoId} onChange={(e) => setOperativoId(e.target.value)} className={select}>
+                <option value="">— Sin especificar —</option>
+                {operativos.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <input
             type="search"

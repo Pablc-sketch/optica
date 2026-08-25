@@ -53,12 +53,12 @@ function Tarjeta({
 export default async function ReportesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ desde?: string; hasta?: string; sucursal_id?: string }>;
+  searchParams: Promise<{ desde?: string; hasta?: string; operativo_id?: string }>;
 }) {
   const params = await searchParams;
   const desde = params.desde || inicioDeMes();
   const hasta = params.hasta || hoyEnChile();
-  const sucursalId = params.sucursal_id || "";
+  const operativoId = params.operativo_id || "";
 
   const supabase = await createClient();
 
@@ -73,30 +73,30 @@ export default async function ReportesPage({
       `cantidad, precio_unitario, descuento,
        productos:producto_id (costo),
        ordenes_trabajo:ot_id (costo_laboratorio, tipo_lente, tratamiento),
-       ventas!inner (fecha, sucursal_id)`
+       ventas!inner (fecha, operativo_id)`
     )
     .gte("ventas.fecha", inicioDelDia(desde))
     .lte("ventas.fecha", finDelDia(hasta));
-  // pagos_abonos no tiene sucursal propia (se paga contra una venta, no
-  // contra un local); el filtro de sucursal solo se aplica a lo vendido.
+  // pagos_abonos no tiene operativo propio (se paga contra una venta, no
+  // contra un operativo); el filtro solo se aplica a lo vendido.
   const pagosQuery = supabase
     .from("pagos_abonos")
     .select("monto")
     .gte("fecha", inicioDelDia(desde))
     .lte("fecha", finDelDia(hasta));
 
-  if (sucursalId) {
-    ventasQuery = ventasQuery.eq("sucursal_id", sucursalId);
-    itemsQuery = itemsQuery.eq("ventas.sucursal_id", sucursalId);
+  if (operativoId) {
+    ventasQuery = ventasQuery.eq("operativo_id", operativoId);
+    itemsQuery = itemsQuery.eq("ventas.operativo_id", operativoId);
   }
 
-  const [ventasRes, itemsRes, pagosRes, sucursalesRes] = await Promise.all([
+  const [ventasRes, itemsRes, pagosRes, operativosRes] = await Promise.all([
     ventasQuery,
     itemsQuery,
     pagosQuery,
-    supabase.from("sucursales").select("id, nombre, tipo").order("tipo", { ascending: false }).order("nombre"),
+    supabase.from("operativos").select("id, nombre").order("fecha", { ascending: false }),
   ]);
-  const sucursales = sucursalesRes.data ?? [];
+  const operativos = operativosRes.data ?? [];
 
   const ventas = ventasRes.data ?? [];
   const items = (itemsRes.data ?? []) as unknown as ItemVenta[];
@@ -162,18 +162,18 @@ export default async function ReportesPage({
               Hasta
               <input type="date" name="hasta" defaultValue={hasta} className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand" />
             </label>
-            {sucursales.length > 0 && (
+            {operativos.length > 0 && (
               <label className="flex items-center gap-1 text-sm">
-                Sucursal
+                Operativo
                 <select
-                  name="sucursal_id"
-                  defaultValue={sucursalId}
+                  name="operativo_id"
+                  defaultValue={operativoId}
                   className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
                 >
-                  <option value="">Todas</option>
-                  {sucursales.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.tipo === "operativo" ? `Operativo — ${s.nombre}` : s.nombre}
+                  <option value="">Todos</option>
+                  {operativos.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.nombre}
                     </option>
                   ))}
                 </select>
@@ -189,8 +189,8 @@ export default async function ReportesPage({
 
       <p className="text-sm text-tinta-suave">
         Período: {fechaLegible(desde)} al {fechaLegible(hasta)}
-        {sucursalId && (
-          <> · {sucursales.find((s) => s.id === sucursalId)?.nombre ?? "sucursal filtrada"}</>
+        {operativoId && (
+          <> · {operativos.find((o) => o.id === operativoId)?.nombre ?? "operativo filtrado"}</>
         )}
       </p>
 
