@@ -38,18 +38,28 @@ export default async function PacientesPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Pacientes</h1>
-        <form className="flex gap-2" action="/pacientes">
-          <input
-            type="search"
-            name="q"
-            defaultValue={q ?? ""}
-            placeholder="Buscar por nombre o RUT…"
-            className="w-48 rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-brand sm:w-64"
-          />
-          <button className="rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-dark">
-            Buscar
-          </button>
-        </form>
+        <div className="flex flex-wrap items-center gap-2">
+          {puedeVerFichas && (
+            <Link
+              href="/pacientes/seguimiento"
+              className="rounded-lg border border-tinta-suave/30 px-3 py-2 text-sm font-medium text-tinta-suave transition hover:bg-crema"
+            >
+              📋 Seguimiento de operativos
+            </Link>
+          )}
+          <form className="flex gap-2" action="/pacientes">
+            <input
+              type="search"
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="Buscar por nombre o RUT…"
+              className="w-48 rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-brand sm:w-64"
+            />
+            <button className="rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-dark">
+              Buscar
+            </button>
+          </form>
+        </div>
       </div>
 
       {puedeVerFichas ? (
