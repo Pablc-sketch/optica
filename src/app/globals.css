@@ -28,10 +28,15 @@ body {
       background-color 150ms ease,
       border-color 150ms ease,
       opacity 150ms ease,
-      transform 100ms ease;
+      transform 100ms ease,
+      filter 100ms ease;
   }
 
-  button:not(:disabled):active {
-    transform: scale(0.97);
+  /* El "hundido" cubre botones y links por igual — hay acciones de la app
+     hechas con <Link> (ej. "Ver tablero →"), no solo <button>. */
+  button:not(:disabled):active,
+  a:active {
+    transform: scale(0.95);
+    filter: brightness(0.92);
   }
 }

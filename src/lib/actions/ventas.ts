@@ -172,6 +172,7 @@ export async function registrarVenta(input: {
   revalidatePath("/ventas");
   revalidatePath("/ot");
   revalidatePath("/laboratorio");
+  revalidatePath("/reportes");
   revalidatePath("/");
   return { ok: true, ventaId: venta.id as string, otFolio };
 }
@@ -187,9 +188,23 @@ export async function registrarAbono(formData: FormData) {
   if (!perfil) throw new Error("Perfil no encontrado");
 
   const ventaId = String(formData.get("venta_id"));
-  const monto = Math.round(Number(String(formData.get("monto")).replace(/\./g, "")));
+  const montoIngresado = Math.round(Number(String(formData.get("monto")).replace(/\./g, "")));
   const medioPago = String(formData.get("medio_pago") ?? "efectivo");
-  if (!monto || monto <= 0) return;
+  if (!montoIngresado || montoIngresado <= 0) return;
+
+  // El saldo real manda: sin este tope, un typo (de más ceros de la
+  // cuenta) queda guardado tal cual y nunca más se puede corregir desde la
+  // interfaz — inflando "cobrado" en los reportes con plata que nunca
+  // entró. Nunca se registra más de lo que efectivamente se debe.
+  const [{ data: venta }, { data: pagosPrevios }] = await Promise.all([
+    supabase.from("ventas").select("total").eq("id", ventaId).single(),
+    supabase.from("pagos_abonos").select("monto").eq("venta_id", ventaId),
+  ]);
+  if (!venta) return;
+  const abonadoPrevio = (pagosPrevios ?? []).reduce((s, p) => s + p.monto, 0);
+  const saldo = venta.total - abonadoPrevio;
+  const monto = Math.min(montoIngresado, Math.max(0, saldo));
+  if (monto <= 0) return;
 
   const { error: pagoError } = await supabase.from("pagos_abonos").insert({
     tenant_id: perfil.tenant_id,
@@ -199,15 +214,11 @@ export async function registrarAbono(formData: FormData) {
   });
   if (pagoError) throw pagoError;
 
-  // Recalcular estado de pago con el total abonado.
-  const [{ data: venta }, { data: pagos }] = await Promise.all([
-    supabase.from("ventas").select("total").eq("id", ventaId).single(),
-    supabase.from("pagos_abonos").select("monto").eq("venta_id", ventaId),
-  ]);
-  const abonado = (pagos ?? []).reduce((s, p) => s + p.monto, 0);
-  const estado = venta && abonado >= venta.total ? "pagada" : "abono_parcial";
+  const estado = abonadoPrevio + monto >= venta.total ? "pagada" : "abono_parcial";
   await supabase.from("ventas").update({ estado_pago: estado }).eq("id", ventaId);
 
   revalidatePath("/ventas");
+  revalidatePath("/ot");
+  revalidatePath("/reportes");
   revalidatePath("/");
 }

@@ -110,6 +110,7 @@ export async function eliminarOT(formData: FormData) {
   revalidatePath("/ot");
   revalidatePath("/ventas");
   revalidatePath("/laboratorio");
+  revalidatePath("/reportes");
   revalidatePath("/");
   return { ok: true as const };
 }

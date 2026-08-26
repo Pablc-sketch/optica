@@ -27,11 +27,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const [otRes, tenantRes, profesionalRes] = await Promise.all([
+  const [otRes, tenantRes, ventaRes] = await Promise.all([
     supabase
       .from("ordenes_trabajo")
       .select(
@@ -44,19 +40,24 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       .eq("id", id)
       .single(),
     supabase.from("tenants").select("nombre_comercial, telefono, direccion, logo_url").single(),
-    // Timbre del profesional: siempre el de quien tiene la sesión abierta al
-    // imprimir, no el de quien atendió al paciente originalmente.
+    // Quién vendió: el que firma como "responsable óptica" al entregar, no
+    // el profesional clínico que tomó la receta (ese timbre va en la receta,
+    // no en la orden de trabajo).
     supabase
-      .from("users")
-      .select("nombre, rut, titulo_profesional, registro_profesional")
-      .eq("id", user!.id)
-      .single(),
+      .from("venta_items")
+      .select("ventas:venta_id (users:vendedor_id (nombre))")
+      .eq("ot_id", id)
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const ot = otRes.data;
   if (!ot) notFound();
 
-  const profesional = profesionalRes.data;
+  const venta = ventaRes.data?.ventas as unknown as { users: { nombre: string } | { nombre: string }[] | null } | { users: { nombre: string } | { nombre: string }[] | null }[] | null;
+  const ventaUno = Array.isArray(venta) ? (venta[0] ?? null) : venta;
+  const vendedorRel = ventaUno?.users;
+  const vendedorNombre = (Array.isArray(vendedorRel) ? vendedorRel[0]?.nombre : vendedorRel?.nombre) ?? null;
 
   const paciente = ot.pacientes as unknown as {
     nombre: string; rut: string | null; telefono: string | null;
@@ -186,19 +187,17 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
           </p>
         )}
 
-        {profesional?.titulo_profesional && (
-          <div className="mt-6 rounded border border-neutral-300 px-3 py-2 text-xs text-neutral-600 print:mt-10">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Timbre profesional</p>
-            <p className="mt-0.5 font-semibold text-neutral-800">{profesional.nombre}</p>
-            <p>{profesional.titulo_profesional}</p>
-            {profesional.rut && <p>RUT: {formatearRut(profesional.rut)}</p>}
-            {profesional.registro_profesional && <p>Registro N.° {profesional.registro_profesional}</p>}
-          </div>
-        )}
-
-        <div className="mt-8 grid grid-cols-2 gap-8 text-center text-xs text-neutral-500 print:mt-14">
+        <div className="mt-10 grid grid-cols-2 gap-8 text-center text-xs text-neutral-500 print:mt-16">
           <p className="border-t border-neutral-300 pt-1">Recibí conforme (cliente)</p>
-          <p className="border-t border-neutral-300 pt-1">Responsable óptica</p>
+          <p className="border-t border-neutral-300 pt-1">
+            Responsable óptica
+            {vendedorNombre && (
+              <>
+                <br />
+                {vendedorNombre}
+              </>
+            )}
+          </p>
         </div>
       </div>
     </div>
