@@ -5,6 +5,7 @@ import { actualizarFichaClinica, crearReceta } from "@/lib/actions/pacientes";
 import { formatearRut } from "@/lib/rut";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
 import EliminarPaciente from "../eliminar-paciente";
+import EditarPaciente from "../editar-paciente";
 
 function fmtDioptria(v: number | null): string {
   if (v === null) return "—";
@@ -91,6 +92,17 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
           ))}
         </div>
       )}
+
+      <EditarPaciente
+        paciente={{
+          id: paciente.id,
+          nombre: paciente.nombre,
+          rut: paciente.rut,
+          telefono: paciente.telefono,
+          email: paciente.email,
+          fecha_nacimiento: paciente.fecha_nacimiento,
+        }}
+      />
 
       <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
         <summary className="cursor-pointer font-semibold text-brand-dark">

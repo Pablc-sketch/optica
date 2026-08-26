@@ -83,6 +83,31 @@ export async function eliminarPaciente(formData: FormData) {
   return { ok: true as const };
 }
 
+export async function actualizarPaciente(formData: FormData) {
+  const { supabase } = await tenantDelUsuario();
+  const pacienteId = String(formData.get("paciente_id"));
+
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  if (!nombre) return { ok: false as const, error: "El nombre es obligatorio." };
+
+  const { error } = await supabase
+    .from("pacientes")
+    .update({
+      nombre,
+      rut: formatearRut(String(formData.get("rut") ?? "")) || null,
+      telefono: formatearTelefono(String(formData.get("telefono") ?? "")) || null,
+      email: String(formData.get("email") ?? "").trim() || null,
+      fecha_nacimiento: fechaCortaAISO(String(formData.get("fecha_nacimiento") ?? "")),
+    })
+    .eq("id", pacienteId);
+
+  if (error) return { ok: false as const, error: "No se pudieron guardar los datos." };
+
+  revalidatePath(`/pacientes/${pacienteId}`);
+  revalidatePath("/pacientes");
+  return { ok: true as const };
+}
+
 export async function actualizarFichaClinica(formData: FormData) {
   const { supabase } = await tenantDelUsuario();
   const pacienteId = String(formData.get("paciente_id"));

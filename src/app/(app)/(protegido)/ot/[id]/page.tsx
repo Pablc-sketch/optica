@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
+import EliminarOT from "../eliminar-ot";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
 import { diaEnChile, fechaLegible } from "@/lib/fechas";
@@ -81,7 +82,10 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div className="flex items-center justify-between print:hidden">
         <h1 className="text-xl font-bold">Orden de trabajo #{ot.folio}</h1>
-        <BotonImprimir />
+        <div className="flex items-center gap-2">
+          <BotonImprimir />
+          <EliminarOT otId={ot.id} folio={ot.folio} irALista />
+        </div>
       </div>
 
       <div className="rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">

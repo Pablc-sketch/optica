@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { avanzarOT } from "@/lib/actions/ot";
+import EliminarOT from "./eliminar-ot";
 import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { diaEnChile, fechaLegible } from "@/lib/fechas";
@@ -95,7 +96,7 @@ export default async function TableroOT() {
                       : null;
                   return (
                     <article key={ot.id} className="rounded-xl bg-white p-3 shadow-sm">
-                      <div className="mb-1 flex items-center justify-between">
+                      <div className="mb-1 flex items-center justify-between gap-1">
                         <Link href={`/ot/${ot.id}`} className="text-xs font-bold text-brand-dark hover:underline">
                           #{ot.folio} 🖨
                         </Link>
@@ -105,6 +106,7 @@ export default async function TableroOT() {
                             {atrasada ? " ⚠" : ""}
                           </span>
                         )}
+                        <EliminarOT otId={ot.id} folio={ot.folio} compacto />
                       </div>
                       <p className="truncate text-sm font-medium">{paciente?.nombre ?? "—"}</p>
                       <p className="truncate text-xs text-tinta-suave">
