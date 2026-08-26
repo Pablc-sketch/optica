@@ -222,3 +222,70 @@ export async function registrarAbono(formData: FormData) {
   revalidatePath("/reportes");
   revalidatePath("/");
 }
+
+// A diferencia de eliminarOT (que exige que no haya pagos), anular sí se
+// permite con pagos ya registrados: el caso real es "esta venta no debió
+// existir" (prueba, cliente equivocado, monto mal cobrado), no "todavía no
+// se cobró". No se borra — queda marcada "anulada" y sale de los reportes,
+// pero el comprobante original sigue existiendo como registro de lo que
+// pasó. Se revierte el stock que había salido y se cancela la OT ligada
+// (si no se había entregado ya).
+export async function anularVenta(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
+  if (!perfil) throw new Error("Perfil no encontrado");
+  const tenantId = perfil.tenant_id as string;
+
+  const ventaId = String(formData.get("venta_id"));
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+
+  const { data: venta } = await supabase.from("ventas").select("id, anulada").eq("id", ventaId).single();
+  if (!venta) return { ok: false as const, error: "Venta no encontrada." };
+  if (venta.anulada) return { ok: true as const };
+
+  const { data: movimientos } = await supabase
+    .from("movimientos_inventario")
+    .select("producto_id, sucursal_id, cantidad, tipo")
+    .eq("referencia", `venta:${ventaId}`);
+  for (const m of movimientos ?? []) {
+    if (m.tipo !== "salida") continue;
+    const { error: devError } = await supabase.from("movimientos_inventario").insert({
+      tenant_id: tenantId,
+      producto_id: m.producto_id,
+      sucursal_id: m.sucursal_id,
+      tipo: "entrada",
+      cantidad: m.cantidad,
+      referencia: `anulacion_venta:${ventaId}`,
+    });
+    if (devError) throw devError;
+  }
+
+  const { data: items } = await supabase.from("venta_items").select("ot_id").eq("venta_id", ventaId);
+  const otIds = [...new Set((items ?? []).map((i) => i.ot_id).filter((id): id is string => Boolean(id)))];
+  if (otIds.length > 0) {
+    const { error: otError } = await supabase
+      .from("ordenes_trabajo")
+      .update({ estado: "cancelado" })
+      .in("id", otIds)
+      .neq("estado", "entregado");
+    if (otError) throw otError;
+  }
+
+  const { error: ventaError } = await supabase
+    .from("ventas")
+    .update({ anulada: true, anulada_motivo: motivo })
+    .eq("id", ventaId);
+  if (ventaError) throw ventaError;
+
+  revalidatePath("/ventas");
+  revalidatePath("/ot");
+  revalidatePath("/reportes");
+  revalidatePath("/laboratorio");
+  revalidatePath("/operativos");
+  revalidatePath("/");
+  return { ok: true as const };
+}

@@ -77,6 +77,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
          venta_items (cantidad, precio_unitario, descuento, descripcion, ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento))`
       )
       .eq("operativo_id", id)
+      .eq("anulada", false)
       .order("fecha", { ascending: false }),
   ]);
 

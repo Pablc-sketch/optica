@@ -18,7 +18,7 @@ export default async function Dashboard() {
   // toISOString() de un Date recién creado dejaba fuera todo lo vendido en
   // la tarde (pasadas las 20:00 en Santiago ya contaba como "mañana").
   const [ventasHoy, otsPendientes, inventario, proximoOperativo] = await Promise.all([
-    supabase.from("ventas").select("total, estado_pago").gte("fecha", inicioDelDia(hoy)),
+    supabase.from("ventas").select("total, estado_pago").eq("anulada", false).gte("fecha", inicioDelDia(hoy)),
     supabase
       .from("ordenes_trabajo")
       .select("id, folio, estado, fecha_entrega_estimada, pacientes:paciente_id (nombre)")

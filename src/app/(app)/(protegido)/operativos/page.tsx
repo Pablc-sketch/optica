@@ -61,7 +61,7 @@ export default async function OperativosPage() {
       )
       .order("fecha", { ascending: false }),
     supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
-    supabase.from("ventas").select("operativo_id, total").not("operativo_id", "is", null),
+    supabase.from("ventas").select("operativo_id, total").eq("anulada", false).not("operativo_id", "is", null),
   ]);
 
   // Un vistazo de cómo le fue a cada operativo sin tener que entrar: cuántos

@@ -33,6 +33,7 @@ export default async function BoletaPage() {
   const { data: ventas } = await supabase
     .from("ventas")
     .select("id, fecha, total, pacientes:paciente_id (nombre, rut)")
+    .eq("anulada", false)
     .order("fecha", { ascending: false })
     .limit(10);
 

@@ -6,6 +6,7 @@ import { formatearTelefono } from "@/lib/formato";
 import { diaEnChile, fechaLegible } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 import CopiarParaSII from "@/components/copiar-para-sii";
+import AnularVenta from "../../anular-venta";
 
 // Comprobante de venta imprimible (uso interno / respaldo para el cliente).
 // NOTA: no es boleta electrónica del SII — esa se emite vía un proveedor
@@ -20,7 +21,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
     supabase
       .from("ventas")
       .select(
-        `id, fecha, total, estado_pago,
+        `id, fecha, total, estado_pago, anulada, anulada_motivo,
          pacientes:paciente_id (nombre, rut),
          venta_items (descripcion, cantidad, precio_unitario, descuento, ordenes_trabajo:ot_id (folio)),
          pagos_abonos (monto, medio_pago, fecha)`
@@ -76,10 +77,22 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         <div className="flex flex-wrap items-center gap-2">
           <CopiarParaSII texto={textoSII} />
           <BotonImprimir />
+          {!venta.anulada && <AnularVenta ventaId={venta.id} />}
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
+      {venta.anulada && (
+        <p className="rounded-2xl bg-neutral-200 p-4 text-center text-sm font-semibold text-neutral-700 print:hidden">
+          Esta venta está ANULADA{venta.anulada_motivo ? ` — ${venta.anulada_motivo}` : ""}.
+        </p>
+      )}
+
+      <div className="relative rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
+        {venta.anulada && (
+          <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-6xl font-black text-neutral-300/60 select-none">
+            ANULADA
+          </p>
+        )}
         <div className="mb-4 flex items-center gap-3 border-b border-neutral-300 pb-3">
           {optica?.logo_url && (
             // eslint-disable-next-line @next/next/no-img-element

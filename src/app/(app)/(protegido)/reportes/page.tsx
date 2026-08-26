@@ -65,6 +65,7 @@ export default async function ReportesPage({
   let ventasQuery = supabase
     .from("ventas")
     .select("id, total, estado_pago, vendedor_id, users:vendedor_id (nombre)")
+    .eq("anulada", false)
     .gte("fecha", inicioDelDia(desde))
     .lte("fecha", finDelDia(hasta));
   let itemsQuery = supabase
@@ -73,15 +74,19 @@ export default async function ReportesPage({
       `cantidad, precio_unitario, descuento,
        productos:producto_id (costo),
        ordenes_trabajo:ot_id (costo_laboratorio, tipo_lente, tratamiento),
-       ventas!inner (fecha, operativo_id)`
+       ventas!inner (fecha, operativo_id, anulada)`
     )
+    .eq("ventas.anulada", false)
     .gte("ventas.fecha", inicioDelDia(desde))
     .lte("ventas.fecha", finDelDia(hasta));
   // pagos_abonos no tiene operativo propio (se paga contra una venta, no
-  // contra un operativo); el filtro solo se aplica a lo vendido.
+  // contra un operativo); el filtro solo se aplica a lo vendido. Se junta
+  // con ventas para excluir pagos de ventas que después se anularon — si
+  // no, "Cobrado" seguiría contando plata de una venta que ya no cuenta.
   const pagosQuery = supabase
     .from("pagos_abonos")
-    .select("monto")
+    .select("monto, ventas!inner (anulada)")
+    .eq("ventas.anulada", false)
     .gte("fecha", inicioDelDia(desde))
     .lte("fecha", finDelDia(hasta));
 
