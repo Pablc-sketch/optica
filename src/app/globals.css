@@ -15,3 +15,23 @@ body {
   background: var(--color-crema);
   color: var(--color-tinta);
 }
+
+/* Toda la app usa <button> y <Link> para sus acciones (ver componentes en
+   src/components y las páginas bajo src/app): en vez de agregar la misma
+   clase de transición a cada uno, se pone una vez acá — cambio de color y
+   un pequeño "hundido" al hacer click, para que se sienta más receptivo. */
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  a {
+    transition:
+      color 150ms ease,
+      background-color 150ms ease,
+      border-color 150ms ease,
+      opacity 150ms ease,
+      transform 100ms ease;
+  }
+
+  button:not(:disabled):active {
+    transform: scale(0.97);
+  }
+}
