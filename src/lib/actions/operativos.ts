@@ -67,3 +67,43 @@ export async function cambiarEstadoOperativo(formData: FormData) {
 
   revalidatePath("/operativos");
 }
+
+function parsearMonto(valor: FormDataEntryValue | null): number {
+  const n = Math.round(Number(String(valor ?? "").replace(/\./g, "")));
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+// Vacío = sin meta (no se muestra barra de progreso), a diferencia de los
+// costos donde vacío es 0.
+function parsearMetaOpcional(valor: FormDataEntryValue | null): number | null {
+  const texto = String(valor ?? "").replace(/\./g, "").trim();
+  if (!texto) return null;
+  const n = Math.round(Number(texto));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// Costos reales del operativo (para ver utilidad neta) y metas del día
+// (examenes/monto, opcionales) — se editan juntos desde el detalle porque
+// ambos son "planificación" del operativo, no algo que se cargue al crear.
+export async function actualizarDetallesOperativo(formData: FormData) {
+  const { supabase } = await requerirAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const { error } = await supabase
+    .from("operativos")
+    .update({
+      costo_transporte: parsearMonto(formData.get("costo_transporte")),
+      costo_arriendo: parsearMonto(formData.get("costo_arriendo")),
+      costo_viaticos: parsearMonto(formData.get("costo_viaticos")),
+      costo_otros: parsearMonto(formData.get("costo_otros")),
+      meta_examenes: parsearMetaOpcional(formData.get("meta_examenes")),
+      meta_ventas: parsearMetaOpcional(formData.get("meta_ventas")),
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  revalidatePath(`/operativos/${id}`);
+  revalidatePath("/operativos");
+  revalidatePath("/operativos/comparar");
+}

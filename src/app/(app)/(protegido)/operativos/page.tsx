@@ -56,7 +56,9 @@ export default async function OperativosPage() {
   const [{ data: operativos }, { data: recetas }, { data: ventas }] = await Promise.all([
     supabase
       .from("operativos")
-      .select("id, nombre, tipo_venue, fecha, direccion, contacto_nombre, contacto_telefono, estado, notas")
+      .select(
+        "id, nombre, tipo_venue, fecha, direccion, contacto_nombre, contacto_telefono, estado, notas, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
+      )
       .order("fecha", { ascending: false }),
     supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
     supabase.from("ventas").select("operativo_id, total").not("operativo_id", "is", null),
@@ -87,13 +89,26 @@ export default async function OperativosPage() {
   const proximo = planificados.find((o) => o.fecha >= hoy) ?? planificados[0];
   const totalExaminados = [...examenesPorOperativo.values()].reduce((s, n) => s + n, 0);
   const totalVendido = [...ventasPorOperativo.values()].reduce((s, v) => s + v.total, 0);
+  const totalCostos = lista.reduce(
+    (s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros,
+    0
+  );
+  const utilidadNeta = totalVendido - totalCostos;
 
   const input =
     "rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand";
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-bold">Operativos</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-bold">Operativos</h1>
+        <Link
+          href="/operativos/comparar"
+          className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+        >
+          📊 Comparar operativos
+        </Link>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Tarjeta titulo="Operativos" valor={String(lista.length)} detalle={`${planificados.length} planificado${planificados.length === 1 ? "" : "s"}`} />
@@ -104,6 +119,8 @@ export default async function OperativosPage() {
         />
         <Tarjeta titulo="Examinados en total" valor={String(totalExaminados)} />
         <Tarjeta titulo="Vendido en total" valor={clp(totalVendido)} />
+        <Tarjeta titulo="Costos en total" valor={clp(totalCostos)} />
+        <Tarjeta titulo="Utilidad neta" valor={clp(utilidadNeta)} />
       </div>
 
       <section className="flex flex-col gap-3">

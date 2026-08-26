@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { actualizarDetallesOperativo } from "@/lib/actions/operativos";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
+import { CampoMonto } from "@/components/campos";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
 // vendió y cuándo se le entrega — para que al ofrecer el próximo operativo
@@ -20,6 +22,28 @@ type OtRel =
 
 function uno<T>(rel: T | T[] | null): T | null {
   return Array.isArray(rel) ? (rel[0] ?? null) : rel;
+}
+
+function BarraProgreso({ titulo, actual, meta, formatear }: { titulo: string; actual: number; meta: number; formatear: (n: number) => string }) {
+  const pct = Math.min(100, Math.round((actual / meta) * 100));
+  const cumplida = actual >= meta;
+  return (
+    <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+      <div className="flex items-center justify-between text-sm text-sky-800">
+        <span>{titulo}</span>
+        <span className="font-semibold">
+          {formatear(actual)} / {formatear(meta)}
+        </span>
+      </div>
+      <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-sky-100">
+        <div
+          className={`h-full rounded-full transition-all ${cumplida ? "bg-green-500" : "bg-sky-600"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="mt-1 text-xs text-sky-700">{cumplida ? "¡Meta cumplida! 🎉" : `${pct}% de la meta`}</p>
+    </div>
+  );
 }
 
 const ESTADOS: Record<string, string> = {
@@ -69,6 +93,38 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     0
   );
 
+  const totalCostos =
+    operativo.costo_transporte + operativo.costo_arriendo + operativo.costo_viaticos + operativo.costo_otros;
+  const utilidadNeta = totalVendido - totalCostos;
+
+  // Próximas entregas: de las ventas de este operativo, las que tienen una
+  // OT con fecha estimada, para que el resumen de cierre avise qué falta
+  // entregar sin tener que ir a buscarlo a /ot.
+  const entregas = ventas
+    .flatMap((v) => {
+      const paciente = uno(v.pacientes as unknown as PacienteRel);
+      return (v.venta_items ?? [])
+        .map((it) => uno(it.ordenes_trabajo as unknown as OtRel))
+        .filter((ot): ot is NonNullable<typeof ot> => Boolean(ot?.fecha_entrega_estimada))
+        .map((ot) => ({ paciente: paciente?.nombre ?? "Sin paciente", fecha: ot.fecha_entrega_estimada as string }));
+    })
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  const textoResumen = [
+    `📋 Resumen operativo: ${operativo.nombre}`,
+    `📅 ${fechaLegible(operativo.fecha)}${operativo.direccion ? ` · ${operativo.direccion}` : ""}`,
+    "",
+    `👥 Examinados: ${recetas.length}`,
+    `🛒 Compraron: ${ventas.length}`,
+    `💰 Vendido: ${clp(totalVendido)}`,
+    ...(operativo.meta_examenes ? [`🎯 Meta exámenes: ${recetas.length}/${operativo.meta_examenes}`] : []),
+    ...(operativo.meta_ventas ? [`🎯 Meta ventas: ${clp(totalVendido)}/${clp(operativo.meta_ventas)}`] : []),
+    ...(entregas.length > 0
+      ? ["", "📦 Próximas entregas:", ...entregas.map((e) => `• ${e.paciente}: ${fechaLegible(e.fecha)}`)]
+      : []),
+  ].join("\n");
+  const linkWsp = `https://wa.me/?text=${encodeURIComponent(textoResumen)}`;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -87,17 +143,27 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               .join(" · ")}
           </p>
         </div>
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            operativo.estado === "planificado"
-              ? "bg-sky-100 text-sky-800"
-              : operativo.estado === "realizado"
-                ? "bg-green-100 text-green-800"
-                : "bg-neutral-200 text-neutral-600"
-          }`}
-        >
-          {ESTADOS[operativo.estado] ?? operativo.estado}
-        </span>
+        <div className="flex items-center gap-2">
+          <a
+            href={linkWsp}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700"
+          >
+            💬 Compartir resumen
+          </a>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              operativo.estado === "planificado"
+                ? "bg-sky-100 text-sky-800"
+                : operativo.estado === "realizado"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-neutral-200 text-neutral-600"
+            }`}
+          >
+            {ESTADOS[operativo.estado] ?? operativo.estado}
+          </span>
+        </div>
       </div>
 
       {operativo.notas && (
@@ -121,7 +187,75 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           <p className="text-sm text-sky-800">Descuentos</p>
           <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalDescuentos)}</p>
         </div>
+        <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+          <p className="text-sm text-sky-800">Costos del operativo</p>
+          <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalCostos)}</p>
+        </div>
+        <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+          <p className="text-sm text-sky-800">Utilidad neta</p>
+          <p className={`mt-1 text-2xl font-bold ${utilidadNeta >= 0 ? "text-green-700" : "text-red-700"}`}>
+            {clp(utilidadNeta)}
+          </p>
+        </div>
       </div>
+
+      {(operativo.meta_examenes || operativo.meta_ventas) && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {operativo.meta_examenes && (
+            <BarraProgreso
+              titulo="Meta de exámenes"
+              actual={recetas.length}
+              meta={operativo.meta_examenes}
+              formatear={(n) => String(n)}
+            />
+          )}
+          {operativo.meta_ventas && (
+            <BarraProgreso titulo="Meta de ventas" actual={totalVendido} meta={operativo.meta_ventas} formatear={clp} />
+          )}
+        </div>
+      )}
+
+      <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
+        <summary className="cursor-pointer font-semibold text-sky-800">💰 Costos y metas del operativo</summary>
+        <form action={actualizarDetallesOperativo} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input type="hidden" name="id" value={operativo.id} />
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Transporte
+            <CampoMonto name="costo_transporte" defaultValue={operativo.costo_transporte} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Arriendo del espacio
+            <CampoMonto name="costo_arriendo" defaultValue={operativo.costo_arriendo} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Viáticos
+            <CampoMonto name="costo_viaticos" defaultValue={operativo.costo_viaticos} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Otros costos
+            <CampoMonto name="costo_otros" defaultValue={operativo.costo_otros} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Meta de exámenes (opcional)
+            <input
+              name="meta_examenes"
+              inputMode="numeric"
+              defaultValue={operativo.meta_examenes ?? ""}
+              placeholder="30"
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Meta de ventas (opcional)
+            <CampoMonto name="meta_ventas" defaultValue={operativo.meta_ventas} placeholder="500000" />
+          </label>
+          <div className="sm:col-span-2">
+            <button className="rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white transition hover:bg-sky-800">
+              Guardar
+            </button>
+          </div>
+        </form>
+      </details>
 
       <section>
         <h2 className="mb-2 font-semibold">Ventas y entregas</h2>
