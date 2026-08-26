@@ -89,7 +89,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             ) : (
               <Image src="/logo.svg" alt="" width={36} height={36} className="rounded-xl" />
             )}
-            <span className="font-bold leading-tight">{nombreOptica}</span>
+            <span className="leading-tight">
+              <span className="block font-bold">{nombreOptica}</span>
+              <span className="block text-[10px] font-medium uppercase tracking-wide text-tinta-suave">
+                Lentia
+              </span>
+            </span>
           </Link>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <EstadoSync />
