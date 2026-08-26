@@ -8,8 +8,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Óptica — Gestión",
-  description: "Gestión de ópticas: pacientes, recetas, órdenes de trabajo y ventas",
+  title: "Lentia — Gestión de ópticas",
+  description: "Lentia: gestión de ópticas — pacientes, recetas, órdenes de trabajo y ventas",
   icons: { icon: "/logo.svg" },
 };
 

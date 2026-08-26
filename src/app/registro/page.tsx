@@ -86,7 +86,7 @@ export default function RegistroPage() {
         <div className="mb-6 flex flex-col items-center gap-3">
           <Image src="/logo.svg" alt="" width={72} height={72} className="rounded-3xl shadow-sm" priority />
           <div className="text-center">
-            <h1 className="text-2xl font-bold">Registra tu óptica</h1>
+            <h1 className="text-2xl font-bold">Registra tu óptica en Lentia</h1>
             <p className="text-sm text-tinta-suave">30 días de prueba, sin tarjeta.</p>
           </div>
         </div>

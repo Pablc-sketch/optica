@@ -40,7 +40,7 @@ export default function LoginPage() {
         <div className="mb-8 flex flex-col items-center gap-4">
           <Image src="/logo.svg" alt="Logo" width={88} height={88} className="rounded-3xl shadow-sm" priority />
           <div className="text-center">
-            <h1 className="text-2xl font-bold">Gestión Óptica</h1>
+            <h1 className="text-2xl font-bold">Lentia</h1>
             <p className="text-sm text-tinta-suave">Ingresa con tu cuenta</p>
           </div>
         </div>
