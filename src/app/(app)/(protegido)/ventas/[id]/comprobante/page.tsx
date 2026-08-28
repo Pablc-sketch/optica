@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
@@ -77,6 +78,14 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         <div className="flex flex-wrap items-center gap-2">
           <CopiarParaSII texto={textoSII} />
           <BotonImprimir />
+          {!venta.anulada && (
+            <Link
+              href={`/ventas/${venta.id}`}
+              className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-sm font-medium text-tinta-suave transition hover:bg-crema"
+            >
+              ✎ Editar
+            </Link>
+          )}
           {!venta.anulada && <AnularVenta ventaId={venta.id} />}
         </div>
       </div>

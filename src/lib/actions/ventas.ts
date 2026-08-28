@@ -289,3 +289,93 @@ export async function anularVenta(formData: FormData) {
   revalidatePath("/");
   return { ok: true as const };
 }
+
+// Corregir un error sin tener que anular y rehacer la venta entera:
+// cantidad, precio y descuento de cada ítem se pueden ajustar acá. No se
+// cambia qué producto/OT lleva cada ítem (eso sí implica anular y rehacer),
+// solo los números. El total de la venta se recalcula solo, y el stock del
+// marco se ajusta por la diferencia si la cantidad cambió.
+export async function actualizarVenta(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
+  if (!perfil) throw new Error("Perfil no encontrado");
+  const tenantId = perfil.tenant_id as string;
+
+  const ventaId = String(formData.get("venta_id"));
+  const { data: venta } = await supabase.from("ventas").select("id, anulada").eq("id", ventaId).single();
+  if (!venta) return { ok: false as const, error: "Venta no encontrada." };
+  if (venta.anulada) return { ok: false as const, error: "Esta venta está anulada, no se puede editar." };
+
+  const { data: itemsActuales } = await supabase
+    .from("venta_items")
+    .select("id, producto_id, cantidad, precio_unitario, descuento")
+    .eq("venta_id", ventaId);
+  if (!itemsActuales || itemsActuales.length === 0) {
+    return { ok: false as const, error: "No se encontraron los ítems de la venta." };
+  }
+
+  const numero = (v: FormDataEntryValue | null, actual: number) => {
+    if (v === null) return actual;
+    const n = Math.round(Number(String(v).replace(/\./g, "")));
+    return Number.isFinite(n) && n >= 0 ? n : actual;
+  };
+
+  let nuevoTotal = 0;
+  for (const item of itemsActuales) {
+    const cantidad = Math.max(1, numero(formData.get(`cantidad_${item.id}`), item.cantidad));
+    const precio = numero(formData.get(`precio_${item.id}`), item.precio_unitario);
+    const descuento = numero(formData.get(`descuento_${item.id}`), item.descuento);
+
+    if (cantidad !== item.cantidad || precio !== item.precio_unitario || descuento !== item.descuento) {
+      const { error } = await supabase
+        .from("venta_items")
+        .update({ cantidad, precio_unitario: precio, descuento })
+        .eq("id", item.id);
+      if (error) throw error;
+    }
+
+    if (item.producto_id && cantidad !== item.cantidad) {
+      const delta = cantidad - item.cantidad;
+      const { data: mov } = await supabase
+        .from("movimientos_inventario")
+        .select("sucursal_id")
+        .eq("referencia", `venta:${ventaId}`)
+        .eq("producto_id", item.producto_id)
+        .limit(1)
+        .maybeSingle();
+      if (mov?.sucursal_id) {
+        const { error: movError } = await supabase.from("movimientos_inventario").insert({
+          tenant_id: tenantId,
+          producto_id: item.producto_id,
+          sucursal_id: mov.sucursal_id,
+          tipo: delta > 0 ? "salida" : "entrada",
+          cantidad: Math.abs(delta),
+          referencia: `edicion_venta:${ventaId}`,
+        });
+        if (movError) throw movError;
+      }
+    }
+
+    nuevoTotal += cantidad * precio - descuento;
+  }
+
+  const { data: pagos } = await supabase.from("pagos_abonos").select("monto").eq("venta_id", ventaId);
+  const abonado = (pagos ?? []).reduce((s, p) => s + p.monto, 0);
+  const estado = abonado >= nuevoTotal ? "pagada" : abonado > 0 ? "abono_parcial" : "pendiente";
+
+  const { error: totalError } = await supabase
+    .from("ventas")
+    .update({ total: Math.max(0, nuevoTotal), estado_pago: estado })
+    .eq("id", ventaId);
+  if (totalError) throw totalError;
+
+  revalidatePath("/ventas");
+  revalidatePath(`/ventas/${ventaId}`);
+  revalidatePath("/reportes");
+  revalidatePath("/");
+  return { ok: true as const };
+}

@@ -110,6 +110,14 @@ export default async function VentasPage() {
                     >
                       🖨 Comprobante
                     </Link>
+                    {!v.anulada && (
+                      <Link
+                        href={`/ventas/${v.id}`}
+                        className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-tinta-suave transition hover:bg-white"
+                      >
+                        ✎ Editar
+                      </Link>
+                    )}
                     {!v.anulada && <AnularVenta ventaId={v.id} compacto />}
                   </div>
                   {v.anulada && v.anulada_motivo && (
