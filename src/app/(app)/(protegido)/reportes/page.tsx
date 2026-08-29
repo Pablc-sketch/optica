@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import BotonImprimir from "@/components/boton-imprimir";
+import Tarjeta from "@/components/tarjeta";
 import { fechaLegible, finDelDia, hoyEnChile, inicioDelDia } from "@/lib/fechas";
 
 // Reportes (spec pantalla 10). Acá recién sirven los costos que quedaron
@@ -30,25 +31,6 @@ function uno<T>(rel: T | T[] | null): T | null {
   return rel;
 }
 
-function Tarjeta({
-  titulo,
-  valor,
-  detalle,
-  acento,
-}: {
-  titulo: string;
-  valor: string;
-  detalle?: string;
-  acento?: boolean;
-}) {
-  return (
-    <div className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-      <p className="text-sm text-tinta-suave">{titulo}</p>
-      <p className={`mt-1 text-2xl font-bold ${acento ? "text-brand-dark" : ""}`}>{valor}</p>
-      {detalle && <p className="text-xs text-tinta-suave">{detalle}</p>}
-    </div>
-  );
-}
 
 export default async function ReportesPage({
   searchParams,
@@ -200,18 +182,18 @@ export default async function ReportesPage({
       </p>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tarjeta titulo="Vendido" valor={clp(totalVendido)} detalle={`${numVentas} venta${numVentas === 1 ? "" : "s"}`} />
-        <Tarjeta titulo="Ticket promedio" valor={clp(ticketPromedio)} />
-        <Tarjeta titulo="Cobrado en el período" valor={clp(totalAbonado)} />
-        <Tarjeta titulo="Por cobrar" valor={clp(porCobrar)} acento={porCobrar > 0} />
+        <Tarjeta icono="💰" titulo="Vendido" valor={clp(totalVendido)} detalle={`${numVentas} venta${numVentas === 1 ? "" : "s"}`} />
+        <Tarjeta icono="🎟" titulo="Ticket promedio" valor={clp(ticketPromedio)} />
+        <Tarjeta icono="✅" titulo="Cobrado en el período" valor={clp(totalAbonado)} />
+        <Tarjeta icono="⏳" titulo="Por cobrar" valor={clp(porCobrar)} acento={porCobrar > 0} />
       </div>
 
       <section>
         <h2 className="mb-2 font-semibold">Utilidad estimada</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          <Tarjeta titulo="Costo directo" valor={clp(costoDirecto)} detalle="armazones + laboratorio" />
-          <Tarjeta titulo="Utilidad bruta" valor={clp(utilidadBruta)} acento />
-          <Tarjeta titulo="Margen" valor={`${margen}%`} detalle="sobre lo vendido" />
+          <Tarjeta icono="📦" titulo="Costo directo" valor={clp(costoDirecto)} detalle="armazones + laboratorio" />
+          <Tarjeta icono="📈" titulo="Utilidad bruta" valor={clp(utilidadBruta)} acento />
+          <Tarjeta icono="🎯" titulo="Margen" valor={`${margen}%`} detalle="sobre lo vendido" />
         </div>
         <p className="mt-2 text-xs text-tinta-suave">
           No incluye arriendo, sueldos ni otros gastos fijos: es el margen que deja la mercadería

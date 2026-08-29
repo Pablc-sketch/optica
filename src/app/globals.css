@@ -1,9 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  /* Paleta del logo: terracota sobre crema */
+  /* Paleta del logo: terracota sobre crema, con un acento complementario
+     (verde azulado) para que las tarjetas de números no sean todas del
+     mismo color — se usa en detalles chicos, no reemplaza al terracota
+     como color principal de marca. */
   --color-brand: #d97756;
   --color-brand-dark: #b85c3e;
+  --color-brand-light: #f3ac8c;
+  --color-accent: #2f9e94;
+  --color-accent-dark: #227870;
   --color-crema: #f0eee6;
   --color-crema-claro: #fbf9f4;
   --color-tinta: #3d3929;

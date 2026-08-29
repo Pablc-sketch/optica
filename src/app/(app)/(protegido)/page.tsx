@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
+import Tarjeta from "@/components/tarjeta";
 import { fechaLegible, hoyEnChile, inicioDelDia } from "@/lib/fechas";
 
 const ESTADOS_OT: Record<string, string> = {
@@ -49,29 +50,31 @@ export default async function Dashboard() {
       <h1 className="text-xl font-bold">Hoy</h1>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-          <p className="text-sm text-tinta-suave">Ventas del día</p>
-          <p className="mt-1 text-2xl font-bold">{clp(totalHoy)}</p>
-          <p className="text-xs text-tinta-suave">{numVentasHoy} venta{numVentasHoy === 1 ? "" : "s"}</p>
-        </div>
-        <div className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-          <p className="text-sm text-tinta-suave">Entregas de hoy</p>
-          <p className={`mt-1 text-2xl font-bold ${entregasHoy.length > 0 ? "text-brand-dark" : ""}`}>
+        <Tarjeta
+          icono="💰"
+          titulo="Ventas del día"
+          valor={clp(totalHoy)}
+          detalle={`${numVentasHoy} venta${numVentasHoy === 1 ? "" : "s"}`}
+        />
+        <div className="relative overflow-hidden rounded-3xl bg-white p-4 shadow-[0_2px_10px_-3px_rgba(61,57,41,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(61,57,41,0.22)]">
+          <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-brand to-accent" />
+          <p className="flex items-center gap-1.5 text-sm text-tinta-suave">📦 Entregas de hoy</p>
+          <p className={`mt-1 text-2xl font-bold ${entregasHoy.length > 0 ? "text-brand-dark" : "text-tinta"}`}>
             {entregasHoy.length}
           </p>
           <Link href="/ot" className="text-xs font-medium text-brand hover:underline">
             Ver tablero →
           </Link>
         </div>
-        <div className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-          <p className="text-sm text-tinta-suave">Stock crítico</p>
-          <p className={`mt-1 text-2xl font-bold ${stockCritico.length > 0 ? "text-brand-dark" : ""}`}>
-            {stockCritico.length}
-          </p>
-          <p className="text-xs text-tinta-suave">productos en o bajo mínimo</p>
-        </div>
-        <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
-          <p className="text-sm text-sky-800">Próximo operativo</p>
+        <Tarjeta
+          icono="🔍"
+          titulo="Stock crítico"
+          valor={String(stockCritico.length)}
+          detalle="productos en o bajo mínimo"
+          acento={stockCritico.length > 0}
+        />
+        <div className="relative overflow-hidden rounded-3xl bg-sky-50 p-4 shadow-[0_2px_10px_-3px_rgba(3,105,161,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(3,105,161,0.22)]">
+          <p className="text-sm text-sky-800">📅 Próximo operativo</p>
           {proximo ? (
             <>
               <p className="mt-1 truncate text-lg font-bold text-sky-950">{proximo.nombre}</p>

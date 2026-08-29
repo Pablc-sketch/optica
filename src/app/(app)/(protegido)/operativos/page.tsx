@@ -24,7 +24,7 @@ const ESTADOS: Record<string, string> = {
 
 function Tarjeta({ titulo, valor, detalle }: { titulo: string; valor: string; detalle?: string }) {
   return (
-    <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+    <div className="rounded-3xl bg-sky-50 p-4 shadow-[0_2px_10px_-3px_rgba(3,105,161,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(3,105,161,0.22)]">
       <p className="text-sm text-sky-800">{titulo}</p>
       <p className="mt-1 text-2xl font-bold text-sky-950">{valor}</p>
       {detalle && <p className="text-xs text-sky-700">{detalle}</p>}

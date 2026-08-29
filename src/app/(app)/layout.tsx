@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { cerrarSesion } from "@/lib/actions/auth";
 import EstadoSync from "@/components/estado-sync";
+import NavLinks from "@/components/nav-links";
 import { diasRestantes, estaVigente, type Suscripcion } from "@/lib/suscripcion";
 
 const NAV = [
@@ -108,17 +109,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </form>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
-          {nav.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-tinta-suave transition hover:bg-crema hover:text-tinta"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <NavLinks nav={nav} />
       </header>
 
       {sesionDesactualizada && (
