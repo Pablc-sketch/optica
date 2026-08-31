@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarPrecioProducto, actualizarCostoCristal, recalcularPreciosPorTipo } from "@/lib/actions/precios";
 import { clp } from "@/lib/clp";
-import { nombreCristal, tratamientoAplica } from "@/lib/cristales";
+import { nombreCristal } from "@/lib/cristales";
 import { CampoMonto } from "@/components/campos";
 
 // Precios de venta de la óptica (armazones y productos), con búsqueda y
@@ -45,12 +45,7 @@ export default async function PreciosPage({
 
   const marcas = [...new Set((todos ?? []).map((p) => p.marca ?? "Sin marca"))].sort();
 
-  // Mismo criterio que el punto de venta: no se editan precios de
-  // combinaciones que no existen como producto (un monofocal con
-  // tratamiento "Multifocal ...").
-  const cristalesReales = (cristales ?? []).filter((c) =>
-    tratamientoAplica(c.tipo_lente, c.tratamiento)
-  );
+  const cristalesReales = cristales ?? [];
   const tiposLente = [...new Set(cristalesReales.map((c) => c.tipo_lente))];
 
   return (

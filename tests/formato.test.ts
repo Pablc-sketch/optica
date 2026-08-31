@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatearRut } from "../src/lib/rut";
 import { formatearMonto, formatearTelefono, montoANumero } from "../src/lib/formato";
-import { nombreCristal, tratamientoAplica } from "../src/lib/cristales";
+import { nombreCristal } from "../src/lib/cristales";
 
 describe("formatearRut", () => {
   it("agrega puntos y guion a un RUT escrito de corrido", () => {
@@ -71,24 +71,7 @@ describe("montos", () => {
   });
 });
 
-describe("tratamientos por tipo de lente", () => {
-  it("deja los tratamientos genéricos en cualquier tipo de lente", () => {
-    expect(tratamientoAplica("Monofocal", "Orgánico Antirreflejo")).toBe(true);
-    expect(tratamientoAplica("Bifocal", "Orgánico Antirreflejo")).toBe(true);
-    expect(tratamientoAplica("Multifocal", "Polarizado Gris Oscuro")).toBe(true);
-  });
-
-  it("no ofrece tratamientos de otro tipo de lente", () => {
-    expect(tratamientoAplica("Monofocal", "Bifocal Antirreflejo")).toBe(false);
-    expect(tratamientoAplica("Monofocal", "Multifocal Filtro Azul")).toBe(false);
-    expect(tratamientoAplica("Bifocal", "Multifocal Antirreflejo")).toBe(false);
-  });
-
-  it("mantiene el tratamiento propio del tipo de lente", () => {
-    expect(tratamientoAplica("Bifocal", "Bifocal Antirreflejo")).toBe(true);
-    expect(tratamientoAplica("Multifocal", "Multifocal Filtro Azul")).toBe(true);
-  });
-
+describe("nombreCristal", () => {
   it("nombra el cristal con su tipo de lente adelante, sin repetirlo", () => {
     expect(nombreCristal("Monofocal", "Orgánico Antirreflejo")).toBe(
       "Monofocal Orgánico Antirreflejo"

@@ -7,7 +7,7 @@ import { encolar, type CambioSync } from "@/lib/offline/outbox";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
-import { nombreCristal, tratamientoAplica } from "@/lib/cristales";
+import { nombreCristal } from "@/lib/cristales";
 import { hoyEnChile, sumarDias } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
@@ -84,16 +84,8 @@ export default function PuntoDeVenta({
     [costos, tipoLente]
   );
   const [rango, setRango] = useState("");
-  // Solo los tratamientos que existen para ese tipo de lente: un monofocal
-  // no puede llevar un tratamiento "Multifocal ...".
   const tratamientos = useMemo(
-    () =>
-      costos.filter(
-        (c) =>
-          c.tipo_lente === tipoLente &&
-          c.rango_receta === rango &&
-          tratamientoAplica(c.tipo_lente, c.tratamiento)
-      ),
+    () => costos.filter((c) => c.tipo_lente === tipoLente && c.rango_receta === rango),
     [costos, tipoLente, rango]
   );
   const [tratamiento, setTratamiento] = useState("");
