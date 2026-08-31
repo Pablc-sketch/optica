@@ -6,6 +6,7 @@ import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { diaEnChile, fechaLegible } from "@/lib/fechas";
 import { CampoMonto } from "@/components/campos";
+import Tarjeta from "@/components/tarjeta";
 
 const COLUMNAS = [
   { estado: "recepcion", titulo: "Recepción", accion: "→ Laboratorio" },
@@ -51,6 +52,14 @@ export default async function TableroOT() {
 
   const porEstado = (estado: string) => (ots ?? []).filter((o) => o.estado === estado);
 
+  // Vistazo del tablero completo: cuántas están atrasadas y cuánto falta
+  // por cobrar en total, sin tener que sumar tarjeta por tarjeta.
+  const totalEnCurso = ots?.length ?? 0;
+  const atrasadas = (ots ?? []).filter(
+    (ot) => ot.fecha_entrega_estimada && new Date(ot.fecha_entrega_estimada + "T23:59:59") < new Date()
+  ).length;
+  const totalPorCobrar = [...ventaPorOT.values()].reduce((s, v) => s + Math.max(0, v.saldo), 0);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -60,6 +69,12 @@ export default async function TableroOT() {
         </Link>
       </div>
 
+      <div className="grid grid-cols-3 gap-3">
+        <Tarjeta icono="📋" titulo="En curso" valor={String(totalEnCurso)} />
+        <Tarjeta icono="⚠" titulo="Atrasadas" valor={String(atrasadas)} acento={atrasadas > 0} />
+        <Tarjeta icono="💰" titulo="Por cobrar" valor={clp(totalPorCobrar)} acento={totalPorCobrar > 0} />
+      </div>
+
       {/* Kanban: columnas con scroll horizontal en móvil/tablet (spec 8.3) */}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {COLUMNAS.map((col) => {
@@ -67,7 +82,7 @@ export default async function TableroOT() {
           return (
             <section
               key={col.estado}
-              className="flex w-64 shrink-0 flex-col gap-2 rounded-2xl bg-crema-claro p-3 shadow-sm"
+              className="flex w-64 shrink-0 flex-col gap-2 rounded-3xl bg-crema-claro p-3 shadow-[0_2px_10px_-3px_rgba(61,57,41,0.12)]"
             >
               <header className="flex items-center justify-between px-1">
                 <h2 className="text-sm font-bold">{col.titulo}</h2>
@@ -96,7 +111,12 @@ export default async function TableroOT() {
                         )}`
                       : null;
                   return (
-                    <article key={ot.id} className="rounded-xl bg-white p-3 shadow-sm">
+                    <article
+                      key={ot.id}
+                      className={`rounded-2xl bg-white p-3 shadow-[0_2px_8px_-3px_rgba(61,57,41,0.15)] transition hover:shadow-[0_6px_18px_-4px_rgba(61,57,41,0.22)] ${
+                        atrasada ? "ring-1 ring-red-200" : ""
+                      }`}
+                    >
                       <div className="mb-1 flex items-center justify-between gap-1">
                         <Link href={`/ot/${ot.id}`} className="text-xs font-bold text-brand-dark hover:underline">
                           #{ot.folio} 🖨
