@@ -123,12 +123,14 @@ export async function construirPdfReceta(datos: DatosRecetaImpresion) {
     y += texto.length * 5 + 4;
   }
 
-  // Espacio en blanco para la firma a mano; debajo, los datos del
-  // profesional a modo de timbre (si los cargó en Configuración).
+  // Recuadro único con los datos del profesional a modo de firma/timbre —
+  // el nombre, título y registro impresos ya cumplen esa función, no hace
+  // falta dejar espacio en blanco arriba como si faltara estampar algo.
   y = Math.max(y + 15, 225);
+  const alturaRecuadro = 24;
   doc.setDrawColor(180, 180, 180);
-  doc.rect(139, y, 56, 22);
-  let yTimbre = y + 27;
+  doc.rect(139, y, 56, alturaRecuadro);
+  let yTimbre = y + 7;
   doc.setFontSize(8);
   if (datos.profesional) {
     doc.setTextColor(60, 60, 60);
@@ -148,7 +150,7 @@ export async function construirPdfReceta(datos: DatosRecetaImpresion) {
     }
   } else {
     doc.setTextColor(120, 120, 120);
-    doc.text("Firma profesional", 167, yTimbre, { align: "center" });
+    doc.text("Firma profesional", 167, y + alturaRecuadro / 2 + 2, { align: "center" });
   }
 
   return doc;

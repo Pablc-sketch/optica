@@ -237,8 +237,9 @@ export default async function RecetaImprimible({
         )}
 
         {/* Contacto (WhatsApp) a la izquierda, firma y timbre del
-            profesional en un solo recuadro a la derecha — los datos del
-            profesional van DENTRO del mismo borde, no debajo. */}
+            profesional en un solo recuadro a la derecha — el nombre, título
+            y registro impresos YA hacen de firma/timbre, no hace falta
+            dejar espacio en blanco arriba como si faltara estampar algo. */}
         <div className="mt-10 flex flex-wrap items-end justify-between gap-4 print:mt-16">
           {optica?.telefono && (
             <a
@@ -255,22 +256,19 @@ export default async function RecetaImprimible({
               {formatearTelefono(optica.telefono)}
             </a>
           )}
-          <div className="ml-auto flex w-64 flex-col items-center gap-1 rounded border border-brand/40 px-3 py-2">
-            <div className="h-16 w-full" />
-            <div className="w-full border-t border-brand/30 pt-1 text-center text-xs text-tinta-suave">
-              {datosPdf.profesional ? (
-                <>
-                  <p className="font-semibold text-tinta">{datosPdf.profesional.nombre}</p>
-                  <p>{datosPdf.profesional.tituloProfesional}</p>
-                  {datosPdf.profesional.rut && <p>RUT: {datosPdf.profesional.rut}</p>}
-                  {datosPdf.profesional.registroProfesional && (
-                    <p>Registro N.° {datosPdf.profesional.registroProfesional}</p>
-                  )}
-                </>
-              ) : (
-                <p className="text-tinta-suave">Firma profesional</p>
-              )}
-            </div>
+          <div className="ml-auto flex w-64 flex-col items-center gap-1 rounded border border-brand/40 px-3 py-3 text-center text-xs text-tinta-suave">
+            {datosPdf.profesional ? (
+              <>
+                <p className="font-semibold text-tinta">{datosPdf.profesional.nombre}</p>
+                <p>{datosPdf.profesional.tituloProfesional}</p>
+                {datosPdf.profesional.rut && <p>RUT: {datosPdf.profesional.rut}</p>}
+                {datosPdf.profesional.registroProfesional && (
+                  <p>Registro N.° {datosPdf.profesional.registroProfesional}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-tinta-suave">Firma profesional</p>
+            )}
           </div>
         </div>
       </div>
