@@ -11,7 +11,7 @@ import { clasificarRango, nombreCristal } from "@/lib/cristales";
 import { hoyEnChile, sumarDias } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
-type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number };
+type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string };
 type CostoCristal = {
   tipo_lente: string;
   rango_receta: string;
@@ -153,6 +153,10 @@ export default function PuntoDeVenta({
   }, [productos, buscaProducto]);
 
   function agregarProducto(p: Producto) {
+    // Los armazones se regalan (el costo ya está absorbido en el precio del
+    // cristal): siempre entran al carrito en $0, sin importar lo que diga
+    // su precio_venta en Inventario.
+    const precio = p.categoria === "armazon" ? 0 : p.precio_venta;
     setCarrito((prev) => {
       const existe = prev.find((l) => l.productoId === p.id);
       if (existe) {
@@ -165,7 +169,7 @@ export default function PuntoDeVenta({
           productoId: p.id,
           descripcion: `${p.marca ? p.marca + " " : ""}${p.nombre}`,
           cantidad: 1,
-          precioUnitario: p.precio_venta,
+          precioUnitario: precio,
         },
       ];
     });
@@ -591,7 +595,11 @@ export default function PuntoDeVenta({
                     {p.marca ? `${p.marca} ` : ""}
                     {p.nombre}
                   </span>
-                  <span className="font-semibold">{clp(p.precio_venta)}</span>
+                  {p.categoria === "armazon" ? (
+                    <span className="font-semibold text-brand-dark">Gratis</span>
+                  ) : (
+                    <span className="font-semibold">{clp(p.precio_venta)}</span>
+                  )}
                   <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-bold text-brand-dark">
                     ＋
                   </span>

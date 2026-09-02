@@ -22,7 +22,7 @@ export default async function VentasPage() {
     supabase.from("pacientes").select("id, nombre, rut").order("nombre").limit(200),
     supabase
       .from("productos")
-      .select("id, nombre, marca, precio_venta")
+      .select("id, nombre, marca, precio_venta, categoria")
       .order("marca")
       .limit(200),
     supabase
