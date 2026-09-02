@@ -22,7 +22,7 @@ function fmtD(v: number | null): string {
 const TIPOS: Record<string, string> = {
   lejos: "Lejos",
   cerca: "Cerca",
-  progresivo: "Progresivo",
+  lejos_y_cerca: "Lejos y cerca",
 };
 
 export default async function RecetaImprimible({

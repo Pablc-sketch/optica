@@ -7,7 +7,7 @@ import { encolar, type CambioSync } from "@/lib/offline/outbox";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
-import { nombreCristal } from "@/lib/cristales";
+import { clasificarRango, nombreCristal } from "@/lib/cristales";
 import { hoyEnChile, sumarDias } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
@@ -18,6 +18,23 @@ type CostoCristal = {
   tratamiento: string;
   costo: number;
   precio_venta: number;
+};
+
+// Lo que necesitamos de la última receta del paciente: esfera/cilindro
+// para calcular sola el rango de costo, y la sugerencia que dejó el
+// tecnólogo para precargar el cristal sin que la vendedora tenga que
+// preguntar ni calcular nada.
+type RecetaResumen = {
+  id: string;
+  tipo: string;
+  od_esfera: number | null;
+  od_cilindro: number | null;
+  oi_esfera: number | null;
+  oi_cilindro: number | null;
+  sugerencia_tipo_lente: string | null;
+  sugerencia_tratamiento: string | null;
+  sugerencia_tipo_lente_cerca: string | null;
+  sugerencia_tratamiento_cerca: string | null;
 };
 
 type LineaCarrito = {
@@ -32,6 +49,10 @@ type LineaCarrito = {
     rangoReceta: string;
     tratamiento: string;
     costoLaboratorio: number;
+    // Solo tiene sentido con dos Monofocal en la misma venta (lejos + cerca
+    // por separado); para Bifocal/Multifocal no aplica.
+    posicion?: "lejos" | "cerca";
+    sugerido?: boolean;
   };
 };
 
@@ -49,7 +70,7 @@ export default function PuntoDeVenta({
   tenantId,
   sucursalId,
   vendedorId,
-  ultimaRecetaPorPaciente,
+  recetasPorPaciente,
   operativos,
 }: {
   pacientes: Paciente[];
@@ -60,7 +81,7 @@ export default function PuntoDeVenta({
   tenantId: string;
   sucursalId: string | null;
   vendedorId: string | null;
-  ultimaRecetaPorPaciente: Record<string, string>;
+  recetasPorPaciente: Record<string, RecetaResumen | undefined>;
   operativos: { id: string; nombre: string; fecha: string }[];
 }) {
   const router = useRouter();
@@ -79,26 +100,42 @@ export default function PuntoDeVenta({
   // Selección de cristal desde la matriz de costos
   const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
   const [tipoLente, setTipoLente] = useState("");
+  const receta = pacienteId ? recetasPorPaciente[pacienteId] : undefined;
+  // El rango se calcula solo de la receta real (esfera/cilindro más
+  // exigentes entre los dos ojos) — la vendedora no elige nada acá. Si el
+  // paciente no tiene receta cargada todavía, se cae al selector manual
+  // para no dejarla sin poder vender.
+  const rangoAuto = receta
+    ? clasificarRango(
+        [receta.od_esfera, receta.oi_esfera],
+        [receta.od_cilindro, receta.oi_cilindro]
+      )
+    : null;
+  const [rangoManual, setRangoManual] = useState("");
+  const rango = rangoAuto ?? rangoManual;
   const rangos = useMemo(
     () => [...new Set(costos.filter((c) => c.tipo_lente === tipoLente).map((c) => c.rango_receta))],
     [costos, tipoLente]
   );
-  const [rango, setRango] = useState("");
   const tratamientos = useMemo(
     () => costos.filter((c) => c.tipo_lente === tipoLente && c.rango_receta === rango),
     [costos, tipoLente, rango]
   );
   const [tratamiento, setTratamiento] = useState("");
+  const [posicionCristal, setPosicionCristal] = useState<"lejos" | "cerca">("lejos");
   const [origenCristal, setOrigenCristal] = useState<"laboratorio" | "stock">("laboratorio");
 
   const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
   const abonoNum = Math.max(0, Math.min(montoANumero(abono), total));
   const esAbonoParcial = abonoNum > 0 && abonoNum < total;
   const montoACobrar = esAbonoParcial ? abonoNum : total;
-  const lineaCristal = carrito.find((l) => l.cristal);
+  const lineasCristal = carrito.filter((l) => l.cristal);
   const lineaArmazon = carrito.find((l) => l.productoId);
-  const creaOT = Boolean(pacienteId && lineaCristal);
-  const recetaPacienteId = pacienteId ? ultimaRecetaPorPaciente[pacienteId] : undefined;
+  const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
+  const recetaPacienteId = receta?.id;
+  // Como máximo dos cristales por venta: un Monofocal de lejos y uno de
+  // cerca por separado. Bifocal/Multifocal ya cubren ambos en un lente.
+  const puedeAgregarOtroCristal = lineasCristal.length === 0 || (tipoLente === "Monofocal" && lineasCristal.length < 2);
   const paciente = pacientes.find((p) => p.id === pacienteId);
 
   const pacientesFiltrados = useMemo(() => {
@@ -134,26 +171,73 @@ export default function PuntoDeVenta({
     });
   }
 
-  function agregarCristal() {
-    const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
-    if (!combo) return;
+  function lineaDeCombo(
+    combo: CostoCristal,
+    opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean }
+  ): LineaCarrito {
     // Precio editable de la óptica (/precios); el factor es solo respaldo.
     const precio = combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
-    setCarrito((prev) => [
-      ...prev.filter((l) => !l.cristal), // un par de cristales por venta/OT
-      {
-        key: `cristal-${Date.now()}`,
-        descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)} ${combo.rango_receta}`,
-        cantidad: 1,
-        precioUnitario: precio,
-        cristal: {
-          tipoLente: combo.tipo_lente,
-          rangoReceta: combo.rango_receta,
-          tratamiento: combo.tratamiento,
-          costoLaboratorio: combo.costo,
-        },
+    const etiquetaPosicion =
+      opciones?.posicion === "lejos" ? " (lejos)" : opciones?.posicion === "cerca" ? " (cerca)" : "";
+    return {
+      key: `cristal-${opciones?.posicion ?? "unico"}-${crypto.randomUUID()}`,
+      descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${etiquetaPosicion}`,
+      cantidad: 1,
+      precioUnitario: precio,
+      cristal: {
+        tipoLente: combo.tipo_lente,
+        rangoReceta: combo.rango_receta,
+        tratamiento: combo.tratamiento,
+        costoLaboratorio: combo.costo,
+        posicion: opciones?.posicion,
+        sugerido: opciones?.sugerido,
       },
+    };
+  }
+
+  function agregarCristal() {
+    const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
+    if (!combo || !puedeAgregarOtroCristal) return;
+    const posicion = lineasCristal.length > 0 ? posicionCristal : undefined;
+    setCarrito((prev) => [
+      // Reemplaza solo el cristal de la misma posición (lejos/cerca), no el otro.
+      ...prev.filter((l) => !l.cristal || (posicion !== undefined && l.cristal.posicion !== posicion)),
+      lineaDeCombo(combo, { posicion }),
     ]);
+  }
+
+  // Al elegir el paciente: si su receta más reciente trae una sugerencia
+  // del tecnólogo, se arma sola la venta con el rango ya calculado — la
+  // vendedora solo confirma o cambia algo si el paciente decidió otra cosa.
+  function elegirPaciente(id: string) {
+    setPacienteId(id);
+    const r = recetasPorPaciente[id];
+    if (!r) return;
+    const rangoDeReceta = clasificarRango([r.od_esfera, r.oi_esfera], [r.od_cilindro, r.oi_cilindro]);
+
+    const sugeridas: { tipoLente: string | null; tratamiento: string | null; posicion?: "lejos" | "cerca" }[] =
+      r.tipo === "lejos_y_cerca"
+        ? [
+            { tipoLente: r.sugerencia_tipo_lente, tratamiento: r.sugerencia_tratamiento, posicion: "lejos" },
+            {
+              tipoLente: r.sugerencia_tipo_lente_cerca,
+              tratamiento: r.sugerencia_tratamiento_cerca,
+              posicion: "cerca",
+            },
+          ]
+        : [{ tipoLente: r.sugerencia_tipo_lente, tratamiento: r.sugerencia_tratamiento }];
+
+    const nuevasLineas: LineaCarrito[] = [];
+    for (const s of sugeridas) {
+      if (!s.tipoLente || !s.tratamiento) continue;
+      const combo = costos.find(
+        (c) => c.tipo_lente === s.tipoLente && c.rango_receta === rangoDeReceta && c.tratamiento === s.tratamiento
+      );
+      if (combo) nuevasLineas.push(lineaDeCombo(combo, { posicion: s.posicion, sugerido: true }));
+    }
+    if (nuevasLineas.length > 0) {
+      setCarrito((prev) => [...prev.filter((l) => !l.cristal), ...nuevasLineas]);
+    }
   }
 
   function quitar(key: string) {
@@ -168,8 +252,9 @@ export default function PuntoDeVenta({
     setBuscaPaciente("");
     setBuscaProducto("");
     setTipoLente("");
-    setRango("");
+    setRangoManual("");
     setTratamiento("");
+    setPosicionCristal("lejos");
     setPaso(0);
   }
 
@@ -183,8 +268,12 @@ export default function PuntoDeVenta({
     const ahora = new Date().toISOString();
 
     // Misma regla que online: con paciente y cristales, la OT viaja en el
-    // mismo lote (el servidor la enlaza cuando vuelve la señal).
-    const otId = creaOT ? crypto.randomUUID() : null;
+    // mismo lote (el servidor la enlaza cuando vuelve la señal). Una OT por
+    // cada cristal (lejos y cerca por separado quedan como dos trabajos).
+    const otIdPorLinea = new Map<string, string>();
+    if (pacienteId) {
+      for (const l of lineasCristal) otIdPorLinea.set(l.key, crypto.randomUUID());
+    }
     // hoyEnChile() en vez del reloj/huso del dispositivo, para que la
     // estimación no dependa de que el celular tenga bien puesta la zona
     // horaria (frecuente justo en el escenario para el que existe este modo:
@@ -209,7 +298,9 @@ export default function PuntoDeVenta({
       },
     ];
 
-    if (otId && lineaCristal?.cristal) {
+    for (const l of lineasCristal) {
+      const otId = otIdPorLinea.get(l.key);
+      if (!otId || !l.cristal) continue;
       cambios.push({
         tabla: "ordenes_trabajo",
         op: "insert",
@@ -221,13 +312,14 @@ export default function PuntoDeVenta({
           sucursal_id: sucursalId,
           operativo_id: operativoId || null,
           estado: "recepcion",
-          armazon_producto_id: lineaArmazon?.productoId ?? null,
-          tipo_lente: lineaCristal.cristal.tipoLente,
-          rango_receta: lineaCristal.cristal.rangoReceta,
-          tratamiento: lineaCristal.cristal.tratamiento,
+          // El armazón va con la primera OT (es el único marco de la venta).
+          armazon_producto_id: l === lineasCristal[0] ? (lineaArmazon?.productoId ?? null) : null,
+          tipo_lente: l.cristal.tipoLente,
+          rango_receta: l.cristal.rangoReceta,
+          tratamiento: l.cristal.tratamiento,
           origen_cristal: origenCristal,
           proveedor_lab_id: origenCristal === "laboratorio" ? laboratorioId || null : null,
-          costo_laboratorio: lineaCristal.cristal.costoLaboratorio,
+          costo_laboratorio: l.cristal.costoLaboratorio,
           fecha_ingreso: ahora,
           fecha_entrega_estimada: entregaISO,
         },
@@ -243,7 +335,7 @@ export default function PuntoDeVenta({
           tenant_id: tenantId,
           venta_id: ventaId,
           producto_id: l.productoId ?? null,
-          ot_id: l.cristal ? otId : null,
+          ot_id: l.cristal ? (otIdPorLinea.get(l.key) ?? null) : null,
           descripcion: l.descripcion,
           cantidad: l.cantidad,
           precio_unitario: l.precioUnitario,
@@ -305,18 +397,21 @@ export default function PuntoDeVenta({
     try {
       const resultado = await registrarVenta({
         pacienteId: pacienteId || null,
-        items: carrito.map(({ productoId, descripcion, cantidad, precioUnitario, cristal }) => ({
-          productoId,
-          descripcion,
-          cantidad,
-          precioUnitario,
-          esCristal: Boolean(cristal),
+        items: carrito.map((l) => ({
+          productoId: l.productoId,
+          descripcion: l.descripcion,
+          cantidad: l.cantidad,
+          precioUnitario: l.precioUnitario,
+          // Índice dentro de "cristales" — así cada ítem queda ligado a SU
+          // orden de trabajo cuando hay dos (lejos + cerca), no una sola
+          // compartida.
+          cristalIndex: l.cristal ? lineasCristal.findIndex((c) => c.key === l.key) : undefined,
         })),
         abonoInicial: montoANumero(abono),
         medioPago,
-        cristal: creaOT && lineaCristal?.cristal
-          ? { ...lineaCristal.cristal, origen: origenCristal }
-          : null,
+        cristales: creaOT
+          ? lineasCristal.map((l) => ({ ...l.cristal!, origen: origenCristal }))
+          : [],
         armazonProductoId: lineaArmazon?.productoId ?? null,
         proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
         operativoId: operativoId || null,
@@ -324,8 +419,8 @@ export default function PuntoDeVenta({
       if (resultado.ok) {
         reiniciar();
         setMensaje(
-          resultado.otFolio
-            ? `✓ Venta registrada · Orden de trabajo #${resultado.otFolio} creada`
+          resultado.otFolios && resultado.otFolios.length > 0
+            ? `✓ Venta registrada · Orden${resultado.otFolios.length > 1 ? "es" : ""} de trabajo #${resultado.otFolios.join(", #")} creada${resultado.otFolios.length > 1 ? "s" : ""}`
             : "✓ Venta registrada"
         );
         router.refresh();
@@ -425,7 +520,7 @@ export default function PuntoDeVenta({
               <li key={p.id}>
                 <button
                   type="button"
-                  onClick={() => setPacienteId(p.id)}
+                  onClick={() => elegirPaciente(p.id)}
                   className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition ${
                     pacienteId === p.id ? "bg-brand text-white" : "bg-white hover:bg-brand/10"
                   }`}
@@ -539,10 +634,16 @@ export default function PuntoDeVenta({
           <div>
             <h2 className="font-bold">¿Lleva cristales?</h2>
             <p className="text-sm text-tinta-suave">
-              Elige tipo de lente, rango de la receta y tratamiento. Si no lleva cristales,
-              continúa sin agregar.
+              Elige tipo de lente y tratamiento. Si no lleva cristales, continúa sin agregar.
             </p>
           </div>
+
+          {!puedeAgregarOtroCristal && (
+            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs font-medium text-brand-dark">
+              Ya lleva {lineasCristal.length === 2 ? "dos cristales (lejos y cerca)" : "un cristal"}{" "}
+              en esta venta.
+            </p>
+          )}
 
           <label className="flex flex-col gap-1 text-sm font-medium">
             Tipo de lente
@@ -550,9 +651,10 @@ export default function PuntoDeVenta({
               value={tipoLente}
               onChange={(e) => {
                 setTipoLente(e.target.value);
-                setRango("");
+                setRangoManual("");
                 setTratamiento("");
               }}
+              disabled={!puedeAgregarOtroCristal}
               className={select}
             >
               <option value="">Elegir…</option>
@@ -564,25 +666,55 @@ export default function PuntoDeVenta({
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Rango de la receta
-            <select
-              value={rango}
-              onChange={(e) => {
-                setRango(e.target.value);
-                setTratamiento("");
-              }}
-              disabled={!tipoLente}
-              className={select}
-            >
-              <option value="">Elegir…</option>
-              {rangos.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
+          {tipoLente === "Monofocal" && lineasCristal.length > 0 && (
+            <div className="flex gap-2 text-sm">
+              {(["lejos", "cerca"] as const).map((p) => (
+                <label
+                  key={p}
+                  className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 capitalize has-checked:border-brand has-checked:bg-brand/10"
+                >
+                  <input
+                    type="radio"
+                    name="posicion_cristal"
+                    checked={posicionCristal === p}
+                    onChange={() => setPosicionCristal(p)}
+                    className="accent-brand"
+                  />
+                  {p}
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+          )}
+
+          {rangoAuto ? (
+            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs font-medium text-brand-dark">
+              Rango de la receta calculado automático: <b>{rangoAuto}</b>
+            </p>
+          ) : (
+            tipoLente && (
+              <label className="flex flex-col gap-1 text-sm font-medium">
+                Rango de la receta
+                <select
+                  value={rangoManual}
+                  onChange={(e) => {
+                    setRangoManual(e.target.value);
+                    setTratamiento("");
+                  }}
+                  className={select}
+                >
+                  <option value="">Elegir…</option>
+                  {rangos.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs font-normal text-tinta-suave">
+                  Este paciente no tiene receta cargada, así que hay que elegir el rango a mano.
+                </span>
+              </label>
+            )
+          )}
 
           <label className="flex flex-col gap-1 text-sm font-medium">
             Tratamiento
@@ -640,7 +772,7 @@ export default function PuntoDeVenta({
           <button
             type="button"
             onClick={agregarCristal}
-            disabled={!tratamiento}
+            disabled={!tratamiento || !puedeAgregarOtroCristal}
             className={`${boton} bg-brand/15 text-brand-dark hover:bg-brand hover:text-white`}
           >
             Agregar cristales a la venta
@@ -650,14 +782,15 @@ export default function PuntoDeVenta({
 
           {creaOT && (
             <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs font-medium text-brand-dark">
-              Al cobrar se crea la orden de trabajo automáticamente
+              Al cobrar se crea{lineasCristal.length > 1 ? "n" : ""} la
+              {lineasCristal.length > 1 ? "s órdenes" : " orden"} de trabajo automáticamente
               {recetaPacienteId
                 ? " con la última receta del paciente"
                 : " (el paciente aún no tiene receta cargada)"}
               .
             </p>
           )}
-          {lineaCristal && !pacienteId && (
+          {lineasCristal.length > 0 && !pacienteId && (
             <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800">
               Sin paciente no se puede crear la orden de trabajo. Vuelve al paso 1 si corresponde.
             </p>
@@ -796,6 +929,11 @@ function Resumen({
             <span className="flex-1 truncate">
               {l.cantidad > 1 ? `${l.cantidad}× ` : ""}
               {l.descripcion}
+              {l.cristal?.sugerido && (
+                <span className="ml-1.5 rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-dark">
+                  Sugerido en la receta
+                </span>
+              )}
             </span>
             <span className="font-semibold">{clp(l.cantidad * l.precioUnitario)}</span>
             <button

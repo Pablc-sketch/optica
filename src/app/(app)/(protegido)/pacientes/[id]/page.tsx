@@ -1,31 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { actualizarFichaClinica, crearReceta } from "@/lib/actions/pacientes";
+import { actualizarFichaClinica } from "@/lib/actions/pacientes";
 import { formatearRut } from "@/lib/rut";
-import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
 import EliminarPaciente from "../eliminar-paciente";
 import EditarPaciente from "../editar-paciente";
+import NuevaReceta from "./nueva-receta";
+
+const TIPO_LABEL: Record<string, string> = {
+  lejos: "Lejos",
+  cerca: "Cerca",
+  lejos_y_cerca: "Lejos y cerca",
+};
 
 function fmtDioptria(v: number | null): string {
   if (v === null) return "—";
   return (v > 0 ? "+" : "") + v.toFixed(2);
-}
-
-// Campo óptico numérico simple (eje en grados, DP, altura): sin signo, solo
-// teclado decimal para cargar rápido.
-function CampoOptico({ name, label, placeholder }: { name: string; label: string; placeholder?: string }) {
-  return (
-    <label className="flex flex-col gap-1 text-xs font-medium">
-      {label}
-      <input
-        name={name}
-        inputMode="decimal"
-        placeholder={placeholder ?? "0.00"}
-        className="w-full rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand"
-      />
-    </label>
-  );
 }
 
 export default async function FichaPaciente({ params }: { params: Promise<{ id: string }> }) {
@@ -54,7 +44,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       )
     : null;
 
-  const [{ data: recetas }, { data: operativos }] = await Promise.all([
+  const [{ data: recetas }, { data: operativos }, { data: costos }] = await Promise.all([
     supabase.from("recetas").select("*").eq("paciente_id", id).order("fecha", { ascending: false }),
     // Planificados/realizados primero (el más reciente arriba): es lo que
     // más frecuentemente se va a elegir al cargar una receta nueva.
@@ -63,7 +53,14 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       .select("id, nombre, fecha, estado")
       .in("estado", ["planificado", "realizado"])
       .order("fecha", { ascending: false }),
+    // Mismas combinaciones reales del punto de venta, para que la
+    // sugerencia del tecnólogo calce directo con lo que va a ver la
+    // vendedora.
+    supabase.from("costos_cristales").select("tipo_lente, tratamiento").order("tipo_lente"),
   ]);
+  const opcionesCristal = [
+    ...new Map((costos ?? []).map((c) => [`${c.tipo_lente}|${c.tratamiento}`, c])).values(),
+  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -177,100 +174,11 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
         </form>
       </details>
 
-      <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
-        <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nueva receta</summary>
-        <form action={crearReceta} className="mt-4 flex flex-col gap-4">
-          <input type="hidden" name="paciente_id" value={paciente.id} />
-
-          <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
-            <legend className="px-1 text-sm font-bold">OD (ojo derecho)</legend>
-            <div className="grid grid-cols-3 gap-2">
-              <label className="flex flex-col gap-1 text-xs font-medium">
-                Esfera
-                <CampoDioptria name="od_esfera" signo="libre" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-medium">
-                Cilindro
-                <CampoDioptria name="od_cilindro" signo="-" />
-              </label>
-              <CampoOptico name="od_eje" label="Eje °" placeholder="180" />
-            </div>
-          </fieldset>
-
-          <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
-            <legend className="px-1 text-sm font-bold">OI (ojo izquierdo)</legend>
-            <div className="grid grid-cols-3 gap-2">
-              <label className="flex flex-col gap-1 text-xs font-medium">
-                Esfera
-                <CampoDioptria name="oi_esfera" signo="libre" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-medium">
-                Cilindro
-                <CampoDioptria name="oi_cilindro" signo="-" />
-              </label>
-              <CampoOptico name="oi_eje" label="Eje °" placeholder="175" />
-            </div>
-          </fieldset>
-
-          {/* La adición casi siempre es la misma para los dos ojos: un solo
-              campo que se aplica a toda la receta, no dos que casi siempre
-              terminan repitiendo el mismo número. */}
-          <label className="flex w-32 flex-col gap-1 text-xs font-medium">
-            Adición (ADD)
-            <CampoDioptria name="add" signo="+" />
-          </label>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <CampoOptico name="dp" label="DP (mm)" placeholder="63" />
-            <CampoOptico name="altura" label="Altura (mm)" placeholder="20" />
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              AV OD
-              <CampoAgudezaVisual name="av_od" />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              AV OI
-              <CampoAgudezaVisual name="av_oi" />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              Tipo
-              <select name="tipo" className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand">
-                <option value="lejos">Lejos</option>
-                <option value="cerca">Cerca</option>
-                <option value="progresivo">Progresivo</option>
-              </select>
-            </label>
-          </div>
-
-          {operativos && operativos.length > 0 && (
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              Operativo (si el examen fue en terreno)
-              <select
-                name="operativo_id"
-                defaultValue=""
-                className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand"
-              >
-                <option value="">— Sin especificar —</option>
-                {operativos.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <label className="flex flex-col gap-1 text-xs font-medium">
-            Notas
-            <textarea name="notas" rows={2} className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-base outline-none focus:border-brand" />
-          </label>
-
-          <div>
-            <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-brand-dark">
-              Guardar receta
-            </button>
-          </div>
-        </form>
-      </details>
+      <NuevaReceta
+        pacienteId={paciente.id}
+        operativos={operativos ?? []}
+        opcionesCristal={opcionesCristal}
+      />
 
       <section>
         <h2 className="mb-3 font-semibold">Historial de recetas</h2>
@@ -283,7 +191,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
                 <div className="mb-2 flex items-center justify-between text-sm">
                   <span className="font-semibold">{new Date(r.fecha + "T00:00:00").toLocaleDateString("es-CL")}</span>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-medium capitalize text-tinta-suave">{r.tipo}</span>
+                    <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-medium text-tinta-suave">{TIPO_LABEL[r.tipo] ?? r.tipo}</span>
                     <Link
                       href={`/pacientes/${paciente.id}/receta/${r.id}`}
                       className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-brand-dark transition hover:bg-white"

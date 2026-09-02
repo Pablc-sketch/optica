@@ -37,7 +37,14 @@ export default async function VentasPage() {
       .limit(20),
     supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
-    supabase.from("recetas").select("id, paciente_id, fecha").order("fecha", { ascending: false }),
+    supabase
+      .from("recetas")
+      .select(
+        `id, paciente_id, fecha, tipo, od_esfera, od_cilindro, oi_esfera, oi_cilindro,
+         sugerencia_tipo_lente, sugerencia_tratamiento,
+         sugerencia_tipo_lente_cerca, sugerencia_tratamiento_cerca`
+      )
+      .order("fecha", { ascending: false }),
     supabase.from("proveedores").select("id, nombre").eq("tipo", "laboratorio").order("nombre"),
     // Independiente del selector de sucursal (que es para stock físico):
     // planificados/realizados más recientes primero.
@@ -50,11 +57,12 @@ export default async function VentasPage() {
 
   const ventas = ventasRes.data ?? [];
 
-  // Última receta por paciente: la OT creada desde el POS la enlaza sola,
-  // también cuando la venta se captura sin conexión.
-  const ultimaRecetaPorPaciente: Record<string, string> = {};
+  // Última receta por paciente: la OT creada desde el POS la enlaza sola
+  // (también offline), y sus esfera/cilindro + sugerencia dejan la venta
+  // precargada sin que la vendedora tenga que preguntar ni calcular nada.
+  const recetasPorPaciente: Record<string, NonNullable<typeof recetasRes.data>[number]> = {};
   for (const r of recetasRes.data ?? []) {
-    if (!ultimaRecetaPorPaciente[r.paciente_id]) ultimaRecetaPorPaciente[r.paciente_id] = r.id;
+    if (!recetasPorPaciente[r.paciente_id]) recetasPorPaciente[r.paciente_id] = r;
   }
 
   return (
@@ -70,7 +78,7 @@ export default async function VentasPage() {
           tenantId={perfilRes.data?.tenant_id ?? ""}
           sucursalId={sucursalRes.data?.id ?? null}
           vendedorId={user?.id ?? null}
-          ultimaRecetaPorPaciente={ultimaRecetaPorPaciente}
+          recetasPorPaciente={recetasPorPaciente}
           operativos={operativosRes.data ?? []}
         />
       </div>

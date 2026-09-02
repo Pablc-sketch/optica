@@ -175,6 +175,13 @@ export async function crearReceta(formData: FormData) {
     altura: num("altura"),
     tipo: String(formData.get("tipo") ?? "lejos"),
     notas: String(formData.get("notas") ?? "").trim() || null,
+    // Lo que el tecnólogo ya conversó con el paciente sobre qué le
+    // conviene: se precarga sola en el punto de venta al buscarlo por RUT.
+    sugerencia_tipo_lente: String(formData.get("sugerencia_tipo_lente") ?? "").trim() || null,
+    sugerencia_tratamiento: String(formData.get("sugerencia_tratamiento") ?? "").trim() || null,
+    sugerencia_tipo_lente_cerca: String(formData.get("sugerencia_tipo_lente_cerca") ?? "").trim() || null,
+    sugerencia_tratamiento_cerca: String(formData.get("sugerencia_tratamiento_cerca") ?? "").trim() || null,
+    observacion_venta: String(formData.get("observacion_venta") ?? "").trim() || null,
   });
 
   if (error) throw error;
