@@ -16,10 +16,19 @@ const NAV = [
   { href: "/laboratorio", label: "Laboratorio" },
   { href: "/inventario", label: "Inventario" },
   { href: "/reportes", label: "Reportes" },
-  { href: "/boleta", label: "Boleta" },
   { href: "/precios", label: "Precios" },
   { href: "/configuracion", label: "Configuración" },
   { href: "/suscripcion", label: "Suscripción" },
+];
+
+// Ventas trabaja principalmente en terreno y necesita un menú corto, sin
+// pantallas administrativas que distraigan. La base sigue aplicando RLS:
+// este filtro resuelve además el ruido visual de la navegación.
+const NAV_VENTAS = [
+  { href: "/operativos", label: "Operativos" },
+  { href: "/ventas", label: "Ventas" },
+  { href: "/pacientes", label: "Pacientes" },
+  { href: "/ot", label: "Órdenes" },
 ];
 
 // Cabecera y menú: siempre visibles para cualquier pantalla dentro de
@@ -75,15 +84,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const dias = suscripcion ? diasRestantes(suscripcion.fecha_renovacion) : null;
   const porVencer = vigente && dias !== null && dias <= 7;
 
-  const nav = perfil.es_superadmin
-    ? [...NAV, { href: "/superadmin", label: "Ópticas" }]
-    : NAV;
+  const nav = perfil.rol === "ventas"
+    ? NAV_VENTAS
+    : perfil.es_superadmin
+      ? [...NAV, { href: "/superadmin", label: "Ópticas" }]
+      : NAV;
+  const inicioHref = perfil.rol === "ventas" ? "/ventas" : "/";
 
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b border-tinta-suave/15 bg-crema-claro/95 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <Link href="/" className="flex items-center gap-2.5">
+          <Link href={inicioHref} className="flex items-center gap-2.5">
             {logoOptica ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoOptica} alt="" width={36} height={36} className="h-9 w-9 rounded-xl object-contain" />
@@ -138,3 +150,4 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     </div>
   );
 }
+

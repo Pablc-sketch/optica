@@ -59,7 +59,16 @@ type LineaCarrito = {
 // La venta se arma en cuatro pasos, uno por pantalla, en vez de mostrar
 // todos los controles a la vez: quien vende en el mesón sigue una sola
 // instrucción por vez y no tiene que saber de antemano qué mirar primero.
-const PASOS = ["Paciente", "Armazón", "Cristales", "Pago"] as const;
+const PASOS = ["Paciente", "Cristales", "Armazón", "Pago"] as const;
+
+// Un color estable por etapa ayuda a reconocer dónde está la vendedora sin
+// depender de leer texto pequeño. Todos mantienen contraste alto con blanco.
+const ESTILOS_PASO = [
+  { activo: "bg-blue-700 text-white", hecho: "bg-blue-100 text-blue-900", panel: "border-blue-300 bg-blue-50", accion: "bg-blue-700 hover:bg-blue-800" },
+  { activo: "bg-violet-700 text-white", hecho: "bg-violet-100 text-violet-900", panel: "border-violet-300 bg-violet-50", accion: "bg-violet-700 hover:bg-violet-800" },
+  { activo: "bg-amber-600 text-white", hecho: "bg-amber-100 text-amber-950", panel: "border-amber-300 bg-amber-50", accion: "bg-amber-600 hover:bg-amber-700" },
+  { activo: "bg-green-700 text-white", hecho: "bg-green-100 text-green-900", panel: "border-green-300 bg-green-50", accion: "bg-green-700 hover:bg-green-800" },
+] as const;
 
 export default function PuntoDeVenta({
   pacientes,
@@ -439,7 +448,7 @@ export default function PuntoDeVenta({
   }
 
   const boton =
-    "rounded-lg px-4 py-3 text-base font-semibold transition disabled:opacity-50";
+    "min-h-12 rounded-xl px-4 py-3 text-base font-bold transition disabled:cursor-not-allowed disabled:opacity-50";
   const select =
     "w-full rounded-lg border border-tinta-suave/30 bg-white px-3 py-3 text-base outline-none focus:border-brand disabled:opacity-50";
 
@@ -459,9 +468,9 @@ export default function PuntoDeVenta({
                 disabled={i > paso}
                 className={`flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-semibold transition ${
                   actual
-                    ? "bg-brand text-white"
+                    ? ESTILOS_PASO[i].activo
                     : hecho
-                      ? "bg-brand/15 text-brand-dark hover:bg-brand/25"
+                      ? ESTILOS_PASO[i].hecho
                       : "bg-crema-claro text-tinta-suave"
                 }`}
               >
@@ -488,7 +497,7 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 0 && (
-        <section className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 p-4 shadow-sm ${ESTILOS_PASO[0].panel}`}>
           <div>
             <h2 className="font-bold">¿Para quién es la venta?</h2>
             <p className="text-sm text-tinta-suave">
@@ -547,7 +556,7 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(1)}
-              className={`${boton} flex-1 bg-brand text-white hover:bg-brand-dark`}
+              className={`${boton} flex-1 text-white ${ESTILOS_PASO[0].accion}`}
             >
               {paciente ? `Continuar con ${paciente.nombre.split(" ")[0]}` : "Continuar"}
             </button>
@@ -565,8 +574,8 @@ export default function PuntoDeVenta({
       )}
 
       {/* ---------------------------------------------------------------- */}
-      {paso === 1 && (
-        <section className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
+      {paso === 2 && (
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 p-4 shadow-sm ${ESTILOS_PASO[2].panel}`}>
           <div>
             <h2 className="font-bold">¿Lleva armazón u otro producto?</h2>
             <p className="text-sm text-tinta-suave">
@@ -620,25 +629,26 @@ export default function PuntoDeVenta({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setPaso(0)}
+              onClick={() => setPaso(1)}
               className={`${boton} border border-tinta-suave/30 text-tinta-suave hover:bg-white`}
             >
               Atrás
             </button>
             <button
               type="button"
-              onClick={() => setPaso(2)}
-              className={`${boton} flex-1 bg-brand text-white hover:bg-brand-dark`}
+              onClick={() => setPaso(3)}
+              disabled={carrito.length === 0}
+              className={`${boton} flex-1 text-white ${ESTILOS_PASO[2].accion}`}
             >
-              Continuar
+              {carrito.length === 0 ? "Agrega cristales para continuar" : "Continuar al pago"}
             </button>
           </div>
         </section>
       )}
 
       {/* ---------------------------------------------------------------- */}
-      {paso === 2 && (
-        <section className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
+      {paso === 1 && (
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 p-4 shadow-sm ${ESTILOS_PASO[1].panel}`}>
           <div>
             <h2 className="font-bold">¿Lleva cristales?</h2>
             <p className="text-sm text-tinta-suave">
@@ -800,25 +810,25 @@ export default function PuntoDeVenta({
           )}
           {lineasCristal.length > 0 && !pacienteId && (
             <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800">
-              Sin paciente no se puede crear la orden de trabajo. Vuelve al paso 1 si corresponde.
+              Sin paciente no se puede crear la orden de trabajo. Vuelve al paso Paciente si corresponde.
             </p>
           )}
 
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setPaso(1)}
+              onClick={() => setPaso(0)}
               className={`${boton} border border-tinta-suave/30 text-tinta-suave hover:bg-white`}
             >
               Atrás
             </button>
             <button
               type="button"
-              onClick={() => setPaso(3)}
+              onClick={() => setPaso(2)}
               disabled={carrito.length === 0}
-              className={`${boton} flex-1 bg-brand text-white hover:bg-brand-dark`}
+              className={`${boton} flex-1 text-white ${ESTILOS_PASO[1].accion}`}
             >
-              {carrito.length === 0 ? "Agrega algo para continuar" : "Continuar al pago"}
+              {carrito.length === 0 ? "Agrega cristales para continuar" : "Continuar al armazón"}
             </button>
           </div>
         </section>
@@ -826,7 +836,7 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 3 && (
-        <section className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 p-4 shadow-sm ${ESTILOS_PASO[3].panel}`}>
           <div>
             <h2 className="font-bold">Cobro</h2>
             <p className="text-sm text-tinta-suave">
@@ -899,7 +909,7 @@ export default function PuntoDeVenta({
               type="button"
               onClick={cobrar}
               disabled={guardando || carrito.length === 0}
-              className={`${boton} flex-1 bg-brand text-white hover:bg-brand-dark`}
+              className={`${boton} flex-1 text-white ${ESTILOS_PASO[3].accion}`}
             >
               {guardando ? "Registrando…" : `Cobrar ${clp(montoACobrar)}`}
             </button>
@@ -962,3 +972,4 @@ function Resumen({
     </div>
   );
 }
+
