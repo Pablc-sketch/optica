@@ -20,14 +20,21 @@ export default async function EditarVenta({ params }: { params: Promise<{ id: st
     .select(
       `id, fecha, total, estado_pago, anulada, anulada_motivo,
        pacientes:paciente_id (nombre, rut),
-       venta_items (id, descripcion, cantidad, precio_unitario, descuento, producto_id, ot_id)`
+       venta_items (id, descripcion, cantidad, precio_unitario, descuento, producto_id, ot_id, ordenes_trabajo:ot_id (folio))`
     )
     .eq("id", id)
     .single();
   if (!venta) notFound();
 
   const paciente = venta.pacientes as unknown as { nombre: string; rut: string | null } | null;
-  const items = venta.venta_items ?? [];
+  // Dos cristales de la misma venta pueden tener exactamente la misma
+  // descripción (ej. dos Monofocal Orgánico Antirreflejo, uno lejos y uno
+  // cerca) — el folio de su OT es lo único que los distingue al editar.
+  const items = (venta.venta_items ?? []).map((item) => {
+    const ot = item.ordenes_trabajo as unknown as { folio: number } | { folio: number }[] | null;
+    const otUno = Array.isArray(ot) ? (ot[0] ?? null) : ot;
+    return { ...item, otFolio: otUno?.folio ?? null };
+  });
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">

@@ -132,21 +132,29 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
               </label>
             ))}
           </div>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Laboratorio
-            <select
-              name="proveedor_lab_id"
-              defaultValue={ot.proveedor_lab_id ?? ""}
-              className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
-            >
-              <option value="">— Sin especificar —</option>
-              {(laboratoriosRes.data ?? []).map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* Con un solo laboratorio cargado no hay nada que elegir — mostrar
+              el desplegable solo confundía ("Sin especificar" aunque solo
+              hubiera una opción posible). Con dos o más sí tiene sentido. */}
+          {(laboratoriosRes.data?.length ?? 0) > 1 && (
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Laboratorio
+              <select
+                name="proveedor_lab_id"
+                defaultValue={ot.proveedor_lab_id ?? ""}
+                className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+              >
+                <option value="">— Sin especificar —</option>
+                {(laboratoriosRes.data ?? []).map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {laboratoriosRes.data?.length === 1 && (
+            <input type="hidden" name="proveedor_lab_id" value={laboratoriosRes.data[0].id} />
+          )}
           <label className="flex flex-col gap-1 text-sm font-medium">
             Fecha de entrega estimada
             <input

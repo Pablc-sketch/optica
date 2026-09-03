@@ -3,6 +3,7 @@ import { clp } from "@/lib/clp";
 import BotonImprimir from "@/components/boton-imprimir";
 import Tarjeta from "@/components/tarjeta";
 import { fechaLegible, finDelDia, hoyEnChile, inicioDelDia } from "@/lib/fechas";
+import { costoDeItems } from "@/lib/costo-venta";
 
 // Reportes (spec pantalla 10). Acá recién sirven los costos que quedaron
 // guardados sin mostrarse en la interfaz: el costo del armazón y el costo
@@ -18,7 +19,7 @@ type ItemVenta = {
   cantidad: number;
   precio_unitario: number;
   descuento: number;
-  productos: { costo: number } | { costo: number }[] | null;
+  productos: { costo: number; categoria: string } | { costo: number; categoria: string }[] | null;
   ordenes_trabajo:
     | { costo_laboratorio: number; tipo_lente: string | null; tratamiento: string | null }
     | { costo_laboratorio: number; tipo_lente: string | null; tratamiento: string | null }[]
@@ -54,7 +55,7 @@ export default async function ReportesPage({
     .from("venta_items")
     .select(
       `cantidad, precio_unitario, descuento,
-       productos:producto_id (costo),
+       productos:producto_id (costo, categoria),
        ordenes_trabajo:ot_id (costo_laboratorio, tipo_lente, tratamiento),
        ventas!inner (fecha, operativo_id, anulada)`
     )
@@ -97,15 +98,12 @@ export default async function ReportesPage({
     .filter((v) => v.estado_pago !== "pagada")
     .reduce((s, v) => s + v.total, 0);
 
-  // Costo directo: armazones a su costo de compra + cristales a lo que
-  // cobra el laboratorio. No incluye arriendo, sueldos ni gastos fijos.
-  let costoDirecto = 0;
-  for (const item of items) {
-    const producto = uno(item.productos);
-    const ot = uno(item.ordenes_trabajo);
-    if (producto) costoDirecto += producto.costo * item.cantidad;
-    if (ot) costoDirecto += ot.costo_laboratorio;
-  }
+  // Costo directo: cristales a lo que cobra el laboratorio, marcos a un
+  // monto fijo por unidad (se regalan, pero igual cuestan) y el resto de
+  // los productos a su costo de Inventario — mismo criterio que Operativos,
+  // para que la utilidad no cambie de un reporte a otro. No incluye
+  // arriendo, sueldos ni gastos fijos.
+  const costoDirecto = costoDeItems(items);
   const utilidadBruta = totalVendido - costoDirecto;
   const margen = totalVendido > 0 ? Math.round((utilidadBruta / totalVendido) * 100) : 0;
 
