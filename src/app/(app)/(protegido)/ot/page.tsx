@@ -21,7 +21,7 @@ export default async function TableroOT() {
     supabase
       .from("ordenes_trabajo")
       .select(
-        "id, folio, estado, tipo_lente, tratamiento, fecha_ingreso, fecha_entrega_estimada, pacientes:paciente_id (nombre, telefono)"
+        "id, folio, estado, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2, fecha_ingreso, fecha_entrega_estimada, pacientes:paciente_id (nombre, telefono)"
       )
       // Una venta anulada cancela su OT — que no siga sumando en "en curso",
       // "atrasadas" ni "por cobrar" del tablero.
@@ -134,6 +134,11 @@ export default async function TableroOT() {
                       <p className="truncate text-xs text-tinta-suave">
                         {[ot.tipo_lente, ot.tratamiento].filter(Boolean).join(" · ")}
                       </p>
+                      {(ot.tipo_lente_2 || ot.tratamiento_2) && (
+                        <p className="truncate text-xs text-tinta-suave">
+                          + {[ot.tipo_lente_2, ot.tratamiento_2].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                       <p className="text-xs text-tinta-suave">
                         Tomada el {fechaLegible(diaEnChile(ot.fecha_ingreso))}
                       </p>

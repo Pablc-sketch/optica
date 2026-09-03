@@ -500,12 +500,10 @@ export default function PuntoDeVenta({
     const ahora = new Date().toISOString();
 
     // Misma regla que online: con paciente y cristales, la OT viaja en el
-    // mismo lote (el servidor la enlaza cuando vuelve la señal). Un cristal
-    // = una OT — Lente 1 y Lente 2 quedan como dos trabajos independientes.
-    const otIdPorLinea = new Map<string, string>();
-    if (pacienteId) {
-      for (const l of lineasCristal) otIdPorLinea.set(l.key, crypto.randomUUID());
-    }
+    // mismo lote (el servidor la enlaza cuando vuelve la señal). Lejos y
+    // cerca por separado comparten UNA sola OT (un cupo cada uno), no dos
+    // OT distintas — así vuelve del laboratorio como un solo paquete.
+    const otId = pacienteId && lineasCristal.length > 0 ? crypto.randomUUID() : null;
     // hoyEnChile() en vez del reloj/huso del dispositivo, para que la
     // estimación no dependa de que el celular tenga bien puesta la zona
     // horaria (frecuente justo en el escenario para el que existe este modo:
@@ -530,10 +528,8 @@ export default function PuntoDeVenta({
       },
     ];
 
-    for (let i = 0; i < lineasCristal.length; i++) {
-      const l = lineasCristal[i];
-      const otId = otIdPorLinea.get(l.key);
-      if (!otId || !l.cristal) continue;
+    if (otId) {
+      const [primero, segundo] = lineasCristal;
       cambios.push({
         tabla: "ordenes_trabajo",
         op: "insert",
@@ -545,18 +541,20 @@ export default function PuntoDeVenta({
           sucursal_id: sucursalId,
           operativo_id: operativoId || null,
           estado: "recepcion",
-          // Cada cristal se enlaza con el armazón en el mismo orden en que
-          // se agregaron (dos pares separados = dos marcos, cada uno con
-          // su propia OT).
-          armazon_producto_id: lineasArmazon[i]?.productoId ?? null,
-          tipo_lente: l.cristal.tipoLente,
-          rango_receta: l.cristal.rangoReceta,
-          tratamiento: l.cristal.tratamiento,
+          armazon_producto_id: lineasArmazon[0]?.productoId ?? null,
+          tipo_lente: primero.cristal!.tipoLente,
+          rango_receta: primero.cristal!.rangoReceta,
+          tratamiento: primero.cristal!.tratamiento,
           origen_cristal: origenCristal,
           proveedor_lab_id: origenCristal === "laboratorio" ? laboratorioId || null : null,
-          costo_laboratorio: l.cristal.costoLaboratorio,
+          costo_laboratorio: primero.cristal!.costoLaboratorio,
           fecha_ingreso: ahora,
           fecha_entrega_estimada: entregaISO,
+          armazon_producto_id_2: segundo ? (lineasArmazon[1]?.productoId ?? null) : null,
+          tipo_lente_2: segundo?.cristal?.tipoLente ?? null,
+          rango_receta_2: segundo?.cristal?.rangoReceta ?? null,
+          tratamiento_2: segundo?.cristal?.tratamiento ?? null,
+          costo_laboratorio_2: segundo?.cristal?.costoLaboratorio ?? null,
         },
       });
     }
@@ -570,7 +568,8 @@ export default function PuntoDeVenta({
           tenant_id: tenantId,
           venta_id: ventaId,
           producto_id: l.productoId ?? null,
-          ot_id: l.cristal ? (otIdPorLinea.get(l.key) ?? null) : null,
+          ot_id: l.cristal ? otId : null,
+          cristal_slot: l.key === "cristal-1" ? 1 : l.key === "cristal-2" ? 2 : null,
           descripcion: l.descripcion,
           cantidad: l.cantidad,
           precio_unitario: l.precioUnitario,
@@ -637,10 +636,9 @@ export default function PuntoDeVenta({
           descripcion: l.descripcion,
           cantidad: l.cantidad,
           precioUnitario: l.precioUnitario,
-          // Índice dentro de "cristales" — así cada ítem queda ligado a SU
-          // orden de trabajo cuando hay dos (Lente 1 + Lente 2), no una sola
-          // compartida.
-          cristalIndex: l.cristal ? lineasCristal.findIndex((c) => c.key === l.key) : undefined,
+          // A cuál de los dos cupos de cristal de la OT corresponde (lejos
+          // y cerca por separado comparten UNA sola OT, no una cada uno).
+          cristalSlot: l.key === "cristal-1" ? 1 : l.key === "cristal-2" ? 2 : undefined,
         })),
         abonoInicial: montoANumero(abono),
         medioPago,
@@ -656,8 +654,8 @@ export default function PuntoDeVenta({
       if (resultado.ok) {
         reiniciar();
         setMensaje(
-          resultado.otFolios && resultado.otFolios.length > 0
-            ? `✓ Venta registrada · Orden${resultado.otFolios.length > 1 ? "es" : ""} de trabajo #${resultado.otFolios.join(", #")} creada${resultado.otFolios.length > 1 ? "s" : ""}`
+          resultado.otFolio
+            ? `✓ Venta registrada · Orden de trabajo #${resultado.otFolio} creada`
             : "✓ Venta registrada"
         );
         router.refresh();

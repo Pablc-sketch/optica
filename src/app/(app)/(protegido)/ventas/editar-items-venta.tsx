@@ -13,6 +13,7 @@ type Item = {
   precio_unitario: number;
   descuento: number;
   otFolio: number | null;
+  cristal_slot: number | null;
 };
 
 export default function EditarItemsVenta({ ventaId, items, total }: { ventaId: string; items: Item[]; total: number }) {
@@ -38,11 +39,14 @@ export default function EditarItemsVenta({ ventaId, items, total }: { ventaId: s
           <li key={item.id} className="flex flex-col gap-2 rounded-xl bg-white p-3 shadow-sm sm:flex-row sm:items-end sm:gap-3">
             <p className="flex-1 text-sm font-medium">
               {item.descripcion}
-              {/* Dos cristales pueden tener la misma descripción (mismo
-                  tratamiento, uno lejos y otro cerca) — el folio de su OT
-                  es lo único que los distingue acá. */}
+              {/* Dos cristales de la misma OT pueden tener la misma
+                  descripción (mismo tratamiento, uno lejos y otro cerca) —
+                  el folio + cupo es lo único que los distingue acá. */}
               {item.otFolio !== null && (
-                <span className="ml-1.5 text-xs font-normal text-tinta-suave">· OT #{item.otFolio}</span>
+                <span className="ml-1.5 text-xs font-normal text-tinta-suave">
+                  · OT #{item.otFolio}
+                  {item.cristal_slot !== null && ` (cristal ${item.cristal_slot})`}
+                </span>
               )}
             </p>
             <label className="flex flex-col gap-1 text-xs font-medium text-tinta-suave">

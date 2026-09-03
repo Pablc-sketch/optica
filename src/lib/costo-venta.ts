@@ -7,7 +7,14 @@ const COSTO_MARCO_ABSORBIDO = 4000;
 
 export type ItemConCosto = {
   cantidad: number;
-  ordenes_trabajo?: { costo_laboratorio: number | null } | { costo_laboratorio: number | null }[] | null;
+  // A cuál de los dos cupos de cristal de la OT corresponde este ítem —
+  // lejos y cerca por separado comparten una sola OT, así que el costo de
+  // cada uno vive en una columna distinta (costo_laboratorio / _2).
+  cristal_slot?: number | null;
+  ordenes_trabajo?:
+    | { costo_laboratorio: number | null; costo_laboratorio_2: number | null }
+    | { costo_laboratorio: number | null; costo_laboratorio_2: number | null }[]
+    | null;
   productos?: { costo: number; categoria: string } | { costo: number; categoria: string }[] | null;
 };
 
@@ -19,7 +26,10 @@ function uno<T>(rel: T | T[] | null | undefined): T | null {
 export function costoDeItems(items: ItemConCosto[]): number {
   return items.reduce((s, it) => {
     const ot = uno(it.ordenes_trabajo);
-    if (ot) return s + (ot.costo_laboratorio ?? 0) * it.cantidad;
+    if (ot) {
+      const costo = it.cristal_slot === 2 ? ot.costo_laboratorio_2 : ot.costo_laboratorio;
+      return s + (costo ?? 0) * it.cantidad;
+    }
     const producto = uno(it.productos);
     if (producto?.categoria === "armazon") return s + COSTO_MARCO_ABSORBIDO * it.cantidad;
     if (producto) return s + producto.costo * it.cantidad;

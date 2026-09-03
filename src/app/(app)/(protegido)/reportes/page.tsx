@@ -15,15 +15,22 @@ function inicioDeMes(): string {
   return `${hoy.slice(0, 7)}-01`;
 }
 
+type OTResumen = {
+  costo_laboratorio: number;
+  costo_laboratorio_2: number | null;
+  tipo_lente: string | null;
+  tratamiento: string | null;
+  tipo_lente_2: string | null;
+  tratamiento_2: string | null;
+};
+
 type ItemVenta = {
   cantidad: number;
   precio_unitario: number;
   descuento: number;
+  cristal_slot: number | null;
   productos: { costo: number; categoria: string } | { costo: number; categoria: string }[] | null;
-  ordenes_trabajo:
-    | { costo_laboratorio: number; tipo_lente: string | null; tratamiento: string | null }
-    | { costo_laboratorio: number; tipo_lente: string | null; tratamiento: string | null }[]
-    | null;
+  ordenes_trabajo: OTResumen | OTResumen[] | null;
 };
 
 // supabase-js tipa las relaciones como objeto o arreglo según el caso.
@@ -54,9 +61,9 @@ export default async function ReportesPage({
   let itemsQuery = supabase
     .from("venta_items")
     .select(
-      `cantidad, precio_unitario, descuento,
+      `cantidad, precio_unitario, descuento, cristal_slot,
        productos:producto_id (costo, categoria),
-       ordenes_trabajo:ot_id (costo_laboratorio, tipo_lente, tratamiento),
+       ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
        ventas!inner (fecha, operativo_id, anulada)`
     )
     .eq("ventas.anulada", false)
@@ -111,8 +118,13 @@ export default async function ReportesPage({
   const porTratamiento = new Map<string, { unidades: number; vendido: number }>();
   for (const item of items) {
     const ot = uno(item.ordenes_trabajo);
-    if (!ot?.tratamiento) continue;
-    const clave = `${ot.tipo_lente ?? ""} · ${ot.tratamiento}`.trim();
+    if (!ot) continue;
+    // Lejos y cerca por separado comparten una sola OT: cada ítem apunta a
+    // su propio cupo (1 o 2), cada uno con su tipo/tratamiento.
+    const tipoLente = item.cristal_slot === 2 ? ot.tipo_lente_2 : ot.tipo_lente;
+    const tratamiento = item.cristal_slot === 2 ? ot.tratamiento_2 : ot.tratamiento;
+    if (!tratamiento) continue;
+    const clave = `${tipoLente ?? ""} · ${tratamiento}`.trim();
     const actual = porTratamiento.get(clave) ?? { unidades: 0, vendido: 0 };
     actual.unidades += item.cantidad;
     actual.vendido += item.cantidad * item.precio_unitario - item.descuento;

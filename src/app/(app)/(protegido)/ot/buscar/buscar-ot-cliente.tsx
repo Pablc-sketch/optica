@@ -24,6 +24,8 @@ export type OTConDatos = {
   estado: string;
   tipo_lente: string | null;
   tratamiento: string | null;
+  tipo_lente_2: string | null;
+  tratamiento_2: string | null;
   fecha_ingreso: string;
   fecha_entrega_real: string | null;
   pacientes: { nombre: string; rut: string | null } | null;
@@ -109,6 +111,11 @@ export default function BuscarOTCliente({
                 <p className="mt-1 text-xs text-tinta-suave">
                   {[ot.tipo_lente, ot.tratamiento].filter(Boolean).join(" · ") || "Sin detalle de cristal"}
                 </p>
+                {(ot.tipo_lente_2 || ot.tratamiento_2) && (
+                  <p className="text-xs text-tinta-suave">
+                    + {[ot.tipo_lente_2, ot.tratamiento_2].filter(Boolean).join(" · ")}
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-tinta-suave">
                   Ingreso: {fechaLegible(diaEnChile(ot.fecha_ingreso))}
                   {ot.fecha_entrega_real && (

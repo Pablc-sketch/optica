@@ -44,6 +44,7 @@ export async function actualizarOT(formData: FormData) {
     .from("ordenes_trabajo")
     .update({
       armazon_producto_id: String(formData.get("armazon_producto_id") ?? "").trim() || null,
+      armazon_producto_id_2: String(formData.get("armazon_producto_id_2") ?? "").trim() || null,
       origen_cristal: String(formData.get("origen_cristal") ?? "laboratorio"),
       proveedor_lab_id: String(formData.get("proveedor_lab_id") ?? "").trim() || null,
       fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,

@@ -60,10 +60,11 @@ export default async function LaboratorioPage({
   let query = supabase
     .from("ordenes_trabajo")
     .select(
-      `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento,
+      `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento, tipo_lente_2, tratamiento_2,
        pacientes:paciente_id (nombre),
        recetas:receta_id (od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, dp, altura),
-       productos:armazon_producto_id (sku, nombre, marca, color)`
+       productos:armazon_producto_id (sku, nombre, marca, color),
+       productos_2:armazon_producto_id_2 (sku, nombre, marca, color)`
     )
     .eq("origen_cristal", origen);
 
@@ -224,33 +225,53 @@ export default async function LaboratorioPage({
                 </tr>
               </thead>
               <tbody>
-                {ots.map((ot) => {
+                {ots.flatMap((ot) => {
                   const r = ot.recetas as unknown as {
                     od_esfera: number | null; od_cilindro: number | null; od_eje: number | null; od_add: number | null;
                     oi_esfera: number | null; oi_cilindro: number | null; oi_eje: number | null; oi_add: number | null;
                     dp: number | null; altura: number | null;
                   } | null;
                   const marco = ot.productos as unknown as { sku: string | null; nombre: string; marca: string | null; color: string | null } | null;
+                  const marco2 = ot.productos_2 as unknown as { sku: string | null; nombre: string; marca: string | null; color: string | null } | null;
                   const add = r?.od_add ?? r?.oi_add ?? null;
-                  return (
-                    <tr key={ot.folio} className="border-b border-neutral-200 align-top">
-                      <td className="py-1.5 pr-2 font-bold">#{ot.folio}</td>
-                      <td className="py-1.5 pr-2">{(ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—"}</td>
+                  const odOi = (
+                    <>
                       <td className="py-1.5 pr-2 whitespace-nowrap">{fmtOjo(r?.od_esfera ?? null, r?.od_cilindro ?? null, r?.od_eje ?? null)}</td>
                       <td className="py-1.5 pr-2 whitespace-nowrap">{fmtOjo(r?.oi_esfera ?? null, r?.oi_cilindro ?? null, r?.oi_eje ?? null)}</td>
                       <td className="py-1.5 pr-2">{add !== null ? `+${Number(add).toFixed(2)}` : "—"}</td>
                       <td className="py-1.5 pr-2">{r?.dp ?? "—"}</td>
                       <td className="py-1.5 pr-2">{r?.altura ?? "—"}</td>
-                      <td className="py-1.5 pr-2">
-                        {marco ? `${marco.sku ?? ""} ${marco.color ?? ""}`.trim() || marco.nombre : "—"}
-                      </td>
+                    </>
+                  );
+                  const nombrePaciente = (ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—";
+                  const fmtMarco = (m: typeof marco) => (m ? `${m.sku ?? ""} ${m.color ?? ""}`.trim() || m.nombre : "—");
+                  const tieneSegundo = Boolean(ot.tipo_lente_2 || ot.tratamiento_2);
+                  const filas = [
+                    <tr key={`${ot.folio}-1`} className="border-b border-neutral-200 align-top">
+                      <td className="py-1.5 pr-2 font-bold">#{ot.folio}</td>
+                      <td className="py-1.5 pr-2">{nombrePaciente}</td>
+                      {odOi}
+                      <td className="py-1.5 pr-2">{fmtMarco(marco)}</td>
                       {/* Solo el tipo de lente: el rango de receta es una
                           clasificación interna de costo, el laboratorio no
                           la usa ni la necesita para fabricar. */}
                       <td className="py-1.5 pr-2">{ot.tipo_lente}</td>
                       <td className="py-1.5">{ot.tratamiento ?? "—"}</td>
-                    </tr>
-                  );
+                    </tr>,
+                  ];
+                  if (tieneSegundo) {
+                    filas.push(
+                      <tr key={`${ot.folio}-2`} className="border-b-2 border-neutral-300 align-top bg-neutral-50">
+                        <td className="py-1.5 pr-2 font-bold text-neutral-400">↳ #{ot.folio}</td>
+                        <td className="py-1.5 pr-2 text-neutral-500">{nombrePaciente} (2° par, mismo pedido)</td>
+                        {odOi}
+                        <td className="py-1.5 pr-2">{fmtMarco(marco2)}</td>
+                        <td className="py-1.5 pr-2">{ot.tipo_lente_2}</td>
+                        <td className="py-1.5">{ot.tratamiento_2 ?? "—"}</td>
+                      </tr>
+                    );
+                  }
+                  return filas;
                 })}
               </tbody>
             </table>

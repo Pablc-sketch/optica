@@ -18,7 +18,7 @@ export default async function BuscarOT() {
   const { data: ots } = await supabase
     .from("ordenes_trabajo")
     .select(
-      "id, folio, estado, tipo_lente, tratamiento, fecha_ingreso, fecha_entrega_real, pacientes:paciente_id (nombre, rut)"
+      "id, folio, estado, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2, fecha_ingreso, fecha_entrega_real, pacientes:paciente_id (nombre, rut)"
     )
     .order("fecha_ingreso", { ascending: false })
     .limit(500);

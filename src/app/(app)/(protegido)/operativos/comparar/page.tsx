@@ -49,7 +49,7 @@ export default async function CompararOperativos() {
       .from("ventas")
       .select(
         `operativo_id, total,
-         venta_items (cantidad, ordenes_trabajo:ot_id (costo_laboratorio), productos:producto_id (costo, categoria))`
+         venta_items (cantidad, cristal_slot, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2), productos:producto_id (costo, categoria))`
       )
       .eq("anulada", false)
       .not("operativo_id", "is", null),

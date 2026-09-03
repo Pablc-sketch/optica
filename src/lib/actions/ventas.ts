@@ -10,10 +10,9 @@ type ItemVenta = {
   descripcion: string;
   cantidad: number;
   precioUnitario: number;
-  // Índice dentro de "cristales": así un ítem queda ligado a SU propia
-  // orden de trabajo, no a una compartida — necesario para vender lejos y
-  // cerca por separado en la misma venta.
-  cristalIndex?: number;
+  // A cuál de los dos cupos de cristal de la OT corresponde este ítem (1 o
+  // 2) — lejos y cerca por separado comparten la misma OT, no una cada uno.
+  cristalSlot?: 1 | 2;
 };
 
 export type DatosCristal = {
@@ -68,13 +67,15 @@ export async function registrarVenta(input: {
     .single();
   if (ventaError) throw ventaError;
 
-  // Si la venta lleva cristales y hay paciente, la(s) orden(es) de trabajo
-  // se crean solas: en el mesón (y sobre todo en un operativo) no hay
-  // tiempo para cargar dos veces los mismos datos. Un cristal = una OT —
-  // lejos y cerca por separado quedan como dos trabajos independientes.
+  // Si la venta lleva cristales y hay paciente, la orden de trabajo se crea
+  // sola: en el mesón (y sobre todo en un operativo) no hay tiempo para
+  // cargar dos veces los mismos datos. Lejos y cerca por separado comparten
+  // UNA sola OT (un folio, un cupo cada uno) — así cuando vuelve del
+  // laboratorio es un solo paquete por paciente, no dos que emparejar por
+  // nombre y RUT.
   const cristales = input.cristales ?? [];
-  const otIds: string[] = [];
-  const otFolios: number[] = [];
+  let otId: string | null = null;
+  let otFolio: number | null = null;
   if (input.pacienteId && cristales.length > 0) {
     const necesitaLab = cristales.some((c) => c.origen === "laboratorio");
     const [recetaRes, sucursalRes, proveedorRes, config] = await Promise.all([
@@ -106,34 +107,34 @@ export async function registrarVenta(input: {
       input.diasEntrega ?? config.data?.dias_entrega_default ?? 7
     );
 
-    for (let i = 0; i < cristales.length; i++) {
-      const cristal = cristales[i];
-      const { data: ot, error: otError } = await supabase
-        .from("ordenes_trabajo")
-        .insert({
-          tenant_id: tenantId,
-          paciente_id: input.pacienteId,
-          receta_id: recetaRes.data?.id ?? null,
-          sucursal_id: sucursalRes.data?.id ?? null,
-          operativo_id: input.operativoId ?? null,
-          // Cada cristal se enlaza con el armazón en el mismo orden en que
-          // se agregaron (dos pares separados = dos marcos, cada uno con
-          // su propia OT).
-          armazon_producto_id: input.armazonProductoIds?.[i] ?? null,
-          tipo_lente: cristal.tipoLente,
-          rango_receta: cristal.rangoReceta,
-          tratamiento: cristal.tratamiento,
-          origen_cristal: cristal.origen,
-          proveedor_lab_id: input.proveedorLabId ?? proveedorRes.data?.id ?? null,
-          costo_laboratorio: cristal.costoLaboratorio,
-          fecha_entrega_estimada: entregaISO,
-        })
-        .select("id, folio")
-        .single();
-      if (otError) throw otError;
-      otIds.push(ot.id);
-      otFolios.push(ot.folio);
-    }
+    const [primero, segundo] = cristales;
+    const { data: ot, error: otError } = await supabase
+      .from("ordenes_trabajo")
+      .insert({
+        tenant_id: tenantId,
+        paciente_id: input.pacienteId,
+        receta_id: recetaRes.data?.id ?? null,
+        sucursal_id: sucursalRes.data?.id ?? null,
+        operativo_id: input.operativoId ?? null,
+        armazon_producto_id: input.armazonProductoIds?.[0] ?? null,
+        tipo_lente: primero.tipoLente,
+        rango_receta: primero.rangoReceta,
+        tratamiento: primero.tratamiento,
+        origen_cristal: primero.origen,
+        proveedor_lab_id: input.proveedorLabId ?? proveedorRes.data?.id ?? null,
+        costo_laboratorio: primero.costoLaboratorio,
+        fecha_entrega_estimada: entregaISO,
+        armazon_producto_id_2: segundo ? (input.armazonProductoIds?.[1] ?? null) : null,
+        tipo_lente_2: segundo?.tipoLente ?? null,
+        rango_receta_2: segundo?.rangoReceta ?? null,
+        tratamiento_2: segundo?.tratamiento ?? null,
+        costo_laboratorio_2: segundo?.costoLaboratorio ?? null,
+      })
+      .select("id, folio")
+      .single();
+    if (otError) throw otError;
+    otId = ot.id;
+    otFolio = ot.folio;
   }
 
   const { error: itemsError } = await supabase.from("venta_items").insert(
@@ -141,7 +142,8 @@ export async function registrarVenta(input: {
       tenant_id: tenantId,
       venta_id: venta.id,
       producto_id: i.productoId ?? null,
-      ot_id: i.cristalIndex !== undefined ? (otIds[i.cristalIndex] ?? null) : null,
+      ot_id: i.cristalSlot !== undefined ? otId : null,
+      cristal_slot: i.cristalSlot ?? null,
       descripcion: i.descripcion,
       cantidad: i.cantidad,
       precio_unitario: i.precioUnitario,
@@ -186,7 +188,7 @@ export async function registrarVenta(input: {
   revalidatePath("/laboratorio");
   revalidatePath("/reportes");
   revalidatePath("/");
-  return { ok: true, ventaId: venta.id as string, otFolios };
+  return { ok: true, ventaId: venta.id as string, otFolio };
 }
 
 export async function registrarAbono(formData: FormData) {

@@ -33,10 +33,12 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       .from("ordenes_trabajo")
       .select(
         `id, folio, estado, tipo_lente, rango_receta, tratamiento, origen_cristal, proveedor_lab_id,
-         armazon_producto_id, fecha_ingreso, fecha_entrega_estimada, fecha_entrega_real, notas,
+         armazon_producto_id, tipo_lente_2, rango_receta_2, tratamiento_2, armazon_producto_id_2,
+         fecha_ingreso, fecha_entrega_estimada, fecha_entrega_real, notas,
          pacientes:paciente_id (nombre, rut, telefono, diabetes, hipertension, glaucoma, cirugia_ocular, alergias),
          recetas:receta_id (fecha, tipo, od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, av_od, av_oi, dp, altura, notas),
-         productos:armazon_producto_id (sku, nombre, marca, color)`
+         productos:armazon_producto_id (sku, nombre, marca, color),
+         productos_2:armazon_producto_id_2 (sku, nombre, marca, color)`
       )
       .eq("id", id)
       .single(),
@@ -78,7 +80,12 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
     oi_esfera: number | null; oi_cilindro: number | null; oi_eje: number | null; oi_add: number | null;
     av_od: string | null; av_oi: string | null; dp: number | null; altura: number | null; notas: string | null;
   } | null;
-  const marco = ot.productos as unknown as { sku: string | null; nombre: string; marca: string | null; color: string | null } | null;
+  type Marco = { sku: string | null; nombre: string; marca: string | null; color: string | null };
+  const marco = ot.productos as unknown as Marco | null;
+  const marco2 = ot.productos_2 as unknown as Marco | null;
+  const tieneSegundoCristal = Boolean(ot.tipo_lente_2 || ot.tratamiento_2);
+  const fmtMarco = (m: Marco | null) =>
+    m ? `${m.sku ? `[${m.sku}] ` : ""}${m.marca ?? ""} ${m.nombre} ${m.color ?? ""}`.trim() : "—";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -101,7 +108,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
         <form action={actualizarOT} className="mt-3 flex flex-col gap-3">
           <input type="hidden" name="ot_id" value={ot.id} />
           <label className="flex flex-col gap-1 text-sm font-medium">
-            Marco
+            {tieneSegundoCristal ? "Marco — cristal 1" : "Marco"}
             <select
               name="armazon_producto_id"
               defaultValue={ot.armazon_producto_id ?? ""}
@@ -115,6 +122,23 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
               ))}
             </select>
           </label>
+          {tieneSegundoCristal && (
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Marco — cristal 2
+              <select
+                name="armazon_producto_id_2"
+                defaultValue={ot.armazon_producto_id_2 ?? ""}
+                className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+              >
+                <option value="">— Sin marco —</option>
+                {(armazonesRes.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {[p.sku && `[${p.sku}]`, p.marca, p.nombre, p.color].filter(Boolean).join(" ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="flex gap-2 text-sm">
             {(["laboratorio", "stock"] as const).map((op) => (
               <label
@@ -262,16 +286,30 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
         <div className="grid grid-cols-2 gap-1 text-sm sm:grid-cols-3">
           <p><span className="font-semibold">DP:</span> {receta?.dp ?? "—"} mm</p>
           <p><span className="font-semibold">Altura:</span> {receta?.altura ?? "—"} mm</p>
-          <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente ?? "—"}</p>
-          {/* Rango de receta y origen (stock/laboratorio) son datos de
-              trabajo interno, no algo que el cliente necesite ver en su
-              copia; el laboratorio los sigue recibiendo en /laboratorio. */}
-          <p className="col-span-2"><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento ?? "—"}</p>
-          <p className="col-span-2">
-            <span className="font-semibold">Marco:</span>{" "}
-            {marco ? `${marco.sku ? `[${marco.sku}] ` : ""}${marco.marca ?? ""} ${marco.nombre} ${marco.color ?? ""}`.trim() : "—"}
-          </p>
         </div>
+
+        {/* Rango de receta y origen (stock/laboratorio) son datos de trabajo
+            interno, no algo que el cliente necesite ver en su copia; el
+            laboratorio los sigue recibiendo en /laboratorio. Dos cristales
+            (lejos y cerca por separado) comparten esta misma OT — cada uno
+            con su propio marco, para no mezclarlos al empacar. */}
+        <div className="mt-3 rounded border border-neutral-300 p-3 text-sm">
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
+            {tieneSegundoCristal ? "Cristal 1" : "Cristal"}
+          </p>
+          <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente ?? "—"}</p>
+          <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento ?? "—"}</p>
+          <p><span className="font-semibold">Marco:</span> {fmtMarco(marco)}</p>
+        </div>
+
+        {tieneSegundoCristal && (
+          <div className="mt-3 rounded border border-neutral-300 p-3 text-sm">
+            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">Cristal 2</p>
+            <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente_2 ?? "—"}</p>
+            <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento_2 ?? "—"}</p>
+            <p><span className="font-semibold">Marco:</span> {fmtMarco(marco2)}</p>
+          </div>
+        )}
 
         {(ot.notas || receta?.notas) && (
           <p className="mt-4 border-t border-neutral-200 pt-3 text-sm">

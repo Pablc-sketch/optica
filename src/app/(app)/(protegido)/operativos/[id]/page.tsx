@@ -76,8 +76,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         `id, total, estado_pago, paciente_id,
          pacientes:paciente_id (id, nombre, rut, telefono),
          venta_items (
-           cantidad, precio_unitario, descuento, descripcion,
-           ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio),
+           cantidad, precio_unitario, descuento, descripcion, cristal_slot,
+           ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio, costo_laboratorio_2),
            productos:producto_id (costo, categoria)
          )`
       )
@@ -115,6 +115,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // Próximas entregas: de las ventas de este operativo, las que tienen una
   // OT con fecha estimada, para que el resumen de cierre avise qué falta
   // entregar sin tener que ir a buscarlo a /ot.
+  const vistas = new Set<string>();
   const entregas = ventas
     .flatMap((v) => {
       const paciente = uno(v.pacientes as unknown as PacienteRel);
@@ -122,6 +123,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         .map((it) => uno(it.ordenes_trabajo as unknown as OtRel))
         .filter((ot): ot is NonNullable<typeof ot> => Boolean(ot?.fecha_entrega_estimada))
         .map((ot) => ({ paciente: paciente?.nombre ?? "Sin paciente", fecha: ot.fecha_entrega_estimada as string }));
+    })
+    // Lejos y cerca por separado comparten una sola OT (misma fecha
+    // estimada): sin esto salía la misma entrega repetida dos veces.
+    .filter((e) => {
+      const clave = `${e.paciente}|${e.fecha}`;
+      if (vistas.has(clave)) return false;
+      vistas.add(clave);
+      return true;
     })
     .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
