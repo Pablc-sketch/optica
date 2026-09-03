@@ -654,8 +654,10 @@ export default function PuntoDeVenta({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Barra de pasos: cada uno con su color — además de orientar,
-          permite volver a corregir algo sin perder lo ya cargado. */}
+      {/* Barra de pasos: cada uno con su color. Los pasos ya hechos se
+          pueden tocar para volver directo a cualquiera de ellos (no solo
+          al anterior) sin perder lo ya cargado — el "‹" y el borde marcado
+          avisan que se puede tocar. */}
       <ol className="flex items-center gap-1 overflow-x-auto">
         {PASOS.map((titulo, i) => {
           const actual = i === paso;
@@ -667,10 +669,15 @@ export default function PuntoDeVenta({
                 type="button"
                 onClick={() => i <= paso && setPaso(i)}
                 disabled={i > paso}
-                className={`flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-semibold transition ${
-                  actual ? color.pill : hecho ? color.pillHecho : "bg-crema-claro text-tinta-suave"
+                className={`flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2.5 text-sm font-semibold transition ${
+                  actual
+                    ? color.pill
+                    : hecho
+                      ? `${color.pillHecho} border-2 ${color.seccion.split(" ")[0]}`
+                      : "bg-crema-claro text-tinta-suave"
                 }`}
               >
+                {hecho && <span aria-hidden>‹</span>}
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/10 text-xs">
                   {hecho ? "✓" : i + 1}
                 </span>
@@ -680,6 +687,9 @@ export default function PuntoDeVenta({
           );
         })}
       </ol>
+      <p className="-mt-2 text-xs text-tinta-suave">
+        Toca cualquier paso ya hecho arriba (el que tiene ‹) para volver directo a él.
+      </p>
 
       {mensaje && (
         <p
