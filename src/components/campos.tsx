@@ -78,20 +78,21 @@ export function CampoDioptria({
   name,
   signo,
   placeholder,
+  defaultValue,
   onValueChange,
-}: Pick<Props, "name" | "placeholder"> & {
+}: Pick<Props, "name" | "placeholder" | "defaultValue"> & {
   signo: "+" | "-" | "libre";
   // Para reflejar el valor en algo aparte del formulario (ej. la
   // calculadora de precios de la receta), sin volverlo un input controlado.
   onValueChange?: (valor: string) => void;
 }) {
-  const [valor, setValor] = useState("");
+  const [valor, setValor] = useState(() => formatearDioptria(String(defaultValue ?? ""), signo));
   // Solo para "libre" (la esfera): el teclado numérico del celular casi
   // nunca trae el signo "-", así que no se puede depender de que la
   // persona logre escribirlo — el signo lo manda este botón, no lo que
   // haya (o no) tecleado. Cualquier "+"/"-" que igual llegue del teclado se
   // ignora al extraer el número, para no pisar el signo elegido acá.
-  const [negativo, setNegativo] = useState(false);
+  const [negativo, setNegativo] = useState(() => String(defaultValue ?? "").trim().startsWith("-"));
 
   function aplicar(formateado: string) {
     setValor(formateado);
@@ -147,8 +148,8 @@ export function CampoDioptria({
   );
 }
 
-export function CampoAgudezaVisual({ name }: Pick<Props, "name">) {
-  const [valor, setValor] = useState("");
+export function CampoAgudezaVisual({ name, defaultValue }: Pick<Props, "name" | "defaultValue">) {
+  const [valor, setValor] = useState(() => formatearAgudezaVisual(String(defaultValue ?? "")));
   return (
     <input
       name={name}
