@@ -7,7 +7,7 @@ import { encolar, type CambioSync } from "@/lib/offline/outbox";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
-import { clasificarRango, nombreCristal } from "@/lib/cristales";
+import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { hoyEnChile, sumarDias } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
@@ -29,8 +29,10 @@ type RecetaResumen = {
   tipo: string;
   od_esfera: number | null;
   od_cilindro: number | null;
+  od_add: number | null;
   oi_esfera: number | null;
   oi_cilindro: number | null;
+  oi_add: number | null;
   sugerencia_tipo_lente: string | null;
   sugerencia_tratamiento: string | null;
   sugerencia_tipo_lente_cerca: string | null;
@@ -101,17 +103,23 @@ export default function PuntoDeVenta({
   const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
   const [tipoLente, setTipoLente] = useState("");
   const receta = pacienteId ? recetasPorPaciente[pacienteId] : undefined;
+  const [rangoManual, setRangoManual] = useState("");
+  const [posicionCristal, setPosicionCristal] = useState<"lejos" | "cerca">("lejos");
   // El rango se calcula solo de la receta real (esfera/cilindro más
-  // exigentes entre los dos ojos) — la vendedora no elige nada acá. Si el
+  // exigentes entre los dos ojos) — la vendedora no elige nada acá. Para un
+  // Monofocal de cerca la potencia real suma la adición (ADD): un +1.00 con
+  // ADD +2.00 arma un +3.00, que puede caer en un rango más caro. Si el
   // paciente no tiene receta cargada todavía, se cae al selector manual
   // para no dejarla sin poder vender.
+  const posicionParaRango = tipoLente === "Monofocal" ? posicionCristal : "lejos";
   const rangoAuto = receta
-    ? clasificarRango(
+    ? rangoParaPosicion(
         [receta.od_esfera, receta.oi_esfera],
-        [receta.od_cilindro, receta.oi_cilindro]
+        [receta.od_cilindro, receta.oi_cilindro],
+        [receta.od_add, receta.oi_add],
+        posicionParaRango
       )
     : null;
-  const [rangoManual, setRangoManual] = useState("");
   const rango = rangoAuto ?? rangoManual;
   const rangos = useMemo(
     () => [...new Set(costos.filter((c) => c.tipo_lente === tipoLente).map((c) => c.rango_receta))],
@@ -122,7 +130,6 @@ export default function PuntoDeVenta({
     [costos, tipoLente, rango]
   );
   const [tratamiento, setTratamiento] = useState("");
-  const [posicionCristal, setPosicionCristal] = useState<"lejos" | "cerca">("lejos");
   const [origenCristal, setOrigenCristal] = useState<"laboratorio" | "stock">("laboratorio");
 
   const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
@@ -130,7 +137,10 @@ export default function PuntoDeVenta({
   const esAbonoParcial = abonoNum > 0 && abonoNum < total;
   const montoACobrar = esAbonoParcial ? abonoNum : total;
   const lineasCristal = carrito.filter((l) => l.cristal);
-  const lineaArmazon = carrito.find((l) => l.productoId);
+  // Puede haber más de un armazón (dos pares separados: uno para el
+  // cristal de lejos, otro para el de cerca) — se enlazan en el mismo
+  // orden en que se agregaron, cada uno con su propia orden de trabajo.
+  const lineasArmazon = carrito.filter((l) => l.productoId);
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
   const recetaPacienteId = receta?.id;
   // Como máximo dos cristales por venta: un Monofocal de lejos y uno de
@@ -202,7 +212,9 @@ export default function PuntoDeVenta({
   function agregarCristal() {
     const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
     if (!combo || !puedeAgregarOtroCristal) return;
-    const posicion = lineasCristal.length > 0 ? posicionCristal : undefined;
+    // Solo Monofocal se etiqueta lejos/cerca (Bifocal/Multifocal ya cubren
+    // ambas distancias en un solo lente).
+    const posicion = tipoLente === "Monofocal" ? posicionCristal : undefined;
     setCarrito((prev) => [
       // Reemplaza solo el cristal de la misma posición (lejos/cerca), no el otro.
       ...prev.filter((l) => !l.cristal || (posicion !== undefined && l.cristal.posicion !== posicion)),
@@ -217,7 +229,6 @@ export default function PuntoDeVenta({
     setPacienteId(id);
     const r = recetasPorPaciente[id];
     if (!r) return;
-    const rangoDeReceta = clasificarRango([r.od_esfera, r.oi_esfera], [r.od_cilindro, r.oi_cilindro]);
 
     const sugeridas: { tipoLente: string | null; tratamiento: string | null; posicion?: "lejos" | "cerca" }[] =
       r.tipo === "lejos_y_cerca"
@@ -229,13 +240,29 @@ export default function PuntoDeVenta({
               posicion: "cerca",
             },
           ]
-        : [{ tipoLente: r.sugerencia_tipo_lente, tratamiento: r.sugerencia_tratamiento }];
+        : [
+            {
+              tipoLente: r.sugerencia_tipo_lente,
+              tratamiento: r.sugerencia_tratamiento,
+              posicion: r.tipo === "cerca" ? "cerca" : undefined,
+            },
+          ];
 
     const nuevasLineas: LineaCarrito[] = [];
     for (const s of sugeridas) {
       if (!s.tipoLente || !s.tratamiento) continue;
+      // El rango solo suma la adición (ADD) cuando el cristal es un
+      // Monofocal de cerca — Bifocal/Multifocal ya la traen incorporada al
+      // diseño del lente, así que usan la esfera de lejos tal cual.
+      const posicionParaRango = s.tipoLente === "Monofocal" && s.posicion === "cerca" ? "cerca" : "lejos";
+      const rangoSugerido = rangoParaPosicion(
+        [r.od_esfera, r.oi_esfera],
+        [r.od_cilindro, r.oi_cilindro],
+        [r.od_add, r.oi_add],
+        posicionParaRango
+      );
       const combo = costos.find(
-        (c) => c.tipo_lente === s.tipoLente && c.rango_receta === rangoDeReceta && c.tratamiento === s.tratamiento
+        (c) => c.tipo_lente === s.tipoLente && c.rango_receta === rangoSugerido && c.tratamiento === s.tratamiento
       );
       if (combo) nuevasLineas.push(lineaDeCombo(combo, { posicion: s.posicion, sugerido: true }));
     }
@@ -302,7 +329,8 @@ export default function PuntoDeVenta({
       },
     ];
 
-    for (const l of lineasCristal) {
+    for (let i = 0; i < lineasCristal.length; i++) {
+      const l = lineasCristal[i];
       const otId = otIdPorLinea.get(l.key);
       if (!otId || !l.cristal) continue;
       cambios.push({
@@ -316,8 +344,10 @@ export default function PuntoDeVenta({
           sucursal_id: sucursalId,
           operativo_id: operativoId || null,
           estado: "recepcion",
-          // El armazón va con la primera OT (es el único marco de la venta).
-          armazon_producto_id: l === lineasCristal[0] ? (lineaArmazon?.productoId ?? null) : null,
+          // Cada cristal se enlaza con el armazón en el mismo orden en que
+          // se agregaron (dos pares separados = dos marcos, cada uno con
+          // su propia OT).
+          armazon_producto_id: lineasArmazon[i]?.productoId ?? null,
           tipo_lente: l.cristal.tipoLente,
           rango_receta: l.cristal.rangoReceta,
           tratamiento: l.cristal.tratamiento,
@@ -416,7 +446,9 @@ export default function PuntoDeVenta({
         cristales: creaOT
           ? lineasCristal.map((l) => ({ ...l.cristal!, origen: origenCristal }))
           : [],
-        armazonProductoId: lineaArmazon?.productoId ?? null,
+        // Un armazón por cristal, en el mismo orden — dos pares separados
+        // (lejos y cerca) llevan cada uno su propio marco.
+        armazonProductoIds: lineasArmazon.map((l) => l.productoId ?? null),
         proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
         operativoId: operativoId || null,
       });
@@ -571,7 +603,8 @@ export default function PuntoDeVenta({
             <h2 className="font-bold">¿Lleva armazón u otro producto?</h2>
             <p className="text-sm text-tinta-suave">
               Toca los productos para agregarlos. Si solo lleva cristales, continúa sin agregar
-              nada.
+              nada. Si son dos pares separados (lejos y cerca), agrega primero el marco de lejos y
+              después el de cerca — quedan enlazados en ese mismo orden con su cristal.
             </p>
           </div>
 
@@ -674,23 +707,28 @@ export default function PuntoDeVenta({
             </select>
           </label>
 
-          {tipoLente === "Monofocal" && lineasCristal.length > 0 && (
-            <div className="flex gap-2 text-sm">
-              {(["lejos", "cerca"] as const).map((p) => (
-                <label
-                  key={p}
-                  className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 capitalize has-checked:border-brand has-checked:bg-brand/10"
-                >
-                  <input
-                    type="radio"
-                    name="posicion_cristal"
-                    checked={posicionCristal === p}
-                    onChange={() => setPosicionCristal(p)}
-                    className="accent-brand"
-                  />
-                  {p}
-                </label>
-              ))}
+          {tipoLente === "Monofocal" && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-tinta-suave">
+                ¿Este Monofocal es para lejos o para cerca? (si es cerca, el rango suma la adición)
+              </span>
+              <div className="flex gap-2 text-sm">
+                {(["lejos", "cerca"] as const).map((p) => (
+                  <label
+                    key={p}
+                    className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 capitalize has-checked:border-brand has-checked:bg-brand/10"
+                  >
+                    <input
+                      type="radio"
+                      name="posicion_cristal"
+                      checked={posicionCristal === p}
+                      onChange={() => setPosicionCristal(p)}
+                      className="accent-brand"
+                    />
+                    {p}
+                  </label>
+                ))}
+              </div>
             </div>
           )}
 

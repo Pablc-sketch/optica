@@ -26,3 +26,19 @@ export function clasificarRango(esferas: (number | null)[], cilindros: (number |
   const banda = BANDAS_RANGO.find((b) => esferaMax <= b.esfera && cilindroMax <= b.cilindro);
   return (banda ?? BANDAS_RANGO[BANDAS_RANGO.length - 1]).rango;
 }
+
+// Para un Monofocal de cerca (lectura) la potencia real del cristal es la
+// esfera de lejos MÁS la adición (ADD) — un +1.00 de hipermetropía con
+// ADD +2.00 arma un lente de +3.00, que puede caer en un rango de costo más
+// alto que el de lejos. El cilindro no cambia con la adición. Para "lejos"
+// (o cuando no hay adición) es lo mismo que clasificarRango de toda la vida.
+export function rangoParaPosicion(
+  esferas: (number | null)[],
+  cilindros: (number | null)[],
+  adds: (number | null)[],
+  posicion: "lejos" | "cerca"
+): string {
+  if (posicion === "lejos") return clasificarRango(esferas, cilindros);
+  const esferasEfectivas = esferas.map((e, i) => (e === null ? null : e + (adds[i] ?? 0)));
+  return clasificarRango(esferasEfectivas, cilindros);
+}

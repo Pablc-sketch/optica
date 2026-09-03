@@ -77,13 +77,23 @@ export function CampoDioptria({
   name,
   signo,
   placeholder,
-}: Pick<Props, "name" | "placeholder"> & { signo: "+" | "-" | "libre" }) {
+  onValueChange,
+}: Pick<Props, "name" | "placeholder"> & {
+  signo: "+" | "-" | "libre";
+  // Para reflejar el valor en algo aparte del formulario (ej. la
+  // calculadora de precios de la receta), sin volverlo un input controlado.
+  onValueChange?: (valor: string) => void;
+}) {
   const [valor, setValor] = useState("");
   return (
     <input
       name={name}
       value={valor}
-      onChange={(e) => setValor(formatearDioptria(e.target.value, signo))}
+      onChange={(e) => {
+        const formateado = formatearDioptria(e.target.value, signo);
+        setValor(formateado);
+        onValueChange?.(formateado);
+      }}
       inputMode="decimal"
       placeholder={placeholder ?? (signo === "-" ? "-0.50" : signo === "+" ? "+1.50" : "±1.75")}
       className="w-full rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand"

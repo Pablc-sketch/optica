@@ -30,7 +30,9 @@ export async function registrarVenta(input: {
   abonoInicial: number;
   medioPago: string;
   cristales?: DatosCristal[];
-  armazonProductoId?: string | null;
+  // Un armazón por cristal, en el mismo orden: dos pares separados (lejos y
+  // cerca) llevan cada uno su propio marco.
+  armazonProductoIds?: (string | null)[];
   diasEntrega?: number;
   proveedorLabId?: string | null;
   operativoId?: string | null;
@@ -114,9 +116,10 @@ export async function registrarVenta(input: {
           receta_id: recetaRes.data?.id ?? null,
           sucursal_id: sucursalRes.data?.id ?? null,
           operativo_id: input.operativoId ?? null,
-          // El armazón (marco físico) va con la primera OT: es el único
-          // marco de la venta aunque haya dos cristales.
-          armazon_producto_id: i === 0 ? (input.armazonProductoId ?? null) : null,
+          // Cada cristal se enlaza con el armazón en el mismo orden en que
+          // se agregaron (dos pares separados = dos marcos, cada uno con
+          // su propia OT).
+          armazon_producto_id: input.armazonProductoIds?.[i] ?? null,
           tipo_lente: cristal.tipoLente,
           rango_receta: cristal.rangoReceta,
           tratamiento: cristal.tratamiento,

@@ -8,6 +8,7 @@ import BotonImprimir from "@/components/boton-imprimir";
 import EnviarRecetaCorreo from "./enviar-correo";
 import DescargarPdf from "./descargar-pdf";
 import type { DatosRecetaImpresion } from "@/lib/receta-datos";
+import { nombreCristal } from "@/lib/cristales";
 
 // Receta óptica imprimible/descargable: lo que se le entrega en mano al
 // paciente. Con el logo propio de la óptica y todos los antecedentes de la
@@ -68,20 +69,20 @@ export default async function RecetaImprimible({
       )
     : null;
 
-  const alertas = [
-    paciente.diabetes && "Diabetes",
-    paciente.hipertension && "Hipertensión",
-    paciente.glaucoma && "Glaucoma",
-    paciente.cirugia_ocular && "Cirugía ocular previa",
-    paciente.usa_lentes_contacto && "Usa lentes de contacto",
-  ].filter(Boolean) as string[];
+  // La receta que se lleva el paciente no es la ficha clínica: los
+  // antecedentes médicos (diabetes, alergias, etc.) se quedan internos en
+  // la ficha, acá solo va lo que le sirve para comprar — qué lente le
+  // conviene (lo que ya se conversó en el box) y la observación de venta.
+  const alertas: string[] = [];
 
   const observaciones = [
-    paciente.alergias ? `Alergias: ${paciente.alergias}` : null,
-    paciente.medicamentos ? `Medicamentos: ${paciente.medicamentos}` : null,
-    paciente.ocupacion ? `Ocupación: ${paciente.ocupacion}` : null,
-    paciente.horas_pantalla ? `Horas de pantalla al día: ${paciente.horas_pantalla}` : null,
-    paciente.antecedentes_otros,
+    receta.sugerencia_tipo_lente && receta.sugerencia_tratamiento
+      ? `Lente sugerido${receta.tipo === "lejos_y_cerca" ? " (lejos)" : ""}: ${nombreCristal(receta.sugerencia_tipo_lente, receta.sugerencia_tratamiento)}`
+      : null,
+    receta.sugerencia_tipo_lente_cerca && receta.sugerencia_tratamiento_cerca
+      ? `Lente sugerido (cerca): ${nombreCristal(receta.sugerencia_tipo_lente_cerca, receta.sugerencia_tratamiento_cerca)}`
+      : null,
+    receta.observacion_venta,
   ].filter(Boolean) as string[];
 
   const emailDestino = paciente.email ?? "";

@@ -53,10 +53,13 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       .select("id, nombre, fecha, estado")
       .in("estado", ["planificado", "realizado"])
       .order("fecha", { ascending: false }),
-    // Mismas combinaciones reales del punto de venta, para que la
-    // sugerencia del tecnólogo calce directo con lo que va a ver la
-    // vendedora.
-    supabase.from("costos_cristales").select("tipo_lente, tratamiento").order("tipo_lente"),
+    // Misma matriz real del punto de venta: para que la sugerencia calce
+    // directo con lo que va a ver la vendedora, y para poder mostrarle el
+    // precio al paciente ahí mismo en el box (pestaña "Ver precios").
+    supabase
+      .from("costos_cristales")
+      .select("tipo_lente, rango_receta, tratamiento, costo, precio_venta")
+      .order("tipo_lente"),
   ]);
   const opcionesCristal = [
     ...new Map((costos ?? []).map((c) => [`${c.tipo_lente}|${c.tratamiento}`, c])).values(),
@@ -178,6 +181,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
         pacienteId={paciente.id}
         operativos={operativos ?? []}
         opcionesCristal={opcionesCristal}
+        costos={costos ?? []}
       />
 
       <section>
