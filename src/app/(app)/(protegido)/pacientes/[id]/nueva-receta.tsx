@@ -31,7 +31,6 @@ function CampoOptico({ name, label, placeholder }: { name: string; label: string
   );
 }
 
-type OpcionCristal = { tipo_lente: string; tratamiento: string };
 type CostoCristal = {
   tipo_lente: string;
   rango_receta: string;
@@ -40,27 +39,38 @@ type CostoCristal = {
   precio_venta: number;
 };
 
-// Para mostrarle el precio al paciente ahí mismo, mientras se conversa qué
-// lente le conviene — sin tener que ir al punto de venta a cotizar. El
-// rango se calcula solo con lo que ya se está escribiendo en la receta
-// (esfera/cilindro/ADD), igual que en el POS.
-function CalculadoraPrecio({
+// Un solo control que hace las dos cosas a la vez: acá el tecnólogo elige
+// qué lente le conviene al paciente (y de paso ve el precio para cotizarle
+// en el momento) — y esa MISMA elección es la que se guarda como sugerencia
+// de venta. Antes eran dos controles separados (uno para cotizar, otro para
+// guardar la sugerencia) y había que elegir dos veces lo mismo; ahora es
+// uno solo, así que el rut trae precargado exactamente lo que se conversó.
+function SelectorLenteConPrecio({
+  titulo,
   costos,
+  nombreTipo,
+  nombreTratamiento,
   esferas,
   cilindros,
   add,
+  posicionSlot,
 }: {
+  titulo: string;
   costos: CostoCristal[];
+  nombreTipo: string;
+  nombreTratamiento: string;
   esferas: [number | null, number | null];
   cilindros: [number | null, number | null];
   add: number | null;
+  posicionSlot: "lejos" | "cerca";
 }) {
   const [tipoLente, setTipoLente] = useState("");
-  const [posicion, setPosicion] = useState<"lejos" | "cerca">("lejos");
   const [tratamiento, setTratamiento] = useState("");
 
   const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
-  const posicionParaRango = tipoLente === "Monofocal" ? posicion : "lejos";
+  // Solo Monofocal de cerca suma la adición al rango — Bifocal/Multifocal
+  // ya la traen incorporada al diseño del lente.
+  const posicionParaRango = tipoLente === "Monofocal" ? posicionSlot : "lejos";
   const rango = rangoParaPosicion(esferas, cilindros, [add, add], posicionParaRango);
   const tratamientos = useMemo(
     () => costos.filter((c) => c.tipo_lente === tipoLente && c.rango_receta === rango),
@@ -69,113 +79,17 @@ function CalculadoraPrecio({
   const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
 
   return (
-    <details className="rounded-xl border border-brand/25 bg-brand/5 p-3">
-      <summary className="cursor-pointer text-sm font-bold text-brand-dark">
-        💲 Ver precio para mostrarle al paciente
-      </summary>
-      <div className="mt-3 flex flex-col gap-2">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-xs font-medium">
-            Tipo de lente
-            <select
-              value={tipoLente}
-              onChange={(e) => {
-                setTipoLente(e.target.value);
-                setTratamiento("");
-              }}
-              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand"
-            >
-              <option value="">Elegir…</option>
-              {tiposLente.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          {tipoLente === "Monofocal" && (
-            <div className="flex gap-2 text-sm">
-              {(["lejos", "cerca"] as const).map((p) => (
-                <label
-                  key={p}
-                  className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2 capitalize has-checked:border-brand has-checked:bg-brand/10"
-                >
-                  <input
-                    type="radio"
-                    checked={posicion === p}
-                    onChange={() => setPosicion(p)}
-                    className="accent-brand"
-                  />
-                  {p}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {tipoLente && (
-          <p className="text-xs text-tinta-suave">
-            Rango de la receta calculado: <b>{rango}</b>
-          </p>
-        )}
-
-        <label className="flex flex-col gap-1 text-xs font-medium">
-          Tratamiento
-          <select
-            value={tratamiento}
-            onChange={(e) => setTratamiento(e.target.value)}
-            disabled={!tipoLente}
-            className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand disabled:opacity-50"
-          >
-            <option value="">Elegir…</option>
-            {tratamientos.map((t) => (
-              <option key={t.tratamiento} value={t.tratamiento}>
-                {nombreCristal(t.tipo_lente, t.tratamiento)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {combo && (
-          <p className="rounded-lg bg-white px-3 py-3 text-center text-lg font-bold text-brand-dark">
-            {combo.precio_venta > 0 ? clp(combo.precio_venta) : "Precio no configurado — revisa /precios"}
-          </p>
-        )}
-      </div>
-    </details>
-  );
-}
-
-// Selects de tipo de lente + tratamiento sugeridos, usando las mismas
-// combinaciones reales de costos_cristales — para que calcen directo con
-// lo que la vendedora va a encontrar en el punto de venta.
-function CamposSugerencia({
-  titulo,
-  opciones,
-  nombreTipo,
-  nombreTratamiento,
-}: {
-  titulo: string;
-  opciones: OpcionCristal[];
-  nombreTipo: string;
-  nombreTratamiento: string;
-}) {
-  const [tipoLente, setTipoLente] = useState("");
-  const tiposLente = useMemo(() => [...new Set(opciones.map((o) => o.tipo_lente))], [opciones]);
-  const tratamientos = useMemo(
-    () => opciones.filter((o) => o.tipo_lente === tipoLente),
-    [opciones, tipoLente]
-  );
-  return (
     <fieldset className="rounded-xl border border-brand/25 bg-brand/5 p-3">
       <legend className="px-1 text-sm font-bold text-brand-dark">{titulo}</legend>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs font-medium">
           Tipo de lente
           <select
-            name={nombreTipo}
             value={tipoLente}
-            onChange={(e) => setTipoLente(e.target.value)}
+            onChange={(e) => {
+              setTipoLente(e.target.value);
+              setTratamiento("");
+            }}
             className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand"
           >
             <option value="">— Sin sugerir —</option>
@@ -189,20 +103,39 @@ function CamposSugerencia({
         <label className="flex flex-col gap-1 text-xs font-medium">
           Tratamiento
           <select
-            name={nombreTratamiento}
+            value={tratamiento}
+            onChange={(e) => setTratamiento(e.target.value)}
             disabled={!tipoLente}
-            defaultValue=""
             className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand disabled:opacity-50"
           >
             <option value="">— Sin sugerir —</option>
             {tratamientos.map((t) => (
               <option key={t.tratamiento} value={t.tratamiento}>
-                {t.tratamiento}
+                {nombreCristal(t.tipo_lente, t.tratamiento)}
               </option>
             ))}
           </select>
         </label>
       </div>
+
+      {tipoLente && (
+        <p className="mt-2 text-xs text-tinta-suave">
+          Rango de la receta calculado: <b>{rango}</b>
+        </p>
+      )}
+
+      {combo && (
+        <p className="mt-2 rounded-lg bg-white px-3 py-2.5 text-center text-base font-bold text-brand-dark">
+          {combo.precio_venta > 0 ? clp(combo.precio_venta) : "Precio no configurado — revisa /precios"}
+        </p>
+      )}
+
+      {/* Los selects de arriba no llevan name: son solo para mostrar el
+          precio. Lo que de verdad viaja en el formulario son estos dos
+          ocultos, para que la sugerencia guardada sea exactamente la misma
+          elección que se usó para cotizar. */}
+      <input type="hidden" name={nombreTipo} value={tipoLente} />
+      <input type="hidden" name={nombreTratamiento} value={tratamiento} />
     </fieldset>
   );
 }
@@ -210,18 +143,16 @@ function CamposSugerencia({
 export default function NuevaReceta({
   pacienteId,
   operativos,
-  opcionesCristal,
   costos,
 }: {
   pacienteId: string;
   operativos: { id: string; nombre: string }[];
-  opcionesCristal: OpcionCristal[];
   costos: CostoCristal[];
 }) {
   const [tipo, setTipo] = useState<"lejos" | "cerca" | "lejos_y_cerca">("lejos");
   const necesitaCerca = tipo === "lejos_y_cerca";
 
-  // Espejo de los campos ópticos solo para la calculadora de precios de
+  // Espejo de los campos ópticos solo para el selector de lente + precio de
   // más abajo — el formulario en sí sigue leyendo por FormData (name), esto
   // no lo toca.
   const [odEsfera, setOdEsfera] = useState<number | null>(null);
@@ -291,12 +222,31 @@ export default function NuevaReceta({
           <CampoDioptria name="add" signo="+" onValueChange={(v) => setAdd(aNumero(v))} />
         </fieldset>
 
-        <CalculadoraPrecio
+        {/* Lo que se conversó con el paciente: se cotiza acá mismo y esa
+            elección se precarga sola en el punto de venta cuando lo busquen
+            por RUT — a la vendedora solo le queda elegir el marco. */}
+        <SelectorLenteConPrecio
+          titulo={necesitaCerca ? "Lente — lejos" : "Lente sugerido"}
           costos={costos}
+          nombreTipo="sugerencia_tipo_lente"
+          nombreTratamiento="sugerencia_tratamiento"
           esferas={[odEsfera, oiEsfera]}
           cilindros={[odCilindro, oiCilindro]}
           add={add}
+          posicionSlot={tipo === "cerca" ? "cerca" : "lejos"}
         />
+        {necesitaCerca && (
+          <SelectorLenteConPrecio
+            titulo="Lente — cerca"
+            costos={costos}
+            nombreTipo="sugerencia_tipo_lente_cerca"
+            nombreTratamiento="sugerencia_tratamiento_cerca"
+            esferas={[odEsfera, oiEsfera]}
+            cilindros={[odCilindro, oiCilindro]}
+            add={add}
+            posicionSlot="cerca"
+          />
+        )}
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <CampoOptico name="dp" label="DP (mm)" placeholder="63" />
@@ -310,33 +260,6 @@ export default function NuevaReceta({
             <CampoAgudezaVisual name="av_oi" />
           </label>
         </div>
-
-        {/* Lo que ya se conversó con el paciente sobre qué le conviene — se
-            precarga sola en el punto de venta cuando lo busquen por RUT. */}
-        <CamposSugerencia
-          titulo={necesitaCerca ? "Sugerencia — lejos" : "Sugerencia de venta"}
-          opciones={opcionesCristal}
-          nombreTipo="sugerencia_tipo_lente"
-          nombreTratamiento="sugerencia_tratamiento"
-        />
-        {necesitaCerca && (
-          <CamposSugerencia
-            titulo="Sugerencia — cerca"
-            opciones={opcionesCristal}
-            nombreTipo="sugerencia_tipo_lente_cerca"
-            nombreTratamiento="sugerencia_tratamiento_cerca"
-          />
-        )}
-
-        <label className="flex flex-col gap-1 text-xs font-medium">
-          Observación para la venta
-          <textarea
-            name="observacion_venta"
-            rows={2}
-            placeholder="Lo que se conversó con el paciente sobre qué le conviene…"
-            className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-base outline-none focus:border-brand"
-          />
-        </label>
 
         {operativos.length > 0 && (
           <label className="flex flex-col gap-1 text-xs font-medium">

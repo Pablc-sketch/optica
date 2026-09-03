@@ -61,9 +61,6 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       .select("tipo_lente, rango_receta, tratamiento, costo, precio_venta")
       .order("tipo_lente"),
   ]);
-  const opcionesCristal = [
-    ...new Map((costos ?? []).map((c) => [`${c.tipo_lente}|${c.tratamiento}`, c])).values(),
-  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -180,7 +177,6 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       <NuevaReceta
         pacienteId={paciente.id}
         operativos={operativos ?? []}
-        opcionesCristal={opcionesCristal}
         costos={costos ?? []}
       />
 
