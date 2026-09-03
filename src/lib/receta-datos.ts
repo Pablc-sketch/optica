@@ -62,7 +62,7 @@ export function construirTextoReceta(datos: DatosRecetaImpresion): string {
     `Paciente: ${datos.pacienteNombre}`,
     `RUT: ${datos.rut}`,
     datos.edad !== null ? `Edad: ${datos.edad} años` : null,
-    `Tipo de visión: ${datos.tipoVision}`,
+    `Tipo de lente: ${datos.tipoVision}`,
     "",
     tabla,
     "",

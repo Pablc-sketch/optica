@@ -65,7 +65,7 @@ export async function construirPdfReceta(datos: DatosRecetaImpresion) {
     `Paciente: ${datos.pacienteNombre}`,
     `RUT: ${datos.rut}`,
     datos.edad !== null ? `Edad: ${datos.edad} años` : null,
-    `Tipo de visión: ${datos.tipoVision}`,
+    `Tipo de lente: ${datos.tipoVision}`,
   ].filter(Boolean) as string[];
   filaDatos.forEach((linea, i) => {
     doc.text(linea, 15 + (i % 2) * 90, y + Math.floor(i / 2) * 6);

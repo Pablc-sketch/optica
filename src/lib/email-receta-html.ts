@@ -73,7 +73,7 @@ export function construirHtmlReceta(datos: DatosRecetaImpresion, saludoNombre: s
               ${filaDato("Paciente", datos.pacienteNombre)}
               ${filaDato("RUT", datos.rut)}
               ${datos.edad !== null ? filaDato("Edad", `${datos.edad} años`) : `<td></td>`}
-              ${filaDato("Tipo de visión", datos.tipoVision)}
+              ${filaDato("Tipo de lente", datos.tipoVision)}
             </tr>
           </table>
         </td>

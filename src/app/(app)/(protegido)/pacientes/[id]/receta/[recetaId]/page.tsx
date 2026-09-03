@@ -189,7 +189,7 @@ export default async function RecetaImprimible({
           <p><span className="font-semibold">Paciente:</span> {paciente.nombre}</p>
           <p><span className="font-semibold">RUT:</span> {formatearRut(paciente.rut) || "—"}</p>
           {edad !== null && <p><span className="font-semibold">Edad:</span> {edad} años</p>}
-          <p><span className="font-semibold">Tipo de visión:</span> {TIPOS[receta.tipo] ?? receta.tipo}</p>
+          <p><span className="font-semibold">Tipo de lente:</span> {TIPOS[receta.tipo] ?? receta.tipo}</p>
         </div>
 
         <table className="mb-1 w-full border-collapse text-sm">
