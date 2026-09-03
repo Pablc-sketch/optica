@@ -31,6 +31,33 @@ export async function avanzarOT(formData: FormData) {
   revalidatePath("/");
 }
 
+// Corregir un error de tipeo sin tener que anular y rehacer toda la venta:
+// marco, origen (stock/laboratorio), laboratorio, fecha estimada y notas.
+// El tipo de lente/tratamiento/costo no se tocan acá — están ligados al
+// precio cobrado en la venta, así que un cambio de lente pasa por anular y
+// rehacer (o "Editar" en la venta, para ajustar solo el monto).
+export async function actualizarOT(formData: FormData) {
+  const supabase = await createClient();
+  const otId = String(formData.get("ot_id"));
+
+  const { error } = await supabase
+    .from("ordenes_trabajo")
+    .update({
+      armazon_producto_id: String(formData.get("armazon_producto_id") ?? "").trim() || null,
+      origen_cristal: String(formData.get("origen_cristal") ?? "laboratorio"),
+      proveedor_lab_id: String(formData.get("proveedor_lab_id") ?? "").trim() || null,
+      fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,
+      notas: String(formData.get("notas") ?? "").trim() || null,
+    })
+    .eq("id", otId);
+  if (error) throw error;
+
+  revalidatePath(`/ot/${otId}`);
+  revalidatePath("/ot");
+  revalidatePath("/laboratorio");
+  revalidatePath("/");
+}
+
 // La OT nace siempre junto con la venta que la generó (registrarVenta las
 // crea en el mismo paso), así que borrar solo la fila de la OT chocaría con
 // la referencia desde venta_items (23503) o dejaría la venta con un ítem
