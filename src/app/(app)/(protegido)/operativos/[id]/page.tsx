@@ -7,6 +7,7 @@ import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
+import { costoDeItems, type ItemConCosto } from "@/lib/costo-venta";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
 // vendió y cuándo se le entrega — para que al ofrecer el próximo operativo
@@ -74,7 +75,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       .select(
         `id, total, estado_pago, paciente_id,
          pacientes:paciente_id (id, nombre, rut, telefono),
-         venta_items (cantidad, precio_unitario, descuento, descripcion, ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento))`
+         venta_items (
+           cantidad, precio_unitario, descuento, descripcion,
+           ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio),
+           productos:producto_id (costo, categoria)
+         )`
       )
       .eq("operativo_id", id)
       .eq("anulada", false)
@@ -93,9 +98,18 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     (s, v) => s + (v.venta_items ?? []).reduce((si, it) => si + (it.descuento ?? 0), 0),
     0
   );
+  // Costo real de lo vendido (cristales de laboratorio + marcos + otros
+  // productos) — sin esto "utilidad" quedaba igual a "vendido", porque solo
+  // se restaban los gastos del operativo (transporte, arriendo, etc), no lo
+  // que costó producir lo que se vendió.
+  const totalCostoProductos = ventas.reduce(
+    (s, v) => s + costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[]),
+    0
+  );
 
-  const totalCostos =
+  const totalCostosOperativo =
     operativo.costo_transporte + operativo.costo_arriendo + operativo.costo_viaticos + operativo.costo_otros;
+  const totalCostos = totalCostosOperativo + totalCostoProductos;
   const utilidadNeta = totalVendido - totalCostos;
 
   // Próximas entregas: de las ventas de este operativo, las que tienen una
@@ -189,8 +203,12 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalDescuentos)}</p>
         </div>
         <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
-          <p className="text-sm text-sky-800">Costos del operativo</p>
+          <p className="text-sm text-sky-800">Costos en total</p>
           <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalCostos)}</p>
+          <p className="text-xs text-sky-700">
+            {clp(totalCostoProductos)} de lo vendido (cristales, marcos, etc) + {clp(totalCostosOperativo)} del
+            operativo
+          </p>
         </div>
         <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
           <p className="text-sm text-sky-800">Utilidad neta</p>
@@ -225,7 +243,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             <CampoMonto name="costo_transporte" defaultValue={operativo.costo_transporte} />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
-            Arriendo del espacio
+            Arriendo (espacio o equipos)
             <CampoMonto name="costo_arriendo" defaultValue={operativo.costo_arriendo} />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">

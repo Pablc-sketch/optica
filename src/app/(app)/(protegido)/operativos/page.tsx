@@ -5,6 +5,7 @@ import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoTelefono } from "@/components/campos";
+import { costoDeItems, type ItemConCosto } from "@/lib/costo-venta";
 
 const TIPOS_VENUE = [
   { valor: "condominio", etiqueta: "Condominio" },
@@ -61,7 +62,14 @@ export default async function OperativosPage() {
       )
       .order("fecha", { ascending: false }),
     supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
-    supabase.from("ventas").select("operativo_id, total").eq("anulada", false).not("operativo_id", "is", null),
+    supabase
+      .from("ventas")
+      .select(
+        `operativo_id, total,
+         venta_items (cantidad, ordenes_trabajo:ot_id (costo_laboratorio), productos:producto_id (costo, categoria))`
+      )
+      .eq("anulada", false)
+      .not("operativo_id", "is", null),
   ]);
 
   // Un vistazo de cómo le fue a cada operativo sin tener que entrar: cuántos
@@ -89,10 +97,18 @@ export default async function OperativosPage() {
   const proximo = planificados.find((o) => o.fecha >= hoy) ?? planificados[0];
   const totalExaminados = [...examenesPorOperativo.values()].reduce((s, n) => s + n, 0);
   const totalVendido = [...ventasPorOperativo.values()].reduce((s, v) => s + v.total, 0);
-  const totalCostos = lista.reduce(
+  // Costo real de lo vendido (cristales de laboratorio + marcos + otros
+  // productos), no solo los gastos propios del operativo — si no, "utilidad"
+  // quedaba igual a "vendido".
+  const totalCostoProductos = (ventas ?? []).reduce(
+    (s, v) => s + costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[]),
+    0
+  );
+  const totalCostosOperativos = lista.reduce(
     (s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros,
     0
   );
+  const totalCostos = totalCostosOperativos + totalCostoProductos;
   const utilidadNeta = totalVendido - totalCostos;
 
   const input =
@@ -119,7 +135,11 @@ export default async function OperativosPage() {
         />
         <Tarjeta titulo="Examinados en total" valor={String(totalExaminados)} />
         <Tarjeta titulo="Vendido en total" valor={clp(totalVendido)} />
-        <Tarjeta titulo="Costos en total" valor={clp(totalCostos)} />
+        <Tarjeta
+          titulo="Costos en total"
+          valor={clp(totalCostos)}
+          detalle={`${clp(totalCostoProductos)} de lo vendido + ${clp(totalCostosOperativos)} de operativos`}
+        />
         <Tarjeta titulo="Utilidad neta" valor={clp(utilidadNeta)} />
       </div>
 

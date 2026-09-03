@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import { fechaLegible } from "@/lib/fechas";
+import { costoDeItems, type ItemConCosto } from "@/lib/costo-venta";
 
 // Ranking de operativos: para decidir dónde conviene repetir (mejor venta,
 // mejor conversión, mejor utilidad) en vez de guiarse por sensación. Mismos
@@ -44,7 +45,14 @@ export default async function CompararOperativos() {
       .neq("estado", "cancelado")
       .order("fecha", { ascending: false }),
     supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
-    supabase.from("ventas").select("operativo_id, total").eq("anulada", false).not("operativo_id", "is", null),
+    supabase
+      .from("ventas")
+      .select(
+        `operativo_id, total,
+         venta_items (cantidad, ordenes_trabajo:ot_id (costo_laboratorio), productos:producto_id (costo, categoria))`
+      )
+      .eq("anulada", false)
+      .not("operativo_id", "is", null),
   ]);
 
   const examenesPorOperativo = new Map<string, number>();
@@ -52,19 +60,23 @@ export default async function CompararOperativos() {
     if (!r.operativo_id) continue;
     examenesPorOperativo.set(r.operativo_id, (examenesPorOperativo.get(r.operativo_id) ?? 0) + 1);
   }
-  const ventasPorOperativo = new Map<string, { cantidad: number; total: number }>();
+  const ventasPorOperativo = new Map<string, { cantidad: number; total: number; costoProductos: number }>();
   for (const v of ventas ?? []) {
     if (!v.operativo_id) continue;
-    const actual = ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0 };
+    const actual = ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0, costoProductos: 0 };
     actual.cantidad += 1;
     actual.total += v.total;
+    actual.costoProductos += costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[]);
     ventasPorOperativo.set(v.operativo_id, actual);
   }
 
   const filas = (operativos ?? []).map((o) => {
     const examenes = examenesPorOperativo.get(o.id) ?? 0;
-    const venta = ventasPorOperativo.get(o.id) ?? { cantidad: 0, total: 0 };
-    const costos = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros;
+    const venta = ventasPorOperativo.get(o.id) ?? { cantidad: 0, total: 0, costoProductos: 0 };
+    // Costo real de lo vendido en este operativo, no solo sus propios
+    // gastos (transporte, arriendo, etc) — si no, "utilidad" quedaba igual
+    // a "vendido".
+    const costos = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + venta.costoProductos;
     const conversion = examenes > 0 ? (venta.cantidad / examenes) * 100 : 0;
     return {
       ...o,
