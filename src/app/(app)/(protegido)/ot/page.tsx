@@ -2,10 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { avanzarOT } from "@/lib/actions/ot";
 import EliminarOT from "./eliminar-ot";
-import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { diaEnChile, fechaLegible } from "@/lib/fechas";
-import { CampoMonto } from "@/components/campos";
+import AbonoForm from "@/components/abono-form";
 import Tarjeta from "@/components/tarjeta";
 
 const COLUMNAS = [
@@ -24,7 +23,9 @@ export default async function TableroOT() {
       .select(
         "id, folio, estado, tipo_lente, tratamiento, fecha_ingreso, fecha_entrega_estimada, pacientes:paciente_id (nombre, telefono)"
       )
-      .neq("estado", "entregado")
+      // Una venta anulada cancela su OT — que no siga sumando en "en curso",
+      // "atrasadas" ni "por cobrar" del tablero.
+      .not("estado", "in", "(entregado,cancelado)")
       .order("fecha_ingreso", { ascending: true }),
     supabase.from("tenants").select("nombre_comercial").single(),
   ]);
@@ -142,23 +143,9 @@ export default async function TableroOT() {
                         </p>
                       )}
                       {col.estado === "listo" && venta && saldo > 0 && (
-                        <form action={registrarAbono} className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <input type="hidden" name="venta_id" value={venta.ventaId} />
-                          <CampoMonto
-                            name="monto"
-                            placeholder={`Cobrar hasta ${clp(saldo)}`}
-                            className="w-28 flex-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand"
-                          />
-                          <select name="medio_pago" className="rounded-lg border border-tinta-suave/30 bg-white px-1.5 py-1 text-xs outline-none focus:border-brand">
-                            <option value="efectivo">Efectivo</option>
-                            <option value="debito">Débito</option>
-                            <option value="credito">Crédito</option>
-                            <option value="transferencia">Transferencia</option>
-                          </select>
-                          <button className="rounded-lg bg-brand/10 px-2 py-1 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
-                            Cobrar
-                          </button>
-                        </form>
+                        <div className="mt-2">
+                          <AbonoForm ventaId={venta.ventaId} saldo={saldo} compacto />
+                        </div>
                       )}
                       {col.estado === "listo" && venta && saldo <= 0 && (
                         <Link

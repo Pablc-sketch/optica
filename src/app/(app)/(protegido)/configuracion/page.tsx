@@ -42,7 +42,7 @@ export default async function ConfiguracionPage() {
       .single(),
     supabase
       .from("tenants")
-      .select("nombre_comercial, rut_empresa, factor_venta_cristales, factor_monofocal, factor_bifocal, factor_multifocal")
+      .select("nombre_comercial, rut_empresa")
       .single(),
     supabase.from("users").select("id, nombre, email, rol, estado").order("nombre"),
     supabase
@@ -182,41 +182,13 @@ export default async function ConfiguracionPage() {
               cada orden de trabajo.
             </span>
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Factor — Monofocal
-            <input
-              name="factor_monofocal"
-              inputMode="decimal"
-              defaultValue={optica?.factor_monofocal ?? 6}
-              className={input}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Factor — Bifocal
-            <input
-              name="factor_bifocal"
-              inputMode="decimal"
-              defaultValue={optica?.factor_bifocal ?? 4}
-              className={input}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">
-            Factor — Multifocal
-            <input
-              name="factor_multifocal"
-              inputMode="decimal"
-              defaultValue={optica?.factor_multifocal ?? 4}
-              className={input}
-            />
-          </label>
           <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 sm:col-span-2">
-            <b>Importante:</b> guardar estos factores solo cambia la configuración, no los precios
-            que ya están guardados. Para que los cristales tomen el nuevo factor, después de
-            guardar acá anda a{" "}
+            <b>Importante:</b> el precio de cada cristal se edita uno por uno, según su tipo,
+            tratamiento y rango de receta, en{" "}
             <Link href="/precios" className="font-semibold underline">
-              Precios → Recalcular todos los precios
-            </Link>
-            .
+              Precios
+            </Link>{" "}
+            — ahí queda calibrado con tus costos reales de laboratorio.
           </p>
           <div className="sm:col-span-2">
             <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white transition hover:bg-brand-dark">

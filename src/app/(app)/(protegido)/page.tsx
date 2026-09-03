@@ -33,7 +33,9 @@ export default async function Dashboard() {
     supabase
       .from("ordenes_trabajo")
       .select("id, folio, estado, fecha_entrega_estimada, pacientes:paciente_id (nombre)")
-      .neq("estado", "entregado")
+      // Una venta anulada cancela su OT — que no siga contando como
+      // "pendiente" ni asomándose en "entregas de hoy".
+      .not("estado", "in", "(entregado,cancelado)")
       .order("fecha_ingreso", { ascending: true }),
     supabase
       .from("inventario")

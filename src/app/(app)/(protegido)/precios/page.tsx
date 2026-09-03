@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { actualizarPrecioProducto, actualizarCostoCristal, recalcularPreciosPorTipo } from "@/lib/actions/precios";
+import { actualizarPrecioProducto, actualizarCostoCristal } from "@/lib/actions/precios";
 import { clp } from "@/lib/clp";
 import { nombreCristal } from "@/lib/cristales";
 import { CampoMonto } from "@/components/campos";
@@ -134,32 +134,6 @@ export default async function PreciosPage({
           laboratorio para que la utilidad de los reportes sea la correcta.
         </p>
       </div>
-
-      <details className="rounded-2xl bg-amber-50 p-4 shadow-sm">
-        <summary className="cursor-pointer font-semibold text-amber-900">
-          ⚠ Recalcular todos los precios por factor
-        </summary>
-        <div className="mt-3 flex flex-col gap-3">
-          <p className="text-sm text-amber-900">
-            Esto reemplaza el precio de venta de <b>todos</b> los cristales según el factor de cada
-            tipo de lente (configurado en Configuración → Precios) más el monto de marco que
-            elijas abajo. Cualquier precio que hayas editado a mano en la lista de abajo se pierde.
-          </p>
-          <form action={recalcularPreciosPorTipo} className="flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1 text-sm font-medium text-amber-900">
-              Monto de marco absorbido
-              <CampoMonto
-                name="monto_marco_absorbido"
-                defaultValue={25000}
-                className="w-32 rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              />
-            </label>
-            <button className="rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-800">
-              Recalcular todos los precios
-            </button>
-          </form>
-        </div>
-      </details>
 
       {tiposLente.length === 0 ? (
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">

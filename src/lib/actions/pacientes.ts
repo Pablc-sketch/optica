@@ -59,13 +59,40 @@ export async function crearPaciente(formData: FormData) {
 }
 
 // Las recetas se borran en cascada con el paciente (están pensadas como
-// datos suyos), pero ventas y órdenes de trabajo no: son comprobantes y
-// garantías, así que la base rechaza el borrado si existen (foreign key
-// 23503) en vez de arrastrarlas o dejarlas huérfanas. Es la protección
-// correcta: se explica en vez de mostrar el error tal cual.
+// datos suyos). Ventas y órdenes de trabajo REALES (no anuladas/canceladas)
+// también bloquean el borrado — son comprobantes y garantías que hay que
+// conservar. Pero una venta anulada (o su OT cancelada) no es un comprobante
+// de nada: nunca se cobró de verdad, así que no debería dejar a alguien
+// atrapado sin poder borrarlo — se limpian solas antes de borrar al
+// paciente.
 export async function eliminarPaciente(formData: FormData) {
   const { supabase } = await tenantDelUsuario();
   const pacienteId = String(formData.get("paciente_id"));
+
+  const [{ data: ventaReal }, { data: otReal }] = await Promise.all([
+    supabase.from("ventas").select("id").eq("paciente_id", pacienteId).eq("anulada", false).limit(1),
+    supabase.from("ordenes_trabajo").select("id").eq("paciente_id", pacienteId).neq("estado", "cancelado").limit(1),
+  ]);
+  if ((ventaReal?.length ?? 0) > 0 || (otReal?.length ?? 0) > 0) {
+    return {
+      ok: false as const,
+      error:
+        "No se puede eliminar: este paciente tiene ventas u órdenes de trabajo reales registradas (no anuladas). Son comprobantes y garantías que hay que conservar.",
+    };
+  }
+
+  // Solo queda historial anulado/cancelado (pruebas, errores, ventas que se
+  // arrepintieron): se borra para que no bloquee al paciente.
+  const { data: ventasAnuladas } = await supabase.from("ventas").select("id").eq("paciente_id", pacienteId);
+  const ventaIds = (ventasAnuladas ?? []).map((v) => v.id);
+  if (ventaIds.length > 0) {
+    await supabase.from("pagos_abonos").delete().in("venta_id", ventaIds);
+    await supabase.from("venta_items").delete().in("venta_id", ventaIds);
+    const { error: ventasError } = await supabase.from("ventas").delete().in("id", ventaIds);
+    if (ventasError) throw ventasError;
+  }
+  const { error: otError } = await supabase.from("ordenes_trabajo").delete().eq("paciente_id", pacienteId);
+  if (otError) throw otError;
 
   const { error } = await supabase.from("pacientes").delete().eq("id", pacienteId);
 
@@ -74,7 +101,7 @@ export async function eliminarPaciente(formData: FormData) {
     return {
       ok: false as const,
       error: tieneHistorial
-        ? "No se puede eliminar: este paciente tiene ventas u órdenes de trabajo registradas. Son comprobantes y garantías que hay que conservar."
+        ? "No se puede eliminar: este paciente todavía tiene registros ligados."
         : "No se pudo eliminar el paciente.",
     };
   }

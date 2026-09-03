@@ -29,42 +29,6 @@ export async function actualizarCostoCristal(formData: FormData) {
   revalidatePath("/ventas");
 }
 
-// Recalcula el precio de venta de TODOS los cristales de golpe según el
-// factor por tipo de lente configurado en Configuración, más un monto fijo
-// de marco absorbido (spec: algunas ópticas suman al cristal parte del
-// costo del marco en vez de cobrarlo aparte). Un UPDATE por tipo de lente
-// (función recalcular_precios_cristales), no fila por fila desde acá.
-// Reemplaza cualquier precio editado a mano — por eso la pantalla lo avisa.
-export async function recalcularPreciosPorTipo(formData: FormData) {
-  const supabase = await createClient();
-
-  const montoMarco = parsearMonto(formData.get("monto_marco_absorbido")) ?? 25000;
-
-  const { data: tenant } = await supabase
-    .from("tenants")
-    .select("factor_monofocal, factor_bifocal, factor_multifocal")
-    .single();
-  if (!tenant) return;
-
-  const factores: Record<string, number> = {
-    Monofocal: tenant.factor_monofocal,
-    Bifocal: tenant.factor_bifocal,
-    Multifocal: tenant.factor_multifocal,
-  };
-
-  for (const [tipoLente, factor] of Object.entries(factores)) {
-    const { error } = await supabase.rpc("recalcular_precios_cristales", {
-      p_tipo_lente: tipoLente,
-      p_factor: factor,
-      p_monto_marco: montoMarco,
-    });
-    if (error) throw error;
-  }
-
-  revalidatePath("/precios");
-  revalidatePath("/ventas");
-}
-
 export async function actualizarPrecioProducto(formData: FormData) {
   const supabase = await createClient();
   const id = String(formData.get("id"));

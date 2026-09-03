@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
-import { CampoMonto } from "@/components/campos";
+import AbonoForm from "@/components/abono-form";
 import PuntoDeVenta from "./pos";
 import AnularVenta from "./anular-venta";
 
@@ -132,24 +131,9 @@ export default async function VentasPage() {
                     <p className="mt-1 text-xs italic text-tinta-suave">Motivo: {v.anulada_motivo}</p>
                   )}
                   {!v.anulada && saldo > 0 && (
-                    <form action={registrarAbono} className="mt-2 flex flex-wrap items-center gap-2">
-                      <input type="hidden" name="venta_id" value={v.id} />
-                      <span className="text-xs text-tinta-suave">Saldo: <b>{clp(saldo)}</b></span>
-                      <CampoMonto
-                        name="monto"
-                        placeholder="Monto"
-                        className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-                      />
-                      <select name="medio_pago" className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand">
-                        <option value="efectivo">Efectivo</option>
-                        <option value="debito">Débito</option>
-                        <option value="credito">Crédito</option>
-                        <option value="transferencia">Transferencia</option>
-                      </select>
-                      <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
-                        Abonar
-                      </button>
-                    </form>
+                    <div className="mt-2">
+                      <AbonoForm ventaId={v.id} saldo={saldo} />
+                    </div>
                   )}
                 </li>
               );

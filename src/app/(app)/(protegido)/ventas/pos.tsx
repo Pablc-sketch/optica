@@ -338,6 +338,12 @@ export default function PuntoDeVenta({
 }) {
   const router = useRouter();
   const [paso, setPaso] = useState(0);
+  // Cada paso puede tener distinto largo — sin esto la pantalla se quedaba
+  // scrolleada donde iba antes y había que subir a mano para ver el título
+  // del paso nuevo (fácil perderse).
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [paso]);
   const [pacienteId, setPacienteId] = useState<string>("");
   const [operativoId, setOperativoId] = useState<string>("");
   const [buscaPaciente, setBuscaPaciente] = useState("");

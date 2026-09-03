@@ -12,6 +12,10 @@ const ESTADOS: Record<string, { label: string; clase: string }> = {
   montaje: { label: "Montaje", clase: "bg-amber-100 text-amber-800" },
   listo: { label: "Listo", clase: "bg-brand/15 text-brand-dark" },
   entregado: { label: "Entregado", clase: "bg-green-100 text-green-700" },
+  // Antes esto caía al valor por omisión de abajo (Recepción) — una venta
+  // anulada dejaba su OT marcada "cancelado" pero acá se seguía viendo como
+  // si estuviera activa y pendiente de recepción.
+  cancelado: { label: "Cancelada", clase: "bg-neutral-200 text-neutral-600" },
 };
 
 export type OTConDatos = {
