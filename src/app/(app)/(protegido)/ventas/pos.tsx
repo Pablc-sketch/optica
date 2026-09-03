@@ -850,6 +850,20 @@ export default function PuntoDeVenta({
             </div>
           </div>
 
+          {/* El Lente 2 solo se precarga si la receta se cargó con "Dos
+              lentes separados" — si al paciente le hicieron receta de un
+              solo tipo (lejos o cerca), acá no hay nada que precargar y no
+              es un error. Esto evita el "¿por qué no me llena el cristal 2?"
+              cuando en realidad la receta nunca tuvo una sugerencia de
+              cerca. */}
+          {receta && receta.tipo !== "lejos_y_cerca" && (
+            <p className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">
+              La receta de este paciente es de un solo lente ({receta.tipo === "cerca" ? "cerca" : "lejos"}), por
+              eso Lente 2 no trae nada precargado. Si necesita dos pares separados, entra a su ficha y
+              cambia la receta a &quot;Dos lentes separados&quot;.
+            </p>
+          )}
+
           {lineasCristal.length > 0 && (
             <div className="flex gap-2 text-sm">
               {(["laboratorio", "stock"] as const).map((op) => (

@@ -211,19 +211,45 @@ export default function NuevaReceta({
       <input type="hidden" name="paciente_id" value={pacienteId} />
       {receta && <input type="hidden" name="receta_id" value={receta.id} />}
 
-      <label className="flex flex-col gap-1 text-sm font-medium">
-        Tipo de lente
-        <select
-          name="tipo"
-          value={tipo}
-          onChange={(e) => setTipo(e.target.value as typeof tipo)}
-          className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2.5 text-base outline-none focus:border-brand"
-        >
-          <option value="lejos">Lejos</option>
-          <option value="cerca">Cerca</option>
-          <option value="lejos_y_cerca">Lejos y cerca por separado</option>
-        </select>
-      </label>
+      {/* Antes era un <select> con "Lejos y cerca por separado" como tercera
+          opción de texto — pasaba fácil desapercibida, así que nunca se
+          usaba: todas las recetas quedaban con un solo lente sugerido y, al
+          vender, el Lente 2 aparecía vacío sin que quedara claro por qué.
+          Ahora es la primera pregunta, bien grande, con la consecuencia
+          explicada en cada botón. */}
+      <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
+        <legend className="px-1 text-sm font-bold">¿Cuántos lentes necesita el paciente?</legend>
+        <input type="hidden" name="tipo" value={tipo} />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {(
+            [
+              { valor: "lejos", titulo: "Uno, para lejos", detalle: "Un solo par." },
+              { valor: "cerca", titulo: "Uno, para cerca", detalle: "Un solo par." },
+              {
+                valor: "lejos_y_cerca",
+                titulo: "Dos lentes separados",
+                detalle: "Uno para lejos y otro para cerca — se sugiere y cotiza cada uno por su lado.",
+              },
+            ] as const
+          ).map((op) => (
+            <label
+              key={op.valor}
+              className="flex cursor-pointer flex-col gap-0.5 rounded-lg border-2 border-tinta-suave/25 bg-white px-3 py-2.5 has-checked:border-brand has-checked:bg-brand/5"
+            >
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                <input
+                  type="radio"
+                  checked={tipo === op.valor}
+                  onChange={() => setTipo(op.valor)}
+                  className="accent-brand"
+                />
+                {op.titulo}
+              </span>
+              <span className="pl-5 text-xs text-tinta-suave">{op.detalle}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
         <legend className="px-1 text-sm font-bold">OD (ojo derecho)</legend>
