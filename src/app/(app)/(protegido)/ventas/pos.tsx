@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarVenta } from "@/lib/actions/ventas";
 import { encolar, type CambioSync } from "@/lib/offline/outbox";
@@ -51,8 +51,9 @@ type LineaCarrito = {
     rangoReceta: string;
     tratamiento: string;
     costoLaboratorio: number;
-    // Solo tiene sentido con dos Monofocal en la misma venta (lejos + cerca
-    // por separado); para Bifocal/Multifocal no aplica.
+    // Solo se usa para calcular el rango con la adición (ADD) cuando es un
+    // Monofocal de cerca — para mostrar en pantalla siempre se habla de
+    // "Lente 1"/"Lente 2" (un Bifocal no tiene "lejos" o "cerca").
     posicion?: "lejos" | "cerca";
     sugerido?: boolean;
   };
@@ -61,7 +62,245 @@ type LineaCarrito = {
 // La venta se arma en cuatro pasos, uno por pantalla, en vez de mostrar
 // todos los controles a la vez: quien vende en el mesón sigue una sola
 // instrucción por vez y no tiene que saber de antemano qué mirar primero.
-const PASOS = ["Paciente", "Armazón", "Cristales", "Pago"] as const;
+// Primero los cristales (donde se define el precio) y recién al final el
+// armazón, que es gratis y lo único que queda por elegir.
+const PASOS = ["Paciente", "Cristales", "Armazón", "Pago"] as const;
+
+// Un color bien distinto por paso — alto contraste a propósito, para que
+// sea fácil seguir en qué parte de la venta se está de un vistazo (pedido
+// explícito: quien vende tiene baja visión).
+const COLOR_PASO = [
+  {
+    pill: "bg-blue-600 text-white",
+    pillHecho: "bg-blue-100 text-blue-900 hover:bg-blue-200",
+    seccion: "border-blue-300 bg-blue-50",
+    titulo: "text-blue-900",
+    aviso: "bg-blue-100 text-blue-900",
+  },
+  {
+    pill: "bg-violet-600 text-white",
+    pillHecho: "bg-violet-100 text-violet-900 hover:bg-violet-200",
+    seccion: "border-violet-300 bg-violet-50",
+    titulo: "text-violet-900",
+    aviso: "bg-violet-100 text-violet-900",
+  },
+  {
+    pill: "bg-amber-500 text-white",
+    pillHecho: "bg-amber-100 text-amber-900 hover:bg-amber-200",
+    seccion: "border-amber-300 bg-amber-50",
+    titulo: "text-amber-900",
+    aviso: "bg-amber-100 text-amber-900",
+  },
+  {
+    pill: "bg-green-600 text-white",
+    pillHecho: "bg-green-100 text-green-900 hover:bg-green-200",
+    seccion: "border-green-300 bg-green-50",
+    titulo: "text-green-900",
+    aviso: "bg-green-100 text-green-900",
+  },
+] as const;
+
+function lineaDeCombo(
+  numero: 1 | 2,
+  combo: CostoCristal,
+  factorVenta: number,
+  opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean }
+): LineaCarrito {
+  // Precio editable de la óptica (/precios); el factor es solo respaldo.
+  const precio = combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
+  return {
+    key: `cristal-${numero}`,
+    descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}`,
+    cantidad: 1,
+    precioUnitario: precio,
+    cristal: {
+      tipoLente: combo.tipo_lente,
+      rangoReceta: combo.rango_receta,
+      tratamiento: combo.tratamiento,
+      costoLaboratorio: combo.costo,
+      posicion: opciones?.posicion,
+      sugerido: opciones?.sugerido,
+    },
+  };
+}
+
+type PrefillLente = { tipoLente: string; tratamiento: string; posicion?: "lejos" | "cerca"; sugerido: boolean } | null;
+
+// Una fila = un par de lentes. Se pueden llenar las dos filas para vender
+// dos pares en la misma venta (ej. uno para lejos y otro para cerca, o
+// cualquier combinación) — cada una queda enlazada a su propia orden de
+// trabajo. El rango de la receta se calcula solo; si el lente es Monofocal
+// y es para cerca, se le suma la adición (ADD) antes de clasificar.
+function FilaLente({
+  numero,
+  costos,
+  factorVenta,
+  receta,
+  inicial,
+  onCambio,
+}: {
+  numero: 1 | 2;
+  costos: CostoCristal[];
+  factorVenta: number;
+  receta: RecetaResumen | undefined;
+  inicial: PrefillLente;
+  onCambio: (datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean } | null) => void;
+}) {
+  const [tipoLente, setTipoLente] = useState(inicial?.tipoLente ?? "");
+  const [posicion, setPosicion] = useState<"lejos" | "cerca">(inicial?.posicion === "cerca" ? "cerca" : "lejos");
+  const [tratamiento, setTratamiento] = useState(inicial?.tratamiento ?? "");
+  const [rangoManual, setRangoManual] = useState("");
+  const [sugerido, setSugerido] = useState(inicial?.sugerido ?? false);
+
+  const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
+  const posicionParaRango = tipoLente === "Monofocal" ? posicion : "lejos";
+  const rangoAuto = receta
+    ? rangoParaPosicion(
+        [receta.od_esfera, receta.oi_esfera],
+        [receta.od_cilindro, receta.oi_cilindro],
+        [receta.od_add, receta.oi_add],
+        posicionParaRango
+      )
+    : null;
+  const rango = rangoAuto ?? rangoManual;
+  const rangos = useMemo(
+    () => [...new Set(costos.filter((c) => c.tipo_lente === tipoLente).map((c) => c.rango_receta))],
+    [costos, tipoLente]
+  );
+  const tratamientos = useMemo(
+    () => costos.filter((c) => c.tipo_lente === tipoLente && c.rango_receta === rango),
+    [costos, tipoLente, rango]
+  );
+  const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
+
+  // Solo al montar: si venía precargada por la sugerencia del tecnólogo,
+  // se suma sola al carrito apenas aparece la fila.
+  useEffect(() => {
+    if (combo) onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function elegirTratamiento(valor: string) {
+    setTratamiento(valor);
+    setSugerido(false);
+    const elegido = tratamientos.find((c) => c.tratamiento === valor);
+    onCambio(elegido ? { combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined } : null);
+  }
+
+  const select =
+    "w-full rounded-lg border border-tinta-suave/30 bg-white px-2 py-2.5 text-sm outline-none focus:border-violet-500 disabled:opacity-50";
+
+  return (
+    <fieldset className="rounded-xl border border-violet-200 bg-white p-3">
+      <legend className="px-1 text-sm font-bold text-violet-900">Lente {numero}</legend>
+      <div className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          Tipo de lente
+          <select
+            value={tipoLente}
+            onChange={(e) => {
+              setTipoLente(e.target.value);
+              setRangoManual("");
+              setTratamiento("");
+              setSugerido(false);
+              onCambio(null);
+            }}
+            className={select}
+          >
+            <option value="">{numero === 1 ? "Elegir…" : "— No lleva —"}</option>
+            {tiposLente.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {tipoLente === "Monofocal" && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-tinta-suave">
+              ¿Es para lejos o para cerca? (cerca suma la adición al rango)
+            </span>
+            <div className="flex gap-2 text-sm">
+              {(["lejos", "cerca"] as const).map((p) => (
+                <label
+                  key={p}
+                  className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2 capitalize has-checked:border-violet-500 has-checked:bg-violet-50"
+                >
+                  <input
+                    type="radio"
+                    checked={posicion === p}
+                    onChange={() => {
+                      setPosicion(p);
+                      setTratamiento("");
+                      setSugerido(false);
+                      onCambio(null);
+                    }}
+                    className="accent-violet-600"
+                  />
+                  {p}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tipoLente &&
+          (rangoAuto ? (
+            <p className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">
+              Rango calculado automático: <b>{rangoAuto}</b>
+            </p>
+          ) : (
+            <label className="flex flex-col gap-1 text-xs font-medium">
+              Rango de la receta
+              <select
+                value={rangoManual}
+                onChange={(e) => {
+                  setRangoManual(e.target.value);
+                  setTratamiento("");
+                  setSugerido(false);
+                  onCambio(null);
+                }}
+                className={select}
+              >
+                <option value="">Elegir…</option>
+                {rangos.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-normal text-tinta-suave">
+                Este paciente no tiene receta cargada, hay que elegir el rango a mano.
+              </span>
+            </label>
+          ))}
+
+        {tipoLente && (
+          <label className="flex flex-col gap-1 text-xs font-medium">
+            Tratamiento
+            <select value={tratamiento} onChange={(e) => elegirTratamiento(e.target.value)} disabled={!rango} className={select}>
+              <option value="">Elegir…</option>
+              {tratamientos.map((c) => (
+                <option key={c.tratamiento} value={c.tratamiento}>
+                  {nombreCristal(c.tipo_lente, c.tratamiento)} —{" "}
+                  {clp(c.precio_venta > 0 ? c.precio_venta : c.costo * factorVenta)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {combo && (
+          <p className="rounded-lg bg-violet-600 px-3 py-2.5 text-center text-base font-bold text-white">
+            {clp(combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta)}
+            {sugerido && <span className="ml-1.5 text-xs font-semibold text-violet-100">(sugerido en la receta)</span>}
+          </p>
+        )}
+      </div>
+    </fieldset>
+  );
+}
 
 export default function PuntoDeVenta({
   pacientes,
@@ -98,54 +337,26 @@ export default function PuntoDeVenta({
   const [laboratorioId, setLaboratorioId] = useState<string>(laboratorios[0]?.id ?? "");
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
-
-  // Selección de cristal desde la matriz de costos
-  const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
-  const [tipoLente, setTipoLente] = useState("");
-  const receta = pacienteId ? recetasPorPaciente[pacienteId] : undefined;
-  const [rangoManual, setRangoManual] = useState("");
-  const [posicionCristal, setPosicionCristal] = useState<"lejos" | "cerca">("lejos");
-  // El rango se calcula solo de la receta real (esfera/cilindro más
-  // exigentes entre los dos ojos) — la vendedora no elige nada acá. Para un
-  // Monofocal de cerca la potencia real suma la adición (ADD): un +1.00 con
-  // ADD +2.00 arma un +3.00, que puede caer en un rango más caro. Si el
-  // paciente no tiene receta cargada todavía, se cae al selector manual
-  // para no dejarla sin poder vender.
-  const posicionParaRango = tipoLente === "Monofocal" ? posicionCristal : "lejos";
-  const rangoAuto = receta
-    ? rangoParaPosicion(
-        [receta.od_esfera, receta.oi_esfera],
-        [receta.od_cilindro, receta.oi_cilindro],
-        [receta.od_add, receta.oi_add],
-        posicionParaRango
-      )
-    : null;
-  const rango = rangoAuto ?? rangoManual;
-  const rangos = useMemo(
-    () => [...new Set(costos.filter((c) => c.tipo_lente === tipoLente).map((c) => c.rango_receta))],
-    [costos, tipoLente]
-  );
-  const tratamientos = useMemo(
-    () => costos.filter((c) => c.tipo_lente === tipoLente && c.rango_receta === rango),
-    [costos, tipoLente, rango]
-  );
-  const [tratamiento, setTratamiento] = useState("");
   const [origenCristal, setOrigenCristal] = useState<"laboratorio" | "stock">("laboratorio");
+
+  const receta = pacienteId ? recetasPorPaciente[pacienteId] : undefined;
+  // Lo que trae precargado cada fila cuando se elige el paciente — cada
+  // fila lo usa solo como valor inicial y lo puede cambiar sin problema.
+  const [inicialLente1, setInicialLente1] = useState<PrefillLente>(null);
+  const [inicialLente2, setInicialLente2] = useState<PrefillLente>(null);
 
   const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
   const abonoNum = Math.max(0, Math.min(montoANumero(abono), total));
   const esAbonoParcial = abonoNum > 0 && abonoNum < total;
   const montoACobrar = esAbonoParcial ? abonoNum : total;
-  const lineasCristal = carrito.filter((l) => l.cristal);
-  // Puede haber más de un armazón (dos pares separados: uno para el
-  // cristal de lejos, otro para el de cerca) — se enlazan en el mismo
-  // orden en que se agregaron, cada uno con su propia orden de trabajo.
+  // Orden estable "Lente 1" antes que "Lente 2" (la key lo garantiza),
+  // independiente del orden en que se hayan ido completando las filas.
+  const lineasCristal = carrito.filter((l) => l.cristal).sort((a, b) => a.key.localeCompare(b.key));
+  // Puede haber más de un armazón (dos pares separados) — se enlazan en el
+  // mismo orden en que se agregaron, cada uno con su propia orden de trabajo.
   const lineasArmazon = carrito.filter((l) => l.productoId);
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
   const recetaPacienteId = receta?.id;
-  // Como máximo dos cristales por venta: un Monofocal de lejos y uno de
-  // cerca por separado. Bifocal/Multifocal ya cubren ambos en un lente.
-  const puedeAgregarOtroCristal = lineasCristal.length === 0 || (tipoLente === "Monofocal" && lineasCristal.length < 2);
   const paciente = pacientes.find((p) => p.id === pacienteId);
 
   const pacientesFiltrados = useMemo(() => {
@@ -185,89 +396,53 @@ export default function PuntoDeVenta({
     });
   }
 
-  function lineaDeCombo(
-    combo: CostoCristal,
-    opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean }
-  ): LineaCarrito {
-    // Precio editable de la óptica (/precios); el factor es solo respaldo.
-    const precio = combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
-    const etiquetaPosicion =
-      opciones?.posicion === "lejos" ? " (lejos)" : opciones?.posicion === "cerca" ? " (cerca)" : "";
-    return {
-      key: `cristal-${opciones?.posicion ?? "unico"}-${crypto.randomUUID()}`,
-      descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${etiquetaPosicion}`,
-      cantidad: 1,
-      precioUnitario: precio,
-      cristal: {
-        tipoLente: combo.tipo_lente,
-        rangoReceta: combo.rango_receta,
-        tratamiento: combo.tratamiento,
-        costoLaboratorio: combo.costo,
-        posicion: opciones?.posicion,
-        sugerido: opciones?.sugerido,
-      },
-    };
-  }
-
-  function agregarCristal() {
-    const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
-    if (!combo || !puedeAgregarOtroCristal) return;
-    // Solo Monofocal se etiqueta lejos/cerca (Bifocal/Multifocal ya cubren
-    // ambas distancias en un solo lente).
-    const posicion = tipoLente === "Monofocal" ? posicionCristal : undefined;
-    setCarrito((prev) => [
-      // Reemplaza solo el cristal de la misma posición (lejos/cerca), no el otro.
-      ...prev.filter((l) => !l.cristal || (posicion !== undefined && l.cristal.posicion !== posicion)),
-      lineaDeCombo(combo, { posicion }),
-    ]);
+  function manejarCambioLente(
+    numero: 1 | 2,
+    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean } | null
+  ) {
+    const key = `cristal-${numero}`;
+    setCarrito((prev) => {
+      const sinEstaFila = prev.filter((l) => l.key !== key);
+      if (!datos) return sinEstaFila;
+      return [...sinEstaFila, lineaDeCombo(numero, datos.combo, factorVenta, { posicion: datos.posicion, sugerido: datos.sugerido })];
+    });
   }
 
   // Al elegir el paciente: si su receta más reciente trae una sugerencia
-  // del tecnólogo, se arma sola la venta con el rango ya calculado — la
-  // vendedora solo confirma o cambia algo si el paciente decidió otra cosa.
+  // del tecnólogo, cada fila la trae precargada sola — la vendedora solo
+  // confirma o cambia algo si el paciente decidió otra cosa.
   function elegirPaciente(id: string) {
     setPacienteId(id);
+    setCarrito((prev) => prev.filter((l) => !l.cristal));
     const r = recetasPorPaciente[id];
-    if (!r) return;
-
-    const sugeridas: { tipoLente: string | null; tratamiento: string | null; posicion?: "lejos" | "cerca" }[] =
-      r.tipo === "lejos_y_cerca"
-        ? [
-            { tipoLente: r.sugerencia_tipo_lente, tratamiento: r.sugerencia_tratamiento, posicion: "lejos" },
-            {
-              tipoLente: r.sugerencia_tipo_lente_cerca,
-              tratamiento: r.sugerencia_tratamiento_cerca,
-              posicion: "cerca",
-            },
-          ]
-        : [
-            {
+    if (!r) {
+      setInicialLente1(null);
+      setInicialLente2(null);
+      return;
+    }
+    if (r.tipo === "lejos_y_cerca") {
+      setInicialLente1(
+        r.sugerencia_tipo_lente && r.sugerencia_tratamiento
+          ? { tipoLente: r.sugerencia_tipo_lente, tratamiento: r.sugerencia_tratamiento, posicion: "lejos", sugerido: true }
+          : null
+      );
+      setInicialLente2(
+        r.sugerencia_tipo_lente_cerca && r.sugerencia_tratamiento_cerca
+          ? { tipoLente: r.sugerencia_tipo_lente_cerca, tratamiento: r.sugerencia_tratamiento_cerca, posicion: "cerca", sugerido: true }
+          : null
+      );
+    } else {
+      setInicialLente1(
+        r.sugerencia_tipo_lente && r.sugerencia_tratamiento
+          ? {
               tipoLente: r.sugerencia_tipo_lente,
               tratamiento: r.sugerencia_tratamiento,
               posicion: r.tipo === "cerca" ? "cerca" : undefined,
-            },
-          ];
-
-    const nuevasLineas: LineaCarrito[] = [];
-    for (const s of sugeridas) {
-      if (!s.tipoLente || !s.tratamiento) continue;
-      // El rango solo suma la adición (ADD) cuando el cristal es un
-      // Monofocal de cerca — Bifocal/Multifocal ya la traen incorporada al
-      // diseño del lente, así que usan la esfera de lejos tal cual.
-      const posicionParaRango = s.tipoLente === "Monofocal" && s.posicion === "cerca" ? "cerca" : "lejos";
-      const rangoSugerido = rangoParaPosicion(
-        [r.od_esfera, r.oi_esfera],
-        [r.od_cilindro, r.oi_cilindro],
-        [r.od_add, r.oi_add],
-        posicionParaRango
+              sugerido: true,
+            }
+          : null
       );
-      const combo = costos.find(
-        (c) => c.tipo_lente === s.tipoLente && c.rango_receta === rangoSugerido && c.tratamiento === s.tratamiento
-      );
-      if (combo) nuevasLineas.push(lineaDeCombo(combo, { posicion: s.posicion, sugerido: true }));
-    }
-    if (nuevasLineas.length > 0) {
-      setCarrito((prev) => [...prev.filter((l) => !l.cristal), ...nuevasLineas]);
+      setInicialLente2(null);
     }
   }
 
@@ -282,10 +457,8 @@ export default function PuntoDeVenta({
     setOperativoId("");
     setBuscaPaciente("");
     setBuscaProducto("");
-    setTipoLente("");
-    setRangoManual("");
-    setTratamiento("");
-    setPosicionCristal("lejos");
+    setInicialLente1(null);
+    setInicialLente2(null);
     setPaso(0);
   }
 
@@ -299,8 +472,8 @@ export default function PuntoDeVenta({
     const ahora = new Date().toISOString();
 
     // Misma regla que online: con paciente y cristales, la OT viaja en el
-    // mismo lote (el servidor la enlaza cuando vuelve la señal). Una OT por
-    // cada cristal (lejos y cerca por separado quedan como dos trabajos).
+    // mismo lote (el servidor la enlaza cuando vuelve la señal). Un cristal
+    // = una OT — Lente 1 y Lente 2 quedan como dos trabajos independientes.
     const otIdPorLinea = new Map<string, string>();
     if (pacienteId) {
       for (const l of lineasCristal) otIdPorLinea.set(l.key, crypto.randomUUID());
@@ -437,7 +610,7 @@ export default function PuntoDeVenta({
           cantidad: l.cantidad,
           precioUnitario: l.precioUnitario,
           // Índice dentro de "cristales" — así cada ítem queda ligado a SU
-          // orden de trabajo cuando hay dos (lejos + cerca), no una sola
+          // orden de trabajo cuando hay dos (Lente 1 + Lente 2), no una sola
           // compartida.
           cristalIndex: l.cristal ? lineasCristal.findIndex((c) => c.key === l.key) : undefined,
         })),
@@ -447,7 +620,7 @@ export default function PuntoDeVenta({
           ? lineasCristal.map((l) => ({ ...l.cristal!, origen: origenCristal }))
           : [],
         // Un armazón por cristal, en el mismo orden — dos pares separados
-        // (lejos y cerca) llevan cada uno su propio marco.
+        // llevan cada uno su propio marco.
         armazonProductoIds: lineasArmazon.map((l) => l.productoId ?? null),
         proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
         operativoId: operativoId || null,
@@ -477,12 +650,13 @@ export default function PuntoDeVenta({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Barra de pasos: además de orientar, permite volver a corregir algo
-          sin perder lo ya cargado. */}
+      {/* Barra de pasos: cada uno con su color — además de orientar,
+          permite volver a corregir algo sin perder lo ya cargado. */}
       <ol className="flex items-center gap-1 overflow-x-auto">
         {PASOS.map((titulo, i) => {
           const actual = i === paso;
           const hecho = i < paso;
+          const color = COLOR_PASO[i];
           return (
             <li key={titulo} className="flex flex-1 items-center gap-1">
               <button
@@ -490,11 +664,7 @@ export default function PuntoDeVenta({
                 onClick={() => i <= paso && setPaso(i)}
                 disabled={i > paso}
                 className={`flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-semibold transition ${
-                  actual
-                    ? "bg-brand text-white"
-                    : hecho
-                      ? "bg-brand/15 text-brand-dark hover:bg-brand/25"
-                      : "bg-crema-claro text-tinta-suave"
+                  actual ? color.pill : hecho ? color.pillHecho : "bg-crema-claro text-tinta-suave"
                 }`}
               >
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/10 text-xs">
@@ -520,9 +690,9 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 0 && (
-        <section className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 ${COLOR_PASO[0].seccion} p-4 shadow-sm`}>
           <div>
-            <h2 className="font-bold">¿Para quién es la venta?</h2>
+            <h2 className={`font-bold ${COLOR_PASO[0].titulo}`}>¿Para quién es la venta?</h2>
             <p className="text-sm text-tinta-suave">
               Elige el paciente para que la orden de trabajo se cree sola con su receta. Si es una
               venta de mesón sin ficha, puedes continuar sin paciente.
@@ -558,7 +728,7 @@ export default function PuntoDeVenta({
                   type="button"
                   onClick={() => elegirPaciente(p.id)}
                   className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                    pacienteId === p.id ? "bg-brand text-white" : "bg-white hover:bg-brand/10"
+                    pacienteId === p.id ? "bg-blue-600 text-white" : "bg-white hover:bg-blue-50"
                   }`}
                 >
                   <span className="flex-1 truncate font-medium">{p.nombre}</span>
@@ -579,14 +749,14 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(1)}
-              className={`${boton} flex-1 bg-brand text-white hover:bg-brand-dark`}
+              className={`${boton} flex-1 bg-blue-600 text-white hover:bg-blue-700`}
             >
               {paciente ? `Continuar con ${paciente.nombre.split(" ")[0]}` : "Continuar"}
             </button>
             {pacienteId && (
               <button
                 type="button"
-                onClick={() => setPacienteId("")}
+                onClick={() => elegirPaciente("")}
                 className={`${boton} border border-tinta-suave/30 text-tinta-suave hover:bg-white`}
               >
                 Quitar paciente
@@ -598,13 +768,120 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 1 && (
-        <section className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 ${COLOR_PASO[1].seccion} p-4 shadow-sm`}>
           <div>
-            <h2 className="font-bold">¿Lleva armazón u otro producto?</h2>
+            <h2 className={`font-bold ${COLOR_PASO[1].titulo}`}>¿Lleva cristales?</h2>
+            <p className="text-sm text-tinta-suave">
+              Lente 1 es el primer par. Si el paciente lleva dos pares separados (por ejemplo uno
+              para lejos y otro para cerca), complétalos también en Lente 2.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex-1">
+              <FilaLente
+                key={`slot1-${pacienteId}`}
+                numero={1}
+                costos={costos}
+                factorVenta={factorVenta}
+                receta={receta}
+                inicial={inicialLente1}
+                onCambio={(d) => manejarCambioLente(1, d)}
+              />
+            </div>
+            <div className="flex-1">
+              <FilaLente
+                key={`slot2-${pacienteId}`}
+                numero={2}
+                costos={costos}
+                factorVenta={factorVenta}
+                receta={receta}
+                inicial={inicialLente2}
+                onCambio={(d) => manejarCambioLente(2, d)}
+              />
+            </div>
+          </div>
+
+          {lineasCristal.length > 0 && (
+            <div className="flex gap-2 text-sm">
+              {(["laboratorio", "stock"] as const).map((op) => (
+                <label
+                  key={op}
+                  className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 has-checked:border-violet-500 has-checked:bg-violet-50"
+                >
+                  <input
+                    type="radio"
+                    name="origen_cristal"
+                    checked={origenCristal === op}
+                    onChange={() => setOrigenCristal(op)}
+                    className="accent-violet-600"
+                  />
+                  {op === "laboratorio" ? "Pedir al laboratorio" : "De stock"}
+                </label>
+              ))}
+            </div>
+          )}
+
+          {lineasCristal.length > 0 && origenCristal === "laboratorio" && laboratorios.length > 0 && (
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Laboratorio
+              <select value={laboratorioId} onChange={(e) => setLaboratorioId(e.target.value)} className={select}>
+                {laboratorios.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <Resumen carrito={carrito} total={total} quitar={quitar} />
+
+          {creaOT && (
+            <p className={`rounded-lg px-3 py-2 text-xs font-medium ${COLOR_PASO[1].aviso}`}>
+              Al cobrar se crea{lineasCristal.length > 1 ? "n" : ""} la
+              {lineasCristal.length > 1 ? "s órdenes" : " orden"} de trabajo automáticamente
+              {recetaPacienteId
+                ? " con la última receta del paciente"
+                : " (el paciente aún no tiene receta cargada)"}
+              .
+            </p>
+          )}
+          {lineasCristal.length > 0 && !pacienteId && (
+            <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800">
+              Sin paciente no se puede crear la orden de trabajo. Vuelve al paso 1 si corresponde.
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPaso(0)}
+              className={`${boton} border border-tinta-suave/30 text-tinta-suave hover:bg-white`}
+            >
+              Atrás
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaso(2)}
+              className={`${boton} flex-1 bg-violet-600 text-white hover:bg-violet-700`}
+            >
+              Continuar
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
+      {paso === 2 && (
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 ${COLOR_PASO[2].seccion} p-4 shadow-sm`}>
+          <div>
+            <h2 className={`font-bold ${COLOR_PASO[2].titulo}`}>¿Lleva armazón u otro producto?</h2>
             <p className="text-sm text-tinta-suave">
               Toca los productos para agregarlos. Si solo lleva cristales, continúa sin agregar
-              nada. Si son dos pares separados (lejos y cerca), agrega primero el marco de lejos y
-              después el de cerca — quedan enlazados en ese mismo orden con su cristal.
+              nada.
+              {lineasCristal.length === 2 &&
+                " Este paciente lleva dos pares — agrega un marco para cada uno, primero el del Lente 1 y después el del Lente 2."}
             </p>
           </div>
 
@@ -622,18 +899,18 @@ export default function PuntoDeVenta({
                 <button
                   type="button"
                   onClick={() => agregarProducto(p)}
-                  className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2.5 text-left text-sm transition hover:bg-brand/10"
+                  className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2.5 text-left text-sm transition hover:bg-amber-50"
                 >
                   <span className="flex-1 truncate">
                     {p.marca ? `${p.marca} ` : ""}
                     {p.nombre}
                   </span>
                   {p.categoria === "armazon" ? (
-                    <span className="font-semibold text-brand-dark">Gratis</span>
+                    <span className="font-semibold text-amber-700">Gratis</span>
                   ) : (
                     <span className="font-semibold">{clp(p.precio_venta)}</span>
                   )}
-                  <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-bold text-brand-dark">
+                  <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">
                     ＋
                   </span>
                 </button>
@@ -653,198 +930,6 @@ export default function PuntoDeVenta({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setPaso(0)}
-              className={`${boton} border border-tinta-suave/30 text-tinta-suave hover:bg-white`}
-            >
-              Atrás
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaso(2)}
-              className={`${boton} flex-1 bg-brand text-white hover:bg-brand-dark`}
-            >
-              Continuar
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* ---------------------------------------------------------------- */}
-      {paso === 2 && (
-        <section className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
-          <div>
-            <h2 className="font-bold">¿Lleva cristales?</h2>
-            <p className="text-sm text-tinta-suave">
-              Elige tipo de lente y tratamiento. Si no lleva cristales, continúa sin agregar.
-            </p>
-          </div>
-
-          {!puedeAgregarOtroCristal && (
-            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs font-medium text-brand-dark">
-              Ya lleva {lineasCristal.length === 2 ? "dos cristales (lejos y cerca)" : "un cristal"}{" "}
-              en esta venta.
-            </p>
-          )}
-
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Tipo de lente
-            <select
-              value={tipoLente}
-              onChange={(e) => {
-                setTipoLente(e.target.value);
-                setRangoManual("");
-                setTratamiento("");
-              }}
-              disabled={!puedeAgregarOtroCristal}
-              className={select}
-            >
-              <option value="">Elegir…</option>
-              {tiposLente.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {tipoLente === "Monofocal" && (
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-tinta-suave">
-                ¿Este Monofocal es para lejos o para cerca? (si es cerca, el rango suma la adición)
-              </span>
-              <div className="flex gap-2 text-sm">
-                {(["lejos", "cerca"] as const).map((p) => (
-                  <label
-                    key={p}
-                    className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 capitalize has-checked:border-brand has-checked:bg-brand/10"
-                  >
-                    <input
-                      type="radio"
-                      name="posicion_cristal"
-                      checked={posicionCristal === p}
-                      onChange={() => setPosicionCristal(p)}
-                      className="accent-brand"
-                    />
-                    {p}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {rangoAuto ? (
-            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs font-medium text-brand-dark">
-              Rango de la receta calculado automático: <b>{rangoAuto}</b>
-            </p>
-          ) : (
-            tipoLente && (
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                Rango de la receta
-                <select
-                  value={rangoManual}
-                  onChange={(e) => {
-                    setRangoManual(e.target.value);
-                    setTratamiento("");
-                  }}
-                  className={select}
-                >
-                  <option value="">Elegir…</option>
-                  {rangos.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs font-normal text-tinta-suave">
-                  Este paciente no tiene receta cargada, así que hay que elegir el rango a mano.
-                </span>
-              </label>
-            )
-          )}
-
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Tratamiento
-            <select
-              value={tratamiento}
-              onChange={(e) => setTratamiento(e.target.value)}
-              disabled={!rango}
-              className={select}
-            >
-              <option value="">Elegir…</option>
-              {tratamientos.map((c) => (
-                <option key={c.tratamiento} value={c.tratamiento}>
-                  {nombreCristal(c.tipo_lente, c.tratamiento)} —{" "}
-                  {clp(c.precio_venta > 0 ? c.precio_venta : c.costo * factorVenta)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="flex gap-2 text-sm">
-            {(["laboratorio", "stock"] as const).map((op) => (
-              <label
-                key={op}
-                className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 has-checked:border-brand has-checked:bg-brand/10"
-              >
-                <input
-                  type="radio"
-                  name="origen_cristal"
-                  checked={origenCristal === op}
-                  onChange={() => setOrigenCristal(op)}
-                  className="accent-brand"
-                />
-                {op === "laboratorio" ? "Pedir al laboratorio" : "De stock"}
-              </label>
-            ))}
-          </div>
-
-          {origenCristal === "laboratorio" && laboratorios.length > 0 && (
-            <label className="flex flex-col gap-1 text-sm font-medium">
-              Laboratorio
-              <select
-                value={laboratorioId}
-                onChange={(e) => setLaboratorioId(e.target.value)}
-                className={select}
-              >
-                {laboratorios.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <button
-            type="button"
-            onClick={agregarCristal}
-            disabled={!tratamiento || !puedeAgregarOtroCristal}
-            className={`${boton} bg-brand/15 text-brand-dark hover:bg-brand hover:text-white`}
-          >
-            Agregar cristales a la venta
-          </button>
-
-          <Resumen carrito={carrito} total={total} quitar={quitar} />
-
-          {creaOT && (
-            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs font-medium text-brand-dark">
-              Al cobrar se crea{lineasCristal.length > 1 ? "n" : ""} la
-              {lineasCristal.length > 1 ? "s órdenes" : " orden"} de trabajo automáticamente
-              {recetaPacienteId
-                ? " con la última receta del paciente"
-                : " (el paciente aún no tiene receta cargada)"}
-              .
-            </p>
-          )}
-          {lineasCristal.length > 0 && !pacienteId && (
-            <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800">
-              Sin paciente no se puede crear la orden de trabajo. Vuelve al paso 1 si corresponde.
-            </p>
-          )}
-
-          <div className="flex gap-2">
-            <button
-              type="button"
               onClick={() => setPaso(1)}
               className={`${boton} border border-tinta-suave/30 text-tinta-suave hover:bg-white`}
             >
@@ -853,10 +938,9 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(3)}
-              disabled={carrito.length === 0}
-              className={`${boton} flex-1 bg-brand text-white hover:bg-brand-dark`}
+              className={`${boton} flex-1 bg-amber-500 text-white hover:bg-amber-600`}
             >
-              {carrito.length === 0 ? "Agrega algo para continuar" : "Continuar al pago"}
+              Continuar al pago
             </button>
           </div>
         </section>
@@ -864,9 +948,9 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 3 && (
-        <section className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
+        <section className={`flex flex-col gap-3 rounded-2xl border-2 ${COLOR_PASO[3].seccion} p-4 shadow-sm`}>
           <div>
-            <h2 className="font-bold">Cobro</h2>
+            <h2 className={`font-bold ${COLOR_PASO[3].titulo}`}>Cobro</h2>
             <p className="text-sm text-tinta-suave">
               {paciente ? `Venta a ${paciente.nombre}.` : "Venta sin paciente."} Revisa el detalle
               antes de cobrar.
@@ -901,7 +985,7 @@ export default function PuntoDeVenta({
                 key={i}
                 type="button"
                 onClick={() => setAbono(formatearMonto(monto))}
-                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white"
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-green-800 transition hover:bg-green-600 hover:text-white"
               >
                 {i === 0 ? `Paga todo (${clp(total)})` : `Mitad (${clp(monto)})`}
               </button>
@@ -937,7 +1021,7 @@ export default function PuntoDeVenta({
               type="button"
               onClick={cobrar}
               disabled={guardando || carrito.length === 0}
-              className={`${boton} flex-1 bg-brand text-white hover:bg-brand-dark`}
+              className={`${boton} flex-1 bg-green-600 text-white hover:bg-green-700`}
             >
               {guardando ? "Registrando…" : `Cobrar ${clp(montoACobrar)}`}
             </button>
@@ -949,7 +1033,9 @@ export default function PuntoDeVenta({
 }
 
 // Detalle de lo que lleva la venta hasta ahora. Se repite en cada paso
-// desde el segundo para no obligar a recordar lo ya agregado.
+// desde el segundo para no obligar a recordar lo ya agregado. Los cristales
+// se identifican como "Lente 1"/"Lente 2" (no "lejos"/"cerca": un Bifocal no
+// tiene esa distinción).
 function Resumen({
   carrito,
   total,
@@ -975,6 +1061,11 @@ function Resumen({
             <span className="flex-1 truncate">
               {l.cantidad > 1 ? `${l.cantidad}× ` : ""}
               {l.descripcion}
+              {l.cristal && (
+                <span className="ml-1.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                  {l.key === "cristal-1" ? "Lente 1" : "Lente 2"}
+                </span>
+              )}
               {l.cristal?.sugerido && (
                 <span className="ml-1.5 rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-dark">
                   Sugerido en la receta
