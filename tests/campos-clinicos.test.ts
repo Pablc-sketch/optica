@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  completarDosDecimales,
   fechaCortaAISO,
   formatearAgudezaVisual,
   formatearDioptria,
@@ -27,6 +28,25 @@ describe("formatearDioptria", () => {
 
   it("vacío se mantiene vacío", () => {
     expect(formatearDioptria("", "libre")).toBe("");
+  });
+});
+
+describe("completarDosDecimales", () => {
+  it("completa a dos decimales cuando falta el punto", () => {
+    expect(completarDosDecimales("+1")).toBe("+1.00");
+    expect(completarDosDecimales("-2")).toBe("-2.00");
+  });
+
+  it("completa el decimal que falta", () => {
+    expect(completarDosDecimales("+1.5")).toBe("+1.50");
+  });
+
+  it("no toca un valor que ya tiene dos decimales", () => {
+    expect(completarDosDecimales("+1.25")).toBe("+1.25");
+  });
+
+  it("vacío se mantiene vacío", () => {
+    expect(completarDosDecimales("")).toBe("");
   });
 });
 

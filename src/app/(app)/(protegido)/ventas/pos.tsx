@@ -716,7 +716,14 @@ export default function PuntoDeVenta({
           <input
             type="search"
             value={buscaPaciente}
-            onChange={(e) => setBuscaPaciente(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              // Si empieza con un número se asume que está escribiendo el
+              // RUT y se le pone el punto al tiro (así calza con cómo
+              // queda guardado); si empieza con letra, sigue siendo
+              // búsqueda libre por nombre.
+              setBuscaPaciente(/^\d/.test(v.trim()) ? formatearRut(v) : v);
+            }}
             placeholder="Buscar por nombre o RUT…"
             className={select}
           />

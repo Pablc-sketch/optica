@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import Tarjeta from "@/components/tarjeta";
@@ -13,6 +14,15 @@ const ESTADOS_OT: Record<string, string> = {
 
 export default async function Dashboard() {
   const supabase = await createClient();
+
+  // El rol "ventas" (vendedoras de mesón) solo necesita órdenes y ventas —
+  // este panel muestra cifras de negocio (venta del día, stock) que no le
+  // corresponden, así que se manda directo a lo suyo.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: perfil } = await supabase.from("users").select("rol").eq("id", user!.id).single();
+  if (perfil?.rol === "ventas") redirect("/ventas");
 
   const hoy = hoyEnChile();
   // inicioDelDia() da la medianoche EN CHILE, no en UTC: comparar con

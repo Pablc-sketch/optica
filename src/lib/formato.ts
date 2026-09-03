@@ -47,6 +47,20 @@ export function formatearDioptria(
   return `${negativo ? "-" : "+"}${numero}`;
 }
 
+// Al salir del campo: una dioptría siempre se anota con dos decimales
+// ("+1.00", no "+1"), así que si no se escribió el punto (o quedó con
+// menos de dos decimales) se completa solo. No se toca mientras se sigue
+// escribiendo, para no pelear con quien todavía va a agregar ",25/,50/,75".
+export function completarDosDecimales(valor: string): string {
+  if (!valor) return valor;
+  const signo = valor.startsWith("-") ? "-" : valor.startsWith("+") ? "+" : "";
+  const resto = signo ? valor.slice(1) : valor;
+  const [entero, decimales = ""] = resto.split(".");
+  if (!entero) return valor;
+  const decimalesFinal = (decimales + "00").slice(0, 2);
+  return `${signo}${entero}.${decimalesFinal}`;
+}
+
 // Agudeza visual como fracción (20/20, 6/9…): inserta el "/" solo si la
 // persona no lo escribió ella misma, apenas hay 2 dígitos en el numerador
 // (el caso más común, "20/xx"); con un numerador de un dígito ("6/9") basta

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatearRut } from "@/lib/rut";
 import {
+  completarDosDecimales,
   formatearAgudezaVisual,
   formatearDioptria,
   formatearFechaCorta,
@@ -85,19 +86,64 @@ export function CampoDioptria({
   onValueChange?: (valor: string) => void;
 }) {
   const [valor, setValor] = useState("");
+  // Solo para "libre" (la esfera): el teclado numérico del celular casi
+  // nunca trae el signo "-", así que no se puede depender de que la
+  // persona logre escribirlo — el signo lo manda este botón, no lo que
+  // haya (o no) tecleado. Cualquier "+"/"-" que igual llegue del teclado se
+  // ignora al extraer el número, para no pisar el signo elegido acá.
+  const [negativo, setNegativo] = useState(false);
+
+  function aplicar(formateado: string) {
+    setValor(formateado);
+    onValueChange?.(formateado);
+  }
+
+  function actualizarDesdeInput(textoCrudo: string) {
+    if (signo !== "libre") {
+      aplicar(formatearDioptria(textoCrudo, signo));
+      return;
+    }
+    const numero = textoCrudo.replace(/[^0-9.]/g, "");
+    aplicar(numero ? `${negativo ? "-" : "+"}${numero}` : "");
+  }
+
+  function alternarSigno() {
+    const nuevoNegativo = !negativo;
+    setNegativo(nuevoNegativo);
+    const numero = valor.replace(/[^0-9.]/g, "");
+    aplicar(numero ? `${nuevoNegativo ? "-" : "+"}${numero}` : "");
+  }
+
   return (
-    <input
-      name={name}
-      value={valor}
-      onChange={(e) => {
-        const formateado = formatearDioptria(e.target.value, signo);
-        setValor(formateado);
-        onValueChange?.(formateado);
-      }}
-      inputMode="decimal"
-      placeholder={placeholder ?? (signo === "-" ? "-0.50" : signo === "+" ? "+1.50" : "±1.75")}
-      className="w-full rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand"
-    />
+    <div className="flex items-stretch gap-1">
+      {signo === "libre" && (
+        <button
+          type="button"
+          onClick={alternarSigno}
+          aria-label={
+            negativo
+              ? "Miopía (negativo) — toca para cambiar a hipermetropía"
+              : "Hipermetropía (positivo) — toca para cambiar a miopía"
+          }
+          className={`w-8 shrink-0 rounded-lg border text-base font-bold transition ${
+            negativo
+              ? "border-red-300 bg-red-50 text-red-700"
+              : "border-tinta-suave/30 bg-white text-tinta-suave hover:bg-crema-claro"
+          }`}
+        >
+          {negativo ? "−" : "+"}
+        </button>
+      )}
+      <input
+        name={name}
+        value={valor}
+        onChange={(e) => actualizarDesdeInput(e.target.value)}
+        onBlur={() => aplicar(completarDosDecimales(valor))}
+        inputMode="decimal"
+        placeholder={placeholder ?? (signo === "-" ? "-0.50" : signo === "+" ? "+1.50" : "±1.75")}
+        className="w-full rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand"
+      />
+    </div>
   );
 }
 

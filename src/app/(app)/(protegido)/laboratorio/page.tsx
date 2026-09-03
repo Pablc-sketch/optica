@@ -244,7 +244,10 @@ export default async function LaboratorioPage({
                       <td className="py-1.5 pr-2">
                         {marco ? `${marco.sku ?? ""} ${marco.color ?? ""}`.trim() || marco.nombre : "—"}
                       </td>
-                      <td className="py-1.5 pr-2">{[ot.tipo_lente, ot.rango_receta].filter(Boolean).join(" ")}</td>
+                      {/* Solo el tipo de lente: el rango de receta es una
+                          clasificación interna de costo, el laboratorio no
+                          la usa ni la necesita para fabricar. */}
+                      <td className="py-1.5 pr-2">{ot.tipo_lente}</td>
                       <td className="py-1.5">{ot.tratamiento ?? "—"}</td>
                     </tr>
                   );
