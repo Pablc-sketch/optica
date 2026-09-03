@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
@@ -144,6 +145,12 @@ export default async function RecetaImprimible({
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-xl font-bold">Receta para imprimir</h1>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/pacientes/${id}/receta/${recetaId}/editar`}
+            className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-sm font-medium text-brand-dark transition hover:bg-crema-claro"
+          >
+            ✎ Editar
+          </Link>
           <EnviarRecetaCorreo
             pacienteNombre={paciente.nombre}
             emailDefault={emailDestino}

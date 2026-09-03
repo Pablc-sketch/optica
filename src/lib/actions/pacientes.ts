@@ -192,3 +192,51 @@ export async function crearReceta(formData: FormData) {
   revalidatePath(`/pacientes/${pacienteId}`);
   revalidatePath("/ventas");
 }
+
+// Corregir una receta ya guardada (el tecnólogo se equivocó al tipear, o el
+// paciente cambió de opinión sobre el lente) sin tener que borrarla y
+// cargarla de nuevo — eso perdería el folio/fecha originales y cualquier OT
+// que ya la esté referenciando por receta_id.
+export async function actualizarReceta(formData: FormData) {
+  const { supabase, tenantId } = await tenantDelUsuario();
+
+  const recetaId = String(formData.get("receta_id"));
+  const pacienteId = String(formData.get("paciente_id"));
+  const num = (k: string) => {
+    const v = String(formData.get(k) ?? "").replace(",", ".").trim();
+    return v === "" ? null : Number(v);
+  };
+  const add = num("add");
+
+  const { error } = await supabase
+    .from("recetas")
+    .update({
+      operativo_id: String(formData.get("operativo_id") ?? "").trim() || null,
+      od_esfera: num("od_esfera"),
+      od_cilindro: num("od_cilindro"),
+      od_eje: num("od_eje"),
+      od_add: add,
+      oi_esfera: num("oi_esfera"),
+      oi_cilindro: num("oi_cilindro"),
+      oi_eje: num("oi_eje"),
+      oi_add: add,
+      av_od: String(formData.get("av_od") ?? "").trim() || null,
+      av_oi: String(formData.get("av_oi") ?? "").trim() || null,
+      dp: num("dp"),
+      altura: num("altura"),
+      tipo: String(formData.get("tipo") ?? "lejos"),
+      notas: String(formData.get("notas") ?? "").trim() || null,
+      sugerencia_tipo_lente: String(formData.get("sugerencia_tipo_lente") ?? "").trim() || null,
+      sugerencia_tratamiento: String(formData.get("sugerencia_tratamiento") ?? "").trim() || null,
+      sugerencia_tipo_lente_cerca: String(formData.get("sugerencia_tipo_lente_cerca") ?? "").trim() || null,
+      sugerencia_tratamiento_cerca: String(formData.get("sugerencia_tratamiento_cerca") ?? "").trim() || null,
+    })
+    .eq("id", recetaId)
+    .eq("tenant_id", tenantId);
+
+  if (error) throw error;
+
+  revalidatePath(`/pacientes/${pacienteId}`);
+  revalidatePath(`/pacientes/${pacienteId}/receta/${recetaId}`);
+  revalidatePath("/ventas");
+}

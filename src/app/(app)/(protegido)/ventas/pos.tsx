@@ -356,6 +356,10 @@ export default function PuntoDeVenta({
   // mismo orden en que se agregaron, cada uno con su propia orden de trabajo.
   const lineasArmazon = carrito.filter((l) => l.productoId);
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
+  // Abono mínimo: lo que cuesta mandar a hacer estos cristales al
+  // laboratorio, para que el abono siempre alcance a cubrirlo y no haya que
+  // poner plata propia mientras se espera el pago del saldo.
+  const abonoMinimo = lineasCristal.reduce((s, l) => s + (l.cristal?.costoLaboratorio ?? 0), 0);
   const recetaPacienteId = receta?.id;
   const paciente = pacientes.find((p) => p.id === pacienteId);
 
@@ -997,6 +1001,15 @@ export default function PuntoDeVenta({
                 {i === 0 ? `Paga todo (${clp(total)})` : `Mitad (${clp(monto)})`}
               </button>
             ))}
+            {abonoMinimo > 0 && abonoMinimo < total && (
+              <button
+                type="button"
+                onClick={() => setAbono(formatearMonto(abonoMinimo))}
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-green-800 transition hover:bg-green-600 hover:text-white"
+              >
+                Abono mínimo ({clp(abonoMinimo)})
+              </button>
+            )}
           </div>
 
           <label className="flex flex-col gap-1 text-sm font-medium">

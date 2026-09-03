@@ -198,6 +198,12 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
                     >
                       🖨 Ver / Imprimir
                     </Link>
+                    <Link
+                      href={`/pacientes/${paciente.id}/receta/${r.id}/editar`}
+                      className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-brand-dark transition hover:bg-white"
+                    >
+                      ✎ Editar
+                    </Link>
                   </div>
                 </div>
                 <div className="overflow-x-auto">

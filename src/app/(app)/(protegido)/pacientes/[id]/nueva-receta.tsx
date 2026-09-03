@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { crearReceta } from "@/lib/actions/pacientes";
+import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { clp } from "@/lib/clp";
@@ -17,12 +17,23 @@ function aNumero(v: string): number | null {
 
 // Campo óptico numérico simple (eje en grados, DP, altura): sin signo, solo
 // teclado decimal para cargar rápido.
-function CampoOptico({ name, label, placeholder }: { name: string; label: string; placeholder?: string }) {
+function CampoOptico({
+  name,
+  label,
+  placeholder,
+  defaultValue,
+}: {
+  name: string;
+  label: string;
+  placeholder?: string;
+  defaultValue?: number | null;
+}) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium">
       {label}
       <input
         name={name}
+        defaultValue={defaultValue ?? undefined}
         inputMode="decimal"
         placeholder={placeholder ?? "0.00"}
         className="w-full rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-center text-base outline-none focus:border-brand"
@@ -37,6 +48,31 @@ type CostoCristal = {
   tratamiento: string;
   costo: number;
   precio_venta: number;
+};
+
+// Lo que trae una receta ya guardada, para precargar el formulario en modo
+// edición. Si no llega (modo creación), el formulario parte en blanco.
+type RecetaExistente = {
+  id: string;
+  tipo: string;
+  od_esfera: number | null;
+  od_cilindro: number | null;
+  od_eje: number | null;
+  od_add: number | null;
+  oi_esfera: number | null;
+  oi_cilindro: number | null;
+  oi_eje: number | null;
+  oi_add: number | null;
+  av_od: string | null;
+  av_oi: string | null;
+  dp: number | null;
+  altura: number | null;
+  notas: string | null;
+  operativo_id: string | null;
+  sugerencia_tipo_lente: string | null;
+  sugerencia_tratamiento: string | null;
+  sugerencia_tipo_lente_cerca: string | null;
+  sugerencia_tratamiento_cerca: string | null;
 };
 
 // Un solo control que hace las dos cosas a la vez: acá el tecnólogo elige
@@ -54,6 +90,8 @@ function SelectorLenteConPrecio({
   cilindros,
   add,
   posicionSlot,
+  inicialTipoLente,
+  inicialTratamiento,
 }: {
   titulo: string;
   costos: CostoCristal[];
@@ -63,9 +101,11 @@ function SelectorLenteConPrecio({
   cilindros: [number | null, number | null];
   add: number | null;
   posicionSlot: "lejos" | "cerca";
+  inicialTipoLente?: string | null;
+  inicialTratamiento?: string | null;
 }) {
-  const [tipoLente, setTipoLente] = useState("");
-  const [tratamiento, setTratamiento] = useState("");
+  const [tipoLente, setTipoLente] = useState(inicialTipoLente ?? "");
+  const [tratamiento, setTratamiento] = useState(inicialTratamiento ?? "");
 
   const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
   // Solo Monofocal de cerca suma la adición al rango — Bifocal/Multifocal
@@ -144,152 +184,200 @@ export default function NuevaReceta({
   pacienteId,
   operativos,
   costos,
+  receta,
 }: {
   pacienteId: string;
   operativos: { id: string; nombre: string }[];
   costos: CostoCristal[];
+  // Si viene, el formulario parte precargado y guarda con actualizarReceta
+  // en vez de crear una receta nueva.
+  receta?: RecetaExistente;
 }) {
-  const [tipo, setTipo] = useState<"lejos" | "cerca" | "lejos_y_cerca">("lejos");
+  type TipoLente = "lejos" | "cerca" | "lejos_y_cerca";
+  const [tipo, setTipo] = useState<TipoLente>((receta?.tipo as TipoLente) ?? "lejos");
   const necesitaCerca = tipo === "lejos_y_cerca";
 
   // Espejo de los campos ópticos solo para el selector de lente + precio de
   // más abajo — el formulario en sí sigue leyendo por FormData (name), esto
   // no lo toca.
-  const [odEsfera, setOdEsfera] = useState<number | null>(null);
-  const [odCilindro, setOdCilindro] = useState<number | null>(null);
-  const [oiEsfera, setOiEsfera] = useState<number | null>(null);
-  const [oiCilindro, setOiCilindro] = useState<number | null>(null);
-  const [add, setAdd] = useState<number | null>(null);
+  const [odEsfera, setOdEsfera] = useState<number | null>(receta?.od_esfera ?? null);
+  const [odCilindro, setOdCilindro] = useState<number | null>(receta?.od_cilindro ?? null);
+  const [oiEsfera, setOiEsfera] = useState<number | null>(receta?.oi_esfera ?? null);
+  const [oiCilindro, setOiCilindro] = useState<number | null>(receta?.oi_cilindro ?? null);
+  const [add, setAdd] = useState<number | null>(receta?.od_add ?? receta?.oi_add ?? null);
+
+  const contenido = (
+    <form action={receta ? actualizarReceta : crearReceta} className="mt-4 flex flex-col gap-4">
+      <input type="hidden" name="paciente_id" value={pacienteId} />
+      {receta && <input type="hidden" name="receta_id" value={receta.id} />}
+
+      <label className="flex flex-col gap-1 text-sm font-medium">
+        Tipo de lente
+        <select
+          name="tipo"
+          value={tipo}
+          onChange={(e) => setTipo(e.target.value as typeof tipo)}
+          className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2.5 text-base outline-none focus:border-brand"
+        >
+          <option value="lejos">Lejos</option>
+          <option value="cerca">Cerca</option>
+          <option value="lejos_y_cerca">Lejos y cerca por separado</option>
+        </select>
+      </label>
+
+      <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
+        <legend className="px-1 text-sm font-bold">OD (ojo derecho)</legend>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="flex flex-col gap-1 text-xs font-medium">
+            Esfera
+            <CampoDioptria
+              name="od_esfera"
+              signo="libre"
+              defaultValue={receta?.od_esfera}
+              onValueChange={(v) => setOdEsfera(aNumero(v))}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium">
+            Cilindro
+            <CampoDioptria
+              name="od_cilindro"
+              signo="-"
+              defaultValue={receta?.od_cilindro}
+              onValueChange={(v) => setOdCilindro(aNumero(v))}
+            />
+          </label>
+          <CampoOptico name="od_eje" label="Eje °" placeholder="180" defaultValue={receta?.od_eje} />
+        </div>
+      </fieldset>
+
+      <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
+        <legend className="px-1 text-sm font-bold">OI (ojo izquierdo)</legend>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="flex flex-col gap-1 text-xs font-medium">
+            Esfera
+            <CampoDioptria
+              name="oi_esfera"
+              signo="libre"
+              defaultValue={receta?.oi_esfera}
+              onValueChange={(v) => setOiEsfera(aNumero(v))}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium">
+            Cilindro
+            <CampoDioptria
+              name="oi_cilindro"
+              signo="-"
+              defaultValue={receta?.oi_cilindro}
+              onValueChange={(v) => setOiCilindro(aNumero(v))}
+            />
+          </label>
+          <CampoOptico name="oi_eje" label="Eje °" placeholder="175" defaultValue={receta?.oi_eje} />
+        </div>
+      </fieldset>
+
+      {/* Recuadro propio para el ADD: si se examinó lejos y cerca por
+          separado, este valor es justo el que define el lente de cerca —
+          que quede aparte de esfera/cilindro evita que se confunda con la
+          receta de lejos. */}
+      <fieldset className="w-40 rounded-xl border border-tinta-suave/20 p-3">
+        <legend className="px-1 text-sm font-bold">
+          Adición (ADD){necesitaCerca ? " — cerca" : ""}
+        </legend>
+        <CampoDioptria
+          name="add"
+          signo="+"
+          defaultValue={receta?.od_add ?? receta?.oi_add}
+          onValueChange={(v) => setAdd(aNumero(v))}
+        />
+      </fieldset>
+
+      {/* Lo que se conversó con el paciente: se cotiza acá mismo y esa
+          elección se precarga sola en el punto de venta cuando lo busquen
+          por RUT — a la vendedora solo le queda elegir el marco. */}
+      <SelectorLenteConPrecio
+        titulo={necesitaCerca ? "Lente — lejos" : "Lente sugerido"}
+        costos={costos}
+        nombreTipo="sugerencia_tipo_lente"
+        nombreTratamiento="sugerencia_tratamiento"
+        esferas={[odEsfera, oiEsfera]}
+        cilindros={[odCilindro, oiCilindro]}
+        add={add}
+        posicionSlot={tipo === "cerca" ? "cerca" : "lejos"}
+        inicialTipoLente={receta?.sugerencia_tipo_lente}
+        inicialTratamiento={receta?.sugerencia_tratamiento}
+      />
+      {necesitaCerca && (
+        <SelectorLenteConPrecio
+          titulo="Lente — cerca"
+          costos={costos}
+          nombreTipo="sugerencia_tipo_lente_cerca"
+          nombreTratamiento="sugerencia_tratamiento_cerca"
+          esferas={[odEsfera, oiEsfera]}
+          cilindros={[odCilindro, oiCilindro]}
+          add={add}
+          posicionSlot="cerca"
+          inicialTipoLente={receta?.sugerencia_tipo_lente_cerca}
+          inicialTratamiento={receta?.sugerencia_tratamiento_cerca}
+        />
+      )}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <CampoOptico name="dp" label="DP (mm)" placeholder="63" defaultValue={receta?.dp} />
+        <CampoOptico name="altura" label="Altura (mm)" placeholder="20" defaultValue={receta?.altura} />
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          AV OD
+          <CampoAgudezaVisual name="av_od" defaultValue={receta?.av_od} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          AV OI
+          <CampoAgudezaVisual name="av_oi" defaultValue={receta?.av_oi} />
+        </label>
+      </div>
+
+      {operativos.length > 0 && (
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          Operativo (si el examen fue en terreno)
+          <select
+            name="operativo_id"
+            defaultValue={receta?.operativo_id ?? ""}
+            className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand"
+          >
+            <option value="">— Sin especificar —</option>
+            {operativos.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <label className="flex flex-col gap-1 text-xs font-medium">
+        Notas
+        <textarea
+          name="notas"
+          rows={2}
+          defaultValue={receta?.notas ?? ""}
+          className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        />
+      </label>
+
+      <div>
+        <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-brand-dark">
+          {receta ? "Guardar cambios" : "Guardar receta"}
+        </button>
+      </div>
+    </form>
+  );
+
+  // En modo edición no hace falta el <details>: ya se llegó a esta pantalla
+  // a propósito a corregir la receta, no tiene sentido esconder el form.
+  if (receta) return contenido;
 
   return (
     <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
       <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nueva receta</summary>
-      <form action={crearReceta} className="mt-4 flex flex-col gap-4">
-        <input type="hidden" name="paciente_id" value={pacienteId} />
-
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Tipo de lente
-          <select
-            name="tipo"
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as typeof tipo)}
-            className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2.5 text-base outline-none focus:border-brand"
-          >
-            <option value="lejos">Lejos</option>
-            <option value="cerca">Cerca</option>
-            <option value="lejos_y_cerca">Lejos y cerca por separado</option>
-          </select>
-        </label>
-
-        <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
-          <legend className="px-1 text-sm font-bold">OD (ojo derecho)</legend>
-          <div className="grid grid-cols-3 gap-2">
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              Esfera
-              <CampoDioptria name="od_esfera" signo="libre" onValueChange={(v) => setOdEsfera(aNumero(v))} />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              Cilindro
-              <CampoDioptria name="od_cilindro" signo="-" onValueChange={(v) => setOdCilindro(aNumero(v))} />
-            </label>
-            <CampoOptico name="od_eje" label="Eje °" placeholder="180" />
-          </div>
-        </fieldset>
-
-        <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
-          <legend className="px-1 text-sm font-bold">OI (ojo izquierdo)</legend>
-          <div className="grid grid-cols-3 gap-2">
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              Esfera
-              <CampoDioptria name="oi_esfera" signo="libre" onValueChange={(v) => setOiEsfera(aNumero(v))} />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              Cilindro
-              <CampoDioptria name="oi_cilindro" signo="-" onValueChange={(v) => setOiCilindro(aNumero(v))} />
-            </label>
-            <CampoOptico name="oi_eje" label="Eje °" placeholder="175" />
-          </div>
-        </fieldset>
-
-        {/* Recuadro propio para el ADD: si se examinó lejos y cerca por
-            separado, este valor es justo el que define el lente de cerca —
-            que quede aparte de esfera/cilindro evita que se confunda con la
-            receta de lejos. */}
-        <fieldset className="w-40 rounded-xl border border-tinta-suave/20 p-3">
-          <legend className="px-1 text-sm font-bold">
-            Adición (ADD){necesitaCerca ? " — cerca" : ""}
-          </legend>
-          <CampoDioptria name="add" signo="+" onValueChange={(v) => setAdd(aNumero(v))} />
-        </fieldset>
-
-        {/* Lo que se conversó con el paciente: se cotiza acá mismo y esa
-            elección se precarga sola en el punto de venta cuando lo busquen
-            por RUT — a la vendedora solo le queda elegir el marco. */}
-        <SelectorLenteConPrecio
-          titulo={necesitaCerca ? "Lente — lejos" : "Lente sugerido"}
-          costos={costos}
-          nombreTipo="sugerencia_tipo_lente"
-          nombreTratamiento="sugerencia_tratamiento"
-          esferas={[odEsfera, oiEsfera]}
-          cilindros={[odCilindro, oiCilindro]}
-          add={add}
-          posicionSlot={tipo === "cerca" ? "cerca" : "lejos"}
-        />
-        {necesitaCerca && (
-          <SelectorLenteConPrecio
-            titulo="Lente — cerca"
-            costos={costos}
-            nombreTipo="sugerencia_tipo_lente_cerca"
-            nombreTratamiento="sugerencia_tratamiento_cerca"
-            esferas={[odEsfera, oiEsfera]}
-            cilindros={[odCilindro, oiCilindro]}
-            add={add}
-            posicionSlot="cerca"
-          />
-        )}
-
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <CampoOptico name="dp" label="DP (mm)" placeholder="63" />
-          <CampoOptico name="altura" label="Altura (mm)" placeholder="20" />
-          <label className="flex flex-col gap-1 text-xs font-medium">
-            AV OD
-            <CampoAgudezaVisual name="av_od" />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-medium">
-            AV OI
-            <CampoAgudezaVisual name="av_oi" />
-          </label>
-        </div>
-
-        {operativos.length > 0 && (
-          <label className="flex flex-col gap-1 text-xs font-medium">
-            Operativo (si el examen fue en terreno)
-            <select
-              name="operativo_id"
-              defaultValue=""
-              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand"
-            >
-              <option value="">— Sin especificar —</option>
-              {operativos.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        <label className="flex flex-col gap-1 text-xs font-medium">
-          Notas
-          <textarea name="notas" rows={2} className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-base outline-none focus:border-brand" />
-        </label>
-
-        <div>
-          <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-brand-dark">
-            Guardar receta
-          </button>
-        </div>
-      </form>
+      {contenido}
     </details>
   );
 }
