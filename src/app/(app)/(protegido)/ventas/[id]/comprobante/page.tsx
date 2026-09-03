@@ -24,7 +24,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       .select(
         `id, fecha, total, estado_pago, anulada, anulada_motivo,
          pacientes:paciente_id (nombre, rut),
-         venta_items (descripcion, cantidad, precio_unitario, descuento, ordenes_trabajo:ot_id (folio, fecha_entrega_estimada)),
+         venta_items (descripcion, cantidad, precio_unitario, descuento, ordenes_trabajo:ot_id (folio)),
          pagos_abonos (monto, medio_pago, fecha)`
       )
       .eq("id", id)
@@ -43,22 +43,15 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const saldo = venta.total - abonado;
   // La relación llega como objeto o arreglo según el shape que infiera
   // supabase-js; normalizamos antes de listar los folios.
-  const otsDeLaVenta = items.flatMap((i) => {
-    const rel = (i as { ordenes_trabajo?: unknown }).ordenes_trabajo;
-    const filas = (Array.isArray(rel) ? rel : rel ? [rel] : []) as {
-      folio: number;
-      fecha_entrega_estimada: string | null;
-    }[];
-    return filas;
-  });
-  const folios = [...new Set(otsDeLaVenta.map((f) => f.folio).filter((f): f is number => typeof f === "number"))];
-  // La fecha más lejana entre los cristales de esta venta: si lleva dos
-  // pares, es cuando van a estar los dos listos.
-  const fechaEntrega = otsDeLaVenta
-    .map((o) => o.fecha_entrega_estimada)
-    .filter((f): f is string => Boolean(f))
-    .sort()
-    .at(-1);
+  const folios = [
+    ...new Set(
+      items.flatMap((i) => {
+        const rel = (i as { ordenes_trabajo?: unknown }).ordenes_trabajo;
+        const filas = (Array.isArray(rel) ? rel : rel ? [rel] : []) as { folio: number }[];
+        return filas.map((f) => f.folio).filter((f): f is number => typeof f === "number");
+      })
+    ),
+  ];
 
   // Texto listo para pegar en el portal del SII (a nombre del paciente:
   // es lo que exige la isapre para reembolsar lentes ópticos).
@@ -192,12 +185,6 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
           <div className="mt-4 rounded-lg border border-neutral-300 p-3 text-center text-sm font-semibold print:mt-5">
             Orden de trabajo N° {folios.map((f) => `${f}`).join(", ")} — presente este
             comprobante al momento de retirar su trabajo.
-            {fechaEntrega && (
-              <>
-                <br />
-                Retiro estimado: {fechaLegible(fechaEntrega)}
-              </>
-            )}
           </div>
         )}
 
