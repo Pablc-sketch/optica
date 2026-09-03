@@ -40,7 +40,7 @@ export default async function VentasPage() {
     supabase
       .from("recetas")
       .select(
-        `id, paciente_id, fecha, tipo, od_esfera, od_cilindro, od_add, oi_esfera, oi_cilindro, oi_add,
+        `id, paciente_id, fecha, tipo, operativo_id, od_esfera, od_cilindro, od_add, oi_esfera, oi_cilindro, oi_add,
          sugerencia_tipo_lente, sugerencia_tratamiento,
          sugerencia_tipo_lente_cerca, sugerencia_tratamiento_cerca`
       )

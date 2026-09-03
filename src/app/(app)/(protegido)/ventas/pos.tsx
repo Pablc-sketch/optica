@@ -27,6 +27,7 @@ type CostoCristal = {
 type RecetaResumen = {
   id: string;
   tipo: string;
+  operativo_id: string | null;
   od_esfera: number | null;
   od_cilindro: number | null;
   od_add: number | null;
@@ -431,6 +432,11 @@ export default function PuntoDeVenta({
     setPacienteId(id);
     setCarrito((prev) => prev.filter((l) => !l.cristal));
     const r = recetasPorPaciente[id];
+    // Si a este paciente lo atendieron en un operativo (ej. un condominio),
+    // la venta queda ligada a ese mismo operativo — para que el cierre de
+    // "cuánto se vendió en tal operativo" no dependa de que la vendedora se
+    // acuerde de elegirlo a mano.
+    if (r?.operativo_id) setOperativoId(r.operativo_id);
     if (!r) {
       setInicialLente1(null);
       setInicialLente2(null);
@@ -737,6 +743,11 @@ export default function PuntoDeVenta({
                 ))}
               </select>
             </label>
+          )}
+          {receta?.operativo_id && receta.operativo_id === operativoId && (
+            <p className="rounded-lg bg-blue-100 px-3 py-2 text-xs font-medium text-blue-900">
+              Ligada sola al operativo donde se le tomó el examen a este paciente.
+            </p>
           )}
 
           <input
