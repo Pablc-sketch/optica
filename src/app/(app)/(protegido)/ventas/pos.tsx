@@ -66,6 +66,16 @@ type LineaCarrito = {
 // armazón, que es gratis y lo único que queda por elegir.
 const PASOS = ["Paciente", "Cristales", "Armazón", "Pago"] as const;
 
+// Abono mínimo por tipo de lente: números cerrados y fáciles de recordar,
+// no el costo exacto del laboratorio (que varía por tratamiento y rango).
+// Quedan un poco por sobre el costo real para dejar margen — así el abono
+// siempre alcanza para mandar a hacer el cristal sin poner plata propia.
+const ABONO_MINIMO_POR_TIPO: Record<string, number> = {
+  Monofocal: 10000,
+  Bifocal: 40000,
+  Multifocal: 80000,
+};
+
 // Un color bien distinto por paso — alto contraste a propósito, para que
 // sea fácil seguir en qué parte de la venta se está de un vistazo (pedido
 // explícito: quien vende tiene baja visión).
@@ -356,10 +366,12 @@ export default function PuntoDeVenta({
   // mismo orden en que se agregaron, cada uno con su propia orden de trabajo.
   const lineasArmazon = carrito.filter((l) => l.productoId);
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
-  // Abono mínimo: lo que cuesta mandar a hacer estos cristales al
-  // laboratorio, para que el abono siempre alcance a cubrirlo y no haya que
-  // poner plata propia mientras se espera el pago del saldo.
-  const abonoMinimo = lineasCristal.reduce((s, l) => s + (l.cristal?.costoLaboratorio ?? 0), 0);
+  // Abono mínimo: cubre mandar a hacer estos cristales al laboratorio, así
+  // no hay que poner plata propia mientras se espera el pago del saldo.
+  const abonoMinimo = lineasCristal.reduce(
+    (s, l) => s + (ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0),
+    0
+  );
   const recetaPacienteId = receta?.id;
   const paciente = pacientes.find((p) => p.id === pacienteId);
 
