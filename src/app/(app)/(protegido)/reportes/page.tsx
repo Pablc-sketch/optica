@@ -10,6 +10,13 @@ import { desglosarCostos } from "@/lib/costo-venta";
 // de laboratorio del cristal permiten estimar la utilidad real de cada
 // período, no solo lo facturado.
 
+const MEDIOS_PAGO: Record<string, string> = {
+  efectivo: "Efectivo",
+  debito: "Débito",
+  credito: "Crédito",
+  transferencia: "Transferencia",
+};
+
 function inicioDeMes(): string {
   const hoy = hoyEnChile();
   return `${hoy.slice(0, 7)}-01`;
@@ -75,10 +82,13 @@ export default async function ReportesPage({
   // no, "Cobrado" seguiría contando plata de una venta que ya no cuenta.
   const pagosQuery = supabase
     .from("pagos_abonos")
-    .select("monto, ventas!inner (anulada)")
+    .select(
+      "monto, medio_pago, fecha, ventas!inner (anulada, pacientes:paciente_id (nombre))"
+    )
     .eq("ventas.anulada", false)
     .gte("fecha", inicioDelDia(desde))
-    .lte("fecha", finDelDia(hasta));
+    .lte("fecha", finDelDia(hasta))
+    .order("fecha", { ascending: false });
 
   if (operativoId) {
     ventasQuery = ventasQuery.eq("operativo_id", operativoId);
@@ -101,6 +111,14 @@ export default async function ReportesPage({
   const numVentas = ventas.length;
   const ticketPromedio = numVentas > 0 ? Math.round(totalVendido / numVentas) : 0;
   const totalAbonado = pagos.reduce((s, p) => s + p.monto, 0);
+  // Uno por uno los abonos que arman "Cobrado en el período", para poder
+  // revisar de dónde sale la plata (¿está el efectivo que me pagaron?, etc.)
+  // en vez de solo confiar en la suma.
+  const pagosDetalle = pagos.map((p) => {
+    const venta = uno(p.ventas as unknown as { pacientes: { nombre: string } | { nombre: string }[] | null } | { pacientes: { nombre: string } | { nombre: string }[] | null }[] | null);
+    const paciente = uno(venta?.pacientes as unknown as { nombre: string } | { nombre: string }[] | null);
+    return { fecha: p.fecha, monto: p.monto, medioPago: p.medio_pago, paciente: paciente?.nombre ?? null };
+  });
   // Saldo real pendiente: el total de la venta MENOS lo que ya se le ha
   // abonado (en cualquier momento, no solo en este período) — antes se
   // sumaba el total completo de cada venta no "pagada", como si el abono ya
@@ -203,7 +221,37 @@ export default async function ReportesPage({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tarjeta icono="💰" titulo="Vendido" valor={clp(totalVendido)} detalle={`${numVentas} venta${numVentas === 1 ? "" : "s"}`} />
         <Tarjeta icono="🎟" titulo="Ticket promedio" valor={clp(ticketPromedio)} />
-        <Tarjeta icono="✅" titulo="Cobrado en el período" valor={clp(totalAbonado)} />
+        <details className="group relative overflow-hidden rounded-3xl bg-white p-4 shadow-[0_2px_10px_-3px_rgba(61,57,41,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(61,57,41,0.22)] [&_summary::-webkit-details-marker]:hidden">
+          <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-brand to-accent" />
+          <summary className="cursor-pointer list-none">
+            <p className="flex items-center gap-1.5 text-sm text-tinta-suave">
+              <span className="text-base">✅</span> Cobrado en el período{" "}
+              <span className="text-tinta-suave/50 group-open:hidden">▸</span>
+              <span className="hidden text-tinta-suave/50 group-open:inline">▾</span>
+            </p>
+            <p className="mt-1 text-2xl font-bold text-tinta">{clp(totalAbonado)}</p>
+          </summary>
+          <div className="mt-3 flex max-h-72 flex-col gap-1 overflow-y-auto border-t border-tinta-suave/15 pt-3 text-sm">
+            {pagosDetalle.length === 0 ? (
+              <p className="text-tinta-suave">Sin abonos registrados en este período.</p>
+            ) : (
+              pagosDetalle.map((p, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-tinta-suave">{fechaLegible(p.fecha.slice(0, 10))}</span>
+                  <span className="flex-1 truncate">{p.paciente ?? "Sin paciente"}</span>
+                  <span className="rounded-full bg-crema-claro px-2 py-0.5 text-xs font-medium text-tinta-suave">
+                    {MEDIOS_PAGO[p.medioPago] ?? p.medioPago}
+                  </span>
+                  <span className="font-semibold">{clp(p.monto)}</span>
+                </div>
+              ))
+            )}
+            <div className="mt-1 flex items-center justify-between rounded-lg bg-brand/10 px-2 py-1.5 font-bold text-brand-dark">
+              <span>= Cobrado en el período</span>
+              <span>{clp(totalAbonado)}</span>
+            </div>
+          </div>
+        </details>
         <Tarjeta icono="⏳" titulo="Por cobrar" valor={clp(porCobrar)} acento={porCobrar > 0} />
       </div>
 
