@@ -106,6 +106,22 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     (s, v) => s + (v.venta_items ?? []).reduce((si, it) => si + (it.descuento ?? 0), 0),
     0
   );
+  // Cuántos pares de lentes y cuántos marcos se vendieron en total — no es
+  // lo mismo que "Compraron" (cuánta gente compró), porque hay gente que se
+  // lleva 2 pares (lejos y cerca por separado) en la misma venta.
+  const totalCristalesVendidos = ventas.reduce(
+    (s, v) => s + (v.venta_items ?? []).reduce((si, it) => si + (it.cristal_slot !== null ? it.cantidad : 0), 0),
+    0
+  );
+  const totalMarcosVendidos = ventas.reduce(
+    (s, v) =>
+      s +
+      (v.venta_items ?? []).reduce((si, it) => {
+        const producto = uno(it.productos as unknown as { categoria: string } | { categoria: string }[] | null);
+        return si + (producto?.categoria === "armazon" ? it.cantidad : 0);
+      }, 0),
+    0
+  );
   // Costo real de lo vendido (cristales de laboratorio + marcos + otros
   // productos) — sin esto "utilidad" quedaba igual a "vendido", porque solo
   // se restaban los gastos del operativo (transporte, arriendo, etc), no lo
@@ -148,6 +164,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     "",
     `👥 Examinados: ${recetas.length}`,
     `🛒 Compraron: ${ventas.length}`,
+    `👓 Lentes vendidos: ${totalCristalesVendidos} · Marcos: ${totalMarcosVendidos}`,
     `💰 Vendido: ${clp(totalVendido)}`,
     ...(operativo.meta_examenes ? [`🎯 Meta exámenes: ${recetas.length}/${operativo.meta_examenes}`] : []),
     ...(operativo.meta_ventas ? [`🎯 Meta ventas: ${clp(totalVendido)}/${clp(operativo.meta_ventas)}`] : []),
@@ -210,6 +227,15 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
           <p className="text-sm text-sky-800">Compraron</p>
           <p className="mt-1 text-2xl font-bold text-sky-900">{ventas.length}</p>
+        </div>
+        <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+          <p className="text-sm text-sky-800">Lentes vendidos</p>
+          <p className="mt-1 text-2xl font-bold text-sky-900">{totalCristalesVendidos}</p>
+          <p className="text-xs text-sky-700">pares de cristales — hay quienes se llevan 2</p>
+        </div>
+        <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+          <p className="text-sm text-sky-800">Marcos vendidos</p>
+          <p className="mt-1 text-2xl font-bold text-sky-900">{totalMarcosVendidos}</p>
         </div>
         <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
           <p className="text-sm text-sky-800">Vendido</p>
