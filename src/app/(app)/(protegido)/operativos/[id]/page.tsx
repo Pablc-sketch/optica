@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { actualizarDetallesOperativo } from "@/lib/actions/operativos";
+import { actualizarDetallesOperativo, actualizarOperativo } from "@/lib/actions/operativos";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
-import { CampoMonto } from "@/components/campos";
-import { costoDeItems, type ItemConCosto } from "@/lib/costo-venta";
+import { CampoMonto, CampoTelefono } from "@/components/campos";
+import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
 // vendió y cuándo se le entrega — para que al ofrecer el próximo operativo
@@ -58,6 +58,16 @@ const ESTADO_PAGO: Record<string, { label: string; clase: string }> = {
   abono_parcial: { label: "Abono parcial", clase: "bg-amber-100 text-amber-700" },
   pagada: { label: "Pagada", clase: "bg-green-100 text-green-700" },
 };
+
+const TIPOS_VENUE = [
+  { valor: "condominio", etiqueta: "Condominio" },
+  { valor: "junta_vecinos", etiqueta: "Junta de vecinos" },
+  { valor: "apr", etiqueta: "APR" },
+  { valor: "colegio", etiqueta: "Colegio" },
+  { valor: "sala_cuna", etiqueta: "Sala cuna" },
+  { valor: "supermercado", etiqueta: "Supermercado" },
+  { valor: "otro", etiqueta: "Otro" },
+];
 
 export default async function DetalleOperativo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -125,11 +135,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // Costo real de lo vendido (cristales de laboratorio + marcos + otros
   // productos) — sin esto "utilidad" quedaba igual a "vendido", porque solo
   // se restaban los gastos del operativo (transporte, arriendo, etc), no lo
-  // que costó producir lo que se vendió.
-  const totalCostoProductos = ventas.reduce(
-    (s, v) => s + costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[]),
-    0
-  );
+  // que costó producir lo que se vendió. El desglose (no solo el total) es
+  // para que la tarjeta de costos se pueda abrir y mostrar de qué se compone.
+  const todosLosItems = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
+  const desglose = desglosarCostos(todosLosItems);
+  const totalCostoProductos = desglose.total;
 
   const totalCostosOperativo =
     operativo.costo_transporte + operativo.costo_arriendo + operativo.costo_viaticos + operativo.costo_otros;
@@ -184,7 +194,9 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           <h1 className="mt-1 text-xl font-bold">{operativo.nombre}</h1>
           <p className="text-sm text-tinta-suave">
             {[
-              fechaLegible(operativo.fecha),
+              operativo.fecha_fin && operativo.fecha_fin !== operativo.fecha
+                ? `Del ${fechaLegible(operativo.fecha)} al ${fechaLegible(operativo.fecha_fin)}`
+                : fechaLegible(operativo.fecha),
               operativo.direccion,
               [operativo.contacto_nombre, formatearTelefono(operativo.contacto_telefono)].filter(Boolean).join(" · ") || null,
             ]
@@ -252,20 +264,85 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           <p className="text-sm text-sky-800">Descuentos</p>
           <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalDescuentos)}</p>
         </div>
-        <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
-          <p className="text-sm text-sky-800">Costos en total</p>
-          <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalCostos)}</p>
-          <p className="text-xs text-sky-700">
-            {clp(totalCostoProductos)} de lo vendido (cristales, marcos, etc) + {clp(totalCostosOperativo)} del
-            operativo
-          </p>
-        </div>
-        <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
-          <p className="text-sm text-sky-800">Utilidad neta</p>
-          <p className={`mt-1 text-2xl font-bold ${utilidadNeta >= 0 ? "text-green-700" : "text-red-700"}`}>
-            {clp(utilidadNeta)}
-          </p>
-        </div>
+        <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden">
+          <summary className="cursor-pointer list-none">
+            <p className="text-sm text-sky-800">
+              Costos en total <span className="text-sky-400 group-open:hidden">▸</span>
+              <span className="hidden text-sky-400 group-open:inline">▾</span>
+            </p>
+            <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalCostos)}</p>
+          </summary>
+          <div className="mt-3 flex flex-col gap-1.5 border-t border-sky-100 pt-3 text-sm">
+            <p className="font-semibold text-sky-900">Cristales (precio unitario × 2 + montaje + IVA)</p>
+            {desglose.cristales.map((c, i) => (
+              <div key={i} className="flex items-center justify-between pl-2 text-sky-800">
+                <span className="truncate">{c.descripcion}</span>
+                <span className="font-medium">{clp(c.costo)}</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between font-semibold text-sky-900">
+              <span>Subtotal cristales</span>
+              <span>{clp(desglose.totalCristales)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sky-800">
+              <span>+ Marcos ({totalMarcosVendidos} × {clp(4000)})</span>
+              <span className="font-medium">{clp(desglose.totalArmazones)}</span>
+            </div>
+            {desglose.totalOtros > 0 && (
+              <div className="flex items-center justify-between text-sky-800">
+                <span>+ Otros productos</span>
+                <span className="font-medium">{clp(desglose.totalOtros)}</span>
+              </div>
+            )}
+            <div className="mt-1 flex items-center justify-between border-t border-sky-100 pt-1.5 text-sky-800">
+              <span>Transporte</span>
+              <span className="font-medium">{clp(operativo.costo_transporte)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sky-800">
+              <span>Arriendo</span>
+              <span className="font-medium">{clp(operativo.costo_arriendo)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sky-800">
+              <span>Viáticos</span>
+              <span className="font-medium">{clp(operativo.costo_viaticos)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sky-800">
+              <span>Otros costos del operativo</span>
+              <span className="font-medium">{clp(operativo.costo_otros)}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between rounded-lg bg-white px-2 py-1.5 text-base font-bold text-sky-900">
+              <span>= Costos en total</span>
+              <span>{clp(totalCostos)}</span>
+            </div>
+          </div>
+        </details>
+        <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden">
+          <summary className="cursor-pointer list-none">
+            <p className="text-sm text-sky-800">
+              Utilidad neta <span className="text-sky-400 group-open:hidden">▸</span>
+              <span className="hidden text-sky-400 group-open:inline">▾</span>
+            </p>
+            <p className={`mt-1 text-2xl font-bold ${utilidadNeta >= 0 ? "text-green-700" : "text-red-700"}`}>
+              {clp(utilidadNeta)}
+            </p>
+          </summary>
+          <div className="mt-3 flex flex-col gap-1.5 border-t border-sky-100 pt-3 text-sm text-sky-800">
+            <div className="flex items-center justify-between">
+              <span>Vendido</span>
+              <span className="font-medium">{clp(totalVendido)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>− Costos en total</span>
+              <span className="font-medium">{clp(totalCostos)}</span>
+            </div>
+            <div
+              className={`mt-1 flex items-center justify-between rounded-lg bg-white px-2 py-1.5 text-base font-bold ${utilidadNeta >= 0 ? "text-green-700" : "text-red-700"}`}
+            >
+              <span>= Utilidad neta</span>
+              <span>{clp(utilidadNeta)}</span>
+            </div>
+          </div>
+        </details>
       </div>
 
       {(operativo.meta_examenes || operativo.meta_ventas) && (
@@ -283,6 +360,94 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           )}
         </div>
       )}
+
+      <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
+        <summary className="cursor-pointer font-semibold text-sky-800">✎ Editar datos del operativo</summary>
+        <form action={actualizarOperativo} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input type="hidden" name="id" value={operativo.id} />
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900 sm:col-span-2">
+            Nombre *
+            <input
+              name="nombre"
+              required
+              defaultValue={operativo.nombre}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Tipo de lugar
+            <select
+              name="tipo_venue"
+              defaultValue={operativo.tipo_venue ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            >
+              <option value="">— Sin especificar —</option>
+              {TIPOS_VENUE.map((t) => (
+                <option key={t.valor} value={t.valor}>
+                  {t.etiqueta}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Dirección
+            <input
+              name="direccion"
+              defaultValue={operativo.direccion ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Fecha de inicio *
+            <input
+              type="date"
+              name="fecha"
+              required
+              defaultValue={operativo.fecha}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Fecha de término (si dura más de un día)
+            <input
+              type="date"
+              name="fecha_fin"
+              defaultValue={operativo.fecha_fin ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Contacto
+            <input
+              name="contacto_nombre"
+              defaultValue={operativo.contacto_nombre ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Teléfono de contacto
+            <CampoTelefono
+              name="contacto_telefono"
+              defaultValue={operativo.contacto_telefono ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900 sm:col-span-2">
+            Notas
+            <textarea
+              name="notas"
+              rows={2}
+              defaultValue={operativo.notas ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <div className="sm:col-span-2">
+            <button className="rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white transition hover:bg-sky-800">
+              Guardar
+            </button>
+          </div>
+        </form>
+      </details>
 
       <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
         <summary className="cursor-pointer font-semibold text-sky-800">💰 Costos y metas del operativo</summary>

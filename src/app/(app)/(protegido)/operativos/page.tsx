@@ -239,6 +239,10 @@ export default async function OperativosPage() {
               <input type="date" name="fecha" required className={input} />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
+              Fecha de término (si dura más de un día)
+              <input type="date" name="fecha_fin" className={input} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
               Dirección
               <input name="direccion" className={input} />
             </label>

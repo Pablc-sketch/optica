@@ -32,6 +32,15 @@ async function requerirAdmin() {
   return { supabase, tenantId: perfil.tenant_id as string };
 }
 
+// Si viene una fecha de término anterior a la de inicio (dato mal
+// tipeado), se ignora en vez de guardar un rango invertido — mejor
+// "sin fecha de término" que un rango que no tiene sentido.
+function parsearFechaFin(valor: FormDataEntryValue | null, fechaInicio: string): string | null {
+  const fechaFin = String(valor ?? "").trim();
+  if (!fechaFin || fechaFin < fechaInicio) return null;
+  return fechaFin;
+}
+
 export async function crearOperativo(formData: FormData) {
   const { supabase, tenantId } = await requerirAdmin();
 
@@ -45,6 +54,7 @@ export async function crearOperativo(formData: FormData) {
     tenant_id: tenantId,
     nombre,
     fecha,
+    fecha_fin: parsearFechaFin(formData.get("fecha_fin"), fecha),
     tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
     direccion: String(formData.get("direccion") ?? "").trim() || null,
     contacto_nombre: String(formData.get("contacto_nombre") ?? "").trim() || null,
@@ -53,6 +63,37 @@ export async function crearOperativo(formData: FormData) {
   });
   if (error) throw error;
 
+  revalidatePath("/operativos");
+}
+
+// Corregir nombre, fechas, lugar o contacto después de creado (ej. "OPV
+// Departamento Pudahuel" que en verdad dura varios días, o se cambió la
+// dirección) — sin esto había que borrar y crear todo de nuevo.
+export async function actualizarOperativo(formData: FormData) {
+  const { supabase } = await requerirAdmin();
+  const id = String(formData.get("id") ?? "");
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  const fecha = String(formData.get("fecha") ?? "").trim();
+  if (!id || !nombre || !fecha) return;
+
+  const tipoVenue = String(formData.get("tipo_venue") ?? "");
+
+  const { error } = await supabase
+    .from("operativos")
+    .update({
+      nombre,
+      fecha,
+      fecha_fin: parsearFechaFin(formData.get("fecha_fin"), fecha),
+      tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
+      direccion: String(formData.get("direccion") ?? "").trim() || null,
+      contacto_nombre: String(formData.get("contacto_nombre") ?? "").trim() || null,
+      contacto_telefono: formatearTelefono(String(formData.get("contacto_telefono") ?? "")) || null,
+      notas: String(formData.get("notas") ?? "").trim() || null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  revalidatePath(`/operativos/${id}`);
   revalidatePath("/operativos");
 }
 
