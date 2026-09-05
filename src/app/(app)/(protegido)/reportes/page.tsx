@@ -3,7 +3,7 @@ import { clp } from "@/lib/clp";
 import BotonImprimir from "@/components/boton-imprimir";
 import Tarjeta from "@/components/tarjeta";
 import { fechaLegible, finDelDia, hoyEnChile, inicioDelDia } from "@/lib/fechas";
-import { costoDeItems } from "@/lib/costo-venta";
+import { desglosarCostos } from "@/lib/costo-venta";
 
 // Reportes (spec pantalla 10). Acá recién sirven los costos que quedaron
 // guardados sin mostrarse en la interfaz: el costo del armazón y el costo
@@ -115,8 +115,11 @@ export default async function ReportesPage({
   // monto fijo por unidad (se regalan, pero igual cuestan) y el resto de
   // los productos a su costo de Inventario — mismo criterio que Operativos,
   // para que la utilidad no cambie de un reporte a otro. No incluye
-  // arriendo, sueldos ni gastos fijos.
-  const costoDirecto = costoDeItems(items);
+  // arriendo, sueldos ni gastos fijos. El desglose (no solo el total) es
+  // para poder revisar lente por lente cuánto cuesta de verdad, en vez de
+  // solo confiar en la suma.
+  const desglose = desglosarCostos(items);
+  const costoDirecto = desglose.total;
   const utilidadBruta = totalVendido - costoDirecto;
   const margen = totalVendido > 0 ? Math.round((utilidadBruta / totalVendido) * 100) : 0;
 
@@ -215,6 +218,47 @@ export default async function ReportesPage({
           No incluye arriendo, sueldos ni otros gastos fijos: es el margen que deja la mercadería
           vendida en el período.
         </p>
+
+        <details className="mt-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
+          <summary className="cursor-pointer font-semibold text-brand-dark">
+            👓 Ver el detalle: cuánto nos sale cada lente
+          </summary>
+          <div className="mt-3 flex flex-col gap-1.5">
+            <p className="rounded-lg bg-white px-3 py-2 text-sm font-semibold">
+              Cristales (precio unitario × 2 + montaje + IVA)
+            </p>
+            {desglose.cristales.length === 0 ? (
+              <p className="px-3 text-sm text-tinta-suave">Sin cristales vendidos en este período.</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {desglose.cristales.map((c, i) => (
+                  <li key={i} className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-sm">
+                    <span className="flex-1 truncate">{c.descripcion}</span>
+                    <span className="font-semibold">{clp(c.costo)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-1 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm font-bold">
+              <span>Subtotal cristales</span>
+              <span>{clp(desglose.totalCristales)}</span>
+            </div>
+            <div className="flex items-center justify-between px-3 py-1 text-sm">
+              <span>+ Marcos ({clp(4000)} c/u, absorbido en el cristal)</span>
+              <span className="font-semibold">{clp(desglose.totalArmazones)}</span>
+            </div>
+            {desglose.totalOtros > 0 && (
+              <div className="flex items-center justify-between px-3 py-1 text-sm">
+                <span>+ Otros productos (costo de Inventario)</span>
+                <span className="font-semibold">{clp(desglose.totalOtros)}</span>
+              </div>
+            )}
+            <div className="mt-1 flex items-center justify-between rounded-lg bg-brand/10 px-3 py-2 text-base font-bold text-brand-dark">
+              <span>= Costo directo</span>
+              <span>{clp(desglose.total)}</span>
+            </div>
+          </div>
+        </details>
       </section>
 
       <section>
