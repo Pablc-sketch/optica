@@ -119,13 +119,17 @@ function lineaDeCombo(
   numero: 1 | 2,
   combo: CostoCristal,
   factorVenta: number,
-  opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean }
+  opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean }
 ): LineaCarrito {
   // Precio editable de la óptica (/precios); el factor es solo respaldo.
-  const precio = combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
+  // Cortesía (coordinadores sociales y similares que se lo ganan): el
+  // cristal se manda a hacer igual, con su costo real, pero se cobra $0 —
+  // así reportes/utilidad muestran el costo real de ese regalo, no que "no
+  // costó nada".
+  const precio = opciones?.esRegalo ? 0 : combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
   return {
     key: `cristal-${numero}`,
-    descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}`,
+    descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${opciones?.esRegalo ? " (cortesía)" : ""}`,
     cantidad: 1,
     precioUnitario: precio,
     cristal: {
@@ -159,13 +163,16 @@ function FilaLente({
   factorVenta: number;
   receta: RecetaResumen | undefined;
   inicial: PrefillLente;
-  onCambio: (datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean } | null) => void;
+  onCambio: (datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean } | null) => void;
 }) {
   const [tipoLente, setTipoLente] = useState(inicial?.tipoLente ?? "");
   const [posicion, setPosicion] = useState<"lejos" | "cerca">(inicial?.posicion === "cerca" ? "cerca" : "lejos");
   const [tratamiento, setTratamiento] = useState(inicial?.tratamiento ?? "");
   const [rangoManual, setRangoManual] = useState("");
   const [sugerido, setSugerido] = useState(inicial?.sugerido ?? false);
+  // Para gente que se lo gana (coordinadores sociales y similares): el
+  // lente se sigue mandando a hacer normal, pero queda a $0.
+  const [esRegalo, setEsRegalo] = useState(false);
 
   const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
   const posicionParaRango = tipoLente === "Monofocal" ? posicion : "lejos";
@@ -191,7 +198,7 @@ function FilaLente({
   // Solo al montar: si venía precargada por la sugerencia del tecnólogo,
   // se suma sola al carrito apenas aparece la fila.
   useEffect(() => {
-    if (combo) onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido });
+    if (combo) onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -199,7 +206,12 @@ function FilaLente({
     setTratamiento(valor);
     setSugerido(false);
     const elegido = tratamientos.find((c) => c.tratamiento === valor);
-    onCambio(elegido ? { combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined } : null);
+    onCambio(elegido ? { combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined, esRegalo } : null);
+  }
+
+  function alternarRegalo(valor: boolean) {
+    setEsRegalo(valor);
+    if (combo) onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo: valor });
   }
 
   const select =
@@ -307,9 +319,23 @@ function FilaLente({
         )}
 
         {combo && (
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-tinta-suave/25 bg-white px-3 py-2 text-xs font-medium has-checked:border-brand has-checked:bg-brand/5">
+            <input
+              type="checkbox"
+              checked={esRegalo}
+              onChange={(e) => alternarRegalo(e.target.checked)}
+              className="accent-brand"
+            />
+            🎁 Cortesía / regalo (coordinador social, etc.) — se manda a hacer igual, pero queda en $0
+          </label>
+        )}
+
+        {combo && (
           <p className="rounded-lg bg-violet-600 px-3 py-2.5 text-center text-base font-bold text-white">
-            {clp(combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta)}
-            {sugerido && <span className="ml-1.5 text-xs font-semibold text-violet-100">(sugerido en la receta)</span>}
+            {esRegalo ? "$0 (cortesía)" : clp(combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta)}
+            {sugerido && !esRegalo && (
+              <span className="ml-1.5 text-xs font-semibold text-violet-100">(sugerido en la receta)</span>
+            )}
           </p>
         )}
       </div>
@@ -458,10 +484,11 @@ export default function PuntoDeVenta({
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
   // Abono mínimo: cubre mandar a hacer estos cristales al laboratorio, así
   // no hay que poner plata propia mientras se espera el pago del saldo.
-  const abonoMinimo = lineasCristal.reduce(
-    (s, l) => s + (ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0),
-    0
-  );
+  // Un lente de cortesía (precio $0) no tiene nada que abonar — no tiene
+  // sentido pedir un adelanto de algo que no se va a cobrar.
+  const abonoMinimo = lineasCristal
+    .filter((l) => l.precioUnitario > 0)
+    .reduce((s, l) => s + (ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0), 0);
   const recetaPacienteId = receta?.id;
   const paciente = pacientes.find((p) => p.id === pacienteId);
 
@@ -529,13 +556,20 @@ export default function PuntoDeVenta({
 
   function manejarCambioLente(
     numero: 1 | 2,
-    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean } | null
+    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean } | null
   ) {
     const key = `cristal-${numero}`;
     setCarrito((prev) => {
       const sinEstaFila = prev.filter((l) => l.key !== key);
       if (!datos) return sinEstaFila;
-      return [...sinEstaFila, lineaDeCombo(numero, datos.combo, factorVenta, { posicion: datos.posicion, sugerido: datos.sugerido })];
+      return [
+        ...sinEstaFila,
+        lineaDeCombo(numero, datos.combo, factorVenta, {
+          posicion: datos.posicion,
+          sugerido: datos.sugerido,
+          esRegalo: datos.esRegalo,
+        }),
+      ];
     });
   }
 
