@@ -58,6 +58,10 @@ type LineaCarrito = {
     posicion?: "lejos" | "cerca";
     sugerido?: boolean;
   };
+  // A cuál de los dos lentes corresponde este armazón (1 o 2) — así cada
+  // par queda explícitamente emparejado con su lente y no depende del
+  // orden en que se hayan ido tocando en pantalla.
+  armazonSlot?: 1 | 2;
 };
 
 // La venta se arma en cuatro pasos, uno por pantalla, en vez de mostrar
@@ -313,6 +317,81 @@ function FilaLente({
   );
 }
 
+// Un armazón elegido explícitamente para UN lente (1 o 2) — antes se
+// agregaba a una sola lista compartida y se emparejaba con el cristal por
+// el orden en que se habían tocado los productos, así que en un operativo
+// con apuro era fácil que el marco del Lente 2 quedara guardado como si
+// fuera el del Lente 1. Ahora cada lente tiene su propio buscador y su
+// propio marco elegido, sin ambigüedad.
+function SelectorArmazon({
+  etiqueta,
+  productos,
+  elegido,
+  onElegir,
+}: {
+  etiqueta: string;
+  productos: Producto[];
+  elegido: LineaCarrito | undefined;
+  onElegir: (producto: Producto | null) => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const armazones = useMemo(() => productos.filter((p) => p.categoria === "armazon"), [productos]);
+  const filtrados = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    if (!t) return armazones;
+    return armazones.filter((p) => `${p.marca ?? ""} ${p.nombre}`.toLowerCase().includes(t));
+  }, [armazones, busca]);
+
+  return (
+    <fieldset className="flex-1 rounded-xl border border-amber-300 bg-white p-3">
+      <legend className="px-1 text-sm font-bold text-amber-900">Armazón — {etiqueta}</legend>
+      {elegido ? (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-amber-100 px-3 py-2.5">
+          <span className="text-sm font-semibold text-amber-900">{elegido.descripcion}</span>
+          <button
+            type="button"
+            onClick={() => onElegir(null)}
+            className="whitespace-nowrap text-xs font-semibold text-amber-800 underline"
+          >
+            Cambiar
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <input
+            type="search"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar marca, modelo o código…"
+            className="w-full rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
+          />
+          <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto">
+            {filtrados.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => onElegir(p)}
+                  className="flex w-full items-center gap-2 rounded-lg bg-crema-claro px-3 py-2 text-left text-sm transition hover:bg-amber-50"
+                >
+                  <span className="flex-1 truncate">
+                    {p.marca ? `${p.marca} ` : ""}
+                    {p.nombre}
+                  </span>
+                </button>
+              </li>
+            ))}
+            {filtrados.length === 0 && (
+              <li className="rounded-lg bg-crema-claro px-3 py-2 text-xs text-tinta-suave">
+                {armazones.length === 0 ? "No hay armazones cargados en Inventario." : "Sin coincidencias."}
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 export default function PuntoDeVenta({
   pacientes,
   productos,
@@ -369,9 +448,13 @@ export default function PuntoDeVenta({
   // Orden estable "Lente 1" antes que "Lente 2" (la key lo garantiza),
   // independiente del orden en que se hayan ido completando las filas.
   const lineasCristal = carrito.filter((l) => l.cristal).sort((a, b) => a.key.localeCompare(b.key));
-  // Puede haber más de un armazón (dos pares separados) — se enlazan en el
-  // mismo orden en que se agregaron, cada uno con su propia orden de trabajo.
-  const lineasArmazon = carrito.filter((l) => l.productoId);
+  // Puede haber más de un armazón (dos pares separados): cada uno queda
+  // explícitamente emparejado con su lente por armazonSlot, no por el orden
+  // en que se hayan agregado — así no se puede confundir cuál marco es para
+  // el Lente 1 y cuál para el Lente 2.
+  const lineasArmazon = carrito
+    .filter((l): l is LineaCarrito & { armazonSlot: 1 | 2 } => l.armazonSlot !== undefined)
+    .sort((a, b) => a.armazonSlot - b.armazonSlot);
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
   // Abono mínimo: cubre mandar a hacer estos cristales al laboratorio, así
   // no hay que poner plata propia mientras se espera el pago del saldo.
@@ -390,11 +473,36 @@ export default function PuntoDeVenta({
       .slice(0, 30);
   }, [pacientes, buscaPaciente]);
 
+  // Si ya hay al menos un lente en la venta, el armazón de cada uno se
+  // elige aparte (SelectorArmazon) — acá solo quedan los demás productos
+  // (estuches, lentes de contacto, etc.) para no mostrar los mismos
+  // armazones dos veces.
+  const tieneCristal = lineasCristal.length > 0;
   const productosFiltrados = useMemo(() => {
+    const base = tieneCristal ? productos.filter((p) => p.categoria !== "armazon") : productos;
     const t = buscaProducto.trim().toLowerCase();
-    if (!t) return productos;
-    return productos.filter((p) => `${p.marca ?? ""} ${p.nombre}`.toLowerCase().includes(t));
-  }, [productos, buscaProducto]);
+    if (!t) return base;
+    return base.filter((p) => `${p.marca ?? ""} ${p.nombre}`.toLowerCase().includes(t));
+  }, [productos, buscaProducto, tieneCristal]);
+
+  function elegirArmazon(numero: 1 | 2, producto: Producto | null) {
+    const key = `armazon-${numero}`;
+    setCarrito((prev) => {
+      const sinEsteSlot = prev.filter((l) => l.key !== key);
+      if (!producto) return sinEsteSlot;
+      return [
+        ...sinEsteSlot,
+        {
+          key,
+          productoId: producto.id,
+          descripcion: `${producto.marca ? producto.marca + " " : ""}${producto.nombre}`,
+          cantidad: 1,
+          precioUnitario: 0,
+          armazonSlot: numero,
+        },
+      ];
+    });
+  }
 
   function agregarProducto(p: Producto) {
     // Los armazones se regalan (el costo ya está absorbido en el precio del
@@ -940,12 +1048,34 @@ export default function PuntoDeVenta({
           <div>
             <h2 className={`font-bold ${COLOR_PASO[2].titulo}`}>¿Lleva armazón u otro producto?</h2>
             <p className="text-sm text-tinta-suave">
-              Toca los productos para agregarlos. Si solo lleva cristales, continúa sin agregar
-              nada.
-              {lineasCristal.length === 2 &&
-                " Este paciente lleva dos pares — agrega un marco para cada uno, primero el del Lente 1 y después el del Lente 2."}
+              {lineasCristal.length > 0
+                ? "Elige el marco de cada lente por separado — quedan enlazados sin confusión."
+                : "Toca los productos para agregarlos. Si solo lleva cristales, continúa sin agregar nada."}
             </p>
           </div>
+
+          {lineasCristal.length > 0 && (
+            <div className="flex flex-col gap-3 sm:flex-row">
+              {lineasCristal.map((l) => {
+                const numero = (l.key === "cristal-1" ? 1 : 2) as 1 | 2;
+                const etiqueta =
+                  lineasCristal.length === 2
+                    ? `Lente ${numero}${l.cristal?.posicion ? ` (${l.cristal.posicion})` : ""}`
+                    : "tu lente";
+                return (
+                  <SelectorArmazon
+                    key={`armazon-slot-${numero}`}
+                    etiqueta={etiqueta}
+                    productos={productos}
+                    elegido={carrito.find((c) => c.key === `armazon-${numero}`)}
+                    onElegir={(p) => elegirArmazon(numero, p)}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {lineasCristal.length > 0 && <p className="text-xs font-semibold text-tinta-suave">Otros productos</p>}
 
           <input
             type="search"
@@ -1135,6 +1265,11 @@ function Resumen({
               {l.cristal && (
                 <span className="ml-1.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
                   {l.key === "cristal-1" ? "Lente 1" : "Lente 2"}
+                </span>
+              )}
+              {l.armazonSlot && (
+                <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                  Lente {l.armazonSlot}
                 </span>
               )}
               {l.cristal?.sugerido && (
