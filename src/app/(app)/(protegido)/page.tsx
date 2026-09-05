@@ -32,7 +32,9 @@ export default async function Dashboard() {
     supabase.from("ventas").select("total, estado_pago").eq("anulada", false).gte("fecha", inicioDelDia(hoy)),
     supabase
       .from("ordenes_trabajo")
-      .select("id, folio, estado, fecha_entrega_estimada, pacientes:paciente_id (nombre)")
+      .select(
+        "id, folio, estado, fecha_entrega_estimada, origen_cristal, costo_laboratorio, costo_laboratorio_2, pacientes:paciente_id (nombre)"
+      )
       // Una venta anulada cancela su OT — que no siga contando como
       // "pendiente" ni asomándose en "entregas de hoy".
       .not("estado", "in", "(entregado,cancelado)")
@@ -55,6 +57,16 @@ export default async function Dashboard() {
   const ots = otsPendientes.data ?? [];
   const entregasHoy = ots.filter((ot) => ot.fecha_entrega_estimada === hoy);
   const stockCritico = (inventario.data ?? []).filter((i) => i.stock_actual <= i.stock_minimo);
+  // Lo que hay que llevar en plata la próxima vez que se manden a hacer
+  // cristales: solo las OT recién recepcionadas (todavía no enviadas al
+  // laboratorio) y que de verdad se piden afuera (no las que salen de
+  // stock propio). costo_laboratorio ya es precio unitario × 2 + montaje +
+  // IVA — exactamente lo que cobra el laboratorio por el par.
+  const otsPorEnviar = ots.filter((ot) => ot.estado === "recepcion" && ot.origen_cristal === "laboratorio");
+  const totalPorPagarLaboratorio = otsPorEnviar.reduce(
+    (s, ot) => s + (ot.costo_laboratorio ?? 0) + (ot.costo_laboratorio_2 ?? 0),
+    0
+  );
   const proximo = proximoOperativo.data;
 
   return (
@@ -84,6 +96,17 @@ export default async function Dashboard() {
           valor={String(stockCritico.length)}
           detalle="productos en o bajo mínimo"
           acento={stockCritico.length > 0}
+        />
+        <Tarjeta
+          icono="💵"
+          titulo="Para pagar al laboratorio"
+          valor={clp(totalPorPagarLaboratorio)}
+          detalle={
+            otsPorEnviar.length > 0
+              ? `${otsPorEnviar.length} orden${otsPorEnviar.length === 1 ? "" : "es"} por enviar`
+              : "Nada pendiente de enviar"
+          }
+          acento={totalPorPagarLaboratorio > 0}
         />
         <div className="relative overflow-hidden rounded-3xl bg-sky-50 p-4 shadow-[0_2px_10px_-3px_rgba(3,105,161,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(3,105,161,0.22)]">
           <p className="text-sm text-sky-800">📅 Próximo operativo</p>
