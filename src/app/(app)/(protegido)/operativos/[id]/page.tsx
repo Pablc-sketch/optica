@@ -79,7 +79,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
            cantidad, precio_unitario, descuento, descripcion, cristal_slot,
            ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio, costo_laboratorio_2),
            productos:producto_id (costo, categoria)
-         )`
+         ),
+         pagos_abonos (monto)`
       )
       .eq("operativo_id", id)
       .eq("anulada", false)
@@ -94,6 +95,13 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const pacientesConVenta = new Set(ventas.map((v) => v.paciente_id).filter(Boolean));
 
   const totalVendido = ventas.reduce((s, v) => s + v.total, 0);
+  // Lo que la gente ya ha pagado de verdad (abonos + pagos completos), para
+  // saber cuánta plata hay en la mano en medio del operativo, sin tener que
+  // sumar venta por venta cuánto abonó cada uno.
+  const totalAbonado = ventas.reduce(
+    (s, v) => s + (v.pagos_abonos ?? []).reduce((si, p) => si + p.monto, 0),
+    0
+  );
   const totalDescuentos = ventas.reduce(
     (s, v) => s + (v.venta_items ?? []).reduce((si, it) => si + (it.descuento ?? 0), 0),
     0
@@ -206,6 +214,13 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
           <p className="text-sm text-sky-800">Vendido</p>
           <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalVendido)}</p>
+        </div>
+        <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+          <p className="text-sm text-sky-800">Abonado hasta ahora</p>
+          <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalAbonado)}</p>
+          {totalVendido > totalAbonado && (
+            <p className="text-xs text-sky-700">Falta {clp(totalVendido - totalAbonado)} por cobrar</p>
+          )}
         </div>
         <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
           <p className="text-sm text-sky-800">Descuentos</p>
