@@ -58,11 +58,13 @@ export default async function Dashboard() {
   const entregasHoy = ots.filter((ot) => ot.fecha_entrega_estimada === hoy);
   const stockCritico = (inventario.data ?? []).filter((i) => i.stock_actual <= i.stock_minimo);
   // Lo que hay que llevar en plata la próxima vez que se manden a hacer
-  // cristales: solo las OT recién recepcionadas (todavía no enviadas al
-  // laboratorio) y que de verdad se piden afuera (no las que salen de
-  // stock propio). costo_laboratorio ya es precio unitario × 2 + montaje +
-  // IVA — exactamente lo que cobra el laboratorio por el par.
-  const otsPorEnviar = ots.filter((ot) => ot.estado === "recepcion" && ot.origen_cristal === "laboratorio");
+  // cristales: todas las OT recién recepcionadas (todavía no enviadas a
+  // Fides) — "de stock" no quiere decir que se queda en la óptica, es un
+  // cristal de catálogo que igual pide Fides (más barato que uno
+  // personalizado, pero se manda igual). costo_laboratorio ya es precio
+  // unitario × 2 + montaje + IVA — exactamente lo que cobra el laboratorio
+  // por el par.
+  const otsPorEnviar = ots.filter((ot) => ot.estado === "recepcion");
   const totalPorPagarLaboratorio = otsPorEnviar.reduce(
     (s, ot) => s + (ot.costo_laboratorio ?? 0) + (ot.costo_laboratorio_2 ?? 0),
     0

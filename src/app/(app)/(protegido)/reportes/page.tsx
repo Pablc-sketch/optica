@@ -54,7 +54,7 @@ export default async function ReportesPage({
 
   let ventasQuery = supabase
     .from("ventas")
-    .select("id, total, estado_pago, vendedor_id, users:vendedor_id (nombre)")
+    .select("id, total, vendedor_id, users:vendedor_id (nombre), pagos_abonos (monto)")
     .eq("anulada", false)
     .gte("fecha", inicioDelDia(desde))
     .lte("fecha", finDelDia(hasta));
@@ -101,9 +101,15 @@ export default async function ReportesPage({
   const numVentas = ventas.length;
   const ticketPromedio = numVentas > 0 ? Math.round(totalVendido / numVentas) : 0;
   const totalAbonado = pagos.reduce((s, p) => s + p.monto, 0);
-  const porCobrar = ventas
-    .filter((v) => v.estado_pago !== "pagada")
-    .reduce((s, v) => s + v.total, 0);
+  // Saldo real pendiente: el total de la venta MENOS lo que ya se le ha
+  // abonado (en cualquier momento, no solo en este período) — antes se
+  // sumaba el total completo de cada venta no "pagada", como si el abono ya
+  // hecho no contara, así que una venta con harto abonado igual sumaba
+  // entero y "Por cobrar" quedaba inflado.
+  const porCobrar = ventas.reduce((s, v) => {
+    const abonado = (v.pagos_abonos ?? []).reduce((si, p) => si + p.monto, 0);
+    return s + Math.max(0, v.total - abonado);
+  }, 0);
 
   // Costo directo: cristales a lo que cobra el laboratorio, marcos a un
   // monto fijo por unidad (se regalan, pero igual cuestan) y el resto de
