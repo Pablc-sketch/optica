@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { actualizarStockMinimo, registrarMovimiento } from "@/lib/actions/inventario";
 import { clp } from "@/lib/clp";
 import NuevoProducto from "./nuevo-producto";
+import NuevoProductoMasivo from "./nuevo-producto-masivo";
 import NuevoProveedor from "./nuevo-proveedor";
 
 type Producto = {
@@ -101,6 +102,7 @@ export default async function InventarioPage({
       </div>
 
       <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} />
+      <NuevoProductoMasivo />
 
       <section>
         <h2 className="mb-2 font-semibold">Proveedores</h2>
