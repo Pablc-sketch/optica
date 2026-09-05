@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { avanzarOT } from "@/lib/actions/ot";
+import { avanzarOT, retrocederOT } from "@/lib/actions/ot";
 import EliminarOT from "./eliminar-ot";
 import { clp } from "@/lib/clp";
 import { diaEnChile, fechaLegible } from "@/lib/fechas";
@@ -170,13 +170,28 @@ export default async function TableroOT() {
                           💬 Avisar por WhatsApp
                         </a>
                       )}
-                      <form action={avanzarOT} className="mt-2">
-                        <input type="hidden" name="ot_id" value={ot.id} />
-                        <input type="hidden" name="estado_actual" value={ot.estado} />
-                        <button className="w-full rounded-lg bg-brand/10 px-2 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
-                          {col.accion}
-                        </button>
-                      </form>
+                      <div className="mt-2 flex gap-1.5">
+                        {col.estado !== "recepcion" && (
+                          <form action={retrocederOT}>
+                            <input type="hidden" name="ot_id" value={ot.id} />
+                            <input type="hidden" name="estado_actual" value={ot.estado} />
+                            <button
+                              className="rounded-lg border border-tinta-suave/30 px-2 py-1.5 text-xs font-medium text-tinta-suave transition hover:bg-crema"
+                              aria-label="Volver una columna atrás"
+                              title="Volver una columna atrás"
+                            >
+                              ‹
+                            </button>
+                          </form>
+                        )}
+                        <form action={avanzarOT} className="flex-1">
+                          <input type="hidden" name="ot_id" value={ot.id} />
+                          <input type="hidden" name="estado_actual" value={ot.estado} />
+                          <button className="w-full rounded-lg bg-brand/10 px-2 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
+                            {col.accion}
+                          </button>
+                        </form>
+                      </div>
                     </article>
                   );
                 })

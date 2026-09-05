@@ -12,6 +12,13 @@ const SIGUIENTE: Record<string, string> = {
   listo: "entregado",
 };
 
+const ANTERIOR: Record<string, string> = {
+  laboratorio: "recepcion",
+  montaje: "laboratorio",
+  listo: "montaje",
+  entregado: "listo",
+};
+
 export async function avanzarOT(formData: FormData) {
   const supabase = await createClient();
   const otId = String(formData.get("ot_id"));
@@ -24,6 +31,27 @@ export async function avanzarOT(formData: FormData) {
   if (siguiente === "entregado") cambios.fecha_entrega_real = new Date().toISOString();
 
   // RLS garantiza que solo se puede tocar una OT del propio tenant.
+  const { error } = await supabase.from("ordenes_trabajo").update(cambios).eq("id", otId);
+  if (error) throw error;
+
+  revalidatePath("/ot");
+  revalidatePath("/");
+}
+
+// Deshacer un "avanzar" apretado por error (pasa harto en un operativo con
+// apuro, atendiendo a muchas personas seguidas) — vuelve una columna atrás
+// sin tener que borrar la OT ni pedirle ayuda a nadie.
+export async function retrocederOT(formData: FormData) {
+  const supabase = await createClient();
+  const otId = String(formData.get("ot_id"));
+  const estadoActual = String(formData.get("estado_actual"));
+
+  const anterior = ANTERIOR[estadoActual];
+  if (!anterior) return;
+
+  const cambios: Record<string, unknown> = { estado: anterior };
+  if (estadoActual === "entregado") cambios.fecha_entrega_real = null;
+
   const { error } = await supabase.from("ordenes_trabajo").update(cambios).eq("id", otId);
   if (error) throw error;
 
