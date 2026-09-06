@@ -26,7 +26,9 @@ function uno<T>(rel: T | T[] | null): T | null {
 }
 
 function BarraProgreso({ titulo, actual, meta, formatear }: { titulo: string; actual: number; meta: number; formatear: (n: number) => string }) {
-  const pct = Math.min(100, Math.round((actual / meta) * 100));
+  // Math.max en 0 porque "actual" puede ser negativo (utilidad en rojo) —
+  // sin esto la barra quedaba con ancho negativo.
+  const pct = Math.max(0, Math.min(100, Math.round((actual / meta) * 100)));
   const cumplida = actual >= meta;
   return (
     <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
@@ -184,6 +186,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     `💰 Vendido: ${clp(totalVendido)}`,
     ...(operativo.meta_examenes ? [`🎯 Meta exámenes: ${recetas.length}/${operativo.meta_examenes}`] : []),
     ...(operativo.meta_ventas ? [`🎯 Meta ventas: ${clp(totalVendido)}/${clp(operativo.meta_ventas)}`] : []),
+    ...(operativo.meta_utilidad ? [`🎯 Meta utilidad: ${clp(utilidadNeta)}/${clp(operativo.meta_utilidad)}`] : []),
     ...(entregas.length > 0
       ? ["", "📦 Próximas entregas:", ...entregas.map((e) => `• ${e.paciente}: ${fechaLegible(e.fecha)}`)]
       : []),
@@ -388,7 +391,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         </details>
       </div>
 
-      {(operativo.meta_examenes || operativo.meta_ventas) && (
+      {(operativo.meta_examenes || operativo.meta_ventas || operativo.meta_utilidad) && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {operativo.meta_examenes && (
             <BarraProgreso
@@ -400,6 +403,9 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           )}
           {operativo.meta_ventas && (
             <BarraProgreso titulo="Meta de ventas" actual={totalVendido} meta={operativo.meta_ventas} formatear={clp} />
+          )}
+          {operativo.meta_utilidad && (
+            <BarraProgreso titulo="Meta de utilidad" actual={utilidadNeta} meta={operativo.meta_utilidad} formatear={clp} />
           )}
         </div>
       )}
@@ -525,6 +531,10 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
             Meta de ventas (opcional)
             <CampoMonto name="meta_ventas" defaultValue={operativo.meta_ventas} placeholder="500000" />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Meta de utilidad (opcional)
+            <CampoMonto name="meta_utilidad" defaultValue={operativo.meta_utilidad} placeholder="200000" />
           </label>
           <div className="sm:col-span-2">
             <button className="rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white transition hover:bg-sky-800">

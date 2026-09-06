@@ -140,6 +140,7 @@ export async function actualizarDetallesOperativo(formData: FormData) {
       costo_otros: parsearMonto(formData.get("costo_otros")),
       meta_examenes: parsearMetaOpcional(formData.get("meta_examenes")),
       meta_ventas: parsearMetaOpcional(formData.get("meta_ventas")),
+      meta_utilidad: parsearMetaOpcional(formData.get("meta_utilidad")),
     })
     .eq("id", id);
   if (error) throw error;
