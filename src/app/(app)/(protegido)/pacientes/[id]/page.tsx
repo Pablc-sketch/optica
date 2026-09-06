@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { actualizarFichaClinica } from "@/lib/actions/pacientes";
 import { formatearRut } from "@/lib/rut";
 import EliminarPaciente from "../eliminar-paciente";
+import EliminarReceta from "../eliminar-receta";
 import EditarPaciente from "../editar-paciente";
 import NuevaReceta from "./nueva-receta";
 
@@ -204,6 +205,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
                     >
                       ✎ Editar
                     </Link>
+                    <EliminarReceta recetaId={r.id} pacienteId={paciente.id} />
                   </div>
                 </div>
                 <div className="overflow-x-auto">

@@ -267,3 +267,28 @@ export async function actualizarReceta(formData: FormData) {
   revalidatePath(`/pacientes/${pacienteId}/receta/${recetaId}`);
   revalidatePath("/ventas");
 }
+
+// Corregir una receta mal cargada por error (no una que ya se usó para
+// mandar a hacer cristales de verdad) — la FK contra ordenes_trabajo
+// protege sola de borrar una que sí está enlazada a una OT real.
+export async function eliminarReceta(formData: FormData) {
+  const { supabase, tenantId } = await tenantDelUsuario();
+
+  const recetaId = String(formData.get("receta_id") ?? "");
+  const pacienteId = String(formData.get("paciente_id") ?? "");
+  if (!recetaId) return { ok: false as const, error: "Falta la receta." };
+
+  const { error } = await supabase.from("recetas").delete().eq("id", recetaId).eq("tenant_id", tenantId);
+  if (error) {
+    if (error.code === "23503") {
+      return {
+        ok: false as const,
+        error: "No se puede eliminar: esta receta ya está enlazada a una orden de trabajo. Anula esa OT/venta primero.",
+      };
+    }
+    return { ok: false as const, error: "No se pudo eliminar la receta." };
+  }
+
+  revalidatePath(`/pacientes/${pacienteId}`);
+  return { ok: true as const };
+}
