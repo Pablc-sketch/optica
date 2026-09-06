@@ -269,8 +269,11 @@ export async function actualizarReceta(formData: FormData) {
 }
 
 // Corregir una receta mal cargada por error (no una que ya se usó para
-// mandar a hacer cristales de verdad) — la FK contra ordenes_trabajo
-// protege sola de borrar una que sí está enlazada a una OT real.
+// mandar a hacer cristales de verdad). Si tiene una OT real (no cancelada)
+// enlazada, se bloquea — hay que anular esa venta primero. Si lo único que
+// queda enlazado son OT ya canceladas (de ventas ya anuladas: pruebas,
+// errores), se limpian solas antes de borrar la receta, mismo criterio que
+// al eliminar un paciente.
 export async function eliminarReceta(formData: FormData) {
   const { supabase, tenantId } = await tenantDelUsuario();
 
@@ -278,16 +281,36 @@ export async function eliminarReceta(formData: FormData) {
   const pacienteId = String(formData.get("paciente_id") ?? "");
   if (!recetaId) return { ok: false as const, error: "Falta la receta." };
 
-  const { error } = await supabase.from("recetas").delete().eq("id", recetaId).eq("tenant_id", tenantId);
-  if (error) {
-    if (error.code === "23503") {
-      return {
-        ok: false as const,
-        error: "No se puede eliminar: esta receta ya está enlazada a una orden de trabajo. Anula esa OT/venta primero.",
-      };
-    }
-    return { ok: false as const, error: "No se pudo eliminar la receta." };
+  const { data: otReal } = await supabase
+    .from("ordenes_trabajo")
+    .select("id")
+    .eq("receta_id", recetaId)
+    .neq("estado", "cancelado")
+    .limit(1);
+  if ((otReal?.length ?? 0) > 0) {
+    return {
+      ok: false as const,
+      error: "No se puede eliminar: esta receta tiene una orden de trabajo real (no anulada). Anula esa OT/venta primero.",
+    };
   }
+
+  const { data: otsCanceladas } = await supabase.from("ordenes_trabajo").select("id").eq("receta_id", recetaId);
+  const otIds = (otsCanceladas ?? []).map((o) => o.id);
+  if (otIds.length > 0) {
+    const { data: itemsOT } = await supabase.from("venta_items").select("venta_id").in("ot_id", otIds);
+    const ventaIds = [...new Set((itemsOT ?? []).map((i) => i.venta_id))];
+    if (ventaIds.length > 0) {
+      await supabase.from("pagos_abonos").delete().in("venta_id", ventaIds);
+      await supabase.from("venta_items").delete().in("venta_id", ventaIds);
+      const { error: ventasError } = await supabase.from("ventas").delete().in("id", ventaIds);
+      if (ventasError) return { ok: false as const, error: "No se pudieron limpiar las ventas anuladas asociadas." };
+    }
+    const { error: otError } = await supabase.from("ordenes_trabajo").delete().in("id", otIds);
+    if (otError) return { ok: false as const, error: "No se pudieron eliminar las órdenes de trabajo canceladas." };
+  }
+
+  const { error } = await supabase.from("recetas").delete().eq("id", recetaId).eq("tenant_id", tenantId);
+  if (error) return { ok: false as const, error: "No se pudo eliminar la receta." };
 
   revalidatePath(`/pacientes/${pacienteId}`);
   return { ok: true as const };
