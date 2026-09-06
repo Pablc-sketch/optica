@@ -281,45 +281,62 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </p>
             <p className="mt-1 text-2xl font-bold text-sky-900">{clp(totalCostos)}</p>
           </summary>
-          <div className="mt-3 flex flex-col gap-1.5 border-t border-sky-100 pt-3 text-sm">
-            <p className="font-semibold text-sky-900">Cristales (precio unitario × 2 + montaje + IVA)</p>
-            {desglose.cristales.map((c, i) => (
-              <div key={i} className="flex items-center justify-between pl-2 text-sky-800">
-                <span className="truncate">{c.descripcion}</span>
-                <span className="font-medium">{clp(c.costo)}</span>
+          <div className="mt-3 flex flex-col gap-3 border-t border-sky-100 pt-3 text-sm">
+            <div className="flex flex-col gap-1.5">
+              <p className="font-semibold text-sky-900">
+                1. Cristales — lo que hay que pagarle a Fides por esta venta
+              </p>
+              {desglose.cristales.map((c, i) => (
+                <div key={i} className="flex items-center justify-between pl-2 text-sky-800">
+                  <span className="truncate">{c.descripcion}</span>
+                  <span className="font-medium">{clp(c.costo)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between font-semibold text-sky-900">
+                <span>Subtotal cristales</span>
+                <span>{clp(desglose.totalCristales)}</span>
               </div>
-            ))}
-            <div className="flex items-center justify-between font-semibold text-sky-900">
-              <span>Subtotal cristales</span>
-              <span>{clp(desglose.totalCristales)}</span>
             </div>
-            <div className="flex items-center justify-between text-sky-800">
-              <span>+ Marcos ({totalMarcosVendidos} × {clp(4000)})</span>
-              <span className="font-medium">{clp(desglose.totalArmazones)}</span>
-            </div>
-            {desglose.totalOtros > 0 && (
-              <div className="flex items-center justify-between text-sky-800">
-                <span>+ Otros productos</span>
-                <span className="font-medium">{clp(desglose.totalOtros)}</span>
+
+            <div className="flex flex-col gap-1.5">
+              <p className="font-semibold text-sky-900">2. Marcos — ya pagados antes, solo contable</p>
+              <div className="flex items-center justify-between pl-2 text-sky-800">
+                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"} × {clp(4000)}</span>
+                <span className="font-medium">{clp(desglose.totalArmazones)}</span>
               </div>
-            )}
-            <div className="mt-1 flex items-center justify-between border-t border-sky-100 pt-1.5 text-sky-800">
-              <span>Transporte</span>
-              <span className="font-medium">{clp(operativo.costo_transporte)}</span>
+              <p className="pl-2 text-xs text-sky-700">
+                No es plata nueva que se vaya a gastar ahora — es para amortizar lo que ya se pagó al comprar
+                el stock de marcos.
+              </p>
+              {desglose.totalOtros > 0 && (
+                <div className="flex items-center justify-between pl-2 text-sky-800">
+                  <span>+ Otros productos</span>
+                  <span className="font-medium">{clp(desglose.totalOtros)}</span>
+                </div>
+              )}
             </div>
-            <div className="flex items-center justify-between text-sky-800">
-              <span>Arriendo</span>
-              <span className="font-medium">{clp(operativo.costo_arriendo)}</span>
+
+            <div className="flex flex-col gap-1.5">
+              <p className="font-semibold text-sky-900">3. Costos del operativo — gastos reales del evento</p>
+              <div className="flex items-center justify-between pl-2 text-sky-800">
+                <span>Transporte</span>
+                <span className="font-medium">{clp(operativo.costo_transporte)}</span>
+              </div>
+              <div className="flex items-center justify-between pl-2 text-sky-800">
+                <span>Arriendo</span>
+                <span className="font-medium">{clp(operativo.costo_arriendo)}</span>
+              </div>
+              <div className="flex items-center justify-between pl-2 text-sky-800">
+                <span>Viáticos</span>
+                <span className="font-medium">{clp(operativo.costo_viaticos)}</span>
+              </div>
+              <div className="flex items-center justify-between pl-2 text-sky-800">
+                <span>Otros</span>
+                <span className="font-medium">{clp(operativo.costo_otros)}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between text-sky-800">
-              <span>Viáticos</span>
-              <span className="font-medium">{clp(operativo.costo_viaticos)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sky-800">
-              <span>Otros costos del operativo</span>
-              <span className="font-medium">{clp(operativo.costo_otros)}</span>
-            </div>
-            <div className="mt-1 flex items-center justify-between rounded-lg bg-white px-2 py-1.5 text-base font-bold text-sky-900">
+
+            <div className="flex items-center justify-between rounded-lg bg-white px-2 py-1.5 text-base font-bold text-sky-900">
               <span>= Costos en total</span>
               <span>{clp(totalCostos)}</span>
             </div>
