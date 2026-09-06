@@ -483,6 +483,19 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Fecha de entrega (cuando se vuelve a dejar los lentes)
+            <input
+              type="date"
+              name="fecha_entrega_estimada"
+              defaultValue={operativo.fecha_entrega_estimada ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+            <span className="text-xs font-normal text-sky-700">
+              Todas las ventas de este operativo quedan con esta misma fecha de entrega, en vez de calcularla
+              venta por venta.
+            </span>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
             Contacto
             <input
               name="contacto_nombre"

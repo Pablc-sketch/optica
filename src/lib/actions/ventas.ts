@@ -78,7 +78,7 @@ export async function registrarVenta(input: {
   let otFolio: number | null = null;
   if (input.pacienteId && cristales.length > 0) {
     const necesitaLab = cristales.some((c) => c.origen === "laboratorio");
-    const [recetaRes, sucursalRes, proveedorRes, config] = await Promise.all([
+    const [recetaRes, sucursalRes, proveedorRes, config, operativoRes] = await Promise.all([
       supabase
         .from("recetas")
         .select("id")
@@ -96,16 +96,21 @@ export async function registrarVenta(input: {
       // El plazo lo define cada óptica en Configuración según lo que demore
       // su laboratorio; 7 días es solo el respaldo si aún no lo ajustó.
       supabase.from("tenants").select("dias_entrega_default").eq("id", tenantId).single(),
+      // Si la venta es de un operativo con fecha de entrega configurada, esa
+      // fecha manda: a todos los que compraron ahí se les entrega el mismo
+      // día que se vuelve al lugar, no una fecha calculada venta por venta.
+      input.operativoId
+        ? supabase.from("operativos").select("fecha_entrega_estimada").eq("id", input.operativoId).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
     // "Hoy" tiene que ser el de Chile: entrada en el servidor (UTC) usaba
     // getDate()/setDate() con el reloj del servidor, así que una venta de
     // noche en Chile (ya "mañana" en UTC) calculaba la entrega un día de
     // más.
-    const entregaISO = sumarDias(
-      hoyEnChile(),
-      input.diasEntrega ?? config.data?.dias_entrega_default ?? 7
-    );
+    const entregaISO =
+      operativoRes.data?.fecha_entrega_estimada ??
+      sumarDias(hoyEnChile(), input.diasEntrega ?? config.data?.dias_entrega_default ?? 7);
 
     const [primero, segundo] = cristales;
     const { data: ot, error: otError } = await supabase

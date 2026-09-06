@@ -494,7 +494,7 @@ export default function PuntoDeVenta({
   sucursalId: string | null;
   vendedorId: string | null;
   recetasPorPaciente: Record<string, RecetaResumen | undefined>;
-  operativos: { id: string; nombre: string; fecha: string }[];
+  operativos: { id: string; nombre: string; fecha: string; fecha_entrega_estimada: string | null }[];
 }) {
   const router = useRouter();
   const [paso, setPaso] = useState(0);
@@ -702,11 +702,14 @@ export default function PuntoDeVenta({
     // cerca por separado comparten UNA sola OT (un cupo cada uno), no dos
     // OT distintas — así vuelve del laboratorio como un solo paquete.
     const otId = pacienteId && lineasCristal.length > 0 ? crypto.randomUUID() : null;
-    // hoyEnChile() en vez del reloj/huso del dispositivo, para que la
+    // Si la venta es de un operativo con fecha de entrega configurada, esa
+    // manda (a todos les toca el mismo día, cuando se vuelve al lugar) — si
+    // no, hoyEnChile() en vez del reloj/huso del dispositivo, para que la
     // estimación no dependa de que el celular tenga bien puesta la zona
     // horaria (frecuente justo en el escenario para el que existe este modo:
     // vendiendo en terreno).
-    const entregaISO = sumarDias(hoyEnChile(), 7);
+    const operativoActivo = operativos.find((o) => o.id === operativoId);
+    const entregaISO = operativoActivo?.fecha_entrega_estimada ?? sumarDias(hoyEnChile(), 7);
 
     const cambios: CambioSync[] = [
       {

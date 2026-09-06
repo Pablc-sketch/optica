@@ -84,6 +84,7 @@ export async function actualizarOperativo(formData: FormData) {
       nombre,
       fecha,
       fecha_fin: parsearFechaFin(formData.get("fecha_fin"), fecha),
+      fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,
       tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
       direccion: String(formData.get("direccion") ?? "").trim() || null,
       contacto_nombre: String(formData.get("contacto_nombre") ?? "").trim() || null,
@@ -95,6 +96,7 @@ export async function actualizarOperativo(formData: FormData) {
 
   revalidatePath(`/operativos/${id}`);
   revalidatePath("/operativos");
+  revalidatePath("/ventas");
 }
 
 export async function cambiarEstadoOperativo(formData: FormData) {

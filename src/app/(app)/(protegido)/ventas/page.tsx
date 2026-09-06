@@ -49,7 +49,7 @@ export default async function VentasPage() {
     // planificados/realizados más recientes primero.
     supabase
       .from("operativos")
-      .select("id, nombre, fecha")
+      .select("id, nombre, fecha, fecha_entrega_estimada")
       .in("estado", ["planificado", "realizado"])
       .order("fecha", { ascending: false }),
   ]);
