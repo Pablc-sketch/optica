@@ -4,18 +4,12 @@ import BotonImprimir from "@/components/boton-imprimir";
 import Tarjeta from "@/components/tarjeta";
 import { fechaLegible, finDelDia, hoyEnChile, inicioDelDia } from "@/lib/fechas";
 import { desglosarCostos } from "@/lib/costo-venta";
+import FiltroPagos from "./filtro-pagos";
 
 // Reportes (spec pantalla 10). Acá recién sirven los costos que quedaron
 // guardados sin mostrarse en la interfaz: el costo del armazón y el costo
 // de laboratorio del cristal permiten estimar la utilidad real de cada
 // período, no solo lo facturado.
-
-const MEDIOS_PAGO: Record<string, string> = {
-  efectivo: "Efectivo",
-  debito: "Débito",
-  credito: "Crédito",
-  transferencia: "Transferencia",
-};
 
 function inicioDeMes(): string {
   const hoy = hoyEnChile();
@@ -231,25 +225,8 @@ export default async function ReportesPage({
             </p>
             <p className="mt-1 text-2xl font-bold text-tinta">{clp(totalAbonado)}</p>
           </summary>
-          <div className="mt-3 flex max-h-72 flex-col gap-1 overflow-y-auto border-t border-tinta-suave/15 pt-3 text-sm">
-            {pagosDetalle.length === 0 ? (
-              <p className="text-tinta-suave">Sin abonos registrados en este período.</p>
-            ) : (
-              pagosDetalle.map((p, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-tinta-suave">{fechaLegible(p.fecha.slice(0, 10))}</span>
-                  <span className="flex-1 truncate">{p.paciente ?? "Sin paciente"}</span>
-                  <span className="rounded-full bg-crema-claro px-2 py-0.5 text-xs font-medium text-tinta-suave">
-                    {MEDIOS_PAGO[p.medioPago] ?? p.medioPago}
-                  </span>
-                  <span className="font-semibold">{clp(p.monto)}</span>
-                </div>
-              ))
-            )}
-            <div className="mt-1 flex items-center justify-between rounded-lg bg-brand/10 px-2 py-1.5 font-bold text-brand-dark">
-              <span>= Cobrado en el período</span>
-              <span>{clp(totalAbonado)}</span>
-            </div>
+          <div className="mt-3 border-t border-tinta-suave/15 pt-3">
+            <FiltroPagos pagos={pagosDetalle} />
           </div>
         </details>
         <Tarjeta icono="⏳" titulo="Por cobrar" valor={clp(porCobrar)} acento={porCobrar > 0} />
