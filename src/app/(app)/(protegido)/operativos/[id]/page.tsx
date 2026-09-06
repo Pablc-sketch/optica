@@ -145,6 +145,12 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     operativo.costo_transporte + operativo.costo_arriendo + operativo.costo_viaticos + operativo.costo_otros;
   const totalCostos = totalCostosOperativo + totalCostoProductos;
   const utilidadNeta = totalVendido - totalCostos;
+  // "Utilidad neta" cuenta lo VENDIDO, aunque todavía no se haya cobrado
+  // entero (hay ventas con saldo pendiente). Esta es la plata de verdad
+  // disponible ahora mismo: lo que ya se abonó, menos lo que hay que pagar
+  // (cristales al laboratorio, marcos, gastos del operativo) — si da
+  // negativo, significa que ya se debe más de lo que se ha cobrado.
+  const utilidadActual = totalAbonado - totalCostos;
 
   // Próximas entregas: de las ventas de este operativo, las que tienen una
   // OT con fecha estimada, para que el resumen de cierre avise qué falta
@@ -341,6 +347,43 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               <span>= Utilidad neta</span>
               <span>{clp(utilidadNeta)}</span>
             </div>
+          </div>
+        </details>
+        <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden">
+          <summary className="cursor-pointer list-none">
+            <p className="text-sm text-sky-800">
+              Utilidad actual (caja) <span className="text-sky-400 group-open:hidden">▸</span>
+              <span className="hidden text-sky-400 group-open:inline">▾</span>
+            </p>
+            <p className={`mt-1 text-2xl font-bold ${utilidadActual >= 0 ? "text-green-700" : "text-red-700"}`}>
+              {clp(utilidadActual)}
+            </p>
+            <p className="text-xs text-sky-700">
+              {utilidadActual >= 0
+                ? "Lo que te queda libre después de pagar cristales, marcos y gastos del operativo"
+                : "Ya debes más de lo que has cobrado — cuidado antes de gastar"}
+            </p>
+          </summary>
+          <div className="mt-3 flex flex-col gap-1.5 border-t border-sky-100 pt-3 text-sm text-sky-800">
+            <div className="flex items-center justify-between">
+              <span>Abonado hasta ahora</span>
+              <span className="font-medium">{clp(totalAbonado)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>− Costos en total</span>
+              <span className="font-medium">{clp(totalCostos)}</span>
+            </div>
+            <div
+              className={`mt-1 flex items-center justify-between rounded-lg bg-white px-2 py-1.5 text-base font-bold ${utilidadActual >= 0 ? "text-green-700" : "text-red-700"}`}
+            >
+              <span>= Utilidad actual</span>
+              <span>{clp(utilidadActual)}</span>
+            </div>
+            <p className="mt-1 text-xs text-sky-700">
+              A diferencia de &quot;Utilidad neta&quot;, esta cuenta solo la plata que ya está en la mano
+              (no lo vendido a crédito/abono todavía pendiente) — es la que de verdad se puede gastar hoy
+              en cristales, marcos y gastos del operativo sin quedar en rojo.
+            </p>
           </div>
         </details>
       </div>
