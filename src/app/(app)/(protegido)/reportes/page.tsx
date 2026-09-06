@@ -113,6 +113,11 @@ export default async function ReportesPage({
     const paciente = uno(venta?.pacientes as unknown as { nombre: string } | { nombre: string }[] | null);
     return { fecha: p.fecha, monto: p.monto, medioPago: p.medio_pago, paciente: paciente?.nombre ?? null };
   });
+  // Plata disponible en la mano ahora: efectivo aparte porque es la única
+  // que se puede usar al tiro (débito/crédito/transferencia demoran en
+  // liquidarse a la cuenta, aunque el sistema ya los cuente como cobrados).
+  const totalEfectivo = pagos.filter((p) => p.medio_pago === "efectivo").reduce((s, p) => s + p.monto, 0);
+  const totalCuenta = totalAbonado - totalEfectivo;
   // Saldo real pendiente: el total de la venta MENOS lo que ya se le ha
   // abonado (en cualquier momento, no solo en este período) — antes se
   // sumaba el total completo de cada venta no "pagada", como si el abono ya
@@ -231,6 +236,15 @@ export default async function ReportesPage({
         </details>
         <Tarjeta icono="⏳" titulo="Por cobrar" valor={clp(porCobrar)} acento={porCobrar > 0} />
       </div>
+
+      <section>
+        <h2 className="mb-2 font-semibold">Plata disponible hasta ahora</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <Tarjeta icono="💰" titulo="Total cobrado" valor={clp(totalAbonado)} acento />
+          <Tarjeta icono="🏦" titulo="En cuenta" valor={clp(totalCuenta)} detalle="débito + crédito + transferencia" />
+          <Tarjeta icono="💵" titulo="Efectivo" valor={clp(totalEfectivo)} detalle="lo único disponible al tiro" />
+        </div>
+      </section>
 
       <section>
         <h2 className="mb-2 font-semibold">Utilidad estimada</h2>
