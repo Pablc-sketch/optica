@@ -115,18 +115,22 @@ const COLOR_PASO = [
   },
 ] as const;
 
+// Precio de lista sugerido por el catálogo (/precios); el factor es solo
+// respaldo si todavía no se ha fijado un precio_venta ahí.
+function precioDeCombo(combo: CostoCristal, factorVenta: number): number {
+  return combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
+}
+
 function lineaDeCombo(
   numero: 1 | 2,
   combo: CostoCristal,
   factorVenta: number,
-  opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean }
+  opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number }
 ): LineaCarrito {
-  // Precio editable de la óptica (/precios); el factor es solo respaldo.
-  // Cortesía (coordinadores sociales y similares que se lo ganan): el
-  // cristal se manda a hacer igual, con su costo real, pero se cobra $0 —
-  // así reportes/utilidad muestran el costo real de ese regalo, no que "no
-  // costó nada".
-  const precio = opciones?.esRegalo ? 0 : combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
+  // El precio final es el que quedó editado en la fila (precioManual) —
+  // puede ser el de lista tal cual, o uno rebajado a mano (descuento en el
+  // momento de la venta). Cortesía sigue forzando $0 aparte, por si acaso.
+  const precio = opciones?.esRegalo ? 0 : (opciones?.precioManual ?? precioDeCombo(combo, factorVenta));
   return {
     key: `cristal-${numero}`,
     descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${opciones?.esRegalo ? " (cortesía)" : ""}`,
@@ -163,7 +167,9 @@ function FilaLente({
   factorVenta: number;
   receta: RecetaResumen | undefined;
   inicial: PrefillLente;
-  onCambio: (datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean } | null) => void;
+  onCambio: (
+    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number } | null
+  ) => void;
 }) {
   const [tipoLente, setTipoLente] = useState(inicial?.tipoLente ?? "");
   const [posicion, setPosicion] = useState<"lejos" | "cerca">(inicial?.posicion === "cerca" ? "cerca" : "lejos");
@@ -173,6 +179,9 @@ function FilaLente({
   // Para gente que se lo gana (coordinadores sociales y similares): el
   // lente se sigue mandando a hacer normal, pero queda a $0.
   const [esRegalo, setEsRegalo] = useState(false);
+  // El precio parte igual al de lista, pero se puede rebajar a mano en el
+  // momento (descuento puntual a un paciente) sin tener que ir a /precios.
+  const [precioTexto, setPrecioTexto] = useState("");
 
   const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
   const posicionParaRango = tipoLente === "Monofocal" ? posicion : "lejos";
@@ -198,7 +207,12 @@ function FilaLente({
   // Solo al montar: si venía precargada por la sugerencia del tecnólogo,
   // se suma sola al carrito apenas aparece la fila.
   useEffect(() => {
-    if (combo) onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo });
+    if (combo) {
+      const precioInicial = precioDeCombo(combo, factorVenta);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- precarga el precio inicial de la fila solo al montar, no estado derivado de un evento
+      setPrecioTexto(formatearMonto(precioInicial));
+      onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo, precioManual: precioInicial });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -206,12 +220,37 @@ function FilaLente({
     setTratamiento(valor);
     setSugerido(false);
     const elegido = tratamientos.find((c) => c.tratamiento === valor);
-    onCambio(elegido ? { combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined, esRegalo } : null);
+    if (!elegido) {
+      onCambio(null);
+      return;
+    }
+    const precioNuevo = esRegalo ? 0 : precioDeCombo(elegido, factorVenta);
+    setPrecioTexto(formatearMonto(precioNuevo));
+    onCambio({ combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined, esRegalo, precioManual: precioNuevo });
   }
 
   function alternarRegalo(valor: boolean) {
     setEsRegalo(valor);
-    if (combo) onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo: valor });
+    if (!combo) return;
+    const precioNuevo = valor ? 0 : precioDeCombo(combo, factorVenta);
+    setPrecioTexto(formatearMonto(precioNuevo));
+    onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo: valor, precioManual: precioNuevo });
+  }
+
+  // Descuento puntual al paciente: se cambia el número acá mismo, sin tener
+  // que ir a /precios (eso rebajaría el precio para todo el mundo).
+  function cambiarPrecio(texto: string) {
+    const formateado = formatearMonto(texto);
+    setPrecioTexto(formateado);
+    if (combo) {
+      onCambio({
+        combo,
+        posicion: tipoLente === "Monofocal" ? posicion : undefined,
+        sugerido,
+        esRegalo,
+        precioManual: montoANumero(formateado),
+      });
+    }
   }
 
   const select =
@@ -330,13 +369,29 @@ function FilaLente({
           </label>
         )}
 
-        {combo && (
-          <p className="rounded-lg bg-violet-600 px-3 py-2.5 text-center text-base font-bold text-white">
-            {esRegalo ? "$0 (cortesía)" : clp(combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta)}
-            {sugerido && !esRegalo && (
-              <span className="ml-1.5 text-xs font-semibold text-violet-100">(sugerido en la receta)</span>
+        {combo && esRegalo && (
+          <p className="rounded-lg bg-violet-600 px-3 py-2.5 text-center text-base font-bold text-white">$0 (cortesía)</p>
+        )}
+
+        {combo && !esRegalo && (
+          <div className="flex flex-col gap-1">
+            <label className="flex flex-col gap-1 text-xs font-medium text-violet-900">
+              Precio (se puede rebajar acá mismo si hay descuento)
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/80">$</span>
+                <input
+                  inputMode="numeric"
+                  value={precioTexto}
+                  onChange={(e) => cambiarPrecio(e.target.value)}
+                  className="w-full rounded-lg bg-violet-600 py-2.5 pl-7 text-center text-base font-bold text-white outline-none focus:ring-2 focus:ring-violet-300"
+                />
+              </div>
+            </label>
+            {montoANumero(precioTexto) !== precioDeCombo(combo, factorVenta) && (
+              <p className="text-xs text-tinta-suave">Precio de lista: {clp(precioDeCombo(combo, factorVenta))}</p>
             )}
-          </p>
+            {sugerido && <p className="text-xs font-semibold text-violet-700">(sugerido en la receta)</p>}
+          </div>
         )}
       </div>
     </fieldset>
@@ -556,7 +611,7 @@ export default function PuntoDeVenta({
 
   function manejarCambioLente(
     numero: 1 | 2,
-    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean } | null
+    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number } | null
   ) {
     const key = `cristal-${numero}`;
     setCarrito((prev) => {
@@ -568,6 +623,7 @@ export default function PuntoDeVenta({
           posicion: datos.posicion,
           sugerido: datos.sugerido,
           esRegalo: datos.esRegalo,
+          precioManual: datos.precioManual,
         }),
       ];
     });
