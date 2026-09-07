@@ -89,6 +89,13 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
   // distancias); null = Monofocal sin definir, que hay que corregir.
   const distancia1 = distanciaCristal(ot.tipo_lente, ot.posicion);
   const distancia2 = distanciaCristal(ot.tipo_lente_2, ot.posicion_2);
+  // Lo que se lee en el papel: "Monofocal lejos" / "Monofocal cerca". Un
+  // Bifocal/Multifocal va solo con su nombre, porque el mismo cristal ya
+  // cubre las dos distancias y agregarle "ambos" solo confunde al taller.
+  const tipoConDistancia = (tipo: string | null, distancia: string | null) => {
+    if (!tipo) return "—";
+    return distancia === "lejos" || distancia === "cerca" ? `${tipo} ${distancia}` : tipo;
+  };
   const fmtMarco = (m: Marco | null) =>
     m ? `${m.sku ? `[${m.sku}] ` : ""}${m.marca ?? ""} ${m.nombre} ${m.color ?? ""}`.trim() : "—";
 
@@ -340,15 +347,13 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
           <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
             {tieneSegundoCristal ? "Cristal 1" : "Cristal"}
           </p>
-          <p>
-            <span className="font-semibold">Para:</span>{" "}
-            {distancia1 ? (
-              <span className="font-bold uppercase">{distancia1}</span>
-            ) : (
-              <span className="font-bold text-red-700">⚠ Falta definir lejos/cerca</span>
+          <p className="text-base">
+            <span className="font-semibold">Tipo:</span>{" "}
+            <span className="font-bold">{tipoConDistancia(ot.tipo_lente, distancia1)}</span>
+            {ot.tipo_lente === "Monofocal" && !distancia1 && (
+              <span className="ml-2 font-bold text-red-700">⚠ Falta definir lejos/cerca</span>
             )}
           </p>
-          <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente ?? "—"}</p>
           <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento ?? "—"}</p>
           <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco)}</p>
         </div>
@@ -356,15 +361,13 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
         {tieneSegundoCristal && (
           <div className="mt-3 rounded border-2 border-neutral-400 p-3 text-sm">
             <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">Cristal 2</p>
-            <p>
-              <span className="font-semibold">Para:</span>{" "}
-              {distancia2 ? (
-                <span className="font-bold uppercase">{distancia2}</span>
-              ) : (
-                <span className="font-bold text-red-700">⚠ Falta definir lejos/cerca</span>
+            <p className="text-base">
+              <span className="font-semibold">Tipo:</span>{" "}
+              <span className="font-bold">{tipoConDistancia(ot.tipo_lente_2, distancia2)}</span>
+              {ot.tipo_lente_2 === "Monofocal" && !distancia2 && (
+                <span className="ml-2 font-bold text-red-700">⚠ Falta definir lejos/cerca</span>
               )}
             </p>
-            <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente_2 ?? "—"}</p>
             <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento_2 ?? "—"}</p>
             <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco2)}</p>
           </div>
