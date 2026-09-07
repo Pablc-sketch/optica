@@ -4,6 +4,20 @@ export function nombreCristal(tipoLente: string, tratamiento: string): string {
   return tratamiento.startsWith(tipoLente) ? tratamiento : `${tipoLente} ${tratamiento}`;
 }
 
+// Para qué distancia se talla este cristal, que es lo que el laboratorio
+// necesita saber. Un Bifocal o un Multifocal traen las dos distancias en el
+// mismo cristal, así que no se elige: siempre son "ambos". Solo el
+// Monofocal se hace para lejos O para cerca, y ahí sí hay que tenerlo
+// guardado (null = todavía sin definir, hay que corregirlo a mano).
+export function distanciaCristal(
+  tipoLente: string | null,
+  posicion: string | null
+): "lejos" | "cerca" | "ambos" | null {
+  if (!tipoLente) return null;
+  if (tipoLente !== "Monofocal") return "ambos";
+  return posicion === "lejos" || posicion === "cerca" ? posicion : null;
+}
+
 // Bandas de costo por exigencia de la receta ("±X.00 / ±Y.00" = esfera
 // máxima / cilindro máximo), en el mismo orden en que se cargaron en
 // costos_cristales — de menor a mayor, cada una incluye a la anterior.

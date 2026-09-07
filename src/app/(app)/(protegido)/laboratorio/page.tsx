@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
+import { distanciaCristal } from "@/lib/cristales";
 import {
   ZONA_CHILE,
   diaEnChile,
@@ -261,11 +262,9 @@ export default async function LaboratorioPage({
                   // Solo el Monofocal necesita decir lejos/cerca: en un
                   // Bifocal/Multifocal el mismo cristal cubre las dos.
                   const celdaPara = (tipo: string | null, posicion: string | null) => {
-                    if (tipo !== "Monofocal") return <td className="py-1.5 pr-2 text-neutral-400">—</td>;
-                    if (!posicion) {
-                      return <td className="py-1.5 pr-2 font-bold text-red-700">⚠ FALTA</td>;
-                    }
-                    return <td className="py-1.5 pr-2 font-bold uppercase">{posicion}</td>;
+                    const distancia = distanciaCristal(tipo, posicion);
+                    if (!distancia) return <td className="py-1.5 pr-2 font-bold text-red-700">⚠ FALTA</td>;
+                    return <td className="py-1.5 pr-2 font-bold uppercase">{distancia}</td>;
                   };
                   const nombrePaciente = (ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—";
                   const fmtMarco = (m: typeof marco) => (m ? `${m.sku ?? ""} ${m.color ?? ""}`.trim() || m.nombre : "—");

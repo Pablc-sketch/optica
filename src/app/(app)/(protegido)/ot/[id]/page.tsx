@@ -6,6 +6,7 @@ import { actualizarOT } from "@/lib/actions/ot";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
 import { diaEnChile, fechaLegible } from "@/lib/fechas";
+import { distanciaCristal } from "@/lib/cristales";
 
 // Detalle imprimible de la orden de trabajo: receta completa, paciente
 // con RUT, tipo de lente, cristal/tratamiento, altura, DP y código del
@@ -84,6 +85,10 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
   const marco = ot.productos as unknown as Marco | null;
   const marco2 = ot.productos_2 as unknown as Marco | null;
   const tieneSegundoCristal = Boolean(ot.tipo_lente_2 || ot.tratamiento_2);
+  // "ambos" para Bifocal/Multifocal (un solo cristal cubre las dos
+  // distancias); null = Monofocal sin definir, que hay que corregir.
+  const distancia1 = distanciaCristal(ot.tipo_lente, ot.posicion);
+  const distancia2 = distanciaCristal(ot.tipo_lente_2, ot.posicion_2);
   const fmtMarco = (m: Marco | null) =>
     m ? `${m.sku ? `[${m.sku}] ` : ""}${m.marca ?? ""} ${m.nombre} ${m.color ?? ""}`.trim() : "—";
 
@@ -333,21 +338,35 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
             con su propio marco, para no mezclarlos al empacar. */}
         <div className="mt-3 rounded border-2 border-neutral-400 p-3 text-sm">
           <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
-            {tieneSegundoCristal ? `Cristal 1${ot.posicion ? ` — ${ot.posicion.toUpperCase()}` : ""}` : "Cristal"}
+            {tieneSegundoCristal ? "Cristal 1" : "Cristal"}
+          </p>
+          <p>
+            <span className="font-semibold">Para:</span>{" "}
+            {distancia1 ? (
+              <span className="font-bold uppercase">{distancia1}</span>
+            ) : (
+              <span className="font-bold text-red-700">⚠ Falta definir lejos/cerca</span>
+            )}
           </p>
           <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente ?? "—"}</p>
           <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento ?? "—"}</p>
-          <p><span className="font-semibold">Marco:</span> {fmtMarco(marco)}</p>
+          <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco)}</p>
         </div>
 
         {tieneSegundoCristal && (
           <div className="mt-3 rounded border-2 border-neutral-400 p-3 text-sm">
-            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
-              Cristal 2{ot.posicion_2 ? ` — ${ot.posicion_2.toUpperCase()}` : ""}
+            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">Cristal 2</p>
+            <p>
+              <span className="font-semibold">Para:</span>{" "}
+              {distancia2 ? (
+                <span className="font-bold uppercase">{distancia2}</span>
+              ) : (
+                <span className="font-bold text-red-700">⚠ Falta definir lejos/cerca</span>
+              )}
             </p>
             <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente_2 ?? "—"}</p>
             <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento_2 ?? "—"}</p>
-            <p><span className="font-semibold">Marco:</span> {fmtMarco(marco2)}</p>
+            <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco2)}</p>
           </div>
         )}
 
