@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
-import { distanciaCristal } from "@/lib/cristales";
+import { distanciaCristal, dpParaPedido } from "@/lib/cristales";
 import {
   ZONA_CHILE,
   diaEnChile,
@@ -254,7 +254,7 @@ export default async function LaboratorioPage({
                           {esCerca && <span className="ml-1 text-neutral-500">(c/ADD)</span>}
                         </td>
                         <td className="py-1.5 pr-2">{add !== null ? `+${Number(add).toFixed(2)}` : "—"}</td>
-                        <td className="py-1.5 pr-2">{r?.dp ?? "—"}</td>
+                        <td className="py-1.5 pr-2">{dpParaPedido(r?.dp ?? null, posicion, origen) ?? "—"}</td>
                         <td className="py-1.5 pr-2">{r?.altura ?? "—"}</td>
                       </>
                     );
@@ -310,3 +310,4 @@ export default async function LaboratorioPage({
     </div>
   );
 }
+
