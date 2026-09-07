@@ -32,8 +32,8 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
     supabase
       .from("ordenes_trabajo")
       .select(
-        `id, folio, estado, tipo_lente, rango_receta, tratamiento, origen_cristal, proveedor_lab_id,
-         armazon_producto_id, tipo_lente_2, rango_receta_2, tratamiento_2, armazon_producto_id_2,
+        `id, folio, estado, tipo_lente, rango_receta, tratamiento, origen_cristal, proveedor_lab_id, posicion,
+         armazon_producto_id, tipo_lente_2, rango_receta_2, tratamiento_2, armazon_producto_id_2, posicion_2,
          fecha_ingreso, fecha_entrega_estimada, fecha_entrega_real, notas,
          pacientes:paciente_id (nombre, rut, telefono, diabetes, hipertension, glaucoma, cirugia_ocular, alergias),
          recetas:receta_id (fecha, tipo, od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, av_od, av_oi, dp, altura, notas),
@@ -293,9 +293,9 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
             laboratorio los sigue recibiendo en /laboratorio. Dos cristales
             (lejos y cerca por separado) comparten esta misma OT — cada uno
             con su propio marco, para no mezclarlos al empacar. */}
-        <div className="mt-3 rounded border border-neutral-300 p-3 text-sm">
+        <div className="mt-3 rounded border-2 border-neutral-400 p-3 text-sm">
           <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
-            {tieneSegundoCristal ? "Cristal 1" : "Cristal"}
+            {tieneSegundoCristal ? `Cristal 1${ot.posicion ? ` — ${ot.posicion.toUpperCase()}` : ""}` : "Cristal"}
           </p>
           <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente ?? "—"}</p>
           <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento ?? "—"}</p>
@@ -303,8 +303,10 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
         </div>
 
         {tieneSegundoCristal && (
-          <div className="mt-3 rounded border border-neutral-300 p-3 text-sm">
-            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">Cristal 2</p>
+          <div className="mt-3 rounded border-2 border-neutral-400 p-3 text-sm">
+            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
+              Cristal 2{ot.posicion_2 ? ` — ${ot.posicion_2.toUpperCase()}` : ""}
+            </p>
             <p><span className="font-semibold">Tipo:</span> {ot.tipo_lente_2 ?? "—"}</p>
             <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento_2 ?? "—"}</p>
             <p><span className="font-semibold">Marco:</span> {fmtMarco(marco2)}</p>

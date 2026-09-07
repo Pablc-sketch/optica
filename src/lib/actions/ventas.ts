@@ -21,6 +21,10 @@ export type DatosCristal = {
   tratamiento: string;
   costoLaboratorio: number;
   origen: "stock" | "laboratorio";
+  // Solo aplica a Monofocal cuando la receta es "lejos y cerca por
+  // separado" — para saber en la OT cuál cristal (y por lo tanto cuál
+  // marco) es cuál. Bifocal/Multifocal no tienen esta distinción.
+  posicion?: "lejos" | "cerca";
 };
 
 export async function registrarVenta(input: {
@@ -128,12 +132,14 @@ export async function registrarVenta(input: {
         origen_cristal: primero.origen,
         proveedor_lab_id: input.proveedorLabId ?? proveedorRes.data?.id ?? null,
         costo_laboratorio: primero.costoLaboratorio,
+        posicion: primero.posicion ?? null,
         fecha_entrega_estimada: entregaISO,
         armazon_producto_id_2: segundo ? (input.armazonProductoIds?.[1] ?? null) : null,
         tipo_lente_2: segundo?.tipoLente ?? null,
         rango_receta_2: segundo?.rangoReceta ?? null,
         tratamiento_2: segundo?.tratamiento ?? null,
         costo_laboratorio_2: segundo?.costoLaboratorio ?? null,
+        posicion_2: segundo?.posicion ?? null,
       })
       .select("id, folio")
       .single();

@@ -749,6 +749,7 @@ export default function PuntoDeVenta({
           origen_cristal: origenCristal,
           proveedor_lab_id: origenCristal === "laboratorio" ? laboratorioId || null : null,
           costo_laboratorio: primero.cristal!.costoLaboratorio,
+          posicion: primero.cristal!.posicion ?? null,
           fecha_ingreso: ahora,
           fecha_entrega_estimada: entregaISO,
           armazon_producto_id_2: segundo ? (lineasArmazon[1]?.productoId ?? null) : null,
@@ -756,6 +757,7 @@ export default function PuntoDeVenta({
           rango_receta_2: segundo?.cristal?.rangoReceta ?? null,
           tratamiento_2: segundo?.cristal?.tratamiento ?? null,
           costo_laboratorio_2: segundo?.cristal?.costoLaboratorio ?? null,
+          posicion_2: segundo?.cristal?.posicion ?? null,
         },
       });
     }

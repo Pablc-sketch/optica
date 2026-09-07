@@ -60,7 +60,7 @@ export default async function LaboratorioPage({
   let query = supabase
     .from("ordenes_trabajo")
     .select(
-      `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento, tipo_lente_2, tratamiento_2,
+      `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2,
        pacientes:paciente_id (nombre),
        recetas:receta_id (od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, dp, altura),
        productos:armazon_producto_id (sku, nombre, marca, color),
@@ -255,7 +255,10 @@ export default async function LaboratorioPage({
                       {/* Solo el tipo de lente: el rango de receta es una
                           clasificación interna de costo, el laboratorio no
                           la usa ni la necesita para fabricar. */}
-                      <td className="py-1.5 pr-2">{ot.tipo_lente}</td>
+                      <td className="py-1.5 pr-2">
+                        {ot.tipo_lente}
+                        {ot.posicion && <span className="ml-1 font-bold uppercase">({ot.posicion})</span>}
+                      </td>
                       <td className="py-1.5">{ot.tratamiento ?? "—"}</td>
                     </tr>,
                   ];
@@ -266,7 +269,10 @@ export default async function LaboratorioPage({
                         <td className="py-1.5 pr-2 text-neutral-500">{nombrePaciente} (2° par, mismo pedido)</td>
                         {odOi}
                         <td className="py-1.5 pr-2">{fmtMarco(marco2)}</td>
-                        <td className="py-1.5 pr-2">{ot.tipo_lente_2}</td>
+                        <td className="py-1.5 pr-2">
+                          {ot.tipo_lente_2}
+                          {ot.posicion_2 && <span className="ml-1 font-bold uppercase">({ot.posicion_2})</span>}
+                        </td>
                         <td className="py-1.5">{ot.tratamiento_2 ?? "—"}</td>
                       </tr>
                     );
