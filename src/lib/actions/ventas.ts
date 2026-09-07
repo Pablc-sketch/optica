@@ -242,6 +242,26 @@ export async function registrarAbono(formData: FormData) {
   revalidatePath("/");
 }
 
+// El número que imprime la máquina (Mercado Pago, etc.) al cobrar con
+// tarjeta — se guarda después, cuando se arma la boleta detallada para un
+// reembolso, no necesariamente en el momento del cobro.
+export async function actualizarVoucherAbono(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const abonoId = String(formData.get("abono_id") ?? "");
+  const numeroVoucher = String(formData.get("numero_voucher") ?? "").trim() || null;
+  if (!abonoId) return;
+
+  const { error } = await supabase.from("pagos_abonos").update({ numero_voucher: numeroVoucher }).eq("id", abonoId);
+  if (error) throw error;
+
+  revalidatePath("/boleta");
+}
+
 // A diferencia de eliminarOT (que exige que no haya pagos), anular sí se
 // permite con pagos ya registrados: el caso real es "esta venta no debió
 // existir" (prueba, cliente equivocado, monto mal cobrado), no "todavía no

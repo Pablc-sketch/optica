@@ -14,6 +14,7 @@ const NAV = [
   { href: "/ot", label: "Órdenes" },
   { href: "/ot/buscar", label: "Buscar OT" },
   { href: "/ventas", label: "Ventas" },
+  { href: "/boleta", label: "Boleta" },
   { href: "/laboratorio", label: "Laboratorio" },
   { href: "/inventario", label: "Inventario" },
   { href: "/reportes", label: "Reportes" },
