@@ -1360,6 +1360,7 @@ function Resumen({
               {l.cristal && (
                 <span className="ml-1.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
                   {l.key === "cristal-1" ? "Lente 1" : "Lente 2"}
+                  {l.cristal.posicion ? ` · ${l.cristal.posicion}` : ""}
                 </span>
               )}
               {l.armazonSlot && (

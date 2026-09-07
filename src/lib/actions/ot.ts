@@ -59,11 +59,20 @@ export async function retrocederOT(formData: FormData) {
   revalidatePath("/");
 }
 
+// Solo "lejos" o "cerca" son válidos; cualquier otra cosa (incluido vacío)
+// queda como null = sin definir, que es lo correcto para Bifocal/Multifocal
+// (un solo cristal cubre las dos distancias).
+function parsearPosicion(valor: FormDataEntryValue | null): "lejos" | "cerca" | null {
+  const v = String(valor ?? "").trim();
+  return v === "lejos" || v === "cerca" ? v : null;
+}
+
 // Corregir un error de tipeo sin tener que anular y rehacer toda la venta:
-// marco, origen (stock/laboratorio), laboratorio, fecha estimada y notas.
-// El tipo de lente/tratamiento/costo no se tocan acá — están ligados al
-// precio cobrado en la venta, así que un cambio de lente pasa por anular y
-// rehacer (o "Editar" en la venta, para ajustar solo el monto).
+// marco, si el cristal es de lejos o de cerca, origen (stock/laboratorio),
+// laboratorio, fecha estimada y notas. El tipo de lente/tratamiento/costo no
+// se tocan acá — están ligados al precio cobrado en la venta, así que un
+// cambio de lente pasa por anular y rehacer (o "Editar" en la venta, para
+// ajustar solo el monto).
 export async function actualizarOT(formData: FormData) {
   const supabase = await createClient();
   const otId = String(formData.get("ot_id"));
@@ -73,6 +82,8 @@ export async function actualizarOT(formData: FormData) {
     .update({
       armazon_producto_id: String(formData.get("armazon_producto_id") ?? "").trim() || null,
       armazon_producto_id_2: String(formData.get("armazon_producto_id_2") ?? "").trim() || null,
+      posicion: parsearPosicion(formData.get("posicion")),
+      posicion_2: parsearPosicion(formData.get("posicion_2")),
       origen_cristal: String(formData.get("origen_cristal") ?? "laboratorio"),
       proveedor_lab_id: String(formData.get("proveedor_lab_id") ?? "").trim() || null,
       fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,

@@ -220,6 +220,7 @@ export default async function LaboratorioPage({
                   <th className="py-1.5 pr-2">DP</th>
                   <th className="py-1.5 pr-2">Altura</th>
                   <th className="py-1.5 pr-2">Marco</th>
+                  <th className="py-1.5 pr-2">Para</th>
                   <th className="py-1.5 pr-2">Tipo lente</th>
                   <th className="py-1.5">Cristal / Tratamiento</th>
                 </tr>
@@ -234,15 +235,38 @@ export default async function LaboratorioPage({
                   const marco = ot.productos as unknown as { sku: string | null; nombre: string; marca: string | null; color: string | null } | null;
                   const marco2 = ot.productos_2 as unknown as { sku: string | null; nombre: string; marca: string | null; color: string | null } | null;
                   const add = r?.od_add ?? r?.oi_add ?? null;
-                  const odOi = (
-                    <>
-                      <td className="py-1.5 pr-2 whitespace-nowrap">{fmtOjo(r?.od_esfera ?? null, r?.od_cilindro ?? null, r?.od_eje ?? null)}</td>
-                      <td className="py-1.5 pr-2 whitespace-nowrap">{fmtOjo(r?.oi_esfera ?? null, r?.oi_cilindro ?? null, r?.oi_eje ?? null)}</td>
-                      <td className="py-1.5 pr-2">{add !== null ? `+${Number(add).toFixed(2)}` : "—"}</td>
-                      <td className="py-1.5 pr-2">{r?.dp ?? "—"}</td>
-                      <td className="py-1.5 pr-2">{r?.altura ?? "—"}</td>
-                    </>
-                  );
+                  // Un Monofocal de cerca se talla con la esfera de lejos MÁS
+                  // la adición: se muestra ya sumada para que el laboratorio no
+                  // tenga que calcularla (ni equivocarse) leyendo el ADD aparte.
+                  const celdasOjos = (posicion: string | null) => {
+                    const esCerca = posicion === "cerca";
+                    const sumar = (esf: number | null | undefined, addOjo: number | null | undefined) =>
+                      esCerca && esf !== null && esf !== undefined ? esf + (addOjo ?? 0) : (esf ?? null);
+                    return (
+                      <>
+                        <td className="py-1.5 pr-2 whitespace-nowrap">
+                          {fmtOjo(sumar(r?.od_esfera, r?.od_add), r?.od_cilindro ?? null, r?.od_eje ?? null)}
+                          {esCerca && <span className="ml-1 text-neutral-500">(c/ADD)</span>}
+                        </td>
+                        <td className="py-1.5 pr-2 whitespace-nowrap">
+                          {fmtOjo(sumar(r?.oi_esfera, r?.oi_add), r?.oi_cilindro ?? null, r?.oi_eje ?? null)}
+                          {esCerca && <span className="ml-1 text-neutral-500">(c/ADD)</span>}
+                        </td>
+                        <td className="py-1.5 pr-2">{add !== null ? `+${Number(add).toFixed(2)}` : "—"}</td>
+                        <td className="py-1.5 pr-2">{r?.dp ?? "—"}</td>
+                        <td className="py-1.5 pr-2">{r?.altura ?? "—"}</td>
+                      </>
+                    );
+                  };
+                  // Solo el Monofocal necesita decir lejos/cerca: en un
+                  // Bifocal/Multifocal el mismo cristal cubre las dos.
+                  const celdaPara = (tipo: string | null, posicion: string | null) => {
+                    if (tipo !== "Monofocal") return <td className="py-1.5 pr-2 text-neutral-400">—</td>;
+                    if (!posicion) {
+                      return <td className="py-1.5 pr-2 font-bold text-red-700">⚠ FALTA</td>;
+                    }
+                    return <td className="py-1.5 pr-2 font-bold uppercase">{posicion}</td>;
+                  };
                   const nombrePaciente = (ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—";
                   const fmtMarco = (m: typeof marco) => (m ? `${m.sku ?? ""} ${m.color ?? ""}`.trim() || m.nombre : "—");
                   const tieneSegundo = Boolean(ot.tipo_lente_2 || ot.tratamiento_2);
@@ -250,15 +274,13 @@ export default async function LaboratorioPage({
                     <tr key={`${ot.folio}-1`} className="border-b border-neutral-200 align-top">
                       <td className="py-1.5 pr-2 font-bold">#{ot.folio}</td>
                       <td className="py-1.5 pr-2">{nombrePaciente}</td>
-                      {odOi}
+                      {celdasOjos(ot.posicion)}
                       <td className="py-1.5 pr-2">{fmtMarco(marco)}</td>
+                      {celdaPara(ot.tipo_lente, ot.posicion)}
                       {/* Solo el tipo de lente: el rango de receta es una
                           clasificación interna de costo, el laboratorio no
                           la usa ni la necesita para fabricar. */}
-                      <td className="py-1.5 pr-2">
-                        {ot.tipo_lente}
-                        {ot.posicion && <span className="ml-1 font-bold uppercase">({ot.posicion})</span>}
-                      </td>
+                      <td className="py-1.5 pr-2">{ot.tipo_lente}</td>
                       <td className="py-1.5">{ot.tratamiento ?? "—"}</td>
                     </tr>,
                   ];
@@ -267,12 +289,10 @@ export default async function LaboratorioPage({
                       <tr key={`${ot.folio}-2`} className="border-b-2 border-neutral-300 align-top bg-neutral-50">
                         <td className="py-1.5 pr-2 font-bold text-neutral-400">↳ #{ot.folio}</td>
                         <td className="py-1.5 pr-2 text-neutral-500">{nombrePaciente} (2° par, mismo pedido)</td>
-                        {odOi}
+                        {celdasOjos(ot.posicion_2)}
                         <td className="py-1.5 pr-2">{fmtMarco(marco2)}</td>
-                        <td className="py-1.5 pr-2">
-                          {ot.tipo_lente_2}
-                          {ot.posicion_2 && <span className="ml-1 font-bold uppercase">({ot.posicion_2})</span>}
-                        </td>
+                        {celdaPara(ot.tipo_lente_2, ot.posicion_2)}
+                        <td className="py-1.5 pr-2">{ot.tipo_lente_2}</td>
                         <td className="py-1.5">{ot.tratamiento_2 ?? "—"}</td>
                       </tr>
                     );

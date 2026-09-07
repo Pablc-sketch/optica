@@ -99,7 +99,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
 
       <details className="rounded-2xl bg-crema-claro p-4 shadow-sm print:hidden">
         <summary className="cursor-pointer font-semibold text-brand-dark">
-          ✎ Corregir marco, laboratorio o entrega
+          ✎ Corregir lejos/cerca, marco, laboratorio o entrega
         </summary>
         <p className="mt-2 text-xs text-tinta-suave">
           El tipo de lente y el tratamiento no se editan acá porque están ligados al precio ya
@@ -107,37 +107,75 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
         </p>
         <form action={actualizarOT} className="mt-3 flex flex-col gap-3">
           <input type="hidden" name="ot_id" value={ot.id} />
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            {tieneSegundoCristal ? "Marco — cristal 1" : "Marco"}
-            <select
-              name="armazon_producto_id"
-              defaultValue={ot.armazon_producto_id ?? ""}
-              className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
-            >
-              <option value="">— Sin marco —</option>
-              {(armazonesRes.data ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {[p.sku && `[${p.sku}]`, p.marca, p.nombre, p.color].filter(Boolean).join(" ")}
-                </option>
-              ))}
-            </select>
-          </label>
+
+          <fieldset className="rounded-xl border border-tinta-suave/25 p-3">
+            <legend className="px-1 text-sm font-bold">
+              {tieneSegundoCristal ? "Cristal 1" : "Cristal"}
+            </legend>
+            <div className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-sm font-medium">
+                ¿Es para lejos o para cerca?
+                <select
+                  name="posicion"
+                  defaultValue={ot.posicion ?? ""}
+                  className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+                >
+                  <option value="">— Sin definir (Bifocal/Multifocal) —</option>
+                  <option value="lejos">Lejos</option>
+                  <option value="cerca">Cerca</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-medium">
+                Marco de este cristal
+                <select
+                  name="armazon_producto_id"
+                  defaultValue={ot.armazon_producto_id ?? ""}
+                  className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+                >
+                  <option value="">— Sin marco —</option>
+                  {(armazonesRes.data ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {[p.sku && `[${p.sku}]`, p.marca, p.nombre, p.color].filter(Boolean).join(" ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </fieldset>
+
           {tieneSegundoCristal && (
-            <label className="flex flex-col gap-1 text-sm font-medium">
-              Marco — cristal 2
-              <select
-                name="armazon_producto_id_2"
-                defaultValue={ot.armazon_producto_id_2 ?? ""}
-                className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
-              >
-                <option value="">— Sin marco —</option>
-                {(armazonesRes.data ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {[p.sku && `[${p.sku}]`, p.marca, p.nombre, p.color].filter(Boolean).join(" ")}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <fieldset className="rounded-xl border border-tinta-suave/25 p-3">
+              <legend className="px-1 text-sm font-bold">Cristal 2</legend>
+              <div className="flex flex-col gap-3">
+                <label className="flex flex-col gap-1 text-sm font-medium">
+                  ¿Es para lejos o para cerca?
+                  <select
+                    name="posicion_2"
+                    defaultValue={ot.posicion_2 ?? ""}
+                    className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+                  >
+                    <option value="">— Sin definir (Bifocal/Multifocal) —</option>
+                    <option value="lejos">Lejos</option>
+                    <option value="cerca">Cerca</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm font-medium">
+                  Marco de este cristal
+                  <select
+                    name="armazon_producto_id_2"
+                    defaultValue={ot.armazon_producto_id_2 ?? ""}
+                    className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+                  >
+                    <option value="">— Sin marco —</option>
+                    {(armazonesRes.data ?? []).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {[p.sku && `[${p.sku}]`, p.marca, p.nombre, p.color].filter(Boolean).join(" ")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </fieldset>
           )}
           <div className="flex gap-2 text-sm">
             {(["laboratorio", "stock"] as const).map((op) => (
