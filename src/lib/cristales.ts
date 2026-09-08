@@ -18,6 +18,18 @@ export function distanciaCristal(
   return posicion === "lejos" || posicion === "cerca" ? posicion : null;
 }
 
+// En los pedidos resueltos con stock, la distancia pupilar para lectura se
+// encarga con 2 mm menos que la DP de lejos registrada en la receta. Los
+// pedidos de laboratorio conservan la DP original.
+export function dpParaPedido(
+  dp: number | null,
+  posicion: string | null,
+  origen: "laboratorio" | "stock"
+): number | null {
+  if (dp === null) return null;
+  return origen === "stock" && posicion === "cerca" ? dp - 2 : dp;
+}
+
 // Bandas de costo por exigencia de la receta ("±X.00 / ±Y.00" = esfera
 // máxima / cilindro máximo), en el mismo orden en que se cargaron en
 // costos_cristales — de menor a mayor, cada una incluye a la anterior.
@@ -56,3 +68,4 @@ export function rangoParaPosicion(
   const esferasEfectivas = esferas.map((e, i) => (e === null ? null : e + (adds[i] ?? 0)));
   return clasificarRango(esferasEfectivas, cilindros);
 }
+
