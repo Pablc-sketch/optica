@@ -139,6 +139,10 @@ export async function registrarVenta(input: {
         rango_receta_2: segundo?.rangoReceta ?? null,
         tratamiento_2: segundo?.tratamiento ?? null,
         costo_laboratorio_2: segundo?.costoLaboratorio ?? null,
+        // Los dos cristales de una misma orden pueden no salir del mismo
+        // lado: uno de lejos que el laboratorio tiene hecho y uno de cerca
+        // que hay que tallar.
+        origen_cristal_2: segundo?.origen ?? null,
         posicion_2: segundo?.posicion ?? null,
       })
       .select("id, folio")

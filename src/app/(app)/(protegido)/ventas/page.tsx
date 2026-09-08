@@ -17,7 +17,10 @@ export default async function VentasPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes, recetasRes, laboratoriosRes, operativosRes] = await Promise.all([
+  const [
+    pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes,
+    recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, operativosRes,
+  ] = await Promise.all([
     supabase.from("pacientes").select("id, nombre, rut").order("nombre").limit(200),
     supabase
       .from("productos")
@@ -26,9 +29,12 @@ export default async function VentasPage() {
       .limit(200),
     supabase
       .from("costos_cristales")
-      .select("tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta")
+      .select(
+        `tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta,
+         material_stock, material_laboratorio, diseno_laboratorio, montaje_material`
+      )
       .order("tipo_lente"),
-    supabase.from("tenants").select("factor_venta_cristales").single(),
+    supabase.from("tenants").select("factor_venta_cristales, descuento_laboratorio_pct").single(),
     supabase
       .from("ventas")
       .select("id, fecha, total, estado_pago, anulada, anulada_motivo, pacientes:paciente_id (nombre), pagos_abonos (monto)")
@@ -45,6 +51,13 @@ export default async function VentasPage() {
       )
       .order("fecha", { ascending: false }),
     supabase.from("proveedores").select("id, nombre").eq("tipo", "laboratorio").order("nombre"),
+    // La lista del laboratorio, para calcular el costo real de cada
+    // cristal contra la potencia de cada ojo (no contra un rango
+    // aproximado) y decidir solo si sale de stock o hay que tallarlo.
+    supabase.from("lab_precios_stock").select("material, diseno, esfera_max, cilindro_max, precio_unitario"),
+    supabase.from("lab_precios_laboratorio").select("diseno, material, precio_unitario"),
+    supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
+    supabase.from("lab_precios_recargo").select("categoria, concepto, precio"),
     // Independiente del selector de sucursal (que es para stock físico):
     // planificados/realizados más recientes primero.
     supabase
@@ -74,6 +87,13 @@ export default async function VentasPage() {
           costos={costosRes.data ?? []}
           laboratorios={laboratoriosRes.data ?? []}
           factorVenta={tenantRes.data?.factor_venta_cristales ?? 6}
+          catalogoLab={{
+            stock: stockRes.data ?? [],
+            laboratorio: labRes.data ?? [],
+            montaje: montajeRes.data ?? [],
+            recargos: recargoRes.data ?? [],
+            descuentoPct: Number(tenantRes.data?.descuento_laboratorio_pct ?? 0),
+          }}
           tenantId={perfilRes.data?.tenant_id ?? ""}
           sucursalId={sucursalRes.data?.id ?? null}
           vendedorId={user?.id ?? null}
