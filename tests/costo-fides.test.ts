@@ -11,6 +11,16 @@ import {
 // nota de venta 53160 (08/09/2026), que es contra la que se cuadra todo.
 const CATALOGO: CatalogoLaboratorio = {
   descuentoPct: 10,
+  promociones: [
+    {
+      diseno: "MULTIFOCAL ADVANCE",
+      material: null,
+      descuento_pct: 50,
+      desde: "2026-09-01",
+      hasta: "2026-09-30",
+      nota: "Promoción de septiembre",
+    },
+  ],
   stock: [
     // CR AR 1.56 ("CR CAPA 12" en la boleta)
     { material: "CR AR 1.56", diseno: "MONOFOCAL", esfera_max: 2, cilindro_max: 0, precio_unitario: 670 },
@@ -46,6 +56,9 @@ const CATALOGO: CatalogoLaboratorio = {
     { categoria: "esfera", concepto: "ESF SOBRE +/- 10", precio: 3500 },
   ],
 };
+
+// Un martes de septiembre, con la promoción del ADVANCE vigente.
+const DIA = "2026-09-08";
 
 const AR: MapaCristal = {
   tipo_lente: "Monofocal",
@@ -102,57 +115,86 @@ describe("recargoOjo", () => {
 describe("costoCristal: cuadra con la nota de venta 53160 de Fides", () => {
   it("orgánico antirreflejo simétrico (folio 39)", () => {
     // (670 + 670 + 2.000) × 0,9 × 1,19
-    const r = costoCristal(AR, [{ esfera: 1.25, cilindro: null }, { esfera: 1.25, cilindro: null }], CATALOGO)!;
+    const r = costoCristal(AR, [{ esfera: 1.25, cilindro: null }, { esfera: 1.25, cilindro: null }], CATALOGO, DIA)!;
     expect(r.origen).toBe("stock");
     expect(r.costo).toBe(3577);
   });
 
   it("cobra por ojo cuando la receta es despareja (folio 47)", () => {
     // (670 + 1.850 + 2.000) × 0,9 × 1,19
-    const r = costoCristal(AR, [{ esfera: 2.25, cilindro: -2 }, { esfera: 2, cilindro: -2.25 }], CATALOGO)!;
+    const r = costoCristal(AR, [{ esfera: 2.25, cilindro: -2 }, { esfera: 2, cilindro: -2.25 }], CATALOGO, DIA)!;
     expect(r.unitarios).toEqual([670, 1850]);
     expect(r.costo).toBe(4841);
   });
 
   it("filtro azul (folio 37)", () => {
     // (1.700 + 1.700 + 3.000) × 0,9 × 1,19
-    const r = costoCristal(BLUE, [{ esfera: 0, cilindro: -0.5 }, { esfera: 0, cilindro: -0.75 }], CATALOGO)!;
+    const r = costoCristal(BLUE, [{ esfera: 0, cilindro: -0.5 }, { esfera: 0, cilindro: -0.75 }], CATALOGO, DIA)!;
     expect(r.costo).toBe(6854);
   });
 
   it("cilindro alto sin esfera sale de stock, no tallado (folio 50)", () => {
     // Es el caso que antes se cotizaba como si fuera a medida.
-    const r = costoCristal(FOTO, [{ esfera: 0, cilindro: -4.5 }, { esfera: 0, cilindro: -4.75 }], CATALOGO)!;
+    const r = costoCristal(FOTO, [{ esfera: 0, cilindro: -4.5 }, { esfera: 0, cilindro: -4.75 }], CATALOGO, DIA)!;
     expect(r.origen).toBe("stock");
     expect(r.costo).toBe(28917);
   });
 
   it("fotocromático corriente sale mucho más barato (folio 51)", () => {
-    const r = costoCristal(FOTO, [{ esfera: -3.5, cilindro: -0.75 }, { esfera: -3.5, cilindro: -0.75 }], CATALOGO)!;
+    const r = costoCristal(FOTO, [{ esfera: -3.5, cilindro: -0.75 }, { esfera: -3.5, cilindro: -0.75 }], CATALOGO, DIA)!;
     expect(r.costo).toBe(11138);
   });
 
   it("el polarizado siempre se talla: el laboratorio no lo tiene hecho (folio 43)", () => {
     // (12.500 + 12.500 + 3.000) × 0,9 × 1,19
-    const r = costoCristal(POLARIZADO, [{ esfera: -2.5, cilindro: null }, { esfera: 0.25, cilindro: null }], CATALOGO)!;
+    const r = costoCristal(POLARIZADO, [{ esfera: -2.5, cilindro: null }, { esfera: 0.25, cilindro: null }], CATALOGO, DIA)!;
     expect(r.origen).toBe("laboratorio");
     expect(r.costo).toBe(29988);
   });
 
   it("el multifocal se talla cuando la esfera se pasa del rango de stock (folio 44)", () => {
     // OI +3.25 se sale del tope +3.00 de la caja de stock.
-    const r = costoCristal(MULTIFOCAL, [{ esfera: 2.25, cilindro: -0.5 }, { esfera: 3.25, cilindro: -1.25 }], CATALOGO)!;
+    const r = costoCristal(MULTIFOCAL, [{ esfera: 2.25, cilindro: -0.5 }, { esfera: 3.25, cilindro: -1.25 }], CATALOGO, DIA)!;
     expect(r.origen).toBe("laboratorio");
-    // (34.000 + 34.000 + 4.500) × 0,9 × 1,19 — sin la promo del 50%.
+    // Cristales al 50% (promo de septiembre) y montaje al 10% de siempre:
+    // 34.000 × 2 × 0,5 + 4.500 × 0,9, todo × 1,19. Es lo que cobró la
+    // boleta: $34.000 de cristales y $4.050 de montaje.
+    expect(r.promocion?.descuento_pct).toBe(50);
+    expect(r.costo).toBe(45280);
+    expect(r.costoSinPromocion).toBe(77648);
+  });
+
+  it("los dos descuentos no se suman: manda el mayor, y solo sobre el cristal", () => {
+    const r = costoCristal(MULTIFOCAL, [{ esfera: 3.25, cilindro: 0 }, { esfera: 3.25, cilindro: 0 }], CATALOGO, DIA)!;
+    // Si se sumaran (50% y luego 10%) el cristal quedaría en $30.600.
+    expect(r.costo).toBe(45280);
+  });
+
+  it("cuando se acaba la promoción el multifocal vuelve a costar el doble", () => {
+    // Lo que va a pasar solo el 1 de octubre: sin esto la app seguiría
+    // cotizando con el precio de septiembre.
+    const r = costoCristal(
+      MULTIFOCAL,
+      [{ esfera: 2.25, cilindro: -0.5 }, { esfera: 3.25, cilindro: -1.25 }],
+      CATALOGO,
+      "2026-10-01"
+    )!;
+    expect(r.promocion).toBeNull();
     expect(r.costo).toBe(77648);
   });
 
+  it("la promoción no alcanza a un diseño que no cubre", () => {
+    const r = costoCristal(POLARIZADO, [{ esfera: -2.5, cilindro: null }, { esfera: 0.25, cilindro: null }], CATALOGO, DIA)!;
+    expect(r.promocion).toBeNull();
+    expect(r.costo).toBe(r.costoSinPromocion);
+  });
+
   it("el multifocal sale de stock si la receta entra en el rango", () => {
-    const r = costoCristal(MULTIFOCAL, [{ esfera: 1.5, cilindro: -0.5 }, { esfera: 1.5, cilindro: -0.5 }], CATALOGO)!;
+    const r = costoCristal(MULTIFOCAL, [{ esfera: 1.5, cilindro: -0.5 }, { esfera: 1.5, cilindro: -0.5 }], CATALOGO, DIA)!;
     expect(r.origen).toBe("stock");
   });
 
   it("no inventa un costo cuando el laboratorio no hace esa combinación", () => {
-    expect(costoCristal({ ...AR, material_stock: null, material_laboratorio: null }, [{ esfera: 0, cilindro: 0 }], CATALOGO)).toBeNull();
+    expect(costoCristal({ ...AR, material_stock: null, material_laboratorio: null }, [{ esfera: 0, cilindro: 0 }], CATALOGO, DIA)).toBeNull();
   });
 });

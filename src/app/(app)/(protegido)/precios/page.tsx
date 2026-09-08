@@ -7,6 +7,7 @@ import {
 } from "@/lib/actions/precios";
 import { clp } from "@/lib/clp";
 import { nombreCristal } from "@/lib/cristales";
+import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 import { CampoMonto } from "@/components/campos";
 
 // Precios de venta de la óptica (armazones y productos), con búsqueda y
@@ -24,7 +25,7 @@ export default async function PreciosPage({
   const { q, marca } = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: todos }, { data: cristales }] = await Promise.all([
+  const [{ data: todos }, { data: cristales }, { data: promociones }] = await Promise.all([
     supabase
       .from("productos")
       .select("id, nombre, marca, color, sku, categoria, costo, precio_venta")
@@ -39,7 +40,17 @@ export default async function PreciosPage({
       .order("tipo_lente")
       .order("rango_receta")
       .order("tratamiento"),
+    // Promociones del laboratorio que estén corriendo. Importan acá porque
+    // el precio de venta se fija mirando el costo, y ese costo sube el día
+    // que se acaba la promoción.
+    supabase
+      .from("lab_promociones")
+      .select("diseno, material, descuento_pct, desde, hasta, nota")
+      .gte("hasta", hoyEnChile())
+      .order("hasta"),
   ]);
+
+  const promosVigentes = (promociones ?? []).filter((p) => p.desde <= hoyEnChile());
 
   const productos = (todos ?? []).filter((p) => {
     if (marca && (p.marca ?? "Sin marca") !== marca) return false;
@@ -131,6 +142,30 @@ export default async function PreciosPage({
             );
           })}
         </ul>
+      )}
+
+      {promosVigentes.length > 0 && (
+        <div className="rounded-2xl border border-violet-300 bg-violet-50 p-4">
+          <p className="font-semibold text-violet-900">Promociones del laboratorio corriendo</p>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {promosVigentes.map((p) => (
+              <li key={`${p.diseno}-${p.material ?? ""}`} className="text-sm text-violet-900">
+                <strong>
+                  {p.diseno}
+                  {p.material ? ` · ${p.material}` : ""}
+                </strong>{" "}
+                al {Number(p.descuento_pct)}% de descuento hasta el{" "}
+                <strong>{fechaLegible(p.hasta)}</strong>.
+                {p.nota && <span className="block text-xs">{p.nota}</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-violet-900">
+            Las ventas de estos días ya toman el precio con descuento. Ojo con el día después: el costo
+            vuelve a la lista normal, y si el precio de venta se quedó como está, el margen baja sin que
+            se note. Conviene revisarlo antes de esa fecha.
+          </p>
+        </div>
       )}
 
       <div>

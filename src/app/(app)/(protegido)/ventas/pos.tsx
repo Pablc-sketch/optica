@@ -9,7 +9,7 @@ import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { costoCristal, type CatalogoLaboratorio, type CostoCristal as CostoReal, type Ojo } from "@/lib/costo-fides";
-import { hoyEnChile, sumarDias } from "@/lib/fechas";
+import { fechaLegible, hoyEnChile, sumarDias } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
 type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string };
@@ -566,7 +566,9 @@ export default function PuntoDeVenta({
         { esfera: (receta.od_esfera ?? 0) + suma * (receta.od_add ?? 0), cilindro: receta.od_cilindro },
         { esfera: (receta.oi_esfera ?? 0) + suma * (receta.oi_add ?? 0), cilindro: receta.oi_cilindro },
       ];
-      return costoCristal(fila, ojos, catalogoLab);
+      // Las promociones del laboratorio vencen: se evalúan contra el día
+      // de hoy, no contra la fecha en que se cargó la lista.
+      return costoCristal(fila, ojos, catalogoLab, hoyEnChile());
     },
     [costos, receta, catalogoLab]
   );
@@ -1156,6 +1158,15 @@ export default function PuntoDeVenta({
                     <span className="text-xs text-tinta-suave">
                       {real ? `${real.motivo} · nos cuesta ${clp(real.costo)}` : "Falta la equivalencia con el catálogo del laboratorio (revisa /precios)"}
                     </span>
+                    {/* Una promoción del laboratorio con fecha de término.
+                        Se avisa acá porque el precio de venta se fija hoy
+                        y el costo sube el día que se acaba. */}
+                    {real?.promocion && (
+                      <span className="w-full text-xs font-medium text-violet-900">
+                        Con promoción del laboratorio hasta el {fechaLegible(real.promocion.hasta)} — después
+                        este mismo cristal nos va a costar {clp(real.costoSinPromocion)}.
+                      </span>
+                    )}
                   </div>
                 );
               })}

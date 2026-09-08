@@ -41,11 +41,23 @@ export type PrecioMontaje = {
 
 export type PrecioRecargo = { categoria: string; concepto: string; precio: number };
 
+// Un descuento del laboratorio sobre una parte de su lista, con fecha de
+// término. material null = todos los materiales de ese diseño.
+export type Promocion = {
+  diseno: string;
+  material: string | null;
+  descuento_pct: number;
+  desde: string;
+  hasta: string;
+  nota: string | null;
+};
+
 export type CatalogoLaboratorio = {
   stock: PrecioStock[];
   laboratorio: PrecioLaboratorio[];
   montaje: PrecioMontaje[];
   recargos: PrecioRecargo[];
+  promociones: Promocion[];
   // Descuento que el laboratorio le hace a esta óptica, en porcentaje.
   descuentoPct: number;
 };
@@ -70,6 +82,10 @@ export type CostoCristal = {
   origen: "stock" | "laboratorio";
   // Total del par: los dos cristales + montaje, con descuento e IVA.
   costo: number;
+  // Lo que costaría sin la promoción vigente. Igual a costo cuando no hay
+  // ninguna. Sirve para avisar antes de que se acabe, no para cobrar.
+  costoSinPromocion: number;
+  promocion: Promocion | null;
   // Desglose, para poder mostrarlo y cuadrarlo con la boleta.
   unitarios: number[];
   montaje: number;
@@ -148,6 +164,25 @@ export function recargoOjo(ojo: Ojo, recargos: PrecioRecargo[]): number {
   return porCategoria("cilindro", abs(ojo.cilindro)) + porCategoria("esfera", abs(ojo.esfera));
 }
 
+// La promoción vigente hoy para este diseño y material, si la hay. Si
+// más de una calza, manda la que más descuenta.
+export function promocionVigente(
+  diseno: string,
+  material: string,
+  promociones: Promocion[],
+  hoy: string
+): Promocion | null {
+  const calzan = promociones.filter(
+    (p) =>
+      p.diseno === diseno &&
+      (p.material === null || p.material === material) &&
+      p.desde <= hoy &&
+      hoy <= p.hasta
+  );
+  if (calzan.length === 0) return null;
+  return calzan.reduce((mejor, p) => (p.descuento_pct > mejor.descuento_pct ? p : mejor));
+}
+
 function montajeDe(
   mapa: MapaCristal,
   origen: "stock" | "laboratorio",
@@ -169,24 +204,35 @@ function montajeDe(
 export function costoCristal(
   mapa: MapaCristal,
   ojos: Ojo[],
-  catalogo: CatalogoLaboratorio
+  catalogo: CatalogoLaboratorio,
+  hoy: string
 ): CostoCristal | null {
-  const factorDescuento = 1 - catalogo.descuentoPct / 100;
   const diseno = disenoBase(mapa.tipo_lente);
 
   const cerrar = (
     origen: "stock" | "laboratorio",
     unitarios: number[],
-    motivo: string
+    motivo: string,
+    promocion: Promocion | null
   ): CostoCristal => {
     const montaje = montajeDe(mapa, origen, catalogo.montaje);
-    const bruto = unitarios.reduce((s, u) => s + u, 0) + montaje;
+    const cristales = unitarios.reduce((s, u) => s + u, 0);
+    // Los dos descuentos no se suman: manda el mayor, y la promoción va
+    // solo sobre el cristal — el montaje se descuenta siempre al 10% (o
+    // lo que tenga la óptica), como vino en la boleta.
+    const pctCristal = Math.max(catalogo.descuentoPct, promocion?.descuento_pct ?? 0);
+    const conIva = (dctoCristal: number) =>
+      Math.round(
+        (cristales * (1 - dctoCristal / 100) + montaje * (1 - catalogo.descuentoPct / 100)) * IVA
+      );
     return {
       origen,
-      costo: Math.round(bruto * factorDescuento * IVA),
+      costo: conIva(pctCristal),
+      costoSinPromocion: conIva(catalogo.descuentoPct),
+      promocion,
       unitarios,
       montaje,
-      descuento: Math.round(bruto * (1 - factorDescuento)),
+      descuento: Math.round(cristales * (pctCristal / 100) + montaje * (catalogo.descuentoPct / 100)),
       motivo,
     };
   };
@@ -201,7 +247,12 @@ export function costoCristal(
         : precioStockMultifocalOjo(mapa.material_stock!, diseno, ojo, catalogo.stock)
     );
     if (unitarios.every((u): u is number => u !== null)) {
-      return cerrar("stock", unitarios, `El laboratorio lo tiene hecho (${mapa.material_stock})`);
+      return cerrar(
+        "stock",
+        unitarios,
+        `El laboratorio lo tiene hecho (${mapa.material_stock})`,
+        promocionVigente(diseno, mapa.material_stock!, catalogo.promociones, hoy)
+      );
     }
   }
 
@@ -218,6 +269,7 @@ export function costoCristal(
     unitarios,
     mapa.material_stock
       ? "El laboratorio no lo tiene hecho en esta receta, hay que tallarlo"
-      : "El laboratorio no lo hace de stock, siempre se talla"
+      : "El laboratorio no lo hace de stock, siempre se talla",
+    promocionVigente(mapa.diseno_laboratorio, mapa.material_laboratorio, catalogo.promociones, hoy)
   );
 }

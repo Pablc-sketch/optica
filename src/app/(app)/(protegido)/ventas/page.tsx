@@ -19,7 +19,7 @@ export default async function VentasPage() {
 
   const [
     pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes,
-    recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, operativosRes,
+    recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, promoRes, operativosRes,
   ] = await Promise.all([
     supabase.from("pacientes").select("id, nombre, rut").order("nombre").limit(200),
     supabase
@@ -58,6 +58,7 @@ export default async function VentasPage() {
     supabase.from("lab_precios_laboratorio").select("diseno, material, precio_unitario"),
     supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
     supabase.from("lab_precios_recargo").select("categoria, concepto, precio"),
+    supabase.from("lab_promociones").select("diseno, material, descuento_pct, desde, hasta, nota"),
     // Independiente del selector de sucursal (que es para stock físico):
     // planificados/realizados más recientes primero.
     supabase
@@ -92,6 +93,7 @@ export default async function VentasPage() {
             laboratorio: labRes.data ?? [],
             montaje: montajeRes.data ?? [],
             recargos: recargoRes.data ?? [],
+            promociones: (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })),
             descuentoPct: Number(tenantRes.data?.descuento_laboratorio_pct ?? 0),
           }}
           tenantId={perfilRes.data?.tenant_id ?? ""}
