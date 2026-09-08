@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { actualizarPrecioProducto, actualizarCostoCristal } from "@/lib/actions/precios";
+import {
+  actualizarPrecioProducto,
+  actualizarCostoCristal,
+  actualizarNombreLaboratorio,
+} from "@/lib/actions/precios";
 import { clp } from "@/lib/clp";
 import { nombreCristal } from "@/lib/cristales";
 import { CampoMonto } from "@/components/campos";
@@ -28,7 +32,7 @@ export default async function PreciosPage({
       .order("nombre"),
     supabase
       .from("costos_cristales")
-      .select("id, tipo_lente, rango_receta, tratamiento, costo, precio_venta")
+      .select("id, tipo_lente, rango_receta, tratamiento, costo, precio_venta, nombre_laboratorio")
       .order("tipo_lente")
       .order("rango_receta")
       .order("tratamiento"),
@@ -143,6 +147,46 @@ export default async function PreciosPage({
         tiposLente.map((tipo) => (
           <details key={tipo} className="rounded-2xl bg-crema-claro p-4 shadow-sm">
             <summary className="cursor-pointer font-semibold text-brand-dark">{tipo}</summary>
+
+            {/* El laboratorio no conoce los nombres internos con que se
+                vende acá: pide los de SU catálogo. Se escribe una vez por
+                tratamiento (no por rango, que es el mismo producto en otra
+                potencia) y la planilla del pedido imprime ese nombre. */}
+            <div className="mt-3 rounded-xl border border-tinta-suave/20 bg-white p-3">
+              <p className="text-sm font-semibold">Cómo se llama en el laboratorio</p>
+              <p className="mb-2 text-xs text-tinta-suave">
+                Opcional. Si lo llenas, la planilla que mandas al laboratorio imprime este nombre en vez
+                del interno — así no hay que traducirlo por teléfono al hacer el pedido.
+              </p>
+              <ul className="flex flex-col gap-1.5">
+                {[...new Set(cristalesReales.filter((c) => c.tipo_lente === tipo).map((c) => c.tratamiento))].map(
+                  (trat) => {
+                    const actual = cristalesReales.find(
+                      (c) => c.tipo_lente === tipo && c.tratamiento === trat && c.nombre_laboratorio
+                    )?.nombre_laboratorio;
+                    return (
+                      <li key={trat} className="flex flex-wrap items-center gap-2">
+                        <span className="min-w-52 flex-1 text-sm">{nombreCristal(tipo, trat)}</span>
+                        <form action={actualizarNombreLaboratorio} className="flex items-center gap-1.5">
+                          <input type="hidden" name="tipo_lente" value={tipo} />
+                          <input type="hidden" name="tratamiento" value={trat} />
+                          <input
+                            name="nombre_laboratorio"
+                            defaultValue={actual ?? ""}
+                            placeholder="Nombre en el catálogo del laboratorio"
+                            className="w-72 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+                          />
+                          <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
+                            Guardar
+                          </button>
+                        </form>
+                      </li>
+                    );
+                  }
+                )}
+              </ul>
+            </div>
+
             <ul className="mt-3 flex flex-col gap-1.5">
               {cristalesReales
                 .filter((c) => c.tipo_lente === tipo)

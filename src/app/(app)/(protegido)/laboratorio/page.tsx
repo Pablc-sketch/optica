@@ -75,7 +75,7 @@ export default async function LaboratorioPage({
       query.gte("fecha_ingreso", inicioDelDia(desde)).lte("fecha_ingreso", finDelDia(hasta))
     : query.in("estado", ESTADOS_PENDIENTES);
 
-  const [otsRes, tenantRes, ultimaRes] = await Promise.all([
+  const [otsRes, tenantRes, ultimaRes, nombresLabRes] = await Promise.all([
     query.order("folio", { ascending: true }),
     supabase.from("tenants").select("nombre_comercial").single(),
     // Para poder decir "hay órdenes, pero fuera de este período" en vez de
@@ -89,7 +89,21 @@ export default async function LaboratorioPage({
           .limit(1)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    // Nombre con que el laboratorio conoce cada cristal, si se configuró en
+    // /precios: es el que va impreso en el pedido.
+    supabase
+      .from("costos_cristales")
+      .select("tipo_lente, tratamiento, nombre_laboratorio")
+      .not("nombre_laboratorio", "is", null),
   ]);
+
+  // Un solo nombre por tipo + tratamiento (no cambia según el rango).
+  const nombreLab = new Map<string, string>();
+  for (const c of nombresLabRes.data ?? []) {
+    if (c.nombre_laboratorio) nombreLab.set(`${c.tipo_lente}|${c.tratamiento}`, c.nombre_laboratorio);
+  }
+  const fmtCristal = (tipo: string | null, tratamiento: string | null) =>
+    nombreLab.get(`${tipo}|${tratamiento}`) ?? tratamiento ?? "—";
 
   const ots = otsRes.data ?? [];
   const nombreOptica = tenantRes.data?.nombre_comercial ?? "";
@@ -280,7 +294,7 @@ export default async function LaboratorioPage({
                           clasificación interna de costo, el laboratorio no
                           la usa ni la necesita para fabricar. */}
                       <td className="py-1.5 pr-2">{ot.tipo_lente}</td>
-                      <td className="py-1.5">{ot.tratamiento ?? "—"}</td>
+                      <td className="py-1.5">{fmtCristal(ot.tipo_lente, ot.tratamiento)}</td>
                     </tr>,
                   ];
                   if (tieneSegundo) {
@@ -292,7 +306,7 @@ export default async function LaboratorioPage({
                         <td className="py-1.5 pr-2">{fmtMarco(marco2)}</td>
                         {celdaPara(ot.tipo_lente_2, ot.posicion_2)}
                         <td className="py-1.5 pr-2">{ot.tipo_lente_2}</td>
-                        <td className="py-1.5">{ot.tratamiento_2 ?? "—"}</td>
+                        <td className="py-1.5">{fmtCristal(ot.tipo_lente_2, ot.tratamiento_2)}</td>
                       </tr>
                     );
                   }

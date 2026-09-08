@@ -29,6 +29,30 @@ export async function actualizarCostoCristal(formData: FormData) {
   revalidatePath("/ventas");
 }
 
+// Cómo pide el laboratorio este cristal en su catálogo (ej. Fides no
+// entiende "Multifocal Filtro Azul", pide el nombre de su lista). El nombre
+// no cambia según el rango de la receta — es el mismo producto en distinta
+// potencia — así que se escribe una vez y se aplica a todos los rangos de
+// ese tipo + tratamiento.
+export async function actualizarNombreLaboratorio(formData: FormData) {
+  const supabase = await createClient();
+  const tipoLente = String(formData.get("tipo_lente") ?? "").trim();
+  const tratamiento = String(formData.get("tratamiento") ?? "").trim();
+  if (!tipoLente || !tratamiento) return;
+
+  const nombre = String(formData.get("nombre_laboratorio") ?? "").trim() || null;
+
+  const { error } = await supabase
+    .from("costos_cristales")
+    .update({ nombre_laboratorio: nombre })
+    .eq("tipo_lente", tipoLente)
+    .eq("tratamiento", tratamiento);
+  if (error) throw error;
+
+  revalidatePath("/precios");
+  revalidatePath("/laboratorio");
+}
+
 export async function actualizarPrecioProducto(formData: FormData) {
   const supabase = await createClient();
   const id = String(formData.get("id"));
