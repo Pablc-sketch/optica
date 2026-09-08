@@ -32,7 +32,10 @@ export default async function PreciosPage({
       .order("nombre"),
     supabase
       .from("costos_cristales")
-      .select("id, tipo_lente, rango_receta, tratamiento, costo, precio_venta, nombre_laboratorio")
+      .select(
+        `id, tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta,
+         nombre_laboratorio, material_stock, material_laboratorio, diseno_laboratorio`
+      )
       .order("tipo_lente")
       .order("rango_receta")
       .order("tratamiento"),
@@ -133,9 +136,14 @@ export default async function PreciosPage({
       <div>
         <h2 className="text-xl font-bold">Costos de cristales (laboratorio)</h2>
         <p className="text-sm text-tinta-suave">
-          Lo que te cobra tu laboratorio por cada combinación y lo que le cobras al cliente. Esto
-          llegó precargado como referencia al crear la óptica — ajústalo al costo real de tu
-          laboratorio para que la utilidad de los reportes sea la correcta.
+          Lo que te cobra tu laboratorio por cada combinación y lo que le cobras al cliente. Todos
+          los cristales se le piden al laboratorio, pero los que ya tiene hechos (<strong>stock</strong>)
+          los cobra bastante más barato que los que <strong>talla a medida</strong>: por eso son dos
+          costos y no uno. Si dejas el de stock vacío, el punto de venta cobra el de tallado aunque
+          se marque &quot;de stock&quot;.
+        </p>
+        <p className="mt-1 text-xs text-tinta-suave">
+          Los costos son del par completo: precio unitario del laboratorio × 2 + montaje + IVA.
         </p>
       </div>
 
@@ -191,17 +199,43 @@ export default async function PreciosPage({
               {cristalesReales
                 .filter((c) => c.tipo_lente === tipo)
                 .map((c) => {
+                  // El margen más chico posible: contra el costo de tallarlo
+                  // a medida, que es el caro. Si sale de stock, queda mejor.
                   const margen = c.precio_venta - c.costo;
                   return (
                     <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
                       <span className="min-w-56 flex-1 text-sm">
                         {c.rango_receta} · {nombreCristal(c.tipo_lente, c.tratamiento)}
+                        {(c.material_stock || c.material_laboratorio) && (
+                          <span className="block text-xs text-tinta-suave">
+                            En la lista del laboratorio:{" "}
+                            {[
+                              c.material_stock && `stock "${c.material_stock}"`,
+                              c.material_laboratorio &&
+                                `a medida "${[c.diseno_laboratorio, c.material_laboratorio].filter(Boolean).join(" ")}"`,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        )}
                       </span>
-                      <span className="text-xs text-tinta-suave">margen {clp(margen)}</span>
-                      <form action={actualizarCostoCristal} className="flex items-center gap-1.5">
+                      <span className="text-xs text-tinta-suave">
+                        margen mínimo {clp(margen)}
+                        {c.costo_stock !== null && ` · de stock ${clp(c.precio_venta - c.costo_stock)}`}
+                      </span>
+                      <form action={actualizarCostoCristal} className="flex flex-wrap items-center gap-1.5">
                         <input type="hidden" name="id" value={c.id} />
                         <label className="flex items-center gap-1 text-xs text-tinta-suave">
-                          Costo
+                          Ya hecho (stock)
+                          <CampoMonto
+                            name="costo_stock"
+                            defaultValue={c.costo_stock ?? undefined}
+                            placeholder="No lo tiene"
+                            className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-xs text-tinta-suave">
+                          Tallado a medida
                           <CampoMonto
                             name="costo"
                             defaultValue={c.costo}

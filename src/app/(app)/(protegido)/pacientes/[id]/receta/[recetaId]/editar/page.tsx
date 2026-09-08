@@ -20,7 +20,7 @@ export default async function EditarRecetaPage({
       .order("fecha", { ascending: false }),
     supabase
       .from("costos_cristales")
-      .select("tipo_lente, rango_receta, tratamiento, costo, precio_venta")
+      .select("tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta")
       .order("tipo_lente"),
   ]);
 

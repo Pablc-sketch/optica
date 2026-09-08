@@ -23,7 +23,17 @@ export async function actualizarCostoCristal(formData: FormData) {
   const precio = parsearMonto(formData.get("precio"));
   if (costo === null || precio === null) return;
 
-  const { error } = await supabase.from("costos_cristales").update({ costo, precio_venta: precio }).eq("id", id);
+  // El costo de stock se deja vacío cuando el laboratorio no tiene ese
+  // cristal hecho para esa receta: ahí no hay dos precios, hay uno solo
+  // (el tallado a medida) y el punto de venta lo cobra igual aunque se
+  // marque "de stock".
+  const stockTexto = String(formData.get("costo_stock") ?? "").trim();
+  const costoStock = stockTexto === "" ? null : parsearMonto(formData.get("costo_stock"));
+
+  const { error } = await supabase
+    .from("costos_cristales")
+    .update({ costo, costo_stock: costoStock, precio_venta: precio })
+    .eq("id", id);
   if (error) throw error;
   revalidatePath("/precios");
   revalidatePath("/ventas");

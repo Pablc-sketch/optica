@@ -26,7 +26,7 @@ export default async function VentasPage() {
       .limit(200),
     supabase
       .from("costos_cristales")
-      .select("tipo_lente, rango_receta, tratamiento, costo, precio_venta")
+      .select("tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta")
       .order("tipo_lente"),
     supabase.from("tenants").select("factor_venta_cristales").single(),
     supabase

@@ -16,7 +16,11 @@ type CostoCristal = {
   tipo_lente: string;
   rango_receta: string;
   tratamiento: string;
+  // Lo que cobra el laboratorio por tallar el par a medida.
   costo: number;
+  // Lo que cobra si ya lo tiene hecho — bastante menos. null = no lo tiene
+  // en stock para esta receta, así que igual hay que pagarlo como tallado.
+  costo_stock: number | null;
   precio_venta: number;
 };
 
@@ -51,7 +55,11 @@ type LineaCarrito = {
     tipoLente: string;
     rangoReceta: string;
     tratamiento: string;
+    // Los dos costos posibles del par, congelados al armar la fila. Cuál de
+    // los dos se cobra lo decide el origen que se elija al cerrar la venta
+    // (ver costoSegunOrigen), no esta fila.
     costoLaboratorio: number;
+    costoStock: number | null;
     // Solo se usa para calcular el rango con la adición (ADD) cuando es un
     // Monofocal de cerca — para mostrar en pantalla siempre se habla de
     // "Lente 1"/"Lente 2" (un Bifocal no tiene "lejos" o "cerca").
@@ -141,6 +149,7 @@ function lineaDeCombo(
       rangoReceta: combo.rango_receta,
       tratamiento: combo.tratamiento,
       costoLaboratorio: combo.costo,
+      costoStock: combo.costo_stock,
       posicion: opciones?.posicion,
       sugerido: opciones?.sugerido,
     },
@@ -529,6 +538,27 @@ export default function PuntoDeVenta({
   // Orden estable "Lente 1" antes que "Lente 2" (la key lo garantiza),
   // independiente del orden en que se hayan ido completando las filas.
   const lineasCristal = carrito.filter((l) => l.cristal).sort((a, b) => a.key.localeCompare(b.key));
+
+  // Todos los cristales se le piden al laboratorio, pero los que ya tiene
+  // hechos (stock) los cobra mucho más barato que los que talla a medida —
+  // en un Orgánico Antirreflejo la diferencia es de $6.355 a $22.610 el
+  // par. Por eso el origen que se elige acá es el que decide el costo con
+  // que queda la orden de trabajo (y con el que después se calcula la
+  // utilidad), no un dato suelto.
+  function costoSegunOrigen(cristal: NonNullable<LineaCarrito["cristal"]>): number {
+    if (origenCristal !== "stock") return cristal.costoLaboratorio;
+    // Si el laboratorio no lo tiene en stock para esta receta, aunque se
+    // marque "stock" hay que pagarlo como tallado a medida.
+    return cristal.costoStock ?? cristal.costoLaboratorio;
+  }
+
+  // Cristales marcados como de stock que el laboratorio en realidad no
+  // tiene hechos en esa potencia: se avisa para que nadie cierre la venta
+  // creyendo que va a costar la mitad de lo que va a costar.
+  const cristalesSinStock =
+    origenCristal === "stock"
+      ? lineasCristal.filter((l) => l.cristal!.costoStock === null)
+      : [];
   // Puede haber más de un armazón (dos pares separados): cada uno queda
   // explícitamente emparejado con su lente por armazonSlot, no por el orden
   // en que se hayan agregado — así no se puede confundir cuál marco es para
@@ -748,7 +778,7 @@ export default function PuntoDeVenta({
           tratamiento: primero.cristal!.tratamiento,
           origen_cristal: origenCristal,
           proveedor_lab_id: origenCristal === "laboratorio" ? laboratorioId || null : null,
-          costo_laboratorio: primero.cristal!.costoLaboratorio,
+          costo_laboratorio: costoSegunOrigen(primero.cristal!),
           posicion: primero.cristal!.posicion ?? null,
           fecha_ingreso: ahora,
           fecha_entrega_estimada: entregaISO,
@@ -756,7 +786,7 @@ export default function PuntoDeVenta({
           tipo_lente_2: segundo?.cristal?.tipoLente ?? null,
           rango_receta_2: segundo?.cristal?.rangoReceta ?? null,
           tratamiento_2: segundo?.cristal?.tratamiento ?? null,
-          costo_laboratorio_2: segundo?.cristal?.costoLaboratorio ?? null,
+          costo_laboratorio_2: segundo?.cristal ? costoSegunOrigen(segundo.cristal) : null,
           posicion_2: segundo?.cristal?.posicion ?? null,
         },
       });
@@ -846,7 +876,11 @@ export default function PuntoDeVenta({
         abonoInicial: montoANumero(abono),
         medioPago,
         cristales: creaOT
-          ? lineasCristal.map((l) => ({ ...l.cristal!, origen: origenCristal }))
+          ? lineasCristal.map((l) => ({
+              ...l.cristal!,
+              costoLaboratorio: costoSegunOrigen(l.cristal!),
+              origen: origenCristal,
+            }))
           : [],
         // Un armazón por cristal, en el mismo orden — dos pares separados
         // llevan cada uno su propio marco.
@@ -1067,23 +1101,52 @@ export default function PuntoDeVenta({
             </p>
           )}
 
+          {/* Los dos van igual al laboratorio; la diferencia es si el
+              cristal ya está hecho (stock, más barato) o hay que tallarlo a
+              medida. Es lo que decide el costo de la venta, así que se
+              muestra en plata para no elegirlo a ciegas. */}
           {lineasCristal.length > 0 && (
-            <div className="flex gap-2 text-sm">
-              {(["laboratorio", "stock"] as const).map((op) => (
-                <label
-                  key={op}
-                  className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 has-checked:border-violet-500 has-checked:bg-violet-50"
-                >
-                  <input
-                    type="radio"
-                    name="origen_cristal"
-                    checked={origenCristal === op}
-                    onChange={() => setOrigenCristal(op)}
-                    className="accent-violet-600"
-                  />
-                  {op === "laboratorio" ? "Pedir al laboratorio" : "De stock"}
-                </label>
-              ))}
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium">¿Cómo se pide este cristal?</p>
+              <div className="flex gap-2 text-sm">
+                {(["laboratorio", "stock"] as const).map((op) => {
+                  const costo = lineasCristal.reduce(
+                    (s, l) =>
+                      s +
+                      (op === "stock"
+                        ? (l.cristal!.costoStock ?? l.cristal!.costoLaboratorio)
+                        : l.cristal!.costoLaboratorio),
+                    0
+                  );
+                  return (
+                    <label
+                      key={op}
+                      className="flex flex-1 cursor-pointer flex-col items-center gap-0.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 text-center has-checked:border-violet-500 has-checked:bg-violet-50"
+                    >
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <input
+                          type="radio"
+                          name="origen_cristal"
+                          checked={origenCristal === op}
+                          onChange={() => setOrigenCristal(op)}
+                          className="accent-violet-600"
+                        />
+                        {op === "laboratorio" ? "Tallado a medida" : "Ya hecho (stock)"}
+                      </span>
+                      <span className="text-xs text-tinta-suave">nos cuesta {clp(costo)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {cristalesSinStock.length > 0 && (
+                <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-900">
+                  El laboratorio no tiene hecho{" "}
+                  {cristalesSinStock
+                    .map((l) => nombreCristal(l.cristal!.tipoLente, l.cristal!.tratamiento))
+                    .join(", ")}{" "}
+                  en esta receta, así que igual lo va a tallar a medida y cobrar como tal.
+                </p>
+              )}
             </div>
           )}
 

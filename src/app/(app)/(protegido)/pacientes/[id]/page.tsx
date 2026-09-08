@@ -59,7 +59,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
     // precio al paciente ahí mismo en el box (pestaña "Ver precios").
     supabase
       .from("costos_cristales")
-      .select("tipo_lente, rango_receta, tratamiento, costo, precio_venta")
+      .select("tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta")
       .order("tipo_lente"),
   ]);
 
