@@ -70,7 +70,22 @@ export type MapaCristal = {
   material_laboratorio: string | null;
   diseno_laboratorio: string | null;
   montaje_material: string | null;
+  // El diseño que se va a empezar a pedir, y desde qué día. Sirve para
+  // dejar programado un cambio que ya está decidido: mientras corre la
+  // promoción de septiembre conviene pedir el MULTIFOCAL ADVANCE, y el 1
+  // de octubre hay que volver al CONFORT. Dejarlo escrito acá evita tener
+  // que acordarse ese día — y evita seguir pidiendo el caro por inercia.
+  diseno_laboratorio_proximo?: string | null;
+  diseno_proximo_desde?: string | null;
 };
+
+// Qué diseño corresponde pedir en una fecha dada.
+export function disenoVigente(mapa: MapaCristal, hoy: string): string | null {
+  if (mapa.diseno_laboratorio_proximo && mapa.diseno_proximo_desde && hoy >= mapa.diseno_proximo_desde) {
+    return mapa.diseno_laboratorio_proximo;
+  }
+  return mapa.diseno_laboratorio;
+}
 
 // Un ojo. La esfera ya viene con la adición sumada cuando el cristal es
 // de cerca — es la potencia con que se talla, y es la que cobra el
@@ -80,6 +95,11 @@ export type Ojo = { esfera: number | null; cilindro: number | null };
 
 export type CostoCristal = {
   origen: "stock" | "laboratorio";
+  // Cómo se pide en el catálogo del laboratorio. En los tallados a medida
+  // es el diseño ("MULTIFOCAL ADVANCE") con su material; en los de stock,
+  // el código del cristal hecho. Va impreso en la planilla del pedido.
+  diseno: string | null;
+  material: string | null;
   // Total del par: los dos cristales + montaje, con descuento e IVA.
   costo: number;
   // Lo que costaría sin la promoción vigente. Igual a costo cuando no hay
@@ -227,6 +247,8 @@ export function costoCristal(
       );
     return {
       origen,
+      diseno: origen === "laboratorio" ? disenoVigente(mapa, hoy) : null,
+      material: origen === "laboratorio" ? mapa.material_laboratorio : mapa.material_stock,
       costo: conIva(pctCristal),
       costoSinPromocion: conIva(catalogo.descuentoPct),
       promocion,
@@ -256,10 +278,12 @@ export function costoCristal(
     }
   }
 
-  // 2. Si no, hay que mandarlo a tallar.
-  if (!mapa.material_laboratorio || !mapa.diseno_laboratorio) return null;
+  // 2. Si no, hay que mandarlo a tallar, con el diseño que corresponda
+  //    pedir hoy (puede haber un cambio programado).
+  const disenoLab = disenoVigente(mapa, hoy);
+  if (!mapa.material_laboratorio || !disenoLab) return null;
   const fila = catalogo.laboratorio.find(
-    (l) => l.diseno === mapa.diseno_laboratorio && l.material === mapa.material_laboratorio
+    (l) => l.diseno === disenoLab && l.material === mapa.material_laboratorio
   );
   if (!fila?.precio_unitario) return null;
   const unitario = fila.precio_unitario;
@@ -270,6 +294,6 @@ export function costoCristal(
     mapa.material_stock
       ? "El laboratorio no lo tiene hecho en esta receta, hay que tallarlo"
       : "El laboratorio no lo hace de stock, siempre se talla",
-    promocionVigente(mapa.diseno_laboratorio, mapa.material_laboratorio, catalogo.promociones, hoy)
+    promocionVigente(disenoLab, mapa.material_laboratorio, catalogo.promociones, hoy)
   );
 }

@@ -26,6 +26,8 @@ type CostoCristal = {
   material_laboratorio: string | null;
   diseno_laboratorio: string | null;
   montaje_material: string | null;
+  diseno_laboratorio_proximo: string | null;
+  diseno_proximo_desde: string | null;
 };
 
 // Lo que necesitamos de la última receta del paciente: esfera/cilindro
@@ -581,6 +583,13 @@ export default function PuntoDeVenta({
     return costoRealDeLinea(linea)?.origen ?? "laboratorio";
   }
 
+  // Con qué diseño del catálogo del laboratorio se está pidiendo. Queda
+  // congelado en la orden para que la planilla imprima lo que se cotizó,
+  // aunque se imprima días después de tomada la venta.
+  function disenoDeLinea(linea: LineaCarrito): string | null {
+    return costoRealDeLinea(linea)?.diseno ?? null;
+  }
+
   // El plazo y el proveedor son de la orden completa: si cualquiera de los
   // dos cristales hay que tallarlo, la orden entera se va al laboratorio.
   const origenCristal: "laboratorio" | "stock" =
@@ -805,6 +814,7 @@ export default function PuntoDeVenta({
           rango_receta: primero.cristal!.rangoReceta,
           tratamiento: primero.cristal!.tratamiento,
           origen_cristal: origenDeLinea(primero),
+          diseno_laboratorio: disenoDeLinea(primero),
           proveedor_lab_id: origenCristal === "laboratorio" ? laboratorioId || null : null,
           costo_laboratorio: costoDeLinea(primero),
           posicion: primero.cristal!.posicion ?? null,
@@ -816,6 +826,7 @@ export default function PuntoDeVenta({
           tratamiento_2: segundo?.cristal?.tratamiento ?? null,
           costo_laboratorio_2: segundo ? costoDeLinea(segundo) : null,
           origen_cristal_2: segundo ? origenDeLinea(segundo) : null,
+          diseno_laboratorio_2: segundo ? disenoDeLinea(segundo) : null,
           posicion_2: segundo?.cristal?.posicion ?? null,
         },
       });
@@ -909,6 +920,7 @@ export default function PuntoDeVenta({
               ...l.cristal!,
               costoLaboratorio: costoDeLinea(l),
               origen: origenDeLinea(l),
+              disenoLaboratorio: disenoDeLinea(l),
             }))
           : [],
         // Un armazón por cristal, en el mismo orden — dos pares separados

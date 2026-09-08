@@ -62,6 +62,7 @@ export default async function LaboratorioPage({
     .from("ordenes_trabajo")
     .select(
       `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2,
+       diseno_laboratorio, diseno_laboratorio_2,
        pacientes:paciente_id (nombre),
        recetas:receta_id (od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, dp, altura),
        productos:armazon_producto_id (sku, nombre, marca, color),
@@ -89,21 +90,36 @@ export default async function LaboratorioPage({
           .limit(1)
           .maybeSingle()
       : Promise.resolve({ data: null }),
-    // Nombre con que el laboratorio conoce cada cristal, si se configuró en
-    // /precios: es el que va impreso en el pedido.
+    // Cómo pide el laboratorio cada cristal en su catálogo: el material
+    // (de stock o de tallado) y, si se escribió a mano, el nombre libre.
     supabase
       .from("costos_cristales")
-      .select("tipo_lente, tratamiento, nombre_laboratorio")
-      .not("nombre_laboratorio", "is", null),
+      .select("tipo_lente, tratamiento, nombre_laboratorio, material_stock, material_laboratorio"),
   ]);
 
-  // Un solo nombre por tipo + tratamiento (no cambia según el rango).
-  const nombreLab = new Map<string, string>();
+  // Un solo registro por tipo + tratamiento (no cambia según el rango).
+  type NombreLab = { nombre: string | null; matStock: string | null; matLab: string | null };
+  const nombreLab = new Map<string, NombreLab>();
   for (const c of nombresLabRes.data ?? []) {
-    if (c.nombre_laboratorio) nombreLab.set(`${c.tipo_lente}|${c.tratamiento}`, c.nombre_laboratorio);
+    nombreLab.set(`${c.tipo_lente}|${c.tratamiento}`, {
+      nombre: c.nombre_laboratorio,
+      matStock: c.material_stock,
+      matLab: c.material_laboratorio,
+    });
   }
-  const fmtCristal = (tipo: string | null, tratamiento: string | null) =>
-    nombreLab.get(`${tipo}|${tratamiento}`) ?? tratamiento ?? "—";
+
+  // Lo que va impreso en la línea del pedido. El laboratorio no entiende
+  // los nombres internos con que se vende acá ("Multifocal Filtro Azul"):
+  // pide los de SU catálogo. Y en un multifocal o bifocal no basta el
+  // material — hay varios diseños al mismo material y a precios muy
+  // distintos, así que el pedido tiene que decir cuál se está pidiendo
+  // (MULTIFOCAL ADVANCE no es lo mismo que MULTIFOCAL CONFORT).
+  const fmtCristal = (tipo: string | null, tratamiento: string | null, diseno: string | null) => {
+    const ref = nombreLab.get(`${tipo}|${tratamiento}`);
+    if (ref?.nombre) return ref.nombre;
+    const material = origen === "stock" ? ref?.matStock : ref?.matLab;
+    return [diseno, material].filter(Boolean).join(" · ") || tratamiento || "—";
+  };
 
   const ots = otsRes.data ?? [];
   const nombreOptica = tenantRes.data?.nombre_comercial ?? "";
@@ -294,7 +310,7 @@ export default async function LaboratorioPage({
                           clasificación interna de costo, el laboratorio no
                           la usa ni la necesita para fabricar. */}
                       <td className="py-1.5 pr-2">{ot.tipo_lente}</td>
-                      <td className="py-1.5">{fmtCristal(ot.tipo_lente, ot.tratamiento)}</td>
+                      <td className="py-1.5">{fmtCristal(ot.tipo_lente, ot.tratamiento, ot.diseno_laboratorio)}</td>
                     </tr>,
                   ];
                   if (tieneSegundo) {
@@ -306,7 +322,7 @@ export default async function LaboratorioPage({
                         <td className="py-1.5 pr-2">{fmtMarco(marco2)}</td>
                         {celdaPara(ot.tipo_lente_2, ot.posicion_2)}
                         <td className="py-1.5 pr-2">{ot.tipo_lente_2}</td>
-                        <td className="py-1.5">{fmtCristal(ot.tipo_lente_2, ot.tratamiento_2)}</td>
+                        <td className="py-1.5">{fmtCristal(ot.tipo_lente_2, ot.tratamiento_2, ot.diseno_laboratorio_2)}</td>
                       </tr>
                     );
                   }

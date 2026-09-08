@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   costoCristal,
+  disenoVigente,
   precioStockOjo,
   recargoOjo,
   type CatalogoLaboratorio,
@@ -42,6 +43,7 @@ const CATALOGO: CatalogoLaboratorio = {
   ],
   laboratorio: [
     { diseno: "MULTIFOCAL ADVANCE", material: "ORGANICO BLUE FILTER 1.56 HMC", precio_unitario: 34000 },
+    { diseno: "MULTIFOCAL CONFORT", material: "ORGANICO BLUE FILTER 1.56 HMC", precio_unitario: 23000 },
     { diseno: "MONOFOCAL CONFORT", material: "ORGANICO POLARIZADO 1.49 HMC", precio_unitario: 12500 },
   ],
   montaje: [
@@ -82,6 +84,9 @@ const MULTIFOCAL: MapaCristal = {
   material_laboratorio: "ORGANICO BLUE FILTER 1.56 HMC",
   diseno_laboratorio: "MULTIFOCAL ADVANCE",
   montaje_material: "ORGANICO FOTO O BLUE SIMPLE",
+  // El 1 de octubre, cuando se acaba la promoción, se vuelve al básico.
+  diseno_laboratorio_proximo: "MULTIFOCAL CONFORT",
+  diseno_proximo_desde: "2026-10-01",
 };
 
 describe("precioStockOjo: la celda más barata que cubre el ojo", () => {
@@ -170,11 +175,13 @@ describe("costoCristal: cuadra con la nota de venta 53160 de Fides", () => {
     expect(r.costo).toBe(45280);
   });
 
-  it("cuando se acaba la promoción el multifocal vuelve a costar el doble", () => {
-    // Lo que va a pasar solo el 1 de octubre: sin esto la app seguiría
-    // cotizando con el precio de septiembre.
+  it("cuando se acaba la promoción el ADVANCE vuelve a costar el doble", () => {
+    // Sin la fecha de término, la app seguiría cotizando en octubre con el
+    // precio de septiembre. Se prueba sobre el mapa SIN cambio programado
+    // para aislar el efecto de la promoción.
+    const sinCambio = { ...MULTIFOCAL, diseno_laboratorio_proximo: null, diseno_proximo_desde: null };
     const r = costoCristal(
-      MULTIFOCAL,
+      sinCambio,
       [{ esfera: 2.25, cilindro: -0.5 }, { esfera: 3.25, cilindro: -1.25 }],
       CATALOGO,
       "2026-10-01"
@@ -196,5 +203,46 @@ describe("costoCristal: cuadra con la nota de venta 53160 de Fides", () => {
 
   it("no inventa un costo cuando el laboratorio no hace esa combinación", () => {
     expect(costoCristal({ ...AR, material_stock: null, material_laboratorio: null }, [{ esfera: 0, cilindro: 0 }], CATALOGO, DIA)).toBeNull();
+  });
+});
+
+describe("disenoVigente: el cambio de diseño programado", () => {
+  it("pide el ADVANCE mientras corre la promoción", () => {
+    expect(disenoVigente(MULTIFOCAL, "2026-09-30")).toBe("MULTIFOCAL ADVANCE");
+  });
+
+  it("cambia solo al CONFORT el día acordado", () => {
+    expect(disenoVigente(MULTIFOCAL, "2026-10-01")).toBe("MULTIFOCAL CONFORT");
+  });
+
+  it("no cambia nada cuando no hay un cambio programado", () => {
+    expect(disenoVigente(POLARIZADO, "2027-01-01")).toBe("MONOFOCAL CONFORT");
+  });
+});
+
+describe("qué se le pide al laboratorio", () => {
+  const OJOS_FUERA_DE_STOCK = [
+    { esfera: 2.25, cilindro: -0.5 },
+    { esfera: 3.25, cilindro: -1.25 },
+  ];
+
+  it("en septiembre el pedido dice ADVANCE", () => {
+    const r = costoCristal(MULTIFOCAL, OJOS_FUERA_DE_STOCK, CATALOGO, DIA)!;
+    expect(r.diseno).toBe("MULTIFOCAL ADVANCE");
+    expect(r.material).toBe("ORGANICO BLUE FILTER 1.56 HMC");
+    expect(r.costo).toBe(45280);
+  });
+
+  it("en octubre el pedido dice CONFORT, y sale más barato que el ADVANCE sin promoción", () => {
+    const r = costoCristal(MULTIFOCAL, OJOS_FUERA_DE_STOCK, CATALOGO, "2026-10-01")!;
+    expect(r.diseno).toBe("MULTIFOCAL CONFORT");
+    // (23.000 × 2 + 4.500) × 0,9 × 1,19 — contra los $77.648 del ADVANCE.
+    expect(r.costo).toBe(54086);
+  });
+
+  it("el pedido de un cristal de stock lleva el código del cristal hecho", () => {
+    const r = costoCristal(BLUE, [{ esfera: 0, cilindro: -0.5 }, { esfera: 0, cilindro: -0.75 }], CATALOGO, DIA)!;
+    expect(r.diseno).toBeNull();
+    expect(r.material).toBe("CR AR BLUE 1.56");
   });
 });

@@ -31,7 +31,8 @@ export default async function VentasPage() {
       .from("costos_cristales")
       .select(
         `tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta,
-         material_stock, material_laboratorio, diseno_laboratorio, montaje_material`
+         material_stock, material_laboratorio, diseno_laboratorio, montaje_material,
+         diseno_laboratorio_proximo, diseno_proximo_desde`
       )
       .order("tipo_lente"),
     supabase.from("tenants").select("factor_venta_cristales, descuento_laboratorio_pct").single(),

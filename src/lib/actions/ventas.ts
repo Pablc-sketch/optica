@@ -21,6 +21,10 @@ export type DatosCristal = {
   tratamiento: string;
   costoLaboratorio: number;
   origen: "stock" | "laboratorio";
+  // Con qué diseño del catálogo del laboratorio se pidió (ej. "MULTIFOCAL
+  // ADVANCE"). Solo en los tallados a medida; los de stock van por código
+  // de cristal hecho.
+  disenoLaboratorio?: string | null;
   // Solo aplica a Monofocal cuando la receta es "lejos y cerca por
   // separado" — para saber en la OT cuál cristal (y por lo tanto cuál
   // marco) es cuál. Bifocal/Multifocal no tienen esta distinción.
@@ -130,6 +134,7 @@ export async function registrarVenta(input: {
         rango_receta: primero.rangoReceta,
         tratamiento: primero.tratamiento,
         origen_cristal: primero.origen,
+        diseno_laboratorio: primero.disenoLaboratorio ?? null,
         proveedor_lab_id: input.proveedorLabId ?? proveedorRes.data?.id ?? null,
         costo_laboratorio: primero.costoLaboratorio,
         posicion: primero.posicion ?? null,
@@ -143,6 +148,7 @@ export async function registrarVenta(input: {
         // lado: uno de lejos que el laboratorio tiene hecho y uno de cerca
         // que hay que tallar.
         origen_cristal_2: segundo?.origen ?? null,
+        diseno_laboratorio_2: segundo?.disenoLaboratorio ?? null,
         posicion_2: segundo?.posicion ?? null,
       })
       .select("id, folio")
