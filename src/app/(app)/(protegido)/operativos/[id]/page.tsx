@@ -76,7 +76,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const { id } = await params;
   const supabase = await createClient();
 
-  const [operativoRes, recetasRes, ventasRes] = await Promise.all([
+  const [operativoRes, recetasRes, ventasRes, retirosRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).single(),
     supabase
       .from("recetas")
@@ -98,6 +98,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       .eq("operativo_id", id)
       .eq("anulada", false)
       .order("fecha", { ascending: false }),
+    supabase.from("retiros_sueldo").select("persona, monto").eq("operativo_id", id),
   ]);
 
   const operativo = operativoRes.data;
@@ -105,6 +106,13 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
 
   const recetas = recetasRes.data ?? [];
   const ventas = ventasRes.data ?? [];
+  // Lo que ya se le adelantó a cada persona contra este operativo, para
+  // mostrar cuánto falta transferir de verdad y no el bruto — sin esto la
+  // tarjeta de sueldos no reflejaba los retiros ya hechos.
+  const retirosPorPersona = new Map<string, number>();
+  for (const r of retirosRes.data ?? []) {
+    retirosPorPersona.set(r.persona, (retirosPorPersona.get(r.persona) ?? 0) + r.monto);
+  }
   const pacientesConVenta = new Set(ventas.map((v) => v.paciente_id).filter(Boolean));
 
   const totalVendido = ventas.reduce((s, v) => s + v.total, 0);
@@ -148,12 +156,23 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     operativo.costo_transporte + operativo.costo_arriendo + operativo.costo_viaticos + operativo.costo_otros;
   const totalCostos = totalCostosOperativo + totalCostoProductos;
   const utilidadNeta = totalVendido - totalCostos;
+  // Lo que ya se le adelantó a alguien contra ESTE operativo (retiros de
+  // sueldo) es plata que de verdad salió de la cuenta/efectivo — sin
+  // restarla acá, "Utilidad actual" quedaba mostrando plata que ya no está.
+  const totalRetiros = [...retirosPorPersona.values()].reduce((s, m) => s + m, 0);
   // "Utilidad neta" cuenta lo VENDIDO, aunque todavía no se haya cobrado
   // entero (hay ventas con saldo pendiente). Esta es la plata de verdad
   // disponible ahora mismo: lo que ya se abonó, menos lo que hay que pagar
-  // (cristales al laboratorio, marcos, gastos del operativo) — si da
-  // negativo, significa que ya se debe más de lo que se ha cobrado.
-  const utilidadActual = totalAbonado - totalCostos;
+  // (cristales al laboratorio, marcos, gastos del operativo) y menos lo que
+  // ya se retiró — si da negativo, significa que ya se debe/gastó más de
+  // lo que se ha cobrado.
+  //
+  // Ojo: "cristales al laboratorio" acá es lo que se le VA A PAGAR a Fides
+  // cuando se retire el pedido, no necesariamente lo que ya se pagó — por
+  // eso este número es una proyección ("si liquidara todo hoy, ¿cuánto me
+  // queda"), no un conteo de caja. Para saber lo que hay físicamente en la
+  // cuenta y en efectivo ahora mismo, ver Reportes → Plata disponible.
+  const utilidadActual = totalAbonado - totalCostos - totalRetiros;
 
   // Cómo se reparte este operativo entre Isadora (comisión), ahorro del
   // negocio y el resto dividido entre la mamá y Pablo. Usa "utilidadNeta"
@@ -164,6 +183,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     comisionVendedoraBase: operativo.comision_vendedora_base as BaseComision,
     ahorroPct: Number(operativo.ahorro_pct),
   });
+  // Lo que falta transferir de verdad: el reparto de arriba menos lo que
+  // cada persona ya sacó por adelantado contra este mismo operativo. Nunca
+  // negativo — si alguien retiró de más, eso no se le "cobra" acá.
+  const pendienteTransferir = {
+    isadora: Math.max(0, sueldos.comisionIsadora - (retirosPorPersona.get("isadora") ?? 0)),
+    madre: Math.max(0, sueldos.parteMadre - (retirosPorPersona.get("madre") ?? 0)),
+    pablo: Math.max(0, sueldos.partePablo - (retirosPorPersona.get("pablo") ?? 0)),
+  };
 
   // Próximas entregas: de las ventas de este operativo, las que tienen una
   // OT con fecha estimada, para que el resumen de cierre avise qué falta
@@ -401,9 +428,15 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               <span className="font-medium">{clp(totalAbonado)}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span>− Costos en total</span>
+              <span>− Costos en total (cristales al laboratorio, marcos, gastos del operativo)</span>
               <span className="font-medium">{clp(totalCostos)}</span>
             </div>
+            {totalRetiros > 0 && (
+              <div className="flex items-center justify-between">
+                <span>− Ya retirado (Isadora, mamá, Pablo)</span>
+                <span className="font-medium">{clp(totalRetiros)}</span>
+              </div>
+            )}
             <div
               className={`mt-1 flex items-center justify-between rounded-lg bg-white px-2 py-1.5 text-base font-bold ${utilidadActual >= 0 ? "text-green-700" : "text-red-700"}`}
             >
@@ -412,8 +445,10 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </div>
             <p className="mt-1 text-xs text-sky-700">
               A diferencia de &quot;Utilidad neta&quot;, esta cuenta solo la plata que ya está en la mano
-              (no lo vendido a crédito/abono todavía pendiente) — es la que de verdad se puede gastar hoy
-              en cristales, marcos y gastos del operativo sin quedar en rojo.
+              (no lo vendido a crédito/abono todavía pendiente) y ya descuenta lo que se haya retirado por
+              adelantado — pero &quot;cristales al laboratorio&quot; sigue siendo lo que se le VA A PAGAR a
+              Fides, no necesariamente lo ya pagado. Para la plata física real en la cuenta y en efectivo
+              (con la comisión de tarjeta y los gastos globales incluidos), ver Reportes → Plata disponible.
             </p>
           </div>
         </details>
@@ -425,14 +460,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </p>
             <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
               <span>
-                Isadora ({Number(operativo.comision_vendedora_pct)}%):{" "}
-                <span className="font-bold text-sky-900">{clp(sueldos.comisionIsadora)}</span>
+                Isadora ({Number(operativo.comision_vendedora_pct)}%) por transferir:{" "}
+                <span className="font-bold text-sky-900">{clp(pendienteTransferir.isadora)}</span>
               </span>
               <span>
-                Mamá: <span className="font-bold text-sky-900">{clp(sueldos.parteMadre)}</span>
+                Mamá por transferir: <span className="font-bold text-sky-900">{clp(pendienteTransferir.madre)}</span>
               </span>
               <span>
-                Pablo: <span className="font-bold text-sky-900">{clp(sueldos.partePablo)}</span>
+                Pablo por transferir: <span className="font-bold text-sky-900">{clp(pendienteTransferir.pablo)}</span>
               </span>
             </p>
           </summary>
@@ -507,6 +542,41 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               <div className="flex items-center justify-between pl-2">
                 <span>Pablo (50%)</span>
                 <span className="font-medium">{clp(sueldos.partePablo)}</span>
+              </div>
+              {/* Lo ya retirado contra este operativo (Reportes → Retiros)
+                  se descuenta acá para que el número final sea justo lo
+                  que hay que transferir, no el bruto del reparto. */}
+              {(retirosPorPersona.get("isadora") ?? 0) > 0 && (
+                <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
+                  <span>− Isadora ya retiró</span>
+                  <span>{clp(retirosPorPersona.get("isadora") ?? 0)}</span>
+                </div>
+              )}
+              {(retirosPorPersona.get("madre") ?? 0) > 0 && (
+                <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
+                  <span>− Mamá ya retiró</span>
+                  <span>{clp(retirosPorPersona.get("madre") ?? 0)}</span>
+                </div>
+              )}
+              {(retirosPorPersona.get("pablo") ?? 0) > 0 && (
+                <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
+                  <span>− Pablo ya retiró</span>
+                  <span>{clp(retirosPorPersona.get("pablo") ?? 0)}</span>
+                </div>
+              )}
+              <div className="mt-1 flex flex-col gap-1 rounded-lg bg-sky-100 px-2 py-1.5 font-bold text-sky-900">
+                <div className="flex items-center justify-between">
+                  <span>Isadora — por transferir</span>
+                  <span>{clp(pendienteTransferir.isadora)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Mamá — por transferir</span>
+                  <span>{clp(pendienteTransferir.madre)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Pablo — por transferir</span>
+                  <span>{clp(pendienteTransferir.pablo)}</span>
+                </div>
               </div>
               {sueldos.utilidadDisponible < 0 && (
                 <p className="mt-1 rounded-lg bg-red-50 px-2 py-1.5 text-xs font-medium text-red-800">

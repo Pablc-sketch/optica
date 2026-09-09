@@ -132,16 +132,17 @@ export default async function ReportesPage({
     .gte("fecha", desde)
     .lte("fecha", hasta);
 
-  // Sueldos: todos los operativos cuya fecha de inicio cae en el mes
-  // elegido. "fecha" es una columna `date` (sin hora), así que se compara
-  // directo contra el rango del mes sin desfase horario.
-  const operativosMesQuery = supabase
+  // Sueldos: la comisión de cada operativo se paga el día que se entregan
+  // los lentes (fecha_entrega_estimada), no el día del operativo — un
+  // operativo de fin de mes con entrega a la semana siguiente paga en el
+  // mes que viene, no en el que se hizo. Sin fecha de entrega (caso raro),
+  // se usa la fecha del operativo como respaldo. Se trae todo y se filtra
+  // en el servidor por esa fecha efectiva porque no es una sola columna.
+  const operativosTodosQuery = supabase
     .from("operativos")
     .select(
-      "id, nombre, fecha, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
+      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
     )
-    .gte("fecha", primerDiaDelMes(mes))
-    .lte("fecha", ultimoDiaDelMes(mes))
     .order("fecha", { ascending: true });
 
   // Gastos que no nacen de un operativo puntual (reponer stock, arriendos
@@ -165,7 +166,7 @@ export default async function ReportesPage({
     itemsRes,
     pagosRes,
     operativosRes,
-    operativosMesRes,
+    operativosTodosRes,
     gastosGlobalesRes,
     retirosRes,
     retirosPeriodoRes,
@@ -176,7 +177,7 @@ export default async function ReportesPage({
     itemsQuery,
     pagosQuery,
     supabase.from("operativos").select("id, nombre").order("fecha", { ascending: false }),
-    operativosMesQuery,
+    operativosTodosQuery,
     gastosGlobalesQuery,
     retirosQuery,
     retirosPeriodoQuery,
@@ -188,7 +189,16 @@ export default async function ReportesPage({
   const ventas = ventasRes.data ?? [];
   const items = (itemsRes.data ?? []) as unknown as ItemVenta[];
   const pagos = pagosRes.data ?? [];
-  const operativosDelMes = operativosMesRes.data ?? [];
+  // La comisión de cada operativo se paga el día que se entregan los
+  // lentes, no el día del operativo — así que el mes que corresponde es
+  // el de fecha_entrega_estimada, con la fecha del operativo como
+  // respaldo si por algo no está definida.
+  const fechaDePago = (o: { fecha: string; fecha_entrega_estimada: string | null }) =>
+    o.fecha_entrega_estimada ?? o.fecha;
+  const operativosDelMes = (operativosTodosRes.data ?? []).filter((o) => {
+    const f = fechaDePago(o);
+    return f >= primerDiaDelMes(mes) && f <= ultimoDiaDelMes(mes);
+  });
   const gastosGlobales = gastosGlobalesRes.data ?? [];
   const retiros = retirosRes.data ?? [];
   const comisionDebitoPct = Number(tenantRes.data?.comision_debito_pct ?? 0);
@@ -288,12 +298,24 @@ export default async function ReportesPage({
   // restar los retiros a mano cada vez para saber cuánto había en realidad.
   const retirosPeriodo = retirosPeriodoRes.data ?? [];
   const gastosGlobalesPeriodo = gastosGlobalesPeriodoRes.data ?? [];
+  // Los gastos propios de cada operativo (arriendo de equipos, transporte,
+  // viáticos, otros) también salen de la cuenta — nunca de efectivo — y se
+  // pagan al terminar el operativo (o el mismo día si dura uno solo). Sin
+  // esto "En cuenta" no bajaba con el arriendo de $108.000 de Pudahuel,
+  // aunque ese dinero ya había salido de la cuenta real.
+  const gastosOperativoPeriodo = (operativosTodosRes.data ?? [])
+    .filter((o) => {
+      const f = o.fecha_fin ?? o.fecha;
+      return f >= desde && f <= hasta;
+    })
+    .reduce((s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros, 0);
   const salidaEfectivo =
     retirosPeriodo.filter((r) => r.medio_pago === "efectivo").reduce((s, r) => s + r.monto, 0) +
     gastosGlobalesPeriodo.filter((g) => g.medio_pago === "efectivo").reduce((s, g) => s + g.monto, 0);
   const salidaCuenta =
     retirosPeriodo.filter((r) => r.medio_pago && r.medio_pago !== "efectivo").reduce((s, r) => s + r.monto, 0) +
-    gastosGlobalesPeriodo.filter((g) => g.medio_pago && g.medio_pago !== "efectivo").reduce((s, g) => s + g.monto, 0);
+    gastosGlobalesPeriodo.filter((g) => g.medio_pago && g.medio_pago !== "efectivo").reduce((s, g) => s + g.monto, 0) +
+    gastosOperativoPeriodo;
   // Lo que el procesador de tarjeta (Mercado Pago) se queda antes de
   // depositar: casi nunca es lo mismo por débito que por crédito (el
   // débito suele liquidarse sin comisión; la comisión real está en el
@@ -610,9 +632,9 @@ export default async function ReportesPage({
           </form>
         </div>
         <p className="mb-2 text-xs text-tinta-suave">
-          Se calcula mes a mes: cada operativo de {fechaLegible(primerDiaDelMes(mes))} suma su parte, y el
-          mes que viene se vuelve a partir de cero. Los porcentajes de cada operativo se editan en su
-          propio detalle.
+          Se calcula por el mes en que se PAGA cada operativo — el día que se entregan los lentes, no el
+          día del operativo — y el mes que viene se vuelve a partir de cero. Los porcentajes de cada
+          operativo se editan en su propio detalle.
         </p>
         {operativosDelMes.length === 0 ? (
           <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
@@ -661,7 +683,9 @@ export default async function ReportesPage({
                         <a href={`/operativos/${o.id}`} className="hover:underline">
                           {o.nombre}
                         </a>
-                        <span className="ml-1 text-xs text-tinta-suave">{fechaLegible(o.fecha)}</span>
+                        <span className="ml-1 text-xs text-tinta-suave">
+                          se paga {fechaLegible(fechaDePago(o))}
+                        </span>
                       </td>
                       <td className="py-1.5 pr-2 text-right">{clp(sueldo.ventaTotal)}</td>
                       <td className={`py-1.5 pr-2 text-right ${sueldo.utilidadNeta < 0 ? "text-red-700" : ""}`}>
