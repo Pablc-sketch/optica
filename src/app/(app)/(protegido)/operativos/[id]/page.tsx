@@ -116,6 +116,26 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const pacientesConVenta = new Set(ventas.map((v) => v.paciente_id).filter(Boolean));
 
   const totalVendido = ventas.reduce((s, v) => s + v.total, 0);
+  // Conversión: de la gente que se atendió, cuánta compró. Se cuenta por
+  // PERSONA y no por receta — alguien puede salir con dos recetas del mismo
+  // operativo y eso no lo convierte en dos pacientes, solo hundiría el
+  // porcentaje sin razón. Las cortesías se separan porque atendieron a esa
+  // persona pero no entró plata: cuentan como atención, no como venta.
+  const pacientesExaminados = new Set(recetas.map((r) => r.paciente_id).filter(Boolean));
+  const ventasPagadas = ventas.filter((v) => v.total > 0);
+  const pacientesQuePagaron = new Set(ventasPagadas.map((v) => v.paciente_id).filter(Boolean));
+  const totalExaminados = pacientesExaminados.size;
+  const cortesias = ventas.length - ventasPagadas.length;
+  const sinComprar = Math.max(0, totalExaminados - pacientesConVenta.size);
+  const conversion = totalExaminados > 0 ? Math.round((pacientesQuePagaron.size / totalExaminados) * 100) : 0;
+  // Ticket de los que SÍ pagaron — el promedio sobre todas las ventas
+  // (incluidas las cortesías en $0) subestima lo que deja alguien que
+  // compra, que es justo lo que se quiere proyectar acá.
+  const ticketPromedio = ventasPagadas.length > 0 ? Math.round(totalVendido / ventasPagadas.length) : 0;
+  // Lo que habría entrado si la mitad de los que se atendieron y no
+  // compraron hubieran comprado. La mitad y no todos: es una meta que se
+  // puede perseguir, no un número de fantasía.
+  const oportunidad = Math.round((sinComprar / 2) * ticketPromedio);
   // Lo que la gente ya ha pagado de verdad (abonos + pagos completos), para
   // saber cuánta plata hay en la mano en medio del operativo, sin tener que
   // sumar venta por venta cuánto abonó cada uno.
@@ -286,7 +306,66 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
           <p className="text-sm text-sky-800">Compraron</p>
           <p className="mt-1 text-2xl font-bold text-sky-900">{ventas.length}</p>
+          {cortesias > 0 && (
+            <p className="text-xs text-sky-700">
+              {ventasPagadas.length} pagando · {cortesias} de cortesía
+            </p>
+          )}
         </div>
+        {/* La conversión es la palanca más grande del operativo: se cuenta
+            por persona (no por receta) y solo cuentan las ventas pagadas —
+            una cortesía es atención, no venta. */}
+        <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden sm:col-span-2">
+          <summary className="cursor-pointer list-none">
+            <p className="text-sm text-sky-800">
+              📊 Conversión <span className="text-sky-400 group-open:hidden">▸</span>
+              <span className="hidden text-sky-400 group-open:inline">▾</span>
+            </p>
+            <p
+              className={`mt-1 text-2xl font-bold ${conversion >= 50 ? "text-green-700" : conversion >= 35 ? "text-sky-900" : "text-amber-700"}`}
+            >
+              {conversion}%
+            </p>
+            <p className="text-xs text-sky-700">
+              {pacientesQuePagaron.size} de {totalExaminados} personas atendidas compraron
+            </p>
+          </summary>
+          <div className="mt-3 flex flex-col gap-1.5 border-t border-sky-100 pt-3 text-sm text-sky-800">
+            <div className="flex items-center justify-between">
+              <span>Personas atendidas</span>
+              <span className="font-medium">{totalExaminados}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Compraron pagando</span>
+              <span className="font-medium">{pacientesQuePagaron.size}</span>
+            </div>
+            {cortesias > 0 && (
+              <div className="flex items-center justify-between">
+                <span>Se llevaron cortesía</span>
+                <span className="font-medium">{cortesias}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span>Se atendieron y no compraron</span>
+              <span className="font-medium text-amber-800">{sinComprar}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-sky-100 pt-1.5">
+              <span>Ticket promedio (de los que pagaron)</span>
+              <span className="font-medium">{clp(ticketPromedio)}</span>
+            </div>
+            {oportunidad > 0 && (
+              <div className="mt-1 rounded-lg bg-white px-2 py-1.5">
+                <p className="font-bold text-sky-900">
+                  Si la mitad de esas {sinComprar} personas hubiera comprado: +{clp(oportunidad)}
+                </p>
+                <p className="mt-0.5 text-xs text-sky-700">
+                  Subir la conversión rinde más que subir los precios: esa gente ya se atendió, ya está
+                  el arriendo pagado y ya sabes qué lente necesita.
+                </p>
+              </div>
+            )}
+          </div>
+        </details>
         <div className="rounded-2xl bg-sky-50 p-4 shadow-sm">
           <p className="text-sm text-sky-800">Lentes vendidos</p>
           <p className="mt-1 text-2xl font-bold text-sky-900">{totalCristalesVendidos}</p>

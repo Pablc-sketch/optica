@@ -44,40 +44,55 @@ export default async function CompararOperativos() {
       )
       .neq("estado", "cancelado")
       .order("fecha", { ascending: false }),
-    supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
+    supabase.from("recetas").select("operativo_id, paciente_id").not("operativo_id", "is", null),
     supabase
       .from("ventas")
       .select(
-        `operativo_id, total,
+        `operativo_id, total, paciente_id,
          venta_items (cantidad, cristal_slot, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2), productos:producto_id (costo, categoria))`
       )
       .eq("anulada", false)
       .not("operativo_id", "is", null),
   ]);
 
-  const examenesPorOperativo = new Map<string, number>();
+  // Conversión contada por PERSONA, no por receta: alguien puede salir con
+  // dos recetas del mismo operativo (lejos y cerca por separado) y eso no
+  // lo convierte en dos pacientes — contarlo así hundía el porcentaje sin
+  // razón.
+  const examinadosPorOperativo = new Map<string, Set<string>>();
   for (const r of recetas ?? []) {
-    if (!r.operativo_id) continue;
-    examenesPorOperativo.set(r.operativo_id, (examenesPorOperativo.get(r.operativo_id) ?? 0) + 1);
+    if (!r.operativo_id || !r.paciente_id) continue;
+    if (!examinadosPorOperativo.has(r.operativo_id)) examinadosPorOperativo.set(r.operativo_id, new Set());
+    examinadosPorOperativo.get(r.operativo_id)!.add(r.paciente_id);
   }
-  const ventasPorOperativo = new Map<string, { cantidad: number; total: number; costoProductos: number }>();
+  const ventasPorOperativo = new Map<
+    string,
+    { cantidad: number; total: number; costoProductos: number; pagaron: Set<string> }
+  >();
   for (const v of ventas ?? []) {
     if (!v.operativo_id) continue;
-    const actual = ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0, costoProductos: 0 };
-    actual.cantidad += 1;
+    const actual =
+      ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0, costoProductos: 0, pagaron: new Set<string>() };
     actual.total += v.total;
     actual.costoProductos += costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[]);
+    // Una cortesía ($0) es atención, no venta: si cuenta como conversión,
+    // el número dice que se vendió más de lo que de verdad entró en plata.
+    if (v.total > 0) {
+      actual.cantidad += 1;
+      if (v.paciente_id) actual.pagaron.add(v.paciente_id);
+    }
     ventasPorOperativo.set(v.operativo_id, actual);
   }
 
   const filas = (operativos ?? []).map((o) => {
-    const examenes = examenesPorOperativo.get(o.id) ?? 0;
-    const venta = ventasPorOperativo.get(o.id) ?? { cantidad: 0, total: 0, costoProductos: 0 };
+    const examenes = examinadosPorOperativo.get(o.id)?.size ?? 0;
+    const venta =
+      ventasPorOperativo.get(o.id) ?? { cantidad: 0, total: 0, costoProductos: 0, pagaron: new Set<string>() };
     // Costo real de lo vendido en este operativo, no solo sus propios
     // gastos (transporte, arriendo, etc) — si no, "utilidad" quedaba igual
     // a "vendido".
     const costos = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + venta.costoProductos;
-    const conversion = examenes > 0 ? (venta.cantidad / examenes) * 100 : 0;
+    const conversion = examenes > 0 ? (venta.pagaron.size / examenes) * 100 : 0;
     return {
       ...o,
       examenes,
