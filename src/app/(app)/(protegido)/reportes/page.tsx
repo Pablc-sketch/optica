@@ -13,7 +13,16 @@ import {
 } from "@/lib/fechas";
 import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
+import { crearGastoGlobal, crearRetiro, eliminarGastoGlobal, eliminarRetiro } from "@/lib/actions/gastos";
 import FiltroPagos from "./filtro-pagos";
+
+const PERSONAS: Record<string, string> = { isadora: "Isadora", madre: "Mamá", pablo: "Pablo" };
+const MEDIOS_PAGO_LABEL: Record<string, string> = {
+  efectivo: "Efectivo",
+  debito: "Débito",
+  credito: "Crédito",
+  transferencia: "Transferencia",
+};
 
 // Reportes (spec pantalla 10). Acá recién sirven los costos que quedaron
 // guardados sin mostrarse en la interfaz: el costo del armazón y el costo
@@ -115,19 +124,45 @@ export default async function ReportesPage({
     .lte("fecha", ultimoDiaDelMes(mes))
     .order("fecha", { ascending: true });
 
-  const [ventasRes, itemsRes, pagosRes, operativosRes, operativosMesRes] = await Promise.all([
-    ventasQuery,
-    itemsQuery,
-    pagosQuery,
-    supabase.from("operativos").select("id, nombre").order("fecha", { ascending: false }),
-    operativosMesQuery,
-  ]);
+  // Gastos que no nacen de un operativo puntual (reponer stock, arriendos
+  // fijos, etc.) y retiros de sueldo por adelantado — los dos por mes
+  // calendario, igual que los sueldos.
+  const gastosGlobalesQuery = supabase
+    .from("gastos_globales")
+    .select("id, fecha, categoria, descripcion, monto, medio_pago")
+    .gte("fecha", primerDiaDelMes(mes))
+    .lte("fecha", ultimoDiaDelMes(mes))
+    .order("fecha", { ascending: false });
+  const retirosQuery = supabase
+    .from("retiros_sueldo")
+    .select("id, persona, fecha, monto, medio_pago, motivo, operativo_id, operativos:operativo_id (nombre)")
+    .gte("fecha", primerDiaDelMes(mes))
+    .lte("fecha", ultimoDiaDelMes(mes))
+    .order("fecha", { ascending: false });
+
+  const [ventasRes, itemsRes, pagosRes, operativosRes, operativosMesRes, gastosGlobalesRes, retirosRes] =
+    await Promise.all([
+      ventasQuery,
+      itemsQuery,
+      pagosQuery,
+      supabase.from("operativos").select("id, nombre").order("fecha", { ascending: false }),
+      operativosMesQuery,
+      gastosGlobalesQuery,
+      retirosQuery,
+    ]);
   const operativos = operativosRes.data ?? [];
 
   const ventas = ventasRes.data ?? [];
   const items = (itemsRes.data ?? []) as unknown as ItemVenta[];
   const pagos = pagosRes.data ?? [];
   const operativosDelMes = operativosMesRes.data ?? [];
+  const gastosGlobales = gastosGlobalesRes.data ?? [];
+  const retiros = retirosRes.data ?? [];
+  const totalGastosGlobales = gastosGlobales.reduce((s, g) => s + g.monto, 0);
+  const retirosPorPersona = new Map<string, number>();
+  for (const r of retiros) {
+    retirosPorPersona.set(r.persona, (retirosPorPersona.get(r.persona) ?? 0) + r.monto);
+  }
 
   // Venta total y costo real de CADA operativo del mes, para poder
   // calcularle el sueldo a cada uno con sus propios porcentajes (pueden
@@ -182,6 +217,18 @@ export default async function ReportesPage({
     return { operativo: o, sueldo };
   });
   const sueldoMesTotal = sumarDesgloses(sueldosPorOperativo.map((s) => s.sueldo));
+
+  // Lo que cada persona ya sacó por adelantado (retiros_sueldo) se resta de
+  // lo que le corresponde este mes — un retiro no es un gasto del negocio,
+  // es plata que ya era suya y se la llevó antes de que se calculara el
+  // reparto. Nunca queda negativo: si sacó más de lo que le tocaba, ese
+  // exceso no se le "cobra" acá (es una conversación aparte con esa
+  // persona, no algo que el reporte deba mostrar en rojo).
+  const pendientePorPersona = {
+    isadora: Math.max(0, sueldoMesTotal.comisionIsadora - (retirosPorPersona.get("isadora") ?? 0)),
+    madre: Math.max(0, sueldoMesTotal.parteMadre - (retirosPorPersona.get("madre") ?? 0)),
+    pablo: Math.max(0, sueldoMesTotal.partePablo - (retirosPorPersona.get("pablo") ?? 0)),
+  };
 
   const totalVendido = ventas.reduce((s, v) => s + v.total, 0);
   const numVentas = ventas.length;
@@ -457,9 +504,24 @@ export default async function ReportesPage({
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Tarjeta icono="🧑‍💼" titulo="Isadora" valor={clp(sueldoMesTotal.comisionIsadora)} detalle="comisión del mes" />
-              <Tarjeta icono="👩" titulo="Mamá" valor={clp(sueldoMesTotal.parteMadre)} detalle="50% del resto" />
-              <Tarjeta icono="🧑" titulo="Pablo" valor={clp(sueldoMesTotal.partePablo)} detalle="50% del resto" />
+              <Tarjeta
+                icono="🧑‍💼"
+                titulo="Isadora · por entregar"
+                valor={clp(pendientePorPersona.isadora)}
+                detalle={`de ${clp(sueldoMesTotal.comisionIsadora)}${(retirosPorPersona.get("isadora") ?? 0) > 0 ? ` · ya retiró ${clp(retirosPorPersona.get("isadora") ?? 0)}` : ""}`}
+              />
+              <Tarjeta
+                icono="👩"
+                titulo="Mamá · por entregar"
+                valor={clp(pendientePorPersona.madre)}
+                detalle={`de ${clp(sueldoMesTotal.parteMadre)}${(retirosPorPersona.get("madre") ?? 0) > 0 ? ` · ya retiró ${clp(retirosPorPersona.get("madre") ?? 0)}` : ""}`}
+              />
+              <Tarjeta
+                icono="🧑"
+                titulo="Pablo · por entregar"
+                valor={clp(pendientePorPersona.pablo)}
+                detalle={`de ${clp(sueldoMesTotal.partePablo)}${(retirosPorPersona.get("pablo") ?? 0) > 0 ? ` · ya retiró ${clp(retirosPorPersona.get("pablo") ?? 0)}` : ""}`}
+              />
               <Tarjeta icono="🏦" titulo="Ahorro del negocio" valor={clp(sueldoMesTotal.ahorro)} acento />
             </div>
             <div className="mt-3 overflow-x-auto rounded-2xl bg-crema-claro p-3 shadow-sm">
@@ -509,6 +571,167 @@ export default async function ReportesPage({
               </table>
             </div>
           </>
+        )}
+      </section>
+
+      <section className="print:hidden">
+        <h2 className="mb-1 font-semibold">Gastos globales del mes</h2>
+        <p className="mb-2 text-xs text-tinta-suave">
+          Costos que no nacen de un operativo puntual — reponer marcos/bandejas, arriendos fijos, etc.
+          Se restan de la plata del negocio, pero no de la utilidad de ningún operativo en particular
+          (usa el mismo mes de arriba).
+        </p>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <Tarjeta icono="📦" titulo="Total del mes" valor={clp(totalGastosGlobales)} acento />
+          <div className="rounded-2xl bg-crema-claro p-3 shadow-sm lg:col-span-2">
+            <form action={crearGastoGlobal} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <input
+                type="date"
+                name="fecha"
+                required
+                defaultValue={hoyEnChile()}
+                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+              />
+              <select
+                name="categoria"
+                defaultValue="compra_inventario"
+                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+              >
+                <option value="compra_inventario">Compra de inventario</option>
+                <option value="arriendo">Arriendo</option>
+                <option value="otro">Otro</option>
+              </select>
+              <input
+                name="descripcion"
+                placeholder="Ej. 24 marcos nuevos"
+                required
+                className="col-span-2 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand sm:col-span-2"
+              />
+              <input
+                name="monto"
+                inputMode="numeric"
+                placeholder="78.000"
+                required
+                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+              />
+              <select
+                name="medio_pago"
+                defaultValue=""
+                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+              >
+                <option value="">Medio de pago…</option>
+                {Object.entries(MEDIOS_PAGO_LABEL).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <button className="col-span-2 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark sm:col-span-1">
+                Agregar
+              </button>
+            </form>
+          </div>
+        </div>
+        {gastosGlobales.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-1.5 rounded-2xl bg-crema-claro p-3 shadow-sm">
+            {gastosGlobales.map((g) => (
+              <li key={g.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
+                <span className="text-xs text-tinta-suave">{fechaLegible(g.fecha)}</span>
+                <span className="flex-1">{g.descripcion}</span>
+                {g.medio_pago && (
+                  <span className="text-xs text-tinta-suave">{MEDIOS_PAGO_LABEL[g.medio_pago]}</span>
+                )}
+                <span className="font-semibold">{clp(g.monto)}</span>
+                <form action={eliminarGastoGlobal}>
+                  <input type="hidden" name="id" value={g.id} />
+                  <button className="text-xs font-medium text-red-700 hover:underline">Quitar</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="print:hidden">
+        <h2 className="mb-1 font-semibold">Retiros del mes</h2>
+        <p className="mb-2 text-xs text-tinta-suave">
+          Plata que Isadora, la mamá o Pablo sacaron por adelantado (efectivo o cuenta), contra lo que
+          les corresponde de sueldo — se descuenta de &quot;Sueldos del mes&quot; de arriba, no es un
+          gasto del negocio.
+        </p>
+        <div className="rounded-2xl bg-crema-claro p-3 shadow-sm">
+          <form action={crearRetiro} className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+            <select
+              name="persona"
+              defaultValue="isadora"
+              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+            >
+              {Object.entries(PERSONAS).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              name="fecha"
+              required
+              defaultValue={hoyEnChile()}
+              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+            />
+            <input
+              name="monto"
+              inputMode="numeric"
+              placeholder="20.000"
+              required
+              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+            />
+            <select
+              name="medio_pago"
+              defaultValue=""
+              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+            >
+              <option value="">Medio…</option>
+              {Object.entries(MEDIOS_PAGO_LABEL).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <input
+              name="motivo"
+              placeholder="Motivo (opcional)"
+              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+            />
+            <button className="rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark">
+              Agregar
+            </button>
+          </form>
+        </div>
+        {retiros.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-1.5 rounded-2xl bg-crema-claro p-3 shadow-sm">
+            {retiros.map((r) => {
+              const operativoNombre = uno(
+                r.operativos as unknown as { nombre: string } | { nombre: string }[] | null
+              )?.nombre;
+              return (
+                <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
+                  <span className="text-xs text-tinta-suave">{fechaLegible(r.fecha)}</span>
+                  <span className="font-medium">{PERSONAS[r.persona] ?? r.persona}</span>
+                  <span className="flex-1 text-xs text-tinta-suave">
+                    {[r.motivo, operativoNombre ? `contra ${operativoNombre}` : null, r.medio_pago ? MEDIOS_PAGO_LABEL[r.medio_pago] : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                  <span className="font-semibold">{clp(r.monto)}</span>
+                  <form action={eliminarRetiro}>
+                    <input type="hidden" name="id" value={r.id} />
+                    <button className="text-xs font-medium text-red-700 hover:underline">Quitar</button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
     </div>
