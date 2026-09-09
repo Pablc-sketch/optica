@@ -2,8 +2,17 @@ import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import BotonImprimir from "@/components/boton-imprimir";
 import Tarjeta from "@/components/tarjeta";
-import { fechaLegible, finDelDia, hoyEnChile, inicioDelDia } from "@/lib/fechas";
-import { desglosarCostos } from "@/lib/costo-venta";
+import {
+  fechaLegible,
+  finDelDia,
+  hoyEnChile,
+  inicioDelDia,
+  mesEnChile,
+  primerDiaDelMes,
+  ultimoDiaDelMes,
+} from "@/lib/fechas";
+import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
 import FiltroPagos from "./filtro-pagos";
 
 // Reportes (spec pantalla 10). Acá recién sirven los costos que quedaron
@@ -44,12 +53,17 @@ function uno<T>(rel: T | T[] | null): T | null {
 export default async function ReportesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ desde?: string; hasta?: string; operativo_id?: string }>;
+  searchParams: Promise<{ desde?: string; hasta?: string; operativo_id?: string; mes?: string }>;
 }) {
   const params = await searchParams;
   const desde = params.desde || inicioDeMes();
   const hasta = params.hasta || hoyEnChile();
   const operativoId = params.operativo_id || "";
+  // Los sueldos se calculan por mes calendario, no por el rango desde/hasta
+  // de arriba (que es libre): un mes con más operativos deja más plata, y
+  // el mes siguiente vuelve a partir de cero, así que necesita su propio
+  // selector.
+  const mes = params.mes || mesEnChile();
 
   const supabase = await createClient();
 
@@ -89,17 +103,85 @@ export default async function ReportesPage({
     itemsQuery = itemsQuery.eq("ventas.operativo_id", operativoId);
   }
 
-  const [ventasRes, itemsRes, pagosRes, operativosRes] = await Promise.all([
+  // Sueldos: todos los operativos cuya fecha de inicio cae en el mes
+  // elegido. "fecha" es una columna `date` (sin hora), así que se compara
+  // directo contra el rango del mes sin desfase horario.
+  const operativosMesQuery = supabase
+    .from("operativos")
+    .select(
+      "id, nombre, fecha, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
+    )
+    .gte("fecha", primerDiaDelMes(mes))
+    .lte("fecha", ultimoDiaDelMes(mes))
+    .order("fecha", { ascending: true });
+
+  const [ventasRes, itemsRes, pagosRes, operativosRes, operativosMesRes] = await Promise.all([
     ventasQuery,
     itemsQuery,
     pagosQuery,
     supabase.from("operativos").select("id, nombre").order("fecha", { ascending: false }),
+    operativosMesQuery,
   ]);
   const operativos = operativosRes.data ?? [];
 
   const ventas = ventasRes.data ?? [];
   const items = (itemsRes.data ?? []) as unknown as ItemVenta[];
   const pagos = pagosRes.data ?? [];
+  const operativosDelMes = operativosMesRes.data ?? [];
+
+  // Venta total y costo real de CADA operativo del mes, para poder
+  // calcularle el sueldo a cada uno con sus propios porcentajes (pueden
+  // cambiar de un operativo a otro) y después sumar el total del mes por
+  // persona. Una sola consulta para todos, agrupada en el cliente, en vez
+  // de una consulta por operativo.
+  const idsOperativosMes = operativosDelMes.map((o) => o.id);
+  const [ventasMesRes, itemsMesRes] = idsOperativosMes.length
+    ? await Promise.all([
+        supabase.from("ventas").select("total, operativo_id").eq("anulada", false).in("operativo_id", idsOperativosMes),
+        supabase
+          .from("venta_items")
+          .select(
+            `cantidad, precio_unitario, descuento, cristal_slot,
+             productos:producto_id (costo, categoria),
+             ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
+             ventas!inner (operativo_id, anulada)`
+          )
+          .eq("ventas.anulada", false)
+          .in("ventas.operativo_id", idsOperativosMes),
+      ])
+    : [{ data: [] as { total: number; operativo_id: string | null }[] }, { data: [] as unknown[] }];
+  const ventasMes = ventasMesRes.data ?? [];
+  const itemsMes = (itemsMesRes.data ?? []) as unknown as (ItemConCosto & {
+    ventas: { operativo_id: string | null } | { operativo_id: string | null }[] | null;
+  })[];
+
+  const itemsPorOperativo = new Map<string, ItemConCosto[]>();
+  for (const item of itemsMes) {
+    const rel = Array.isArray(item.ventas) ? item.ventas[0] : item.ventas;
+    const opId = rel?.operativo_id;
+    if (!opId) continue;
+    if (!itemsPorOperativo.has(opId)) itemsPorOperativo.set(opId, []);
+    itemsPorOperativo.get(opId)!.push(item);
+  }
+  const ventaPorOperativo = new Map<string, number>();
+  for (const v of ventasMes) {
+    if (!v.operativo_id) continue;
+    ventaPorOperativo.set(v.operativo_id, (ventaPorOperativo.get(v.operativo_id) ?? 0) + v.total);
+  }
+
+  const sueldosPorOperativo = operativosDelMes.map((o) => {
+    const ventaTotal = ventaPorOperativo.get(o.id) ?? 0;
+    const costoProductos = desglosarCostos(itemsPorOperativo.get(o.id) ?? []).total;
+    const costoOperativo = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros;
+    const utilidadNeta = ventaTotal - costoProductos - costoOperativo;
+    const sueldo = calcularSueldos(ventaTotal, utilidadNeta, {
+      comisionVendedoraPct: Number(o.comision_vendedora_pct),
+      comisionVendedoraBase: o.comision_vendedora_base as BaseComision,
+      ahorroPct: Number(o.ahorro_pct),
+    });
+    return { operativo: o, sueldo };
+  });
+  const sueldoMesTotal = sumarDesgloses(sueldosPorOperativo.map((s) => s.sueldo));
 
   const totalVendido = ventas.reduce((s, v) => s + v.total, 0);
   const numVentas = ventas.length;
@@ -337,6 +419,96 @@ export default async function ReportesPage({
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      <section className="print:hidden">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">Sueldos del mes</h2>
+          <form className="flex items-center gap-2" action="/reportes">
+            {/* El resto de filtros de la página (desde/hasta/operativo) no
+                deben perderse al cambiar solo el mes de sueldos. */}
+            <input type="hidden" name="desde" value={desde} />
+            <input type="hidden" name="hasta" value={hasta} />
+            {operativoId && <input type="hidden" name="operativo_id" value={operativoId} />}
+            <label className="flex items-center gap-1 text-sm">
+              Mes
+              <input
+                type="month"
+                name="mes"
+                defaultValue={mes}
+                className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+              />
+            </label>
+            <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
+              Ver
+            </button>
+          </form>
+        </div>
+        <p className="mb-2 text-xs text-tinta-suave">
+          Se calcula mes a mes: cada operativo de {fechaLegible(primerDiaDelMes(mes))} suma su parte, y el
+          mes que viene se vuelve a partir de cero. Los porcentajes de cada operativo se editan en su
+          propio detalle.
+        </p>
+        {operativosDelMes.length === 0 ? (
+          <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
+            Sin operativos en este mes.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Tarjeta icono="🧑‍💼" titulo="Isadora" valor={clp(sueldoMesTotal.comisionIsadora)} detalle="comisión del mes" />
+              <Tarjeta icono="👩" titulo="Mamá" valor={clp(sueldoMesTotal.parteMadre)} detalle="50% del resto" />
+              <Tarjeta icono="🧑" titulo="Pablo" valor={clp(sueldoMesTotal.partePablo)} detalle="50% del resto" />
+              <Tarjeta icono="🏦" titulo="Ahorro del negocio" valor={clp(sueldoMesTotal.ahorro)} acento />
+            </div>
+            <div className="mt-3 overflow-x-auto rounded-2xl bg-crema-claro p-3 shadow-sm">
+              <table className="w-full min-w-150 text-sm">
+                <thead>
+                  <tr className="text-left text-tinta-suave">
+                    <th className="py-1.5 pr-2">Operativo</th>
+                    <th className="py-1.5 pr-2 text-right">Vendido</th>
+                    <th className="py-1.5 pr-2 text-right">Utilidad neta</th>
+                    <th className="py-1.5 pr-2 text-right">Isadora</th>
+                    <th className="py-1.5 pr-2 text-right">Ahorro</th>
+                    <th className="py-1.5 pr-2 text-right">Mamá</th>
+                    <th className="py-1.5 text-right">Pablo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sueldosPorOperativo.map(({ operativo: o, sueldo }) => (
+                    <tr key={o.id} className="border-t border-tinta-suave/10">
+                      <td className="py-1.5 pr-2">
+                        <a href={`/operativos/${o.id}`} className="hover:underline">
+                          {o.nombre}
+                        </a>
+                        <span className="ml-1 text-xs text-tinta-suave">{fechaLegible(o.fecha)}</span>
+                      </td>
+                      <td className="py-1.5 pr-2 text-right">{clp(sueldo.ventaTotal)}</td>
+                      <td className={`py-1.5 pr-2 text-right ${sueldo.utilidadNeta < 0 ? "text-red-700" : ""}`}>
+                        {clp(sueldo.utilidadNeta)}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right">{clp(sueldo.comisionIsadora)}</td>
+                      <td className="py-1.5 pr-2 text-right">{clp(sueldo.ahorro)}</td>
+                      <td className="py-1.5 pr-2 text-right">{clp(sueldo.parteMadre)}</td>
+                      <td className="py-1.5 text-right">{clp(sueldo.partePablo)}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-tinta-suave/20 font-bold">
+                    <td className="py-1.5 pr-2">Total del mes</td>
+                    <td className="py-1.5 pr-2 text-right">{clp(sueldoMesTotal.ventaTotal)}</td>
+                    <td className={`py-1.5 pr-2 text-right ${sueldoMesTotal.utilidadNeta < 0 ? "text-red-700" : ""}`}>
+                      {clp(sueldoMesTotal.utilidadNeta)}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right">{clp(sueldoMesTotal.comisionIsadora)}</td>
+                    <td className="py-1.5 pr-2 text-right">{clp(sueldoMesTotal.ahorro)}</td>
+                    <td className="py-1.5 pr-2 text-right">{clp(sueldoMesTotal.parteMadre)}</td>
+                    <td className="py-1.5 text-right">{clp(sueldoMesTotal.partePablo)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
     </div>

@@ -151,3 +151,36 @@ export async function actualizarDetallesOperativo(formData: FormData) {
   revalidatePath("/operativos");
   revalidatePath("/operativos/comparar");
 }
+
+const BASES_COMISION = ["venta_total", "utilidad_neta"] as const;
+
+function parsearPorcentaje(valor: FormDataEntryValue | null, porDefecto: number): number {
+  const n = Number(String(valor ?? "").replace(",", "."));
+  if (!Number.isFinite(n) || n < 0 || n > 100) return porDefecto;
+  return n;
+}
+
+// Cómo se reparte la plata de este operativo entre Isadora (comisión),
+// ahorro del negocio y el resto dividido entre la mamá y Pablo. Vive en
+// el operativo (no en un ajuste global) para que cambiar el criterio hacia
+// adelante no le mueva el piso a lo ya repartido en operativos pasados.
+export async function actualizarSueldosOperativo(formData: FormData) {
+  const { supabase } = await requerirAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const base = String(formData.get("comision_vendedora_base") ?? "");
+
+  const { error } = await supabase
+    .from("operativos")
+    .update({
+      comision_vendedora_pct: parsearPorcentaje(formData.get("comision_vendedora_pct"), 10),
+      comision_vendedora_base: (BASES_COMISION as readonly string[]).includes(base) ? base : "venta_total",
+      ahorro_pct: parsearPorcentaje(formData.get("ahorro_pct"), 20),
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  revalidatePath(`/operativos/${id}`);
+  revalidatePath("/reportes");
+}

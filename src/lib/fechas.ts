@@ -62,3 +62,24 @@ export function sumarDias(fechaISO: string, dias: number): string {
 export function fechaLegible(fechaISO: string): string {
   return new Date(`${fechaISO}T12:00:00Z`).toLocaleDateString("es-CL", { timeZone: ZONA_CHILE });
 }
+
+// "2026-09" según el reloj chileno — para reportes que se calculan mes a
+// mes (ej. sueldos: se van sumando los operativos del mes y se reinician
+// en el mes siguiente).
+export function mesEnChile(): string {
+  return hoyEnChile().slice(0, 7);
+}
+
+// Primer y último día de un mes "YYYY-MM", en formato de fecha simple
+// (para comparar contra columnas `date`, no `timestamptz` — esas no
+// llevan desfase horario).
+export function primerDiaDelMes(mes: string): string {
+  return `${mes}-01`;
+}
+
+export function ultimoDiaDelMes(mes: string): string {
+  const [anio, m] = mes.split("-").map(Number);
+  // El día 0 del mes siguiente es el último día de este mes.
+  const ultimo = new Date(Date.UTC(anio, m, 0)).getUTCDate();
+  return `${mes}-${String(ultimo).padStart(2, "0")}`;
+}

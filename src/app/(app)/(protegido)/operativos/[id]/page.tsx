@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { actualizarDetallesOperativo, actualizarOperativo } from "@/lib/actions/operativos";
+import { actualizarDetallesOperativo, actualizarOperativo, actualizarSueldosOperativo } from "@/lib/actions/operativos";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto, CampoTelefono } from "@/components/campos";
 import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
 // vendió y cuándo se le entrega — para que al ofrecer el próximo operativo
@@ -153,6 +154,16 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // (cristales al laboratorio, marcos, gastos del operativo) — si da
   // negativo, significa que ya se debe más de lo que se ha cobrado.
   const utilidadActual = totalAbonado - totalCostos;
+
+  // Cómo se reparte este operativo entre Isadora (comisión), ahorro del
+  // negocio y el resto dividido entre la mamá y Pablo. Usa "utilidadNeta"
+  // (lo vendido, no solo lo cobrado) porque es la misma base que la meta
+  // de utilidad y la que va a reportes — no la caja del momento.
+  const sueldos = calcularSueldos(totalVendido, utilidadNeta, {
+    comisionVendedoraPct: Number(operativo.comision_vendedora_pct),
+    comisionVendedoraBase: operativo.comision_vendedora_base as BaseComision,
+    ahorroPct: Number(operativo.ahorro_pct),
+  });
 
   // Próximas entregas: de las ventas de este operativo, las que tienen una
   // OT con fecha estimada, para que el resumen de cierre avise qué falta
@@ -403,6 +414,103 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               A diferencia de &quot;Utilidad neta&quot;, esta cuenta solo la plata que ya está en la mano
               (no lo vendido a crédito/abono todavía pendiente) — es la que de verdad se puede gastar hoy
               en cristales, marcos y gastos del operativo sin quedar en rojo.
+            </p>
+          </div>
+        </details>
+        <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden sm:col-span-2">
+          <summary className="cursor-pointer list-none">
+            <p className="text-sm text-sky-800">
+              💵 Sueldos de este operativo <span className="text-sky-400 group-open:hidden">▸</span>
+              <span className="hidden text-sky-400 group-open:inline">▾</span>
+            </p>
+            <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <span>
+                Isadora: <span className="font-bold text-sky-900">{clp(sueldos.comisionIsadora)}</span>
+              </span>
+              <span>
+                Mamá: <span className="font-bold text-sky-900">{clp(sueldos.parteMadre)}</span>
+              </span>
+              <span>
+                Pablo: <span className="font-bold text-sky-900">{clp(sueldos.partePablo)}</span>
+              </span>
+            </p>
+          </summary>
+          <div className="mt-3 flex flex-col gap-1.5 border-t border-sky-100 pt-3 text-sm text-sky-800">
+            <div className="flex items-center justify-between">
+              <span>
+                Comisión Isadora ({Number(operativo.comision_vendedora_pct)}% de{" "}
+                {operativo.comision_vendedora_base === "utilidad_neta" ? "la utilidad neta" : "lo vendido"})
+              </span>
+              <span className="font-medium">{clp(sueldos.comisionIsadora)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>= Utilidad disponible</span>
+              <span className={`font-medium ${sueldos.utilidadDisponible < 0 ? "text-red-700" : ""}`}>
+                {clp(sueldos.utilidadDisponible)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>− Ahorro ({Number(operativo.ahorro_pct)}%)</span>
+              <span className="font-medium">{clp(sueldos.ahorro)}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-white px-2 py-1.5 font-semibold">
+              <span>= Para dividir entre la mamá y Pablo</span>
+              <span>{clp(sueldos.restoParaDividir)}</span>
+            </div>
+            <div className="flex items-center justify-between pl-2">
+              <span>Mamá (50%)</span>
+              <span className="font-medium">{clp(sueldos.parteMadre)}</span>
+            </div>
+            <div className="flex items-center justify-between pl-2">
+              <span>Pablo (50%)</span>
+              <span className="font-medium">{clp(sueldos.partePablo)}</span>
+            </div>
+            {sueldos.utilidadDisponible < 0 && (
+              <p className="mt-1 rounded-lg bg-red-50 px-2 py-1.5 text-xs font-medium text-red-800">
+                Este operativo no alcanza a cubrir la comisión de Isadora con lo que dejó de utilidad — no
+                hay ahorro ni reparto para la mamá o Pablo en este operativo.
+              </p>
+            )}
+            <form action={actualizarSueldosOperativo} className="mt-2 grid grid-cols-1 gap-3 border-t border-sky-100 pt-3 sm:grid-cols-3">
+              <input type="hidden" name="id" value={operativo.id} />
+              <label className="flex flex-col gap-1 text-xs font-medium text-sky-900">
+                % comisión Isadora
+                <input
+                  name="comision_vendedora_pct"
+                  inputMode="decimal"
+                  defaultValue={Number(operativo.comision_vendedora_pct)}
+                  className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-sky-900">
+                Comisión sobre
+                <select
+                  name="comision_vendedora_base"
+                  defaultValue={operativo.comision_vendedora_base}
+                  className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600"
+                >
+                  <option value="venta_total">Lo vendido</option>
+                  <option value="utilidad_neta">La utilidad neta</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-sky-900">
+                % ahorro
+                <input
+                  name="ahorro_pct"
+                  inputMode="decimal"
+                  defaultValue={Number(operativo.ahorro_pct)}
+                  className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600"
+                />
+              </label>
+              <div className="sm:col-span-3">
+                <button className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-800">
+                  Guardar
+                </button>
+              </div>
+            </form>
+            <p className="mt-1 text-xs text-sky-700">
+              Este cálculo es solo de este operativo. El total mensual de cada quién (que va sumando con
+              cada operativo y se reinicia el mes siguiente) está en Reportes → Sueldos del mes.
             </p>
           </div>
         </details>
