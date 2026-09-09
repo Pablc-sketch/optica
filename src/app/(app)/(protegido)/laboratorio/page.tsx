@@ -62,7 +62,7 @@ export default async function LaboratorioPage({
     .from("ordenes_trabajo")
     .select(
       `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2,
-       diseno_laboratorio, diseno_laboratorio_2,
+       diseno_laboratorio, diseno_laboratorio_2, marco_propio, marco_propio_2,
        pacientes:paciente_id (nombre),
        recetas:receta_id (od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, dp, altura),
        productos:armazon_producto_id (sku, nombre, marca, color),
@@ -297,14 +297,17 @@ export default async function LaboratorioPage({
                     return <td className="py-1.5 pr-2 font-bold uppercase">{distancia}</td>;
                   };
                   const nombrePaciente = (ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—";
-                  const fmtMarco = (m: typeof marco) => (m ? `${m.sku ?? ""} ${m.color ?? ""}`.trim() || m.nombre : "—");
+                  const fmtMarco = (m: typeof marco, propio: boolean) => {
+                    if (propio) return "Marco propio del paciente";
+                    return m ? `${m.sku ?? ""} ${m.color ?? ""}`.trim() || m.nombre : "—";
+                  };
                   const tieneSegundo = Boolean(ot.tipo_lente_2 || ot.tratamiento_2);
                   const filas = [
                     <tr key={`${ot.folio}-1`} className="border-b border-neutral-200 align-top">
                       <td className="py-1.5 pr-2 font-bold">#{ot.folio}</td>
                       <td className="py-1.5 pr-2">{nombrePaciente}</td>
                       {celdasOjos(ot.posicion)}
-                      <td className="py-1.5 pr-2">{fmtMarco(marco)}</td>
+                      <td className="py-1.5 pr-2">{fmtMarco(marco, ot.marco_propio)}</td>
                       {celdaPara(ot.tipo_lente, ot.posicion)}
                       {/* Solo el tipo de lente: el rango de receta es una
                           clasificación interna de costo, el laboratorio no
@@ -319,7 +322,7 @@ export default async function LaboratorioPage({
                         <td className="py-1.5 pr-2 font-bold text-neutral-400">↳ #{ot.folio}</td>
                         <td className="py-1.5 pr-2 text-neutral-500">{nombrePaciente} (2° par, mismo pedido)</td>
                         {celdasOjos(ot.posicion_2)}
-                        <td className="py-1.5 pr-2">{fmtMarco(marco2)}</td>
+                        <td className="py-1.5 pr-2">{fmtMarco(marco2, ot.marco_propio_2)}</td>
                         {celdaPara(ot.tipo_lente_2, ot.posicion_2)}
                         <td className="py-1.5 pr-2">{ot.tipo_lente_2}</td>
                         <td className="py-1.5">{fmtCristal(ot.tipo_lente_2, ot.tratamiento_2, ot.diseno_laboratorio_2)}</td>

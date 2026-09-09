@@ -40,6 +40,11 @@ export async function registrarVenta(input: {
   // Un armazón por cristal, en el mismo orden: dos pares separados (lejos y
   // cerca) llevan cada uno su propio marco.
   armazonProductoIds?: (string | null)[];
+  // En el mismo orden que armazonProductoIds: true = el paciente trajo su
+  // propio marco para ese cristal (no sale de nuestro stock). Ese slot no
+  // lleva armazonProductoId, así que sin esto era indistinguible de que
+  // a la vendedora se le olvidó registrar el marco.
+  marcosPropios?: boolean[];
   diasEntrega?: number;
   proveedorLabId?: string | null;
   operativoId?: string | null;
@@ -130,6 +135,7 @@ export async function registrarVenta(input: {
         sucursal_id: sucursalRes.data?.id ?? null,
         operativo_id: input.operativoId ?? null,
         armazon_producto_id: input.armazonProductoIds?.[0] ?? null,
+        marco_propio: input.marcosPropios?.[0] ?? false,
         tipo_lente: primero.tipoLente,
         rango_receta: primero.rangoReceta,
         tratamiento: primero.tratamiento,
@@ -140,6 +146,7 @@ export async function registrarVenta(input: {
         posicion: primero.posicion ?? null,
         fecha_entrega_estimada: entregaISO,
         armazon_producto_id_2: segundo ? (input.armazonProductoIds?.[1] ?? null) : null,
+        marco_propio_2: segundo ? (input.marcosPropios?.[1] ?? false) : false,
         tipo_lente_2: segundo?.tipoLente ?? null,
         rango_receta_2: segundo?.rangoReceta ?? null,
         tratamiento_2: segundo?.tratamiento ?? null,

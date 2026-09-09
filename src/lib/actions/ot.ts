@@ -77,11 +77,19 @@ export async function actualizarOT(formData: FormData) {
   const supabase = await createClient();
   const otId = String(formData.get("ot_id"));
 
+  // Si el paciente trae su propio marco, no importa lo que haya quedado
+  // seleccionado en el desplegable — ese cristal no lleva ningún producto
+  // de nuestro stock.
+  const marcoPropio = formData.get("marco_propio") === "on";
+  const marcoPropio2 = formData.get("marco_propio_2") === "on";
+
   const { error } = await supabase
     .from("ordenes_trabajo")
     .update({
-      armazon_producto_id: String(formData.get("armazon_producto_id") ?? "").trim() || null,
-      armazon_producto_id_2: String(formData.get("armazon_producto_id_2") ?? "").trim() || null,
+      armazon_producto_id: marcoPropio ? null : String(formData.get("armazon_producto_id") ?? "").trim() || null,
+      marco_propio: marcoPropio,
+      armazon_producto_id_2: marcoPropio2 ? null : String(formData.get("armazon_producto_id_2") ?? "").trim() || null,
+      marco_propio_2: marcoPropio2,
       posicion: parsearPosicion(formData.get("posicion")),
       posicion_2: parsearPosicion(formData.get("posicion_2")),
       origen_cristal: String(formData.get("origen_cristal") ?? "laboratorio"),

@@ -76,6 +76,11 @@ type LineaCarrito = {
   // par queda explícitamente emparejado con su lente y no depende del
   // orden en que se hayan ido tocando en pantalla.
   armazonSlot?: 1 | 2;
+  // El paciente trajo su propio marco: no hay productoId (no sale de
+  // nuestro stock, no se descuenta inventario ni se cuenta el costo de
+  // reposición), pero el cupo queda "lleno" igual — sin esto quedaba
+  // indistinguible de que a la vendedora se le olvidó registrar el marco.
+  marcoPropio?: boolean;
 };
 
 // La venta se arma en cuatro pasos, uno por pantalla, en vez de mostrar
@@ -423,11 +428,15 @@ function SelectorArmazon({
   productos,
   elegido,
   onElegir,
+  onMarcarPropio,
 }: {
   etiqueta: string;
   productos: Producto[];
   elegido: LineaCarrito | undefined;
   onElegir: (producto: Producto | null) => void;
+  // El paciente trae su propio marco: no sale de nuestro stock, así que no
+  // hay nada que buscar ni elegir del inventario.
+  onMarcarPropio: () => void;
 }) {
   const [busca, setBusca] = useState("");
   const armazones = useMemo(() => productos.filter((p) => p.categoria === "armazon"), [productos]);
@@ -441,18 +450,29 @@ function SelectorArmazon({
     <fieldset className="flex-1 rounded-xl border border-amber-300 bg-white p-3">
       <legend className="px-1 text-sm font-bold text-amber-900">Armazón — {etiqueta}</legend>
       {elegido ? (
-        <div className="flex items-center justify-between gap-2 rounded-lg bg-amber-100 px-3 py-2.5">
-          <span className="text-sm font-semibold text-amber-900">{elegido.descripcion}</span>
+        <div
+          className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 ${elegido.marcoPropio ? "bg-sky-100" : "bg-amber-100"}`}
+        >
+          <span className={`text-sm font-semibold ${elegido.marcoPropio ? "text-sky-900" : "text-amber-900"}`}>
+            {elegido.descripcion}
+          </span>
           <button
             type="button"
             onClick={() => onElegir(null)}
-            className="whitespace-nowrap text-xs font-semibold text-amber-800 underline"
+            className={`whitespace-nowrap text-xs font-semibold underline ${elegido.marcoPropio ? "text-sky-800" : "text-amber-800"}`}
           >
             Cambiar
           </button>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={onMarcarPropio}
+            className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left text-sm font-semibold text-sky-900 transition hover:bg-sky-100"
+          >
+            👓 El paciente trae su propio marco
+          </button>
           <input
             type="search"
             value={busca}
@@ -653,6 +673,24 @@ export default function PuntoDeVenta({
     });
   }
 
+  // El paciente trae su propio marco: el cupo queda "lleno" sin elegir
+  // ningún producto del inventario — no hay productoId, así que no se
+  // descuenta stock ni se cuenta el costo de reposición para este lente.
+  function marcarMarcoPropio(numero: 1 | 2) {
+    const key = `armazon-${numero}`;
+    setCarrito((prev) => [
+      ...prev.filter((l) => l.key !== key),
+      {
+        key,
+        descripcion: "Marco propio del paciente",
+        cantidad: 1,
+        precioUnitario: 0,
+        armazonSlot: numero,
+        marcoPropio: true,
+      },
+    ]);
+  }
+
   function agregarProducto(p: Producto) {
     // Los armazones se regalan (el costo ya está absorbido en el precio del
     // cristal): siempre entran al carrito en $0, sin importar lo que diga
@@ -810,6 +848,7 @@ export default function PuntoDeVenta({
           operativo_id: operativoId || null,
           estado: "recepcion",
           armazon_producto_id: lineasArmazon[0]?.productoId ?? null,
+          marco_propio: lineasArmazon[0]?.marcoPropio ?? false,
           tipo_lente: primero.cristal!.tipoLente,
           rango_receta: primero.cristal!.rangoReceta,
           tratamiento: primero.cristal!.tratamiento,
@@ -821,6 +860,7 @@ export default function PuntoDeVenta({
           fecha_ingreso: ahora,
           fecha_entrega_estimada: entregaISO,
           armazon_producto_id_2: segundo ? (lineasArmazon[1]?.productoId ?? null) : null,
+          marco_propio_2: segundo ? (lineasArmazon[1]?.marcoPropio ?? false) : false,
           tipo_lente_2: segundo?.cristal?.tipoLente ?? null,
           rango_receta_2: segundo?.cristal?.rangoReceta ?? null,
           tratamiento_2: segundo?.cristal?.tratamiento ?? null,
@@ -926,6 +966,7 @@ export default function PuntoDeVenta({
         // Un armazón por cristal, en el mismo orden — dos pares separados
         // llevan cada uno su propio marco.
         armazonProductoIds: lineasArmazon.map((l) => l.productoId ?? null),
+        marcosPropios: lineasArmazon.map((l) => l.marcoPropio ?? false),
         proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
         operativoId: operativoId || null,
       });
@@ -1262,6 +1303,7 @@ export default function PuntoDeVenta({
                     productos={productos}
                     elegido={carrito.find((c) => c.key === `armazon-${numero}`)}
                     onElegir={(p) => elegirArmazon(numero, p)}
+                    onMarcarPropio={() => marcarMarcoPropio(numero)}
                   />
                 );
               })}
