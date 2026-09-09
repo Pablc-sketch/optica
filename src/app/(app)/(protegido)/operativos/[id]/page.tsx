@@ -417,7 +417,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </p>
           </div>
         </details>
-        <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden sm:col-span-2">
+        <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden sm:col-span-2" open>
           <summary className="cursor-pointer list-none">
             <p className="text-sm text-sky-800">
               💵 Sueldos de este operativo <span className="text-sky-400 group-open:hidden">▸</span>
@@ -425,7 +425,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </p>
             <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
               <span>
-                Isadora: <span className="font-bold text-sky-900">{clp(sueldos.comisionIsadora)}</span>
+                Isadora ({Number(operativo.comision_vendedora_pct)}%):{" "}
+                <span className="font-bold text-sky-900">{clp(sueldos.comisionIsadora)}</span>
               </span>
               <span>
                 Mamá: <span className="font-bold text-sky-900">{clp(sueldos.parteMadre)}</span>
@@ -435,43 +436,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               </span>
             </p>
           </summary>
-          <div className="mt-3 flex flex-col gap-1.5 border-t border-sky-100 pt-3 text-sm text-sky-800">
-            <div className="flex items-center justify-between">
-              <span>
-                Comisión Isadora ({Number(operativo.comision_vendedora_pct)}% de{" "}
-                {operativo.comision_vendedora_base === "utilidad_neta" ? "la utilidad neta" : "lo vendido"})
-              </span>
-              <span className="font-medium">{clp(sueldos.comisionIsadora)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>= Utilidad disponible</span>
-              <span className={`font-medium ${sueldos.utilidadDisponible < 0 ? "text-red-700" : ""}`}>
-                {clp(sueldos.utilidadDisponible)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>− Ahorro ({Number(operativo.ahorro_pct)}%)</span>
-              <span className="font-medium">{clp(sueldos.ahorro)}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-lg bg-white px-2 py-1.5 font-semibold">
-              <span>= Para dividir entre la mamá y Pablo</span>
-              <span>{clp(sueldos.restoParaDividir)}</span>
-            </div>
-            <div className="flex items-center justify-between pl-2">
-              <span>Mamá (50%)</span>
-              <span className="font-medium">{clp(sueldos.parteMadre)}</span>
-            </div>
-            <div className="flex items-center justify-between pl-2">
-              <span>Pablo (50%)</span>
-              <span className="font-medium">{clp(sueldos.partePablo)}</span>
-            </div>
-            {sueldos.utilidadDisponible < 0 && (
-              <p className="mt-1 rounded-lg bg-red-50 px-2 py-1.5 text-xs font-medium text-red-800">
-                Este operativo no alcanza a cubrir la comisión de Isadora con lo que dejó de utilidad — no
-                hay ahorro ni reparto para la mamá o Pablo en este operativo.
-              </p>
-            )}
-            <form action={actualizarSueldosOperativo} className="mt-2 grid grid-cols-1 gap-3 border-t border-sky-100 pt-3 sm:grid-cols-3">
+          <div className="mt-3 flex flex-col gap-3 border-t border-sky-100 pt-3">
+            {/* El % se edita acá arriba, antes del desglose, para que no
+                haya que buscarlo — es lo primero que se ve al abrir la
+                tarjeta. */}
+            <form action={actualizarSueldosOperativo} className="grid grid-cols-1 gap-3 rounded-xl bg-white p-3 sm:grid-cols-3">
               <input type="hidden" name="id" value={operativo.id} />
               <label className="flex flex-col gap-1 text-xs font-medium text-sky-900">
                 % comisión Isadora
@@ -508,10 +477,48 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
                 </button>
               </div>
             </form>
-            <p className="mt-1 text-xs text-sky-700">
-              Este cálculo es solo de este operativo. El total mensual de cada quién (que va sumando con
-              cada operativo y se reinicia el mes siguiente) está en Reportes → Sueldos del mes.
-            </p>
+
+            <div className="flex flex-col gap-1.5 text-sm text-sky-800">
+              <div className="flex items-center justify-between">
+                <span>
+                  Comisión Isadora ({Number(operativo.comision_vendedora_pct)}% de{" "}
+                  {operativo.comision_vendedora_base === "utilidad_neta" ? "la utilidad neta" : "lo vendido"})
+                </span>
+                <span className="font-medium">{clp(sueldos.comisionIsadora)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>= Utilidad disponible</span>
+                <span className={`font-medium ${sueldos.utilidadDisponible < 0 ? "text-red-700" : ""}`}>
+                  {clp(sueldos.utilidadDisponible)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>− Ahorro ({Number(operativo.ahorro_pct)}%)</span>
+                <span className="font-medium">{clp(sueldos.ahorro)}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-white px-2 py-1.5 font-semibold">
+                <span>= Para dividir entre la mamá y Pablo</span>
+                <span>{clp(sueldos.restoParaDividir)}</span>
+              </div>
+              <div className="flex items-center justify-between pl-2">
+                <span>Mamá (50%)</span>
+                <span className="font-medium">{clp(sueldos.parteMadre)}</span>
+              </div>
+              <div className="flex items-center justify-between pl-2">
+                <span>Pablo (50%)</span>
+                <span className="font-medium">{clp(sueldos.partePablo)}</span>
+              </div>
+              {sueldos.utilidadDisponible < 0 && (
+                <p className="mt-1 rounded-lg bg-red-50 px-2 py-1.5 text-xs font-medium text-red-800">
+                  Este operativo no alcanza a cubrir la comisión de Isadora con lo que dejó de utilidad —
+                  no hay ahorro ni reparto para la mamá o Pablo en este operativo.
+                </p>
+              )}
+              <p className="mt-1 text-xs text-sky-700">
+                Este cálculo es solo de este operativo. El total mensual de cada quién (que va sumando con
+                cada operativo y se reinicia el mes siguiente) está en Reportes → Sueldos del mes.
+              </p>
+            </div>
           </div>
         </details>
       </div>
