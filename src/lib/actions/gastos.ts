@@ -26,7 +26,10 @@ function parsearMonto(valor: FormDataEntryValue | null): number | null {
 
 const CATEGORIAS_GASTO = ["compra_inventario", "arriendo", "otro"] as const;
 const MEDIOS_PAGO = ["efectivo", "debito", "credito", "transferencia"] as const;
-const PERSONAS = ["isadora", "madre", "pablo"] as const;
+// "ahorro" no es una persona, es el ahorro del negocio (20% que calcula el
+// reparto) — se guarda en la misma tabla para poder marcar cuándo se
+// aparta de verdad, igual que un retiro de cualquiera de los tres.
+const PERSONAS = ["isadora", "madre", "pablo", "ahorro"] as const;
 
 function parsearMedioPago(valor: FormDataEntryValue | null): string | null {
   const v = String(valor ?? "");
@@ -75,13 +78,22 @@ export async function eliminarGastoGlobal(formData: FormData) {
 // la cuenta), contra lo que les corresponde de sueldo. No es un gasto del
 // negocio — esa plata ya era de esa persona — por eso se descuenta de lo
 // que se le debe en vez de sumarse a los costos.
+//
+// El caso contrario también se guarda acá: un APORTE es cuando esa persona
+// pone plata propia al negocio (ej. cubrir la diferencia al pagarle al
+// laboratorio), y se guarda como un retiro NEGATIVO — así "lo que se le
+// debe menos el retiro" ya sirve para los dos casos sin lógica aparte: un
+// aporte negativo resta un negativo, o sea, SUMA a lo que se le debe.
 export async function crearRetiro(formData: FormData) {
   const { supabase, tenantId } = await requerirTenant();
 
   const persona = String(formData.get("persona") ?? "");
   const fecha = String(formData.get("fecha") ?? "").trim();
-  const monto = parsearMonto(formData.get("monto"));
-  if (!(PERSONAS as readonly string[]).includes(persona) || !fecha || monto === null) return;
+  const tipo = String(formData.get("tipo") ?? "retiro");
+  const montoPositivo = parsearMonto(formData.get("monto"));
+  if (!(PERSONAS as readonly string[]).includes(persona) || !fecha || montoPositivo === null || montoPositivo === 0)
+    return;
+  const monto = tipo === "aporte" ? -montoPositivo : montoPositivo;
 
   const operativoId = String(formData.get("operativo_id") ?? "").trim();
 

@@ -22,7 +22,7 @@ import {
 } from "@/lib/actions/gastos";
 import FiltroPagos from "./filtro-pagos";
 
-const PERSONAS: Record<string, string> = { isadora: "Isadora", madre: "Mamá", pablo: "Pablo" };
+const PERSONAS: Record<string, string> = { isadora: "Isadora", madre: "Mamá", pablo: "Pablo", ahorro: "Ahorro (negocio)" };
 const MEDIOS_PAGO_LABEL: Record<string, string> = {
   efectivo: "Efectivo",
   debito: "Débito",
@@ -661,7 +661,17 @@ export default async function ReportesPage({
                 valor={clp(pendientePorPersona.pablo)}
                 detalle={`de ${clp(sueldoMesTotal.partePablo)}${(retirosPorPersona.get("pablo") ?? 0) > 0 ? ` · ya retiró ${clp(retirosPorPersona.get("pablo") ?? 0)}` : ""}`}
               />
-              <Tarjeta icono="🏦" titulo="Ahorro del negocio" valor={clp(sueldoMesTotal.ahorro)} acento />
+              <Tarjeta
+                icono="🏦"
+                titulo="Ahorro del negocio"
+                valor={clp(sueldoMesTotal.ahorro)}
+                detalle={
+                  (retirosPorPersona.get("ahorro") ?? 0) > 0
+                    ? `${clp(retirosPorPersona.get("ahorro") ?? 0)} ya apartado`
+                    : "acumulado, todavía no apartado — sigue mezclado en la caja"
+                }
+                acento
+              />
             </div>
             <div className="mt-3 overflow-x-auto rounded-2xl bg-crema-claro p-3 shadow-sm">
               <table className="w-full min-w-150 text-sm">
@@ -794,14 +804,15 @@ export default async function ReportesPage({
       </section>
 
       <section className="print:hidden">
-        <h2 className="mb-1 font-semibold">Retiros del mes</h2>
+        <h2 className="mb-1 font-semibold">Retiros y aportes del mes</h2>
         <p className="mb-2 text-xs text-tinta-suave">
-          Plata que Isadora, la mamá o Pablo sacaron por adelantado (efectivo o cuenta), contra lo que
-          les corresponde de sueldo — se descuenta de &quot;Sueldos del mes&quot; de arriba, no es un
-          gasto del negocio.
+          <strong>Retiro:</strong> Isadora, la mamá o Pablo sacan plata por adelantado contra lo que les
+          corresponde de sueldo (o se aparta el ahorro del negocio) — se descuenta de arriba.{" "}
+          <strong>Aporte:</strong> esa persona pone plata propia al negocio (ej. cubrir una diferencia al
+          pagar al laboratorio) — se SUMA a lo que se le debe, en vez de restarse.
         </p>
         <div className="rounded-2xl bg-crema-claro p-3 shadow-sm">
-          <form action={crearRetiro} className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+          <form action={crearRetiro} className="grid grid-cols-2 gap-2 sm:grid-cols-7">
             <select
               name="persona"
               defaultValue="isadora"
@@ -812,6 +823,14 @@ export default async function ReportesPage({
                   {l}
                 </option>
               ))}
+            </select>
+            <select
+              name="tipo"
+              defaultValue="retiro"
+              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+            >
+              <option value="retiro">Retiro (saca)</option>
+              <option value="aporte">Aporte (pone)</option>
             </select>
             <input
               type="date"
@@ -855,16 +874,22 @@ export default async function ReportesPage({
               const operativoNombre = uno(
                 r.operativos as unknown as { nombre: string } | { nombre: string }[] | null
               )?.nombre;
+              const esAporte = r.monto < 0;
               return (
                 <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
                   <span className="text-xs text-tinta-suave">{fechaLegible(r.fecha)}</span>
                   <span className="font-medium">{PERSONAS[r.persona] ?? r.persona}</span>
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-xs font-bold ${esAporte ? "bg-green-100 text-green-900" : "bg-amber-100 text-amber-900"}`}
+                  >
+                    {esAporte ? "Aporte" : "Retiro"}
+                  </span>
                   <span className="flex-1 text-xs text-tinta-suave">
                     {[r.motivo, operativoNombre ? `contra ${operativoNombre}` : null, r.medio_pago ? MEDIOS_PAGO_LABEL[r.medio_pago] : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </span>
-                  <span className="font-semibold">{clp(r.monto)}</span>
+                  <span className="font-semibold">{clp(Math.abs(r.monto))}</span>
                   <form action={eliminarRetiro}>
                     <input type="hidden" name="id" value={r.id} />
                     <button className="text-xs font-medium text-red-700 hover:underline">Quitar</button>
