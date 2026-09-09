@@ -112,6 +112,20 @@ export default async function ReportesPage({
     itemsQuery = itemsQuery.eq("ventas.operativo_id", operativoId);
   }
 
+  // Para descontar de "Efectivo"/"En cuenta" lo que ya salió de esa misma
+  // caja en el período — un retiro en efectivo baja el efectivo disponible
+  // aunque el sueldo del que salió se calcule por mes, no por este rango.
+  const retirosPeriodoQuery = supabase
+    .from("retiros_sueldo")
+    .select("monto, medio_pago")
+    .gte("fecha", desde)
+    .lte("fecha", hasta);
+  const gastosGlobalesPeriodoQuery = supabase
+    .from("gastos_globales")
+    .select("monto, medio_pago")
+    .gte("fecha", desde)
+    .lte("fecha", hasta);
+
   // Sueldos: todos los operativos cuya fecha de inicio cae en el mes
   // elegido. "fecha" es una columna `date` (sin hora), así que se compara
   // directo contra el rango del mes sin desfase horario.
@@ -140,16 +154,27 @@ export default async function ReportesPage({
     .lte("fecha", ultimoDiaDelMes(mes))
     .order("fecha", { ascending: false });
 
-  const [ventasRes, itemsRes, pagosRes, operativosRes, operativosMesRes, gastosGlobalesRes, retirosRes] =
-    await Promise.all([
-      ventasQuery,
-      itemsQuery,
-      pagosQuery,
-      supabase.from("operativos").select("id, nombre").order("fecha", { ascending: false }),
-      operativosMesQuery,
-      gastosGlobalesQuery,
-      retirosQuery,
-    ]);
+  const [
+    ventasRes,
+    itemsRes,
+    pagosRes,
+    operativosRes,
+    operativosMesRes,
+    gastosGlobalesRes,
+    retirosRes,
+    retirosPeriodoRes,
+    gastosGlobalesPeriodoRes,
+  ] = await Promise.all([
+    ventasQuery,
+    itemsQuery,
+    pagosQuery,
+    supabase.from("operativos").select("id, nombre").order("fecha", { ascending: false }),
+    operativosMesQuery,
+    gastosGlobalesQuery,
+    retirosQuery,
+    retirosPeriodoQuery,
+    gastosGlobalesPeriodoQuery,
+  ]);
   const operativos = operativosRes.data ?? [];
 
   const ventas = ventasRes.data ?? [];
@@ -245,8 +270,22 @@ export default async function ReportesPage({
   // Plata disponible en la mano ahora: efectivo aparte porque es la única
   // que se puede usar al tiro (débito/crédito/transferencia demoran en
   // liquidarse a la cuenta, aunque el sistema ya los cuente como cobrados).
-  const totalEfectivo = pagos.filter((p) => p.medio_pago === "efectivo").reduce((s, p) => s + p.monto, 0);
-  const totalCuenta = totalAbonado - totalEfectivo;
+  const cobradoEfectivo = pagos.filter((p) => p.medio_pago === "efectivo").reduce((s, p) => s + p.monto, 0);
+  const cobradoCuenta = totalAbonado - cobradoEfectivo;
+  // Lo que ya salió de cada caja en este período (retiros de sueldo por
+  // adelantado + gastos globales), para que "Efectivo"/"En cuenta" muestren
+  // lo que de verdad queda y no solo lo cobrado — sin esto había que
+  // restar los retiros a mano cada vez para saber cuánto había en realidad.
+  const retirosPeriodo = retirosPeriodoRes.data ?? [];
+  const gastosGlobalesPeriodo = gastosGlobalesPeriodoRes.data ?? [];
+  const salidaEfectivo =
+    retirosPeriodo.filter((r) => r.medio_pago === "efectivo").reduce((s, r) => s + r.monto, 0) +
+    gastosGlobalesPeriodo.filter((g) => g.medio_pago === "efectivo").reduce((s, g) => s + g.monto, 0);
+  const salidaCuenta =
+    retirosPeriodo.filter((r) => r.medio_pago && r.medio_pago !== "efectivo").reduce((s, r) => s + r.monto, 0) +
+    gastosGlobalesPeriodo.filter((g) => g.medio_pago && g.medio_pago !== "efectivo").reduce((s, g) => s + g.monto, 0);
+  const totalEfectivo = cobradoEfectivo - salidaEfectivo;
+  const totalCuenta = cobradoCuenta - salidaCuenta;
   // Saldo real pendiente: el total de la venta MENOS lo que ya se le ha
   // abonado (en cualquier momento, no solo en este período) — antes se
   // sumaba el total completo de cada venta no "pagada", como si el abono ya
@@ -370,8 +409,26 @@ export default async function ReportesPage({
         <h2 className="mb-2 font-semibold">Plata disponible hasta ahora</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <Tarjeta icono="💰" titulo="Total cobrado" valor={clp(totalAbonado)} acento />
-          <Tarjeta icono="🏦" titulo="En cuenta" valor={clp(totalCuenta)} detalle="débito + crédito + transferencia" />
-          <Tarjeta icono="💵" titulo="Efectivo" valor={clp(totalEfectivo)} detalle="lo único disponible al tiro" />
+          <Tarjeta
+            icono="🏦"
+            titulo="En cuenta"
+            valor={clp(totalCuenta)}
+            detalle={
+              salidaCuenta > 0
+                ? `${clp(cobradoCuenta)} cobrado − ${clp(salidaCuenta)} retirado/gastado`
+                : "débito + crédito + transferencia"
+            }
+          />
+          <Tarjeta
+            icono="💵"
+            titulo="Efectivo"
+            valor={clp(totalEfectivo)}
+            detalle={
+              salidaEfectivo > 0
+                ? `${clp(cobradoEfectivo)} cobrado − ${clp(salidaEfectivo)} retirado/gastado`
+                : "lo único disponible al tiro"
+            }
+          />
         </div>
       </section>
 
