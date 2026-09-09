@@ -13,7 +13,13 @@ import {
 } from "@/lib/fechas";
 import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
-import { crearGastoGlobal, crearRetiro, eliminarGastoGlobal, eliminarRetiro } from "@/lib/actions/gastos";
+import {
+  actualizarComisionMedioPago,
+  crearGastoGlobal,
+  crearRetiro,
+  eliminarGastoGlobal,
+  eliminarRetiro,
+} from "@/lib/actions/gastos";
 import FiltroPagos from "./filtro-pagos";
 
 const PERSONAS: Record<string, string> = { isadora: "Isadora", madre: "Mamá", pablo: "Pablo" };
@@ -164,6 +170,7 @@ export default async function ReportesPage({
     retirosRes,
     retirosPeriodoRes,
     gastosGlobalesPeriodoRes,
+    tenantRes,
   ] = await Promise.all([
     ventasQuery,
     itemsQuery,
@@ -174,6 +181,7 @@ export default async function ReportesPage({
     retirosQuery,
     retirosPeriodoQuery,
     gastosGlobalesPeriodoQuery,
+    supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
   ]);
   const operativos = operativosRes.data ?? [];
 
@@ -183,6 +191,8 @@ export default async function ReportesPage({
   const operativosDelMes = operativosMesRes.data ?? [];
   const gastosGlobales = gastosGlobalesRes.data ?? [];
   const retiros = retirosRes.data ?? [];
+  const comisionDebitoPct = Number(tenantRes.data?.comision_debito_pct ?? 0);
+  const comisionCreditoPct = Number(tenantRes.data?.comision_credito_pct ?? 0);
   const totalGastosGlobales = gastosGlobales.reduce((s, g) => s + g.monto, 0);
   const retirosPorPersona = new Map<string, number>();
   for (const r of retiros) {
@@ -284,8 +294,20 @@ export default async function ReportesPage({
   const salidaCuenta =
     retirosPeriodo.filter((r) => r.medio_pago && r.medio_pago !== "efectivo").reduce((s, r) => s + r.monto, 0) +
     gastosGlobalesPeriodo.filter((g) => g.medio_pago && g.medio_pago !== "efectivo").reduce((s, g) => s + g.monto, 0);
+  // Lo que el procesador de tarjeta (Mercado Pago) se queda antes de
+  // depositar: casi nunca es lo mismo por débito que por crédito (el
+  // débito suele liquidarse sin comisión; la comisión real está en el
+  // crédito), así que se calculan por separado. Verificado con la boleta
+  // real de Pudahuel: sin este descuento "En cuenta" quedaba $1.055 por
+  // sobre el saldo real, y un 2% solo sobre el crédito explicó $960 de
+  // esa diferencia.
+  const cobradoDebito = pagos.filter((p) => p.medio_pago === "debito").reduce((s, p) => s + p.monto, 0);
+  const cobradoCredito = pagos.filter((p) => p.medio_pago === "credito").reduce((s, p) => s + p.monto, 0);
+  const comisionTarjeta = Math.round(
+    (cobradoDebito * comisionDebitoPct + cobradoCredito * comisionCreditoPct) / 100
+  );
   const totalEfectivo = cobradoEfectivo - salidaEfectivo;
-  const totalCuenta = cobradoCuenta - salidaCuenta;
+  const totalCuenta = cobradoCuenta - salidaCuenta - comisionTarjeta;
   // Saldo real pendiente: el total de la venta MENOS lo que ya se le ha
   // abonado (en cualquier momento, no solo en este período) — antes se
   // sumaba el total completo de cada venta no "pagada", como si el abono ya
@@ -414,8 +436,14 @@ export default async function ReportesPage({
             titulo="En cuenta"
             valor={clp(totalCuenta)}
             detalle={
-              salidaCuenta > 0
-                ? `${clp(cobradoCuenta)} cobrado − ${clp(salidaCuenta)} retirado/gastado`
+              salidaCuenta > 0 || comisionTarjeta > 0
+                ? [
+                    `${clp(cobradoCuenta)} cobrado`,
+                    comisionTarjeta > 0 ? `− ${clp(comisionTarjeta)} comisión tarjeta` : null,
+                    salidaCuenta > 0 ? `− ${clp(salidaCuenta)} retirado/gastado` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
                 : "débito + crédito + transferencia"
             }
           />
@@ -430,6 +458,38 @@ export default async function ReportesPage({
             }
           />
         </div>
+        <details className="mt-2 rounded-2xl bg-crema-claro p-3 text-sm shadow-sm print:hidden">
+          <summary className="cursor-pointer font-medium text-tinta-suave">
+            ✎ Comisión de la máquina POS ({comisionDebitoPct}% débito, {comisionCreditoPct}% crédito)
+          </summary>
+          <p className="mt-2 text-xs text-tinta-suave">
+            Lo que Mercado Pago descuenta antes de depositar en la cuenta — casi siempre distinto por
+            débito que por crédito. &quot;En cuenta&quot; de arriba ya lo resta solo.
+          </p>
+          <form action={actualizarComisionMedioPago} className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="flex flex-col gap-1 text-xs font-medium">
+              % débito
+              <input
+                name="comision_debito_pct"
+                inputMode="decimal"
+                defaultValue={comisionDebitoPct}
+                className="w-20 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium">
+              % crédito
+              <input
+                name="comision_credito_pct"
+                inputMode="decimal"
+                defaultValue={comisionCreditoPct}
+                className="w-20 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+              />
+            </label>
+            <button className="rounded-lg bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
+              Guardar
+            </button>
+          </form>
+        </details>
       </section>
 
       <section>

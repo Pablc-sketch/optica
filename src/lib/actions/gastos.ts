@@ -109,3 +109,27 @@ export async function eliminarRetiro(formData: FormData) {
 
   revalidatePath("/reportes");
 }
+
+function parsearPorcentaje(valor: FormDataEntryValue | null): number {
+  const n = Number(String(valor ?? "").replace(",", "."));
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : 0;
+}
+
+// Lo que el procesador de tarjeta (Mercado Pago) descuenta antes de
+// depositar — casi nunca es la misma tasa por débito que por crédito, así
+// que van separadas. Se usa en Reportes para que "En cuenta" muestre lo
+// que de verdad llega a la cuenta, no lo que se le cobró al paciente.
+export async function actualizarComisionMedioPago(formData: FormData) {
+  const { supabase, tenantId } = await requerirTenant();
+
+  const { error } = await supabase
+    .from("tenants")
+    .update({
+      comision_debito_pct: parsearPorcentaje(formData.get("comision_debito_pct")),
+      comision_credito_pct: parsearPorcentaje(formData.get("comision_credito_pct")),
+    })
+    .eq("id", tenantId);
+  if (error) throw error;
+
+  revalidatePath("/reportes");
+}
