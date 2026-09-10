@@ -9,7 +9,7 @@ import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
 import { fechaLegible, horaCorta } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto, CampoTelefono } from "@/components/campos";
-import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
@@ -508,7 +508,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             <div className="flex flex-col gap-1.5">
               <p className="font-semibold text-sky-900">2. Marcos — ya pagados antes, solo contable</p>
               <div className="flex items-center justify-between pl-2 text-sky-800">
-                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"} × {clp(4000)}</span>
+                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"} × {clp(COSTO_MARCO_ABSORBIDO)}</span>
                 <span className="font-medium">{clp(desglose.totalArmazones)}</span>
               </div>
               <p className="pl-2 text-xs text-sky-700">

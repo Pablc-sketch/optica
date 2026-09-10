@@ -3,7 +3,12 @@
 // (cristal + montaje + IVA), cada armazón pesa un monto fijo (se regalan,
 // pero igual cuestan sourcing/stock — dos marcos en la misma venta cuentan
 // el doble), y cualquier otro producto pesa por su costo de Inventario.
-export const COSTO_MARCO_ABSORBIDO = 4000;
+//
+// El monto del marco sale de la compra real: $77.945 por 24 marcos
+// (Comercializadora Inosc, op. 176823790693) = $3.248 cada uno. Antes
+// estaba en $4.000 "a ojo", que cargaba $752 de más por marco y hundía la
+// utilidad de cada venta sin que eso fuera plata que salió de verdad.
+export const COSTO_MARCO_ABSORBIDO = 3248;
 
 type OTConCosto = {
   costo_laboratorio: number | null;
