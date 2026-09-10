@@ -119,6 +119,12 @@ export default async function OperativosPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold">Operativos</h1>
         <Link
+          href="/operativos/calendario"
+          className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+        >
+          📅 Calendario
+        </Link>
+        <Link
           href="/operativos/comparar"
           className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
         >
@@ -241,6 +247,17 @@ export default async function OperativosPage() {
             <label className="flex flex-col gap-1 text-sm font-medium">
               Fecha de término (si dura más de un día)
               <input type="date" name="fecha_fin" className={input} />
+            </label>
+            {/* La hora es lo que permite poner dos sedes el mismo día en el
+                calendario, una después de la otra. Es opcional: un operativo
+                sin hora igual aparece, solo que sin horario. */}
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Hora de inicio
+              <input type="time" name="hora_inicio" className={input} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Hora de término
+              <input type="time" name="hora_fin" className={input} />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
               Dirección

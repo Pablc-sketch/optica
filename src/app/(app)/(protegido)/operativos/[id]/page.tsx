@@ -6,7 +6,7 @@ import { formatearRut } from "@/lib/rut";
 import { formatearTelefono, telefonoParaWhatsapp } from "@/lib/formato";
 import { clasificarRango, nombreCristal } from "@/lib/cristales";
 import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
-import { fechaLegible } from "@/lib/fechas";
+import { fechaLegible, horaCorta } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto, CampoTelefono } from "@/components/campos";
 import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
@@ -876,6 +876,26 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               type="date"
               name="fecha_fin"
               defaultValue={operativo.fecha_fin ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          {/* Con hora, dos sedes del mismo día se ven una después de la
+              otra en el calendario en vez de amontonarse. */}
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Hora de inicio
+            <input
+              type="time"
+              name="hora_inicio"
+              defaultValue={horaCorta(operativo.hora_inicio) ?? ""}
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Hora de término
+            <input
+              type="time"
+              name="hora_fin"
+              defaultValue={horaCorta(operativo.hora_fin) ?? ""}
               className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
             />
           </label>

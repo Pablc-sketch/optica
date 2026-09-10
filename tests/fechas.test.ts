@@ -4,7 +4,11 @@ import {
   diaEnChile,
   finDelDia,
   inicioDelDia,
+  diasQueOcupa,
+  mesDesplazado,
+  rangoHorario,
   restarDias,
+  semanasDelMes,
 } from "../src/lib/fechas";
 
 describe("desfase horario de Chile", () => {
@@ -52,5 +56,62 @@ describe("restarDias", () => {
   it("cruza bien el cambio de mes y de año", () => {
     expect(restarDias("2026-03-01", 1)).toBe("2026-02-28");
     expect(restarDias("2026-01-01", 1)).toBe("2025-12-31");
+  });
+});
+
+describe("grilla del calendario mensual", () => {
+  it("octubre de 2026 parte en jueves y ocupa cinco semanas", () => {
+    const semanas = semanasDelMes("2026-10");
+    expect(semanas).toHaveLength(5);
+    // Lunes, martes y miércoles de la primera semana son del mes anterior.
+    expect(semanas[0].slice(0, 3)).toEqual([null, null, null]);
+    expect(semanas[0][3]).toBe("2026-10-01");
+    expect(semanas[4][5]).toBe("2026-10-31");
+    expect(semanas[4][6]).toBeNull();
+  });
+
+  it("no pierde ni repite ningún día del mes", () => {
+    const dias = semanasDelMes("2026-02").flat().filter(Boolean);
+    expect(dias).toHaveLength(28);
+    expect(new Set(dias).size).toBe(28);
+    expect(dias[0]).toBe("2026-02-01");
+  });
+
+  it("un mes que empieza lunes no lleva relleno adelante", () => {
+    // 1 de junio de 2026 es lunes.
+    expect(semanasDelMes("2026-06")[0][0]).toBe("2026-06-01");
+  });
+});
+
+describe("mes vecino", () => {
+  it("cruza el cambio de año en los dos sentidos", () => {
+    expect(mesDesplazado("2026-12", 1)).toBe("2027-01");
+    expect(mesDesplazado("2026-01", -1)).toBe("2025-12");
+  });
+});
+
+describe("días que ocupa un operativo", () => {
+  it("un operativo de un día ocupa solo ese día", () => {
+    expect(diasQueOcupa("2026-10-03", null)).toEqual(["2026-10-03"]);
+  });
+
+  it("un operativo de fin de semana ocupa sábado y domingo", () => {
+    expect(diasQueOcupa("2026-10-03", "2026-10-04")).toEqual(["2026-10-03", "2026-10-04"]);
+  });
+
+  it("ignora una fecha de término anterior al inicio en vez de devolver nada", () => {
+    expect(diasQueOcupa("2026-10-03", "2026-09-30")).toEqual(["2026-10-03"]);
+  });
+});
+
+describe("horario del operativo", () => {
+  it("muestra el rango sin segundos", () => {
+    expect(rangoHorario("10:00:00", "13:00:00")).toBe("10:00 a 13:00");
+  });
+
+  it("aguanta que falte una de las dos horas", () => {
+    expect(rangoHorario("16:00:00", null)).toBe("desde las 16:00");
+    expect(rangoHorario(null, "18:00:00")).toBe("hasta las 18:00");
+    expect(rangoHorario(null, null)).toBeNull();
   });
 });

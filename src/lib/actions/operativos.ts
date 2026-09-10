@@ -41,6 +41,13 @@ function parsearFechaFin(valor: FormDataEntryValue | null, fechaInicio: string):
   return fechaFin;
 }
 
+// Hora del punto de atención ("10:00"). Vacío es válido y significa "sin
+// hora todavía": el calendario lo muestra igual, solo que sin horario.
+function parsearHora(valor: FormDataEntryValue | null): string | null {
+  const hora = String(valor ?? "").trim();
+  return /^\d{2}:\d{2}/.test(hora) ? hora : null;
+}
+
 export async function crearOperativo(formData: FormData) {
   const { supabase, tenantId } = await requerirAdmin();
 
@@ -55,6 +62,8 @@ export async function crearOperativo(formData: FormData) {
     nombre,
     fecha,
     fecha_fin: parsearFechaFin(formData.get("fecha_fin"), fecha),
+    hora_inicio: parsearHora(formData.get("hora_inicio")),
+    hora_fin: parsearHora(formData.get("hora_fin")),
     tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
     direccion: String(formData.get("direccion") ?? "").trim() || null,
     contacto_nombre: String(formData.get("contacto_nombre") ?? "").trim() || null,
@@ -64,6 +73,7 @@ export async function crearOperativo(formData: FormData) {
   if (error) throw error;
 
   revalidatePath("/operativos");
+  revalidatePath("/operativos/calendario");
 }
 
 // Corregir nombre, fechas, lugar o contacto después de creado (ej. "OPV
@@ -84,6 +94,8 @@ export async function actualizarOperativo(formData: FormData) {
       nombre,
       fecha,
       fecha_fin: parsearFechaFin(formData.get("fecha_fin"), fecha),
+      hora_inicio: parsearHora(formData.get("hora_inicio")),
+      hora_fin: parsearHora(formData.get("hora_fin")),
       fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,
       tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
       direccion: String(formData.get("direccion") ?? "").trim() || null,
@@ -96,6 +108,7 @@ export async function actualizarOperativo(formData: FormData) {
 
   revalidatePath(`/operativos/${id}`);
   revalidatePath("/operativos");
+  revalidatePath("/operativos/calendario");
   revalidatePath("/ventas");
 }
 
@@ -109,6 +122,7 @@ export async function cambiarEstadoOperativo(formData: FormData) {
   if (error) throw error;
 
   revalidatePath("/operativos");
+  revalidatePath("/operativos/calendario");
 }
 
 function parsearMonto(valor: FormDataEntryValue | null): number {
@@ -156,6 +170,7 @@ export async function actualizarDetallesOperativo(formData: FormData) {
 
   revalidatePath(`/operativos/${id}`);
   revalidatePath("/operativos");
+  revalidatePath("/operativos/calendario");
   revalidatePath("/operativos/comparar");
 }
 

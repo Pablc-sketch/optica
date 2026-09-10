@@ -83,3 +83,72 @@ export function ultimoDiaDelMes(mes: string): string {
   const ultimo = new Date(Date.UTC(anio, m, 0)).getUTCDate();
   return `${mes}-${String(ultimo).padStart(2, "0")}`;
 }
+
+// Mes vecino, para las flechas del calendario: "2026-12" + 1 = "2027-01".
+export function mesDesplazado(mes: string, meses: number): string {
+  const [anio, m] = mes.split("-").map(Number);
+  const d = new Date(Date.UTC(anio, m - 1 + meses, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+// "2026-10" → "octubre de 2026", para el título del calendario.
+export function nombreMes(mes: string): string {
+  return new Date(`${mes}-01T12:00:00Z`).toLocaleDateString("es-CL", {
+    timeZone: ZONA_CHILE,
+    month: "long",
+    year: "numeric",
+  });
+}
+
+// La grilla del mes, semana por semana, con la semana partiendo en lunes
+// (así se ve un calendario en Chile, no en domingo como el de EE.UU.).
+// Los días de relleno antes del 1 y después del último van en null para
+// que la celda quede vacía en vez de mostrar días del mes de al lado, que
+// confunden al mirar rápido cuántos operativos hay "este mes".
+export function semanasDelMes(mes: string): (string | null)[][] {
+  const [anio, m] = mes.split("-").map(Number);
+  const diasEnElMes = new Date(Date.UTC(anio, m, 0)).getUTCDate();
+  // getUTCDay() da 0 para domingo; con lunes primero el domingo es el 6.
+  const primerDiaSemana = (new Date(Date.UTC(anio, m - 1, 1)).getUTCDay() + 6) % 7;
+
+  const celdas: (string | null)[] = Array(primerDiaSemana).fill(null);
+  for (let dia = 1; dia <= diasEnElMes; dia++) {
+    celdas.push(`${mes}-${String(dia).padStart(2, "0")}`);
+  }
+  while (celdas.length % 7 !== 0) celdas.push(null);
+
+  const semanas: (string | null)[][] = [];
+  for (let i = 0; i < celdas.length; i += 7) semanas.push(celdas.slice(i, i + 7));
+  return semanas;
+}
+
+// Todos los días que ocupa un operativo, desde su fecha hasta su fecha de
+// término. Un operativo de un día devuelve un solo día — es el caso más
+// común, y así el calendario no necesita dos caminos distintos.
+export function diasQueOcupa(fecha: string, fechaFin: string | null): string[] {
+  if (!fechaFin || fechaFin <= fecha) return [fecha];
+  const dias: string[] = [];
+  // Tope de seguridad: un operativo no dura un año, y si un dato quedó mal
+  // tipeado (2027 en vez de 2026) es mejor cortar que colgar la página.
+  for (let d = fecha; d <= fechaFin && dias.length < 366; d = sumarDias(d, 1)) dias.push(d);
+  return dias;
+}
+
+// "10:00:00" → "10:00". La base guarda `time` con segundos y en pantalla
+// los segundos solo estorban.
+export function horaCorta(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  const m = String(valor).match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : null;
+}
+
+// "10:00 a 13:00", "desde las 10:00", "hasta las 13:00" — o null si no se
+// anotó ninguna hora, que es distinto de "todo el día".
+export function rangoHorario(inicio: string | null, fin: string | null): string | null {
+  const a = horaCorta(inicio);
+  const b = horaCorta(fin);
+  if (a && b) return `${a} a ${b}`;
+  if (a) return `desde las ${a}`;
+  if (b) return `hasta las ${b}`;
+  return null;
+}
