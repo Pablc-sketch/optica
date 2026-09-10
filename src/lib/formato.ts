@@ -97,3 +97,16 @@ export function isoAFechaCorta(valor: string | null | undefined): string {
   const [, aaaa, mm, dd] = m;
   return `${dd}/${mm}/${aaaa}`;
 }
+
+// Número en el formato que espera wa.me: solo dígitos, con código de país
+// y sin el "+". Chile es +56 y los celulares tienen 9 dígitos partiendo en
+// 9, así que se completa el 56 si el dato guardado no lo trae. Devuelve
+// null cuando no hay un celular válido — sin esto se armaban links a
+// wa.me/56 que abren WhatsApp en blanco y confunden a quien los aprieta.
+export function telefonoParaWhatsapp(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  let digitos = String(valor).replace(/\D/g, "");
+  if (digitos.startsWith("56")) digitos = digitos.slice(2);
+  if (digitos.length !== 9 || !digitos.startsWith("9")) return null;
+  return `56${digitos}`;
+}

@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarDetallesOperativo, actualizarOperativo, actualizarSueldosOperativo } from "@/lib/actions/operativos";
 import { formatearRut } from "@/lib/rut";
-import { formatearTelefono } from "@/lib/formato";
+import { formatearTelefono, telefonoParaWhatsapp } from "@/lib/formato";
+import { clasificarRango, nombreCristal } from "@/lib/cristales";
+import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
 import { fechaLegible } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto, CampoTelefono } from "@/components/campos";
@@ -76,11 +78,18 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const { id } = await params;
   const supabase = await createClient();
 
-  const [operativoRes, recetasRes, ventasRes, retirosRes] = await Promise.all([
+  const [operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).single(),
     supabase
       .from("recetas")
-      .select("id, fecha, paciente_id, pacientes:paciente_id (id, nombre, rut, telefono)")
+      // La sugerencia del tecnólogo y la potencia son lo que permite
+      // cotizarle por WhatsApp a quien se atendió y no compró: sin eso
+      // habría que ir receta por receta a mano para saber qué ofrecerle.
+      .select(
+        `id, fecha, paciente_id, sugerencia_tipo_lente, sugerencia_tratamiento,
+         od_esfera, od_cilindro, oi_esfera, oi_cilindro,
+         pacientes:paciente_id (id, nombre, rut, telefono)`
+      )
       .eq("operativo_id", id)
       .order("fecha", { ascending: false }),
     supabase
@@ -99,6 +108,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       .eq("anulada", false)
       .order("fecha", { ascending: false }),
     supabase.from("retiros_sueldo").select("persona, monto").eq("operativo_id", id),
+    supabase.from("costos_cristales").select("tipo_lente, rango_receta, tratamiento, precio_venta"),
+    supabase.from("tenants").select("nombre_comercial").single(),
   ]);
 
   const operativo = operativoRes.data;
@@ -233,6 +244,85 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       return true;
     })
     .sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  // --- Destinatarios de los dos WhatsApp del operativo ---------------
+  const nombreOptica = tenantRes.data?.nombre_comercial ?? "la óptica";
+  const fechaEntregaTexto = operativo.fecha_entrega_estimada
+    ? fechaLegible(operativo.fecha_entrega_estimada)
+    : "(falta definir la fecha de entrega)";
+
+  // 1. Recordar la entrega a quien compró y todavía tiene el lente acá.
+  //    Va con el saldo por pagar, que es el otro motivo por el que se
+  //    manda: llegan sabiendo cuánto tienen que traer.
+  const paraRecordarEntrega: DestinatarioWsp[] = ventas
+    .map((v) => {
+      const paciente = uno(v.pacientes as unknown as PacienteRel);
+      const abonado = (v.pagos_abonos ?? []).reduce((s, p) => s + p.monto, 0);
+      const saldo = Math.max(0, v.total - abonado);
+      return { v, paciente, saldo };
+    })
+    .filter(({ paciente }) => Boolean(paciente))
+    .map(({ v, paciente, saldo }) => ({
+      id: v.id,
+      nombre: paciente!.nombre,
+      telefonoWsp: telefonoParaWhatsapp(paciente!.telefono),
+      detalle: saldo > 0 ? "saldo pendiente" : "pagado",
+      monto: saldo,
+      valores: {
+        saldo: saldo > 0 ? clp(saldo) : "$0 (ya está pagado)",
+        fecha: fechaEntregaTexto,
+        hora: operativo.hora_entrega ?? "(falta definir la hora)",
+        lugar: operativo.lugar_entrega ?? operativo.direccion ?? "(falta definir el lugar)",
+        optica: nombreOptica,
+      },
+    }));
+
+  // 2. Cotizarle a quien se atendió y no compró. El precio sale de la
+  //    sugerencia que dejó el tecnólogo en la receta, cruzada con la
+  //    potencia — es exactamente lo que se le habría cobrado ese día, no
+  //    un número inventado después.
+  const costosCristales = costosRes.data ?? [];
+  const precioSugerido = (r: {
+    sugerencia_tipo_lente: string | null;
+    sugerencia_tratamiento: string | null;
+    od_esfera: number | null;
+    od_cilindro: number | null;
+    oi_esfera: number | null;
+    oi_cilindro: number | null;
+  }): { nombre: string; precio: number } | null => {
+    if (!r.sugerencia_tipo_lente || !r.sugerencia_tratamiento) return null;
+    const rango = clasificarRango([r.od_esfera, r.oi_esfera], [r.od_cilindro, r.oi_cilindro]);
+    const fila = costosCristales.find(
+      (c) =>
+        c.tipo_lente === r.sugerencia_tipo_lente &&
+        c.tratamiento === r.sugerencia_tratamiento &&
+        c.rango_receta === rango
+    );
+    if (!fila || fila.precio_venta <= 0) return null;
+    return { nombre: nombreCristal(r.sugerencia_tipo_lente, r.sugerencia_tratamiento), precio: fila.precio_venta };
+  };
+
+  const paraCotizar: DestinatarioWsp[] = recetas
+    .filter((r) => r.paciente_id && !pacientesConVenta.has(r.paciente_id))
+    .map((r) => {
+      const paciente = uno(r.pacientes as unknown as PacienteRel);
+      const sugerido = precioSugerido(r);
+      return { r, paciente, sugerido };
+    })
+    .filter(({ paciente }) => Boolean(paciente))
+    .map(({ r, paciente, sugerido }) => ({
+      id: r.id,
+      nombre: paciente!.nombre,
+      telefonoWsp: telefonoParaWhatsapp(paciente!.telefono),
+      detalle: sugerido ? sugerido.nombre : "sin sugerencia en la receta",
+      monto: sugerido?.precio,
+      valores: {
+        lente: sugerido?.nombre ?? "el lente que necesita",
+        precio: sugerido ? clp(sugerido.precio) : "(consultar)",
+        lugar: operativo.direccion ?? operativo.nombre,
+        optica: nombreOptica,
+      },
+    }));
 
   const textoResumen = [
     `📋 Resumen operativo: ${operativo.nombre}`,
@@ -691,6 +781,49 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         </div>
       )}
 
+      <EnviarWhatsapp
+        titulo="Recordar la entrega"
+        descripcion={`Entrega: ${fechaEntregaTexto}${operativo.hora_entrega ? `, ${operativo.hora_entrega}` : ""}${operativo.lugar_entrega ? ` · ${operativo.lugar_entrega}` : ""}. La hora y el lugar se editan más abajo en "Costos, metas y entrega", y la fecha en "Editar datos del operativo".`}
+        plantillaInicial={[
+          "Hola {nombre}! 👓",
+          "",
+          "Le recordamos que sus lentes ya están listos para retirar:",
+          "",
+          "📅 {fecha}",
+          "🕐 {hora}",
+          "📍 {lugar}",
+          "",
+          "Saldo por pagar al retirar: {saldo}",
+          "",
+          "Si no puede venir ese día, avísenos por acá y lo coordinamos.",
+          "¡Gracias! — {optica}",
+        ].join("\n")}
+        ayudaMarcadores="Marcadores: {nombre} {fecha} {hora} {lugar} {saldo} {optica} — se reemplazan solos por los datos de cada persona."
+        destinatarios={paraRecordarEntrega}
+      />
+
+      <EnviarWhatsapp
+        titulo="Cotizar a quien no compró"
+        descripcion="Se atendieron pero se fueron sin comprar. El precio es el de la sugerencia que quedó en su receta, así que es exactamente lo que se le habría cobrado ese día."
+        plantillaInicial={[
+          "Hola {nombre}! 👓",
+          "",
+          "Le escribimos del operativo de vista en {lugar}.",
+          "",
+          "Según su examen, el lente que necesita es:",
+          "*{lente} — {precio}*",
+          "✅ Incluye el marco sin costo",
+          "",
+          "Todavía está a tiempo de encargarlo y se lo dejamos listo para la próxima entrega.",
+          "¿Se lo encargamos?",
+          "",
+          "— {optica}",
+        ].join("\n")}
+        ayudaMarcadores="Marcadores: {nombre} {lente} {precio} {lugar} {optica} — se reemplazan solos por los datos de cada persona."
+        destinatarios={paraCotizar}
+        colorBoton="bg-sky-700 hover:bg-sky-800"
+      />
+
       <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
         <summary className="cursor-pointer font-semibold text-sky-800">✎ Editar datos del operativo</summary>
         <form action={actualizarOperativo} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -793,7 +926,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       </details>
 
       <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
-        <summary className="cursor-pointer font-semibold text-sky-800">💰 Costos y metas del operativo</summary>
+        <summary className="cursor-pointer font-semibold text-sky-800">💰 Costos, metas y entrega</summary>
         <form action={actualizarDetallesOperativo} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={operativo.id} />
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
@@ -829,6 +962,26 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
             Meta de utilidad (opcional)
             <CampoMonto name="meta_utilidad" defaultValue={operativo.meta_utilidad} placeholder="200000" />
+          </label>
+          {/* Hora y lugar de la entrega: es lo que va en el WhatsApp de
+              recordatorio, y suele ser distinto de donde se atendió. */}
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Hora de entrega
+            <input
+              name="hora_entrega"
+              defaultValue={operativo.hora_entrega ?? ""}
+              placeholder="10:00 a 12:00"
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Lugar de entrega
+            <input
+              name="lugar_entrega"
+              defaultValue={operativo.lugar_entrega ?? ""}
+              placeholder="Sede central del condominio"
+              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
+            />
           </label>
           <div className="sm:col-span-2">
             <button className="rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white transition hover:bg-sky-800">
