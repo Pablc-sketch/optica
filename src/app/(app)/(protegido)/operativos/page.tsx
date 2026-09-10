@@ -54,11 +54,11 @@ export default async function OperativosPage() {
     );
   }
 
-  const [{ data: operativos }, { data: recetas }, { data: ventas }] = await Promise.all([
+  const [{ data: operativos }, { data: recetas }, { data: ventas }, { data: contactos }] = await Promise.all([
     supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, direccion, contacto_nombre, contacto_telefono, estado, notas, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
+        "id, nombre, tipo_venue, fecha, direccion, estado, notas, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
       )
       .order("fecha", { ascending: false }),
     supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
@@ -70,6 +70,10 @@ export default async function OperativosPage() {
       )
       .eq("anulada", false)
       .not("operativo_id", "is", null),
+    supabase
+      .from("contactos_operativo")
+      .select("operativo_id, nombre, cargo, telefono")
+      .order("created_at", { ascending: true }),
   ]);
 
   // Un vistazo de cómo le fue a cada operativo sin tener que entrar: cuántos
@@ -79,6 +83,14 @@ export default async function OperativosPage() {
   for (const r of recetas ?? []) {
     if (!r.operativo_id) continue;
     examenesPorOperativo.set(r.operativo_id, (examenesPorOperativo.get(r.operativo_id) ?? 0) + 1);
+  }
+  // El primer dirigente anotado de cada lugar, para verlo sin entrar. El
+  // resto vive en la agenda: en la lista solo estorbarían.
+  const contactoPorOperativo = new Map<string, { nombre: string; cargo: string | null; telefono: string | null }>();
+  const cuantosContactos = new Map<string, number>();
+  for (const c of contactos ?? []) {
+    cuantosContactos.set(c.operativo_id, (cuantosContactos.get(c.operativo_id) ?? 0) + 1);
+    if (!contactoPorOperativo.has(c.operativo_id)) contactoPorOperativo.set(c.operativo_id, c);
   }
   const ventasPorOperativo = new Map<string, { cantidad: number; total: number }>();
   for (const v of ventas ?? []) {
@@ -119,6 +131,12 @@ export default async function OperativosPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold">Operativos</h1>
         <Link
+          href="/operativos/contactos"
+          className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+        >
+          📇 Dirigentes
+        </Link>
+        <Link
           href="/operativos/calendario"
           className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
         >
@@ -154,6 +172,7 @@ export default async function OperativosPage() {
           {[...planificados, ...otros].map((o) => {
             const examenes = examenesPorOperativo.get(o.id) ?? 0;
             const venta = ventasPorOperativo.get(o.id);
+            const contacto = contactoPorOperativo.get(o.id);
             return (
               <li key={o.id} className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -181,9 +200,11 @@ export default async function OperativosPage() {
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
-                    {(o.contacto_nombre || o.contacto_telefono) && (
+                    {contacto && (
                       <p className="text-xs text-sky-700">
-                        {[o.contacto_nombre, formatearTelefono(o.contacto_telefono)].filter(Boolean).join(" · ")}
+                        📇 {[contacto.nombre, contacto.cargo, formatearTelefono(contacto.telefono)].filter(Boolean).join(" · ")}
+                        {(cuantosContactos.get(o.id) ?? 0) > 1 &&
+                          ` +${(cuantosContactos.get(o.id) ?? 0) - 1} más`}
                       </p>
                     )}
                     {o.notas && <p className="mt-1 text-xs text-sky-700">{o.notas}</p>}
@@ -264,11 +285,15 @@ export default async function OperativosPage() {
               <input name="direccion" className={input} />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
-              Contacto
-              <input name="contacto_nombre" className={input} />
+              Dirigente que consiguió el lugar
+              <input name="contacto_nombre" placeholder="Luigino" className={input} />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
-              Teléfono de contacto
+              Su cargo
+              <input name="contacto_cargo" placeholder="Presidente de la directiva" className={input} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Su teléfono
               <CampoTelefono name="contacto_telefono" className={input} />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">

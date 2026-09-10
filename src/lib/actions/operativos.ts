@@ -57,28 +57,47 @@ export async function crearOperativo(formData: FormData) {
 
   const tipoVenue = String(formData.get("tipo_venue") ?? "");
 
-  const { error } = await supabase.from("operativos").insert({
-    tenant_id: tenantId,
-    nombre,
-    fecha,
-    fecha_fin: parsearFechaFin(formData.get("fecha_fin"), fecha),
-    hora_inicio: parsearHora(formData.get("hora_inicio")),
-    hora_fin: parsearHora(formData.get("hora_fin")),
-    tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
-    direccion: String(formData.get("direccion") ?? "").trim() || null,
-    contacto_nombre: String(formData.get("contacto_nombre") ?? "").trim() || null,
-    contacto_telefono: formatearTelefono(String(formData.get("contacto_telefono") ?? "")) || null,
-    notas: String(formData.get("notas") ?? "").trim() || null,
-  });
+  const { data: creado, error } = await supabase
+    .from("operativos")
+    .insert({
+      tenant_id: tenantId,
+      nombre,
+      fecha,
+      fecha_fin: parsearFechaFin(formData.get("fecha_fin"), fecha),
+      hora_inicio: parsearHora(formData.get("hora_inicio")),
+      hora_fin: parsearHora(formData.get("hora_fin")),
+      tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
+      direccion: String(formData.get("direccion") ?? "").trim() || null,
+      notas: String(formData.get("notas") ?? "").trim() || null,
+    })
+    .select("id")
+    .single();
   if (error) throw error;
+
+  // Quien consiguió el lugar es el primer dirigente de su agenda. Se anota
+  // acá, al crear, porque es el único momento en que ese dato está fresco
+  // — después nadie vuelve a entrar a llenarlo.
+  const contactoNombre = String(formData.get("contacto_nombre") ?? "").trim();
+  if (creado && contactoNombre) {
+    const { error: contactoError } = await supabase.from("contactos_operativo").insert({
+      tenant_id: tenantId,
+      operativo_id: creado.id,
+      nombre: contactoNombre,
+      cargo: String(formData.get("contacto_cargo") ?? "").trim() || null,
+      telefono: formatearTelefono(String(formData.get("contacto_telefono") ?? "")) || null,
+    });
+    if (contactoError) throw contactoError;
+  }
 
   revalidatePath("/operativos");
   revalidatePath("/operativos/calendario");
+  revalidatePath("/operativos/contactos");
 }
 
-// Corregir nombre, fechas, lugar o contacto después de creado (ej. "OPV
-// Departamento Pudahuel" que en verdad dura varios días, o se cambió la
-// dirección) — sin esto había que borrar y crear todo de nuevo.
+// Corregir nombre, fechas o lugar después de creado (ej. "OPV Departamento
+// Pudahuel" que en verdad dura varios días, o se cambió la dirección) — sin
+// esto había que borrar y crear todo de nuevo. Los dirigentes ya no se
+// editan acá: viven en su propia agenda, porque son varios por lugar.
 export async function actualizarOperativo(formData: FormData) {
   const { supabase } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
@@ -99,8 +118,6 @@ export async function actualizarOperativo(formData: FormData) {
       fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,
       tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
       direccion: String(formData.get("direccion") ?? "").trim() || null,
-      contacto_nombre: String(formData.get("contacto_nombre") ?? "").trim() || null,
-      contacto_telefono: formatearTelefono(String(formData.get("contacto_telefono") ?? "")) || null,
       notas: String(formData.get("notas") ?? "").trim() || null,
     })
     .eq("id", id);
@@ -205,4 +222,83 @@ export async function actualizarSueldosOperativo(formData: FormData) {
 
   revalidatePath(`/operativos/${id}`);
   revalidatePath("/reportes");
+}
+
+// La agenda de dirigentes de cada operativo: con quién hay que hablar
+// para volver a ese lugar. Son varios por lugar (presidente,
+// administradora, la señora que abre la sede) y cambian de cargo entre un
+// operativo y el siguiente, así que cada uno es su propia ficha en vez de
+// un campo único que haya que pisar.
+export async function crearContactoOperativo(formData: FormData) {
+  const { supabase, tenantId } = await requerirAdmin();
+  const operativoId = String(formData.get("operativo_id") ?? "");
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  if (!operativoId || !nombre) return;
+
+  const { error } = await supabase.from("contactos_operativo").insert({
+    tenant_id: tenantId,
+    operativo_id: operativoId,
+    nombre,
+    cargo: String(formData.get("cargo") ?? "").trim() || null,
+    telefono: formatearTelefono(String(formData.get("telefono") ?? "")) || null,
+    email: String(formData.get("email") ?? "").trim() || null,
+    notas: String(formData.get("notas") ?? "").trim() || null,
+  });
+  if (error) throw error;
+
+  revalidatePath(`/operativos/${operativoId}`);
+  revalidatePath("/operativos/contactos");
+}
+
+export async function actualizarContactoOperativo(formData: FormData) {
+  const { supabase } = await requerirAdmin();
+  const id = String(formData.get("id") ?? "");
+  const operativoId = String(formData.get("operativo_id") ?? "");
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  if (!id || !nombre) return;
+
+  const { error } = await supabase
+    .from("contactos_operativo")
+    .update({
+      nombre,
+      cargo: String(formData.get("cargo") ?? "").trim() || null,
+      telefono: formatearTelefono(String(formData.get("telefono") ?? "")) || null,
+      email: String(formData.get("email") ?? "").trim() || null,
+      notas: String(formData.get("notas") ?? "").trim() || null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  if (operativoId) revalidatePath(`/operativos/${operativoId}`);
+  revalidatePath("/operativos/contactos");
+}
+
+export async function eliminarContactoOperativo(formData: FormData) {
+  const { supabase } = await requerirAdmin();
+  const id = String(formData.get("id") ?? "");
+  const operativoId = String(formData.get("operativo_id") ?? "");
+  if (!id) return;
+
+  const { error } = await supabase.from("contactos_operativo").delete().eq("id", id);
+  if (error) throw error;
+
+  if (operativoId) revalidatePath(`/operativos/${operativoId}`);
+  revalidatePath("/operativos/contactos");
+}
+
+// Cada cuántos meses conviene volver a este lugar. Se guarda aparte de los
+// demás datos del operativo porque se ajusta desde la agenda de contactos
+// —donde se está pensando en volver— y no al corregir la fecha o la
+// dirección.
+export async function actualizarCadenciaOperativo(formData: FormData) {
+  const { supabase } = await requerirAdmin();
+  const id = String(formData.get("id") ?? "");
+  const meses = Math.round(Number(String(formData.get("volver_en_meses") ?? "")));
+  if (!id || !Number.isFinite(meses) || meses < 1 || meses > 60) return;
+
+  const { error } = await supabase.from("operativos").update({ volver_en_meses: meses }).eq("id", id);
+  if (error) throw error;
+
+  revalidatePath(`/operativos/${id}`);
+  revalidatePath("/operativos/contactos");
 }

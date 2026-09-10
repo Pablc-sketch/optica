@@ -6,9 +6,10 @@ import { formatearRut } from "@/lib/rut";
 import { formatearTelefono, telefonoParaWhatsapp } from "@/lib/formato";
 import { clasificarRango, nombreCristal } from "@/lib/cristales";
 import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
+import ContactosOperativo from "../contactos-operativo";
 import { fechaLegible, horaCorta } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
-import { CampoMonto, CampoTelefono } from "@/components/campos";
+import { CampoMonto } from "@/components/campos";
 import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 
@@ -78,7 +79,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const { id } = await params;
   const supabase = await createClient();
 
-  const [operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes] = await Promise.all([
+  const [operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes, contactosRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).single(),
     supabase
       .from("recetas")
@@ -110,6 +111,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     supabase.from("retiros_sueldo").select("persona, monto").eq("operativo_id", id),
     supabase.from("costos_cristales").select("tipo_lente, rango_receta, tratamiento, precio_venta"),
     supabase.from("tenants").select("nombre_comercial").single(),
+    supabase
+      .from("contactos_operativo")
+      .select("id, nombre, cargo, telefono, email, notas")
+      .eq("operativo_id", id)
+      .order("created_at", { ascending: true }),
   ]);
 
   const operativo = operativoRes.data;
@@ -282,6 +288,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   //    potencia — es exactamente lo que se le habría cobrado ese día, no
   //    un número inventado después.
   const costosCristales = costosRes.data ?? [];
+  const contactos = contactosRes.data ?? [];
   const precioSugerido = (r: {
     sugerencia_tipo_lente: string | null;
     sugerencia_tratamiento: string | null;
@@ -355,7 +362,6 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
                 ? `Del ${fechaLegible(operativo.fecha)} al ${fechaLegible(operativo.fecha_fin)}`
                 : fechaLegible(operativo.fecha),
               operativo.direccion,
-              [operativo.contacto_nombre, formatearTelefono(operativo.contacto_telefono)].filter(Boolean).join(" · ") || null,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -781,6 +787,29 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         </div>
       )}
 
+      <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm print:hidden" open={contactos.length === 0}>
+        <summary className="cursor-pointer font-semibold text-sky-800">
+          📇 Dirigentes de este lugar{" "}
+          <span className="font-normal text-sky-700">
+            ({contactos.length} {contactos.length === 1 ? "contacto" : "contactos"})
+          </span>
+        </summary>
+        <p className="mt-2 text-sm text-sky-900">
+          Con quién hay que hablar para volver acá. Todos juntos aparecen en{" "}
+          <Link href="/operativos/contactos" className="font-medium underline">
+            la agenda de dirigentes
+          </Link>
+          .
+        </p>
+        <div className="mt-3">
+          <ContactosOperativo
+            operativoId={operativo.id}
+            contactos={contactos}
+            volverEnMeses={operativo.volver_en_meses ?? 6}
+          />
+        </div>
+      </details>
+
       <EnviarWhatsapp
         titulo="Recordar la entrega"
         descripcion={`Entrega: ${fechaEntregaTexto}${operativo.hora_entrega ? `, ${operativo.hora_entrega}` : ""}${operativo.lugar_entrega ? ` · ${operativo.lugar_entrega}` : ""}. La hora y el lugar se editan más abajo en "Costos, metas y entrega", y la fecha en "Editar datos del operativo".`}
@@ -911,22 +940,6 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               Todas las ventas de este operativo quedan con esta misma fecha de entrega, en vez de calcularla
               venta por venta.
             </span>
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
-            Contacto
-            <input
-              name="contacto_nombre"
-              defaultValue={operativo.contacto_nombre ?? ""}
-              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
-            Teléfono de contacto
-            <CampoTelefono
-              name="contacto_telefono"
-              defaultValue={operativo.contacto_telefono ?? ""}
-              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
-            />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900 sm:col-span-2">
             Notas

@@ -5,10 +5,12 @@ import {
   finDelDia,
   inicioDelDia,
   diasQueOcupa,
+  haceCuanto,
   mesDesplazado,
   rangoHorario,
   restarDias,
   semanasDelMes,
+  sumarMeses,
 } from "../src/lib/fechas";
 
 describe("desfase horario de Chile", () => {
@@ -113,5 +115,39 @@ describe("horario del operativo", () => {
     expect(rangoHorario("16:00:00", null)).toBe("desde las 16:00");
     expect(rangoHorario(null, "18:00:00")).toBe("hasta las 18:00");
     expect(rangoHorario(null, null)).toBeNull();
+  });
+});
+
+describe("cuándo toca volver a un lugar", () => {
+  it("suma los meses de la cadencia", () => {
+    expect(sumarMeses("2026-09-05", 6)).toBe("2027-03-05");
+    expect(sumarMeses("2026-09-05", 12)).toBe("2027-09-05");
+  });
+
+  it("no se pasa de mes cuando el día no existe en el destino", () => {
+    // 31 de agosto + 6 meses cae en febrero, que no tiene 31.
+    expect(sumarMeses("2026-08-31", 6)).toBe("2027-02-28");
+    expect(sumarMeses("2026-08-31", 18)).toBe("2028-02-29");
+  });
+});
+
+describe("hace cuánto fue", () => {
+  it("cuenta meses completos, no meses de calendario", () => {
+    // Del 5 al 3 del mes siguiente todavía no es un mes.
+    expect(haceCuanto("2026-09-05", "2026-10-03")).toBe("hace 4 semanas");
+    expect(haceCuanto("2026-09-05", "2026-10-05")).toBe("hace 1 mes");
+    expect(haceCuanto("2026-09-05", "2027-03-05")).toBe("hace 6 meses");
+  });
+
+  it("pasa a años cuando corresponde", () => {
+    expect(haceCuanto("2026-09-05", "2027-09-05")).toBe("hace 1 año");
+    expect(haceCuanto("2026-09-05", "2027-11-05")).toBe("hace 1 año y 2 meses");
+    expect(haceCuanto("2024-09-05", "2026-09-05")).toBe("hace 2 años");
+  });
+
+  it("los primeros días se dicen en días y semanas", () => {
+    expect(haceCuanto("2026-09-10", "2026-09-10")).toBe("hoy");
+    expect(haceCuanto("2026-09-09", "2026-09-10")).toBe("hace 1 día");
+    expect(haceCuanto("2026-09-01", "2026-09-10")).toBe("hace 1 semana");
   });
 });

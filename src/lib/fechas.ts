@@ -152,3 +152,42 @@ export function rangoHorario(inicio: string | null, fin: string | null): string 
   if (b) return `hasta las ${b}`;
   return null;
 }
+
+// Cuándo tocaría volver a un lugar: la fecha del último operativo más los
+// meses que se hayan definido para ese lugar. Si el día no existe en el mes
+// destino (31 de agosto + 6 meses), Postgres y JS difieren; acá se toma el
+// último día del mes, que es lo que uno diría en voz alta ("a fines de
+// febrero").
+export function sumarMeses(fechaISO: string, meses: number): string {
+  const [anio, mes, dia] = fechaISO.split("-").map(Number);
+  const destino = new Date(Date.UTC(anio, mes - 1 + meses, 1));
+  const ultimoDia = new Date(Date.UTC(destino.getUTCFullYear(), destino.getUTCMonth() + 1, 0)).getUTCDate();
+  const diaFinal = Math.min(dia, ultimoDia);
+  return `${destino.getUTCFullYear()}-${String(destino.getUTCMonth() + 1).padStart(2, "0")}-${String(diaFinal).padStart(2, "0")}`;
+}
+
+// Cuánto pasó desde una fecha, dicho como se dice: "hace 3 meses", "hace
+// 1 año y 2 meses". Los días sueltos no importan acá — lo que se está
+// decidiendo es si ya toca volver a llamar, no una antigüedad exacta.
+export function haceCuanto(fechaISO: string, hoyISO: string): string {
+  const [a1, m1, d1] = fechaISO.split("-").map(Number);
+  const [a2, m2, d2] = hoyISO.split("-").map(Number);
+  let meses = (a2 - a1) * 12 + (m2 - m1);
+  if (d2 < d1) meses -= 1;
+  if (meses <= 0) {
+    const dias = Math.round(
+      (Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86_400_000
+    );
+    if (dias <= 0) return "hoy";
+    if (dias === 1) return "hace 1 día";
+    if (dias < 7) return `hace ${dias} días`;
+    const semanas = Math.floor(dias / 7);
+    return semanas === 1 ? "hace 1 semana" : `hace ${semanas} semanas`;
+  }
+  if (meses < 12) return meses === 1 ? "hace 1 mes" : `hace ${meses} meses`;
+  const anios = Math.floor(meses / 12);
+  const resto = meses % 12;
+  const parteAnios = anios === 1 ? "1 año" : `${anios} años`;
+  if (resto === 0) return `hace ${parteAnios}`;
+  return `hace ${parteAnios} y ${resto === 1 ? "1 mes" : `${resto} meses`}`;
+}
