@@ -80,3 +80,82 @@ set precio_venta = 70000
 where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a'
   and tipo_lente = 'Monofocal'
   and tratamiento = 'Polarizado Gris Oscuro';
+
+-- Mismo criterio para el resto de Monofocal: precio de stock y precio de
+-- laboratorio separados, escalando con el costo real de cada rango en
+-- vez de un número parejo.
+--
+-- Se revisó la grilla real de Fides (lab_precios_stock) para cada
+-- material:
+--   · CR AR 1.56 (Orgánico AR) y CR AR BLUE 1.56 (Orgánico Filtro Azul):
+--     cubren de sobra hasta esfera 6 y cilindro 6 — los cinco rangos
+--     salen SIEMPRE de stock, nunca van a laboratorio en la práctica.
+--   · POLI AR BLUE 1.59 (Policarbonato Filtro Azul): igual, cubre hasta
+--     esfera 6 / cilindro 6 — los cinco rangos siempre de stock.
+--   · CR AR BLUE 1.67 (Adelgazado 1.67 Filtro Azul): el cilindro de esta
+--     grilla tope a 4.00 para CUALQUIER esfera — el rango ±6.00/±6.00
+--     (que necesita cilindro hasta 6) queda siempre fuera, siempre va a
+--     laboratorio. Acá no hay caso mixto como el de Franco Lobos: la
+--     grilla entera de este material no llega a cilindro 6, así que no
+--     hay ninguna receta de ese rango que caiga en stock por casualidad.
+update public.costos_cristales
+set precio_venta_stock = case rango_receta
+    when '±2.00 / ±2.00' then 38000
+    when '±4.00 / ±2.00' then 38000
+    when '±4.00 / ±4.00' then 42000
+    when '±6.00 / ±4.00' then 45000
+    when '±6.00 / ±6.00' then 48000
+  end,
+  precio_venta = case rango_receta
+    when '±6.00 / ±6.00' then 58000
+    else 55000
+  end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a'
+  and tipo_lente = 'Monofocal' and tratamiento = 'Orgánico Antirreflejo';
+
+update public.costos_cristales
+set precio_venta_stock = case rango_receta
+    when '±2.00 / ±2.00' then 48000
+    when '±4.00 / ±2.00' then 48000
+    when '±4.00 / ±4.00' then 55000
+    when '±6.00 / ±4.00' then 58000
+    when '±6.00 / ±6.00' then 65000
+  end,
+  precio_venta = case rango_receta
+    when '±6.00 / ±6.00' then 72000
+    else 68000
+  end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a'
+  and tipo_lente = 'Monofocal' and tratamiento = 'Orgánico Filtro Azul';
+
+update public.costos_cristales
+set precio_venta_stock = case rango_receta
+    when '±2.00 / ±2.00' then 75000
+    when '±4.00 / ±2.00' then 75000
+    when '±4.00 / ±4.00' then 85000
+    when '±6.00 / ±4.00' then 90000
+    when '±6.00 / ±6.00' then 105000
+  end,
+  precio_venta = case rango_receta
+    when '±6.00 / ±6.00' then 120000
+    else 115000
+  end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a'
+  and tipo_lente = 'Monofocal' and tratamiento = 'Policarbonato Filtro Azul';
+
+-- Adelgazado 1.67 Filtro Azul: el rango ±6.00/±6.00 no tiene precio de
+-- stock (siempre laboratorio para este material, ver nota arriba).
+update public.costos_cristales
+set precio_venta_stock = case rango_receta
+    when '±2.00 / ±2.00' then 95000
+    when '±4.00 / ±2.00' then 95000
+    when '±4.00 / ±4.00' then 100000
+    when '±6.00 / ±4.00' then 100000
+    else null
+  end,
+  precio_venta = case rango_receta
+    when '±6.00 / ±6.00' then 150000
+    else 135000
+  end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a'
+  and tipo_lente = 'Monofocal' and tratamiento = 'Adelgazado 1.67 Filtro Azul';
