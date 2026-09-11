@@ -30,7 +30,7 @@ export default async function VentasPage() {
     supabase
       .from("costos_cristales")
       .select(
-        `tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta,
+        `tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock,
          material_stock, material_laboratorio, diseno_laboratorio, montaje_material,
          diseno_laboratorio_proximo, diseno_proximo_desde`
       )

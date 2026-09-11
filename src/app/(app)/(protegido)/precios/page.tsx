@@ -34,7 +34,7 @@ export default async function PreciosPage({
     supabase
       .from("costos_cristales")
       .select(
-        `id, tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta,
+        `id, tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock,
          nombre_laboratorio, material_stock, material_laboratorio, diseno_laboratorio`
       )
       .order("tipo_lente")
@@ -234,9 +234,14 @@ export default async function PreciosPage({
               {cristalesReales
                 .filter((c) => c.tipo_lente === tipo)
                 .map((c) => {
-                  // El margen más chico posible: contra el costo de tallarlo
-                  // a medida, que es el caro. Si sale de stock, queda mejor.
-                  const margen = c.precio_venta - c.costo;
+                  // Margen de laboratorio (tallado a medida) y margen de
+                  // stock por separado — son precios distintos ahora
+                  // (precio_venta_stock puede ser null: ese rango nunca
+                  // sale de stock para este tratamiento, y entonces no
+                  // hay margen de stock que mostrar).
+                  const margenLab = c.precio_venta - c.costo;
+                  const precioStockEfectivo = c.precio_venta_stock ?? c.precio_venta;
+                  const margenStock = c.costo_stock !== null ? precioStockEfectivo - c.costo_stock : null;
                   return (
                     <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
                       <span className="min-w-56 flex-1 text-sm">
@@ -255,8 +260,8 @@ export default async function PreciosPage({
                         )}
                       </span>
                       <span className="text-xs text-tinta-suave">
-                        margen mínimo {clp(margen)}
-                        {c.costo_stock !== null && ` · de stock ${clp(c.precio_venta - c.costo_stock)}`}
+                        margen laboratorio {clp(margenLab)}
+                        {margenStock !== null && ` · margen stock ${clp(margenStock)}`}
                       </span>
                       <form action={actualizarCostoCristal} className="flex flex-wrap items-center gap-1.5">
                         <input type="hidden" name="id" value={c.id} />
@@ -278,7 +283,16 @@ export default async function PreciosPage({
                           />
                         </label>
                         <label className="flex items-center gap-1 text-xs text-tinta-suave">
-                          Venta
+                          Venta (stock)
+                          <CampoMonto
+                            name="precio_stock"
+                            defaultValue={c.precio_venta_stock ?? undefined}
+                            placeholder="= laboratorio"
+                            className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-xs text-tinta-suave">
+                          Venta (laboratorio)
                           <CampoMonto
                             name="precio"
                             defaultValue={c.precio_venta}

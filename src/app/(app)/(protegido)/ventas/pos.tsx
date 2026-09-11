@@ -22,6 +22,11 @@ type CostoCristal = {
   costo: number;
   costo_stock: number | null;
   precio_venta: number;
+  // Precio a cobrar cuando el cristal sale de stock (ya hecho), separado
+  // del precio de laboratorio (precio_venta) — igual que el costo ya
+  // estaba separado. null = este rango nunca sale de stock para este
+  // tratamiento, se cobra siempre precio_venta.
+  precio_venta_stock: number | null;
   material_stock: string | null;
   material_laboratorio: string | null;
   diseno_laboratorio: string | null;
@@ -134,9 +139,16 @@ const COLOR_PASO = [
   },
 ] as const;
 
-// Precio de lista sugerido por el catálogo (/precios); el factor es solo
-// respaldo si todavía no se ha fijado un precio_venta ahí.
-function precioDeCombo(combo: CostoCristal, factorVenta: number): number {
+// Precio de lista sugerido por el catálogo (/precios), separado según de
+// dónde sale de verdad el cristal — el mismo motor que decide el costo
+// real (costo-fides.ts) decide también qué precio corresponde, en vez de
+// cobrar por la categoría ancha de rango, que mezclaba recetas baratas
+// (de stock) con caras (tallado a medida) bajo un solo número. El factor
+// es solo respaldo si todavía no se ha fijado ningún precio en /precios.
+function precioDeCombo(combo: CostoCristal, factorVenta: number, origen: "stock" | "laboratorio"): number {
+  if (origen === "stock" && combo.precio_venta_stock !== null && combo.precio_venta_stock > 0) {
+    return combo.precio_venta_stock;
+  }
   return combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
 }
 
@@ -149,7 +161,10 @@ function lineaDeCombo(
   // El precio final es el que quedó editado en la fila (precioManual) —
   // puede ser el de lista tal cual, o uno rebajado a mano (descuento en el
   // momento de la venta). Cortesía sigue forzando $0 aparte, por si acaso.
-  const precio = opciones?.esRegalo ? 0 : (opciones?.precioManual ?? precioDeCombo(combo, factorVenta));
+  // precioManual siempre debería venir seteado desde FilaLente (que sí
+  // sabe el origen real); "laboratorio" acá es solo el respaldo por si
+  // algún día se llama a esto sin pasar por ahí — nunca cobra de menos.
+  const precio = opciones?.esRegalo ? 0 : (opciones?.precioManual ?? precioDeCombo(combo, factorVenta, "laboratorio"));
   return {
     key: `cristal-${numero}`,
     descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${opciones?.esRegalo ? " (cortesía)" : ""}`,
@@ -178,6 +193,7 @@ function FilaLente({
   costos,
   factorVenta,
   receta,
+  catalogoLab,
   inicial,
   onCambio,
 }: {
@@ -185,6 +201,7 @@ function FilaLente({
   costos: CostoCristal[];
   factorVenta: number;
   receta: RecetaResumen | undefined;
+  catalogoLab: CatalogoLaboratorio;
   inicial: PrefillLente;
   onCambio: (
     datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number } | null
@@ -223,11 +240,29 @@ function FilaLente({
   );
   const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
 
+  // De dónde sale ESTE cristal para la receta de este paciente — mismo
+  // motor que usa el resto de la venta (costo-fides.ts) para no adivinar:
+  // si el laboratorio ya lo tiene hecho para esta potencia exacta, el
+  // precio a cobrar es el de stock, aunque el "casillero" de rango en que
+  // cayó la receta también incluya casos que sí van a laboratorio (una
+  // esfera baja con cilindro alto cae en el mismo casillero que una
+  // esfera Y cilindro altos, pero la primera sale de stock y la segunda
+  // no — cobrarles igual sería cobrarle de más a la simple).
+  function origenReal(fila: CostoCristal): "stock" | "laboratorio" {
+    if (!receta) return "laboratorio";
+    const suma = posicionParaRango === "cerca" ? 1 : 0;
+    const ojos: Ojo[] = [
+      { esfera: (receta.od_esfera ?? 0) + suma * (receta.od_add ?? 0), cilindro: receta.od_cilindro },
+      { esfera: (receta.oi_esfera ?? 0) + suma * (receta.oi_add ?? 0), cilindro: receta.oi_cilindro },
+    ];
+    return costoCristal(fila, ojos, catalogoLab, hoyEnChile())?.origen ?? "laboratorio";
+  }
+
   // Solo al montar: si venía precargada por la sugerencia del tecnólogo,
   // se suma sola al carrito apenas aparece la fila.
   useEffect(() => {
     if (combo) {
-      const precioInicial = precioDeCombo(combo, factorVenta);
+      const precioInicial = precioDeCombo(combo, factorVenta, origenReal(combo));
       // eslint-disable-next-line react-hooks/set-state-in-effect -- precarga el precio inicial de la fila solo al montar, no estado derivado de un evento
       setPrecioTexto(formatearMonto(precioInicial));
       onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo, precioManual: precioInicial });
@@ -243,7 +278,7 @@ function FilaLente({
       onCambio(null);
       return;
     }
-    const precioNuevo = esRegalo ? 0 : precioDeCombo(elegido, factorVenta);
+    const precioNuevo = esRegalo ? 0 : precioDeCombo(elegido, factorVenta, origenReal(elegido));
     setPrecioTexto(formatearMonto(precioNuevo));
     onCambio({ combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined, esRegalo, precioManual: precioNuevo });
   }
@@ -251,7 +286,7 @@ function FilaLente({
   function alternarRegalo(valor: boolean) {
     setEsRegalo(valor);
     if (!combo) return;
-    const precioNuevo = valor ? 0 : precioDeCombo(combo, factorVenta);
+    const precioNuevo = valor ? 0 : precioDeCombo(combo, factorVenta, origenReal(combo));
     setPrecioTexto(formatearMonto(precioNuevo));
     onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo: valor, precioManual: precioNuevo });
   }
@@ -406,8 +441,8 @@ function FilaLente({
                 />
               </div>
             </label>
-            {montoANumero(precioTexto) !== precioDeCombo(combo, factorVenta) && (
-              <p className="text-xs text-tinta-suave">Precio de lista: {clp(precioDeCombo(combo, factorVenta))}</p>
+            {montoANumero(precioTexto) !== precioDeCombo(combo, factorVenta, origenReal(combo)) && (
+              <p className="text-xs text-tinta-suave">Precio de lista: {clp(precioDeCombo(combo, factorVenta, origenReal(combo)))}</p>
             )}
             {sugerido && <p className="text-xs font-semibold text-violet-700">(sugerido en la receta)</p>}
           </div>
@@ -1152,6 +1187,7 @@ export default function PuntoDeVenta({
                 costos={costos}
                 factorVenta={factorVenta}
                 receta={receta}
+                catalogoLab={catalogoLab}
                 inicial={inicialLente1}
                 onCambio={(d) => manejarCambioLente(1, d)}
               />
@@ -1163,6 +1199,7 @@ export default function PuntoDeVenta({
                 costos={costos}
                 factorVenta={factorVenta}
                 receta={receta}
+                catalogoLab={catalogoLab}
                 inicial={inicialLente2}
                 onCambio={(d) => manejarCambioLente(2, d)}
               />

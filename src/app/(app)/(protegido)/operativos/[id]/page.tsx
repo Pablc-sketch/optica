@@ -7,11 +7,12 @@ import { formatearTelefono, telefonoParaWhatsapp } from "@/lib/formato";
 import { clasificarRango, nombreCristal } from "@/lib/cristales";
 import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
 import ContactosOperativo from "../contactos-operativo";
-import { fechaLegible, horaCorta } from "@/lib/fechas";
+import { fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
 import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
+import { costoCristal, type CatalogoLaboratorio, type Ojo } from "@/lib/costo-fides";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
 // vendió y cuándo se le entrega — para que al ofrecer el próximo operativo
@@ -79,7 +80,10 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const { id } = await params;
   const supabase = await createClient();
 
-  const [operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes, contactosRes] = await Promise.all([
+  const [
+    operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes,
+    stockRes, laboratorioRes, montajeRes, promoRes, contactosRes,
+  ] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).single(),
     supabase
       .from("recetas")
@@ -109,8 +113,26 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       .eq("anulada", false)
       .order("fecha", { ascending: false }),
     supabase.from("retiros_sueldo").select("persona, monto").eq("operativo_id", id),
-    supabase.from("costos_cristales").select("tipo_lente, rango_receta, tratamiento, precio_venta"),
-    supabase.from("tenants").select("nombre_comercial").single(),
+    // Todo lo necesario para calcular, receta por receta, de dónde
+    // saldría de verdad el cristal (stock o laboratorio) — el mismo motor
+    // que usa el punto de venta (costo-fides.ts) — en vez de cotizar por
+    // la categoría ancha de rango, que mete en la misma bolsa una receta
+    // barata (de stock) con una cara (tallado a medida).
+    supabase
+      .from("costos_cristales")
+      .select(
+        `tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock,
+         material_stock, material_laboratorio, diseno_laboratorio, montaje_material,
+         diseno_laboratorio_proximo, diseno_proximo_desde`
+      ),
+    supabase.from("tenants").select("nombre_comercial, descuento_laboratorio_pct").single(),
+    supabase.from("lab_precios_stock").select("material, diseno, esfera_max, cilindro_max, precio_unitario"),
+    supabase.from("lab_precios_laboratorio").select("diseno, material, precio_unitario"),
+    supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
+    supabase
+      .from("lab_promociones")
+      .select("diseno, material, descuento_pct, desde, hasta, nota")
+      .gte("hasta", hoyEnChile()),
     supabase
       .from("contactos_operativo")
       .select("id, nombre, cargo, telefono, email, notas")
@@ -297,6 +319,20 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   //    un número inventado después.
   const costosCristales = costosRes.data ?? [];
   const contactos = contactosRes.data ?? [];
+  // Catálogo completo del laboratorio, para calcular receta por receta si
+  // el cristal saldría de stock o de laboratorio — el mismo motor que usa
+  // el punto de venta. Sin esto, cotizar por WhatsApp usaba la categoría
+  // ancha de rango para el precio, y esa categoría mezcla recetas baratas
+  // (de stock) con caras (tallado a medida): a alguien con receta simple
+  // se le podía cotizar el precio de laboratorio sin necesidad.
+  const catalogoLab: CatalogoLaboratorio = {
+    stock: stockRes.data ?? [],
+    laboratorio: laboratorioRes.data ?? [],
+    montaje: montajeRes.data ?? [],
+    recargos: [],
+    promociones: (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })),
+    descuentoPct: Number(tenantRes.data?.descuento_laboratorio_pct ?? 0),
+  };
   const precioSugerido = (r: {
     sugerencia_tipo_lente: string | null;
     sugerencia_tratamiento: string | null;
@@ -314,7 +350,20 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         c.rango_receta === rango
     );
     if (!fila || fila.precio_venta <= 0) return null;
-    return { nombre: nombreCristal(r.sugerencia_tipo_lente, r.sugerencia_tratamiento), precio: fila.precio_venta };
+    // De dónde saldría de verdad este cristal para ESTA receta exacta
+    // (no la categoría ancha de rango): si el laboratorio ya lo tiene
+    // hecho, se cotiza al precio de stock, que suele ser bastante más
+    // barato.
+    const ojos: Ojo[] = [
+      { esfera: r.od_esfera, cilindro: r.od_cilindro },
+      { esfera: r.oi_esfera, cilindro: r.oi_cilindro },
+    ];
+    const real = costoCristal(fila, ojos, catalogoLab, hoyEnChile());
+    const precio =
+      real?.origen === "stock" && fila.precio_venta_stock !== null && fila.precio_venta_stock > 0
+        ? fila.precio_venta_stock
+        : fila.precio_venta;
+    return { nombre: nombreCristal(r.sugerencia_tipo_lente, r.sugerencia_tratamiento), precio };
   };
 
   const paraCotizar: DestinatarioWsp[] = recetas

@@ -30,13 +30,21 @@ export async function actualizarCostoCristal(formData: FormData) {
   const stockTexto = String(formData.get("costo_stock") ?? "").trim();
   const costoStock = stockTexto === "" ? null : parsearMonto(formData.get("costo_stock"));
 
+  // El precio de venta de stock también se deja vacío cuando no aplica:
+  // el punto de venta cae solo al precio de laboratorio si este rango
+  // nunca sale de stock para este tratamiento (no tiene sentido inventar
+  // un número que nunca se va a cobrar).
+  const precioStockTexto = String(formData.get("precio_stock") ?? "").trim();
+  const precioVentaStock = precioStockTexto === "" ? null : parsearMonto(formData.get("precio_stock"));
+
   const { error } = await supabase
     .from("costos_cristales")
-    .update({ costo, costo_stock: costoStock, precio_venta: precio })
+    .update({ costo, costo_stock: costoStock, precio_venta: precio, precio_venta_stock: precioVentaStock })
     .eq("id", id);
   if (error) throw error;
   revalidatePath("/precios");
   revalidatePath("/ventas");
+  revalidatePath("/operativos");
 }
 
 // Cómo pide el laboratorio este cristal en su catálogo (ej. Fides no
