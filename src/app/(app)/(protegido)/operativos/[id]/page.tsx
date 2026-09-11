@@ -818,16 +818,20 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           "",
           "Le recordamos que sus lentes ya están listos para retirar:",
           "",
-          "📅 {fecha}",
-          "🕐 {hora}",
-          "📍 {lugar}",
+          "📅 *{fecha}*",
+          "🕐 *{hora}*",
+          "📍 *{lugar}*",
           "",
-          "Saldo por pagar al retirar: {saldo}",
+          "Saldo por pagar al retirar: *{saldo}*",
           "",
-          "Si no puede venir ese día, avísenos por acá y lo coordinamos.",
+          "Si no puede venir ese día, avísenos o mande a otra persona a retirarlo con su nombre y RUT.",
           "¡Gracias! — {optica}",
         ].join("\n")}
-        ayudaMarcadores="Marcadores: {nombre} {fecha} {hora} {lugar} {saldo} {optica} — se reemplazan solos por los datos de cada persona."
+        ayudaMarcadores={
+          'Marcadores: {nombre} {fecha} {hora} {lugar} {saldo} {optica} — se reemplazan solos por los datos ' +
+          'de cada persona. Lo que va entre *asteriscos* sale en negrita en WhatsApp — no soporta color de texto, ' +
+          "así que la negrita es lo más que se puede destacar."
+        }
         destinatarios={paraRecordarEntrega}
       />
 

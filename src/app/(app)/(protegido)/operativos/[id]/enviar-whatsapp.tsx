@@ -60,6 +60,14 @@ export default function EnviarWhatsapp({
 
   const conTelefono = destinatarios.filter((d) => d.telefonoWsp);
   const sinTelefono = destinatarios.filter((d) => !d.telefonoWsp);
+  // Los que faltan por mandar, en el mismo orden en que aparecen en la
+  // lista. WhatsApp no deja mandar un mensaje sin que una persona apriete
+  // enviar adentro de la conversación — eso no se puede saltar — así que
+  // "mandar a todos" no es un solo clic mágico, es una cola: cada clic
+  // abre al siguiente ya escrito, y con eso alcanza para no tener que ir
+  // fila por fila buscando a quién le falta.
+  const pendientes = conTelefono.filter((d) => !enviados.has(d.id));
+  const siguiente = pendientes[0];
 
   return (
     <details className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm print:hidden">
@@ -71,6 +79,31 @@ export default function EnviarWhatsapp({
       </summary>
 
       <p className="mt-2 text-sm text-green-900">{descripcion}</p>
+
+      {conTelefono.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
+          {siguiente ? (
+            <a
+              href={`https://wa.me/${siguiente.telefonoWsp}?text=${encodeURIComponent(aplicar(plantilla, siguiente))}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setEnviados((prev) => new Set(prev).add(siguiente.id))}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${colorBoton}`}
+            >
+              📨 Enviar a todos — siguiente: {primerNombre(siguiente.nombre)} ({conTelefono.length - pendientes.length + 1}
+              /{conTelefono.length})
+            </a>
+          ) : (
+            <span className="rounded-lg bg-green-100 px-4 py-2 text-sm font-semibold text-green-800">
+              ✓ Ya se le mandó a los {conTelefono.length} con celular
+            </span>
+          )}
+          <span className="text-xs text-tinta-suave">
+            Cada clic abre al siguiente ya escrito. Igual hay que apretar enviar adentro de WhatsApp —
+            eso no se puede automatizar.
+          </span>
+        </div>
+      )}
 
       <label className="mt-3 flex flex-col gap-1 text-sm font-medium text-green-900">
         Mensaje (se puede editar antes de enviar)
