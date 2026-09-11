@@ -969,6 +969,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
             Arriendo (espacio o equipos)
             <CampoMonto name="costo_arriendo" defaultValue={operativo.costo_arriendo} />
+            <span className="text-xs font-normal text-sky-700">
+              Si este equipo cubre dos puntos el mismo día (dos sedes, un solo arriendo),
+              repártelo entre los dos operativos en vez de ponerlo completo en cada uno —
+              si no, la utilidad del día queda contada de menos por duplicado.
+            </span>
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
             Viáticos
