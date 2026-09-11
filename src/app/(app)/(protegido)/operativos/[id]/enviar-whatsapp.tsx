@@ -28,12 +28,27 @@ function primerNombre(nombre: string): string {
   return nombre.trim().split(/\s+/)[0] ?? nombre;
 }
 
+// Deja el texto en caracteres que CUALQUIER WhatsApp sabe mostrar. Los
+// signos de interrogación que aparecían en el mensaje mandado no eran un
+// problema de acentos (esos WhatsApp los muestra bien) sino de tipografía
+// "elegante" que algunos teléfonos no tienen en su fuente: la raya (—), las
+// comillas curvas… — normalize + estos reemplazos los bajan a su
+// equivalente simple, que sí está en cualquier teclado.
+function normalizarParaWhatsapp(texto: string): string {
+  return texto
+    .normalize("NFC")
+    .replace(/[\u2014\u2013]/g, "-")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/\ufffd/g, "");
+}
+
 function aplicar(plantilla: string, d: DestinatarioWsp): string {
   let texto = plantilla.replaceAll("{nombre}", primerNombre(d.nombre));
   for (const [clave, valor] of Object.entries(d.valores)) {
     texto = texto.replaceAll(`{${clave}}`, valor);
   }
-  return texto;
+  return normalizarParaWhatsapp(texto);
 }
 
 export default function EnviarWhatsapp({
@@ -83,23 +98,39 @@ export default function EnviarWhatsapp({
       {conTelefono.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
           {siguiente ? (
-            <a
-              href={`https://wa.me/${siguiente.telefonoWsp}?text=${encodeURIComponent(aplicar(plantilla, siguiente))}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setEnviados((prev) => new Set(prev).add(siguiente.id))}
+            <button
+              type="button"
+              onClick={() => {
+                // OJO: se captura "siguiente" en esta variable ANTES de
+                // tocar el estado. Si en vez de esto el link se arma con
+                // href={...siguiente...} y el onClick actualiza ese mismo
+                // "enviados", React re-renderiza (y recalcula quién es
+                // "siguiente") ANTES de que el navegador siga el link — y
+                // termina abriendo al que quedó siguiente después de ese cambio, no al que decía
+                // el botón. Fue justo el bug: decía "Raúl" y mandaba a
+                // "Lucila". Con window.open acá adentro no hay esa carrera:
+                // se abre a quien de verdad se capturó en este clic.
+                const destinatario = siguiente;
+                const texto = aplicar(plantilla, destinatario);
+                window.open(
+                  `https://wa.me/${destinatario.telefonoWsp}?text=${encodeURIComponent(texto)}`,
+                  "_blank",
+                  "noopener,noreferrer"
+                );
+                setEnviados((prev) => new Set(prev).add(destinatario.id));
+              }}
               className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${colorBoton}`}
             >
-              📨 Enviar a todos — siguiente: {primerNombre(siguiente.nombre)} ({conTelefono.length - pendientes.length + 1}
+              📨 Enviar a todos - siguiente: {primerNombre(siguiente.nombre)} ({conTelefono.length - pendientes.length + 1}
               /{conTelefono.length})
-            </a>
+            </button>
           ) : (
             <span className="rounded-lg bg-green-100 px-4 py-2 text-sm font-semibold text-green-800">
               ✓ Ya se le mandó a los {conTelefono.length} con celular
             </span>
           )}
           <span className="text-xs text-tinta-suave">
-            Cada clic abre al siguiente ya escrito. Igual hay que apretar enviar adentro de WhatsApp —
+            Cada clic abre al siguiente ya escrito. Igual hay que apretar enviar adentro de WhatsApp,
             eso no se puede automatizar.
           </span>
         </div>

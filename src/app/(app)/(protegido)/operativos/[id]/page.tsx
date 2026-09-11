@@ -251,6 +251,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     })
     .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
+  // La dirección sola no dice mucho en un condominio grande ("San Pablo
+  // 7558" puede tener varias sedes) — si hay un lugar de entrega definido y
+  // no es literalmente el mismo texto, se muestra entre paréntesis al lado.
+  const direccionConLugar =
+    operativo.direccion && operativo.lugar_entrega && operativo.lugar_entrega !== operativo.direccion
+      ? `${operativo.direccion} (${operativo.lugar_entrega})`
+      : (operativo.direccion ?? operativo.lugar_entrega);
+
   // --- Destinatarios de los dos WhatsApp del operativo ---------------
   const nombreOptica = tenantRes.data?.nombre_comercial ?? "la óptica";
   const fechaEntregaTexto = operativo.fecha_entrega_estimada
@@ -361,7 +369,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               operativo.fecha_fin && operativo.fecha_fin !== operativo.fecha
                 ? `Del ${fechaLegible(operativo.fecha)} al ${fechaLegible(operativo.fecha_fin)}`
                 : fechaLegible(operativo.fecha),
-              operativo.direccion,
+              direccionConLugar,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -825,7 +833,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           "Saldo por pagar al retirar: *{saldo}*",
           "",
           "Si no puede venir ese día, avísenos o mande a otra persona a retirarlo con su nombre y RUT.",
-          "¡Gracias! — {optica}",
+          "¡Gracias! - {optica}",
         ].join("\n")}
         ayudaMarcadores={
           'Marcadores: {nombre} {fecha} {hora} {lugar} {saldo} {optica} — se reemplazan solos por los datos ' +
@@ -841,18 +849,22 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         plantillaInicial={[
           "Hola {nombre}! 👓",
           "",
-          "Le escribimos del operativo de vista en {lugar}.",
+          "Nos dio gusto atenderlo en el operativo de {lugar}. Le queremos recordar algo",
+          "importante: en su examen le detectamos que necesita lentes, y todavía no los ha",
+          "encargado.",
           "",
-          "Según su examen, el lente que necesita es:",
-          "*{lente} — {precio}*",
-          "✅ Incluye el marco sin costo",
+          "Lo que su receta indica que necesita:",
+          "*{lente} - {precio}*",
+          "✅ Incluye el marco sin costo, usted elige el que más le guste",
+          "✅ Queda listo para la próxima entrega, no tiene que volver a examinarse",
           "",
-          "Todavía está a tiempo de encargarlo y se lo dejamos listo para la próxima entrega.",
-          "¿Se lo encargamos?",
+          "Ver bien no es un lujo, es cuidar su salud visual - y ya tiene todo listo para",
+          "encargarlo, solo falta decir que sí.",
           "",
-          "— {optica}",
+          "Contéstenos por acá y se lo dejamos reservado hoy mismo.",
+          "¡Gracias! - {optica}",
         ].join("\n")}
-        ayudaMarcadores="Marcadores: {nombre} {lente} {precio} {lugar} {optica} — se reemplazan solos por los datos de cada persona."
+        ayudaMarcadores="Marcadores: {nombre} {lente} {precio} {lugar} {optica} - se reemplazan solos por los datos de cada persona."
         destinatarios={paraCotizar}
         colorBoton="bg-sky-700 hover:bg-sky-800"
       />
