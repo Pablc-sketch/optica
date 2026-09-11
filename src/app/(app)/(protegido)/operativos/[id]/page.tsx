@@ -393,7 +393,12 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       valores: {
         lente: sugerido?.nombre ?? "el lente que necesita",
         precio: sugerido ? clp(sugerido.precio) : "(consultar)",
-        lugar: operativo.direccion ?? operativo.nombre,
+        lugar: direccionConLugar ?? operativo.nombre,
+        // Mismo día y hora que la entrega real: es cuando el equipo ya va
+        // a estar ahí de todas formas, así que invitar a pasar en ese
+        // horario no cuesta nada extra ni depende de coordinar algo nuevo.
+        fecha: fechaEntregaConDia,
+        hora: operativo.hora_entrega ?? "(hora por confirmar)",
         optica: nombreOptica,
       },
     }));
@@ -908,22 +913,24 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         plantillaInicial={[
           "Hola {nombre}!",
           "",
-          "Nos dio gusto atenderlo en el operativo de {lugar}. Le queremos recordar algo",
+          "Nos dio gusto atenderlo en el operativo de *{lugar}*. Le queremos recordar algo",
           "importante: en su examen le detectamos que necesita lentes, y todavía no los ha",
           "encargado.",
           "",
           "Lo que su receta indica que necesita:",
           "*{lente} - {precio}*",
-          "✅ Incluye el marco sin costo, usted elige el que más le guste",
-          "✅ Queda listo para la próxima entrega, no tiene que volver a examinarse",
+          "- Incluye el marco sin costo, usted elige el que más le guste",
+          "- Queda listo para la próxima entrega, no tiene que volver a examinarse",
           "",
-          "Ver bien no es un lujo, es cuidar su salud visual - y ya tiene todo listo para",
-          "encargarlo, solo falta decir que sí.",
+          "_Ver bien no es un lujo, es cuidar su salud visual._",
           "",
-          "Contéstenos por acá y se lo dejamos reservado hoy mismo.",
+          "El {fecha}, de {hora}, vamos a estar en *{lugar}* entregando los lentes de",
+          "quienes sí encargaron - si quiere, se puede dar una vuelta a esa hora y lo",
+          "vemos en persona, sin compromiso.",
+          "",
           "¡Gracias! - {optica}",
         ].join("\n")}
-        ayudaMarcadores="Marcadores: {nombre} {lente} {precio} {lugar} {optica} - se reemplazan solos por los datos de cada persona."
+        ayudaMarcadores="Marcadores: {nombre} {lente} {precio} {lugar} {fecha} {hora} {optica} - se reemplazan solos por los datos de cada persona. Lo que va entre *asteriscos* sale en negrita y entre _guiones bajos_ en cursiva - WhatsApp no soporta color de texto."
         destinatarios={paraCotizar}
         colorBoton="bg-sky-700 hover:bg-sky-800"
       />
