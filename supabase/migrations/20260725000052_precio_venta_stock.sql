@@ -159,3 +159,55 @@ set precio_venta_stock = case rango_receta
   end
 where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a'
   and tipo_lente = 'Monofocal' and tratamiento = 'Adelgazado 1.67 Filtro Azul';
+
+-- Confirmado: para Fotocromático Gris Filtro Azul la grilla de stock de
+-- Fides (CR AR FOTO GRIS BLUE 1.56) topa en esfera 4.00 — cualquier
+-- esfera mayor a 4 siempre va a laboratorio. Ya quedaba así arriba; este
+-- comentario deja constancia de que se volvió a verificar contra la
+-- grilla real.
+
+-- BIFOCAL y MULTIFOCAL: acá el stock del laboratorio no sigue una grilla
+-- de potencias como el resto — es una caja aparte con un rango fijo muy
+-- chico (recetas prácticamente neutras). En la práctica eso significa que
+-- SOLO el rango más simple (±2.00/±2.00) puede llegar a salir de stock;
+-- el resto SIEMPRE va a laboratorio, sin ningún caso mixto como el del
+-- Fotocromático Gris Blue en Monofocal. Se separa el precio de stock
+-- únicamente en ese primer rango, para los tratamientos que sí tienen
+-- material de stock asignado (Antirreflejo y, donde existe, Fotocromático
+-- Gris Filtro Azul); el resto de los rangos se deja en el precio de
+-- laboratorio que ya tenían, con un ajuste menor en ±6.00/±6.00 para
+-- reflejar su costo algo mayor.
+--
+-- Los tratamientos que en Bifocal/Multifocal NUNCA tienen material de
+-- stock (Fotocromático Café, Polarizado, Policarbonato Filtro Azul,
+-- Multifocal/Orgánico Filtro Azul) no se tocan: ya tenían un solo precio
+-- razonable y no hay nada que separar.
+update public.costos_cristales
+set precio_venta_stock = case when rango_receta = '±2.00 / ±2.00' then 60000 end,
+    precio_venta = case when rango_receta = '±6.00 / ±6.00' then 125000 else 120000 end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a' and tipo_lente = 'Bifocal'
+  and tratamiento in ('Bifocal Antirreflejo', 'Orgánico Antirreflejo');
+
+update public.costos_cristales
+set precio_venta_stock = case when rango_receta = '±2.00 / ±2.00' then 75000 end,
+    precio_venta = case when rango_receta = '±6.00 / ±6.00' then 155000 else 150000 end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a' and tipo_lente = 'Bifocal'
+  and tratamiento in ('Bifocal Filtro Azul', 'Orgánico Filtro Azul');
+
+update public.costos_cristales
+set precio_venta_stock = case when rango_receta = '±2.00 / ±2.00' then 95000 end,
+    precio_venta = case when rango_receta = '±6.00 / ±6.00' then 185000 else 180000 end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a' and tipo_lente = 'Bifocal'
+  and tratamiento = 'Fotocromático Gris Filtro Azul';
+
+update public.costos_cristales
+set precio_venta_stock = case when rango_receta = '±2.00 / ±2.00' then 105000 end,
+    precio_venta = case when rango_receta = '±6.00 / ±6.00' then 185000 else 180000 end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a' and tipo_lente = 'Multifocal'
+  and tratamiento in ('Multifocal Antirreflejo', 'Orgánico Antirreflejo');
+
+update public.costos_cristales
+set precio_venta_stock = case when rango_receta = '±2.00 / ±2.00' then 130000 end,
+    precio_venta = case when rango_receta = '±6.00 / ±6.00' then 230000 else 225000 end
+where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a' and tipo_lente = 'Multifocal'
+  and tratamiento = 'Fotocromático Gris Filtro Azul';
