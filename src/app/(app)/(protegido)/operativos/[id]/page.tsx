@@ -924,9 +924,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           "",
           "_Ver bien no es un lujo, es cuidar su salud visual._",
           "",
-          "El {fecha}, de {hora}, vamos a estar en *{lugar}* entregando los lentes de",
-          "quienes sí encargaron - si quiere, se puede dar una vuelta a esa hora y lo",
-          "vemos en persona, sin compromiso.",
+          "El {fecha}, de {hora}, vamos a estar de nuevo en *{lugar}* - si le interesa,",
+          "ahí lo esperamos.",
           "",
           "¡Gracias! - {optica}",
         ].join("\n")}
