@@ -63,6 +63,21 @@ export function fechaLegible(fechaISO: string): string {
   return new Date(`${fechaISO}T12:00:00Z`).toLocaleDateString("es-CL", { timeZone: ZONA_CHILE });
 }
 
+// "sábado", "domingo"... para avisos de entrega: "15/08/2026 (sábado)" se
+// entiende de un vistazo sin tener que ir a mirar un calendario.
+export function diaDeLaSemana(fechaISO: string): string {
+  return new Date(`${fechaISO}T12:00:00Z`).toLocaleDateString("es-CL", {
+    timeZone: ZONA_CHILE,
+    weekday: "long",
+  });
+}
+
+// Fecha + día de la semana en un solo texto, listo para un mensaje:
+// "15/08/2026 (sábado)".
+export function fechaConDia(fechaISO: string): string {
+  return `${fechaLegible(fechaISO)} (${diaDeLaSemana(fechaISO)})`;
+}
+
 // "2026-09" según el reloj chileno — para reportes que se calculan mes a
 // mes (ej. sueldos: se van sumando los operativos del mes y se reinician
 // en el mes siguiente).

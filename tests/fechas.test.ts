@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   desfaseChile,
+  diaDeLaSemana,
   diaEnChile,
+  fechaConDia,
   finDelDia,
   inicioDelDia,
   diasQueOcupa,
@@ -149,5 +151,17 @@ describe("hace cuánto fue", () => {
     expect(haceCuanto("2026-09-10", "2026-09-10")).toBe("hoy");
     expect(haceCuanto("2026-09-09", "2026-09-10")).toBe("hace 1 día");
     expect(haceCuanto("2026-09-01", "2026-09-10")).toBe("hace 1 semana");
+  });
+});
+
+describe("día de la semana para el aviso de entrega", () => {
+  it("dice el día en español", () => {
+    // 12/09/2026 es sábado.
+    expect(diaDeLaSemana("2026-09-12")).toBe("sábado");
+    expect(diaDeLaSemana("2026-09-13")).toBe("domingo");
+  });
+
+  it("fechaConDia junta fecha y día en un solo texto", () => {
+    expect(fechaConDia("2026-09-12")).toBe("12-09-2026 (sábado)");
   });
 });

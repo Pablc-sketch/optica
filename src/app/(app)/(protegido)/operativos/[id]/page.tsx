@@ -7,7 +7,7 @@ import { formatearTelefono, telefonoParaWhatsapp } from "@/lib/formato";
 import { clasificarRango, nombreCristal } from "@/lib/cristales";
 import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
 import ContactosOperativo from "../contactos-operativo";
-import { fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
+import { fechaConDia, fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
 import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
@@ -286,6 +286,12 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const fechaEntregaTexto = operativo.fecha_entrega_estimada
     ? fechaLegible(operativo.fecha_entrega_estimada)
     : "(falta definir la fecha de entrega)";
+  // Con el día de la semana entre paréntesis para el WhatsApp — "15/08
+  // (sábado)" se entiende al vuelo, sin tener que ir a mirar un
+  // calendario para saber si esa fecha cae un día que a uno le sirve.
+  const fechaEntregaConDia = operativo.fecha_entrega_estimada
+    ? fechaConDia(operativo.fecha_entrega_estimada)
+    : fechaEntregaTexto;
 
   // 1. Recordar la entrega a quien compró y todavía tiene el lente acá.
   //    Va con el saldo por pagar, que es el otro motivo por el que se
@@ -306,9 +312,13 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       monto: saldo,
       valores: {
         saldo: saldo > 0 ? clp(saldo) : "$0 (ya está pagado)",
-        fecha: fechaEntregaTexto,
+        fecha: fechaEntregaConDia,
         hora: operativo.hora_entrega ?? "(falta definir la hora)",
-        lugar: operativo.lugar_entrega ?? operativo.direccion ?? "(falta definir el lugar)",
+        // Dirección del operativo, con el lugar de entrega entre paréntesis
+        // si es distinto (ej. "San Pablo 7558 (Sede central del
+        // condominio)") — la dirección sola no dice a cuál sede ir dentro
+        // de un condominio grande.
+        lugar: direccionConLugar ?? "(falta definir el lugar)",
         optica: nombreOptica,
       },
     }));
@@ -871,7 +881,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         titulo="Recordar la entrega"
         descripcion={`Entrega: ${fechaEntregaTexto}${operativo.hora_entrega ? `, ${operativo.hora_entrega}` : ""}${operativo.lugar_entrega ? ` · ${operativo.lugar_entrega}` : ""}. La hora y el lugar se editan más abajo en "Costos, metas y entrega", y la fecha en "Editar datos del operativo".`}
         plantillaInicial={[
-          "Hola {nombre}! 👓",
+          "Hola {nombre}!",
           "",
           "Le recordamos que sus lentes ya están listos para retirar:",
           "",
@@ -896,7 +906,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         titulo="Cotizar a quien no compró"
         descripcion="Se atendieron pero se fueron sin comprar. El precio es el de la sugerencia que quedó en su receta, así que es exactamente lo que se le habría cobrado ese día."
         plantillaInicial={[
-          "Hola {nombre}! 👓",
+          "Hola {nombre}!",
           "",
           "Nos dio gusto atenderlo en el operativo de {lugar}. Le queremos recordar algo",
           "importante: en su examen le detectamos que necesita lentes, y todavía no los ha",
