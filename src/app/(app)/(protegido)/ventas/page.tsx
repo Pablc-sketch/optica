@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
+import { formatearTelefono } from "@/lib/formato";
 import AbonoForm from "@/components/abono-form";
 import PuntoDeVenta from "./pos";
 import AnularVenta from "./anular-venta";
@@ -18,7 +19,7 @@ export default async function VentasPage() {
   } = await supabase.auth.getUser();
 
   const [
-    pacientesRes, productosRes, costosRes, tenantRes, ventasRes, perfilRes, sucursalRes,
+    pacientesRes, productosRes, costosRes, tenantRes, ventasRes, porEntregarRes, perfilRes, sucursalRes,
     recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, promoRes, operativosRes,
   ] = await Promise.all([
     supabase.from("pacientes").select("id, nombre, rut").order("nombre").limit(200),
@@ -45,6 +46,16 @@ export default async function VentasPage() {
       )
       .order("fecha", { ascending: false })
       .limit(20),
+    // Lo que está listo y nadie ha venido a buscar. Va aparte de "últimas
+    // ventas" a propósito: acá no importa que sea reciente, importa que
+    // siga esperando — y alguien puede no haber pasado en semanas.
+    supabase
+      .from("ventas")
+      .select(
+        `id, total, pacientes:paciente_id (nombre, telefono), pagos_abonos (monto),
+         venta_items (cristal_slot, ordenes_trabajo:ot_id (estado))`
+      )
+      .eq("anulada", false),
     supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
     supabase
@@ -83,6 +94,31 @@ export default async function VentasPage() {
     if (!recetasPorPaciente[r.paciente_id]) recetasPorPaciente[r.paciente_id] = r;
   }
 
+  // Quién tiene su lente terminado y todavía no ha venido a buscarlo. Se
+  // mira el estado "listo" de cada orden: lo que sigue en laboratorio
+  // todavía no se puede entregar, y lo ya entregado no corresponde. Se
+  // ordena por lo que falta cobrar, que es lo que conviene tener a mano
+  // primero cuando la persona llega al mesón.
+  const porEntregar = (porEntregarRes.data ?? [])
+    .map((v) => {
+      const listos = (v.venta_items ?? []).filter((i) => {
+        const rel = (i as { ordenes_trabajo?: unknown }).ordenes_trabajo;
+        const filas = (Array.isArray(rel) ? rel : rel ? [rel] : []) as { estado: string }[];
+        return filas.some((f) => f.estado === "listo");
+      });
+      const paciente = v.pacientes as unknown as { nombre: string; telefono: string | null } | null;
+      const abonado = (v.pagos_abonos ?? []).reduce((s: number, p: { monto: number }) => s + p.monto, 0);
+      return {
+        id: v.id,
+        nombre: paciente?.nombre ?? "Sin paciente",
+        telefono: paciente?.telefono ?? null,
+        pares: listos.length,
+        saldo: Math.max(0, v.total - abonado),
+      };
+    })
+    .filter((v) => v.pares > 0)
+    .sort((a, b) => b.saldo - a.saldo);
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -108,6 +144,43 @@ export default async function VentasPage() {
           operativos={operativosRes.data ?? []}
         />
       </div>
+
+      {porEntregar.length > 0 && (
+        <section>
+          <h2 className="mb-1 font-semibold">
+            Falta por entregar{" "}
+            <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-bold text-white">
+              {porEntregar.length}
+            </span>
+          </h2>
+          <p className="mb-3 text-xs text-tinta-suave">
+            Lentes terminados que nadie ha venido a buscar. El monto es lo que falta cobrar al
+            entregar.
+          </p>
+          <ul className="flex flex-col gap-2">
+            {porEntregar.map((p) => (
+              <li key={p.id} className="rounded-xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 shadow-sm">
+                <Link href={`/ventas/${p.id}/comprobante`} className="flex flex-wrap items-center gap-2">
+                  <span className="flex-1 truncate text-sm font-semibold text-amber-950">{p.nombre}</span>
+                  {p.telefono && <span className="text-xs text-amber-800">{formatearTelefono(p.telefono)}</span>}
+                  {p.pares > 1 && (
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-amber-900">
+                      {p.pares} pares
+                    </span>
+                  )}
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                      p.saldo > 0 ? "bg-red-600 text-white" : "bg-green-600 text-white"
+                    }`}
+                  >
+                    {p.saldo > 0 ? `Debe ${clp(p.saldo)}` : "Pagado"}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-3 font-semibold">Últimas ventas</h2>
