@@ -155,7 +155,12 @@ export default async function CertificadoFonasaPage({
           </Link>
           <h1 className="mt-1 text-xl font-bold">Certificado de compra Fonasa</h1>
         </div>
-        <BotonImprimir />
+        <div className="text-right">
+          <BotonImprimir />
+          <p className="mt-1 text-xs text-tinta-suave">
+            Para mandarlo por WhatsApp, elige <strong>Guardar como PDF</strong> en el destino.
+          </p>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-crema-claro p-3 text-sm print:hidden">
