@@ -80,6 +80,14 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
           <BotonImprimir />
           {!venta.anulada && (
             <Link
+              href={`/ventas/${venta.id}/certificado-fonasa`}
+              className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+            >
+              📄 Certificado Fonasa
+            </Link>
+          )}
+          {!venta.anulada && (
+            <Link
               href={`/ventas/${venta.id}`}
               className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-sm font-medium text-tinta-suave transition hover:bg-crema"
             >
