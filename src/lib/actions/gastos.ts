@@ -36,6 +36,15 @@ function parsearMedioPago(valor: FormDataEntryValue | null): string | null {
   return (MEDIOS_PAGO as readonly string[]).includes(v) ? v : null;
 }
 
+// De qué caja sale la plata. Es obligatoria y no se deduce del medio de
+// pago: antes un movimiento sin medio anotado no bajaba ninguna de las dos
+// cajas, así que la plata salía de verdad y el cuadre seguía igual. Ante
+// la duda se asume efectivo, que es de donde sale casi todo lo que se
+// entrega en la mano.
+function parsearCaja(valor: FormDataEntryValue | null): "efectivo" | "digital" {
+  return String(valor ?? "") === "digital" ? "digital" : "efectivo";
+}
+
 // Gasto que no nace de un operativo puntual: reponer stock (marcos,
 // bandejas), arriendos fijos, cualquier costo del negocio en general. Se
 // guarda aparte de los costos de cada operativo para no mezclarlos —
@@ -57,6 +66,7 @@ export async function crearGastoGlobal(formData: FormData) {
     monto,
     categoria: (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
     medio_pago: parsearMedioPago(formData.get("medio_pago")),
+    caja: parsearCaja(formData.get("caja")),
   });
   if (error) throw error;
 
@@ -103,8 +113,42 @@ export async function crearRetiro(formData: FormData) {
     fecha,
     monto,
     medio_pago: parsearMedioPago(formData.get("medio_pago")),
+    caja: parsearCaja(formData.get("caja")),
     motivo: String(formData.get("motivo") ?? "").trim() || null,
     operativo_id: operativoId || null,
+  });
+  if (error) throw error;
+
+  revalidatePath("/reportes");
+}
+
+// Marcar el sueldo del mes como pagado de verdad. Se guarda en la misma
+// tabla que los adelantos porque es exactamente el mismo movimiento de
+// plata — sale de una caja y baja lo que se le debe a esa persona — pero
+// con `es_sueldo` en true, para que en pantalla se distinga "ya retiró un
+// adelanto" de "el sueldo ya está pagado".
+//
+// El monto viene del formulario y no se recalcula acá: lo que se paga es
+// lo que el reporte mostró en ese momento, y si después cambia una venta
+// del mes, el pago ya hecho no debe moverse solo.
+export async function pagarSueldo(formData: FormData) {
+  const { supabase, tenantId } = await requerirTenant();
+
+  const persona = String(formData.get("persona") ?? "");
+  const fecha = String(formData.get("fecha") ?? "").trim();
+  const monto = parsearMonto(formData.get("monto"));
+  const mes = String(formData.get("mes") ?? "").trim();
+  if (!(PERSONAS as readonly string[]).includes(persona) || !fecha || monto === null || monto === 0) return;
+
+  const { error } = await supabase.from("retiros_sueldo").insert({
+    tenant_id: tenantId,
+    persona,
+    fecha,
+    monto,
+    medio_pago: parsearMedioPago(formData.get("medio_pago")),
+    caja: parsearCaja(formData.get("caja")),
+    es_sueldo: true,
+    motivo: mes ? `Sueldo de ${mes} pagado` : "Sueldo pagado",
   });
   if (error) throw error;
 

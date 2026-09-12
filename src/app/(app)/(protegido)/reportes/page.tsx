@@ -13,16 +13,24 @@ import {
 } from "@/lib/fechas";
 import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
+import { calcularCaja, resumirCaja } from "@/lib/caja";
 import {
   actualizarComisionMedioPago,
   crearGastoGlobal,
   crearRetiro,
   eliminarGastoGlobal,
   eliminarRetiro,
+  pagarSueldo,
 } from "@/lib/actions/gastos";
 import FiltroPagos from "./filtro-pagos";
 
-const PERSONAS: Record<string, string> = { isadora: "Isadora", madre: "Mamá", pablo: "Pablo", ahorro: "Ahorro (negocio)" };
+const PERSONAS: Record<string, string> = {
+  isadora: "Isadora",
+  madre: "Pamela (mamá)",
+  pablo: "Pablo",
+  ahorro: "Ahorro (negocio)",
+};
+const CAJAS_LABEL: Record<string, string> = { efectivo: "Efectivo", digital: "Caja digital" };
 const MEDIOS_PAGO_LABEL: Record<string, string> = {
   efectivo: "Efectivo",
   debito: "Débito",
@@ -57,6 +65,86 @@ type ItemVenta = {
   productos: { costo: number; categoria: string } | { costo: number; categoria: string }[] | null;
   ordenes_trabajo: OTResumen | OTResumen[] | null;
 };
+
+// Tarjeta de sueldo de una persona, con el botón para marcarlo pagado.
+//
+// Pagar el sueldo es exactamente el mismo movimiento que un adelanto — sale
+// plata de una caja y baja lo que se le debe — así que se guarda en la
+// misma tabla. Lo único que cambia es que queda marcado como sueldo, para
+// que la tarjeta pueda decir "pagado" en vez de "ya retiró".
+//
+// La caja se elige en el mismo botón y es obligatoria: es la pregunta que
+// hay que contestar sí o sí para que el cuadre de mañana siga en pie
+// ("¿esos $56.000 salieron del sobre o de la cuenta?").
+function TarjetaSueldo({
+  icono,
+  nombre,
+  persona,
+  total,
+  adelantos,
+  pagado,
+  pendiente,
+  mes,
+  hoy,
+  verbo = "Pagar",
+  acento,
+}: {
+  icono: string;
+  nombre: string;
+  persona: string;
+  total: number;
+  adelantos: number;
+  pagado: number;
+  pendiente: number;
+  mes: string;
+  hoy: string;
+  verbo?: string;
+  acento?: boolean;
+}) {
+  return (
+    <div className="relative flex flex-col overflow-hidden rounded-3xl bg-white p-4 shadow-[0_2px_10px_-3px_rgba(61,57,41,0.15)]">
+      <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-brand to-accent" />
+      <p className="flex items-center gap-1.5 text-sm text-tinta-suave">
+        <span className="text-base">{icono}</span>
+        {nombre}
+      </p>
+      <p className={`mt-1 text-2xl font-bold ${acento ? "text-brand-dark" : "text-tinta"}`}>
+        {clp(pendiente)}
+      </p>
+      <p className="text-xs text-tinta-suave">
+        de {clp(total)}
+        {adelantos > 0 && <> · ya retiró {clp(adelantos)}</>}
+      </p>
+
+      {pagado > 0 && (
+        <p className="mt-2 self-start rounded-full bg-green-700 px-2.5 py-1 text-xs font-bold text-white">
+          ✓ {verbo === "Apartar" ? "APARTADO" : "PAGADO"} {clp(pagado)}
+        </p>
+      )}
+
+      {pendiente > 0 && (
+        <form action={pagarSueldo} className="mt-2 flex flex-wrap items-center gap-1.5 print:hidden">
+          <input type="hidden" name="persona" value={persona} />
+          <input type="hidden" name="monto" value={pendiente} />
+          <input type="hidden" name="fecha" value={hoy} />
+          <input type="hidden" name="mes" value={mes} />
+          <select
+            name="caja"
+            defaultValue="efectivo"
+            aria-label="¿De qué caja sale?"
+            className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand"
+          >
+            <option value="efectivo">💵 del efectivo</option>
+            <option value="digital">🏦 de la caja digital</option>
+          </select>
+          <button className="rounded-lg bg-brand px-2.5 py-1 text-xs font-bold text-white transition hover:bg-brand-dark">
+            {verbo} · marcar realizado
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
 
 // supabase-js tipa las relaciones como objeto o arreglo según el caso.
 function uno<T>(rel: T | T[] | null): T | null {
@@ -123,14 +211,26 @@ export default async function ReportesPage({
   // aunque el sueldo del que salió se calcule por mes, no por este rango.
   const retirosPeriodoQuery = supabase
     .from("retiros_sueldo")
-    .select("monto, medio_pago")
+    .select("monto, caja")
     .gte("fecha", desde)
     .lte("fecha", hasta);
   const gastosGlobalesPeriodoQuery = supabase
     .from("gastos_globales")
-    .select("monto, medio_pago")
+    .select("monto, caja")
     .gte("fecha", desde)
     .lte("fecha", hasta);
+
+  // Caja global: todo lo que entró y salió desde el primer día, sin el
+  // filtro de fechas de arriba. Es la pregunta de todos los días —
+  // "¿cuánta plata hay AHORA, en la mano y en la cuenta?" — y un rango
+  // que parte el 1 del mes no la responde: la plata del mes pasado que
+  // todavía no se gasta sigue existiendo.
+  //
+  // La suma la hace la base (función caja_global()) y no esta página:
+  // traer todos los pagos para sumarlos acá se topaba con el corte de
+  // 1.000 filas de PostgREST, y el día que se pasara ese número la caja
+  // habría mostrado menos plata de la real sin decir nada.
+  const cajaGlobalQuery = supabase.rpc("caja_global").single();
 
   // Sueldos: la comisión de cada operativo se paga el día que se entregan
   // los lentes (fecha_entrega_estimada), no el día del operativo — un
@@ -150,13 +250,15 @@ export default async function ReportesPage({
   // calendario, igual que los sueldos.
   const gastosGlobalesQuery = supabase
     .from("gastos_globales")
-    .select("id, fecha, categoria, descripcion, monto, medio_pago")
+    .select("id, fecha, categoria, descripcion, monto, medio_pago, caja")
     .gte("fecha", primerDiaDelMes(mes))
     .lte("fecha", ultimoDiaDelMes(mes))
     .order("fecha", { ascending: false });
   const retirosQuery = supabase
     .from("retiros_sueldo")
-    .select("id, persona, fecha, monto, medio_pago, motivo, operativo_id, operativos:operativo_id (nombre)")
+    .select(
+      "id, persona, fecha, monto, medio_pago, caja, es_sueldo, motivo, operativo_id, operativos:operativo_id (nombre)"
+    )
     .gte("fecha", primerDiaDelMes(mes))
     .lte("fecha", ultimoDiaDelMes(mes))
     .order("fecha", { ascending: false });
@@ -172,6 +274,7 @@ export default async function ReportesPage({
     retirosPeriodoRes,
     gastosGlobalesPeriodoRes,
     tenantRes,
+    cajaGlobalRes,
   ] = await Promise.all([
     ventasQuery,
     itemsQuery,
@@ -183,6 +286,7 @@ export default async function ReportesPage({
     retirosPeriodoQuery,
     gastosGlobalesPeriodoQuery,
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+    cajaGlobalQuery,
   ]);
   const operativos = operativosRes.data ?? [];
 
@@ -204,9 +308,18 @@ export default async function ReportesPage({
   const comisionDebitoPct = Number(tenantRes.data?.comision_debito_pct ?? 0);
   const comisionCreditoPct = Number(tenantRes.data?.comision_credito_pct ?? 0);
   const totalGastosGlobales = gastosGlobales.reduce((s, g) => s + g.monto, 0);
+  // Dos cosas que mueven la misma plata pero se leen distinto: un ADELANTO
+  // es lo que alguien sacó a cuenta de su sueldo antes de que se pagara, y
+  // un SUELDO PAGADO es la entrega final. Las dos se restan de lo que se le
+  // debe; separarlas es para que en pantalla se distinga "ya retiró
+  // $20.000" de "el sueldo ya está pagado".
   const retirosPorPersona = new Map<string, number>();
+  const adelantosPorPersona = new Map<string, number>();
+  const sueldoPagadoPorPersona = new Map<string, number>();
   for (const r of retiros) {
     retirosPorPersona.set(r.persona, (retirosPorPersona.get(r.persona) ?? 0) + r.monto);
+    const destino = r.es_sueldo ? sueldoPagadoPorPersona : adelantosPorPersona;
+    destino.set(r.persona, (destino.get(r.persona) ?? 0) + r.monto);
   }
 
   // Venta total y costo real de CADA operativo del mes, para poder
@@ -273,6 +386,7 @@ export default async function ReportesPage({
     isadora: Math.max(0, sueldoMesTotal.comisionIsadora - (retirosPorPersona.get("isadora") ?? 0)),
     madre: Math.max(0, sueldoMesTotal.parteMadre - (retirosPorPersona.get("madre") ?? 0)),
     pablo: Math.max(0, sueldoMesTotal.partePablo - (retirosPorPersona.get("pablo") ?? 0)),
+    ahorro: Math.max(0, sueldoMesTotal.ahorro - (retirosPorPersona.get("ahorro") ?? 0)),
   };
 
   const totalVendido = ventas.reduce((s, v) => s + v.total, 0);
@@ -287,15 +401,12 @@ export default async function ReportesPage({
     const paciente = uno(venta?.pacientes as unknown as { nombre: string } | { nombre: string }[] | null);
     return { fecha: p.fecha, monto: p.monto, medioPago: p.medio_pago, paciente: paciente?.nombre ?? null };
   });
-  // Plata disponible en la mano ahora: efectivo aparte porque es la única
+  // Plata del período, partida en las dos cajas: el efectivo es lo único
   // que se puede usar al tiro (débito/crédito/transferencia demoran en
-  // liquidarse a la cuenta, aunque el sistema ya los cuente como cobrados).
-  const cobradoEfectivo = pagos.filter((p) => p.medio_pago === "efectivo").reduce((s, p) => s + p.monto, 0);
-  const cobradoCuenta = totalAbonado - cobradoEfectivo;
-  // Lo que ya salió de cada caja en este período (retiros de sueldo por
-  // adelantado + gastos globales), para que "Efectivo"/"En cuenta" muestren
-  // lo que de verdad queda y no solo lo cobrado — sin esto había que
-  // restar los retiros a mano cada vez para saber cuánto había en realidad.
+  // liquidarse a la cuenta, aunque el sistema ya los cuente como
+  // cobrados). Los retiros y gastos del período bajan la caja de la que
+  // salieron — sin esto había que restarlos a mano cada vez para saber
+  // cuánto quedaba de verdad.
   const retirosPeriodo = retirosPeriodoRes.data ?? [];
   const gastosGlobalesPeriodo = gastosGlobalesPeriodoRes.data ?? [];
   // Los gastos propios de cada operativo (arriendo de equipos, transporte,
@@ -309,27 +420,45 @@ export default async function ReportesPage({
       return f >= desde && f <= hasta;
     })
     .reduce((s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros, 0);
-  const salidaEfectivo =
-    retirosPeriodo.filter((r) => r.medio_pago === "efectivo").reduce((s, r) => s + r.monto, 0) +
-    gastosGlobalesPeriodo.filter((g) => g.medio_pago === "efectivo").reduce((s, g) => s + g.monto, 0);
-  const salidaCuenta =
-    retirosPeriodo.filter((r) => r.medio_pago && r.medio_pago !== "efectivo").reduce((s, r) => s + r.monto, 0) +
-    gastosGlobalesPeriodo.filter((g) => g.medio_pago && g.medio_pago !== "efectivo").reduce((s, g) => s + g.monto, 0) +
-    gastosOperativoPeriodo;
-  // Lo que el procesador de tarjeta (Mercado Pago) se queda antes de
-  // depositar: casi nunca es lo mismo por débito que por crédito (el
-  // débito suele liquidarse sin comisión; la comisión real está en el
-  // crédito), así que se calculan por separado. Verificado con la boleta
-  // real de Pudahuel: sin este descuento "En cuenta" quedaba $1.055 por
-  // sobre el saldo real, y un 2% solo sobre el crédito explicó $960 de
-  // esa diferencia.
-  const cobradoDebito = pagos.filter((p) => p.medio_pago === "debito").reduce((s, p) => s + p.monto, 0);
-  const cobradoCredito = pagos.filter((p) => p.medio_pago === "credito").reduce((s, p) => s + p.monto, 0);
-  const comisionTarjeta = Math.round(
-    (cobradoDebito * comisionDebitoPct + cobradoCredito * comisionCreditoPct) / 100
+  const cajaPeriodo = calcularCaja({
+    entradas: pagos,
+    salidas: [...retirosPeriodo, ...gastosGlobalesPeriodo],
+    salidaDigitalExtra: gastosOperativoPeriodo,
+    comisionDebitoPct,
+    comisionCreditoPct,
+  });
+
+  // Caja global: la misma cuenta pero desde el primer día hasta hoy, sin
+  // el filtro de fechas. Es el número con el que se cuadra el sobre del
+  // efectivo y el saldo de la cuenta — el del período de arriba sirve
+  // para analizar un mes, no para saber cuánta plata hay ahora.
+  // Si la consulta de la caja falla, hay que DECIRLO. Mostrar $0 sería la
+  // peor salida posible: se vería igual que "no queda plata", y esa es una
+  // pantalla sobre la que se toman decisiones con el sobre en la mano.
+  const cajaGlobalFallo = Boolean(cajaGlobalRes.error);
+  const totalesGlobal = (cajaGlobalRes.data ?? null) as {
+    entro_efectivo: number;
+    entro_digital: number;
+    entro_debito: number;
+    entro_credito: number;
+    salio_efectivo: number;
+    salio_digital: number;
+    gastos_operativo: number;
+  } | null;
+  const gastosOperativoGlobal = totalesGlobal?.gastos_operativo ?? 0;
+  const cajaGlobal = resumirCaja(
+    {
+      entroEfectivo: totalesGlobal?.entro_efectivo ?? 0,
+      entroDigital: totalesGlobal?.entro_digital ?? 0,
+      entroDebito: totalesGlobal?.entro_debito ?? 0,
+      entroCredito: totalesGlobal?.entro_credito ?? 0,
+      salioEfectivo: totalesGlobal?.salio_efectivo ?? 0,
+      // Los gastos propios de cada operativo no son un movimiento
+      // guardado, pero la plata salió igual, y siempre de la cuenta.
+      salioDigital: (totalesGlobal?.salio_digital ?? 0) + gastosOperativoGlobal,
+    },
+    { comisionDebitoPct, comisionCreditoPct }
   );
-  const totalEfectivo = cobradoEfectivo - salidaEfectivo;
-  const totalCuenta = cobradoCuenta - salidaCuenta - comisionTarjeta;
   // Saldo real pendiente: el total de la venta MENOS lo que ya se le ha
   // abonado (en cualquier momento, no solo en este período) — antes se
   // sumaba el total completo de cada venta no "pagada", como si el abono ya
@@ -450,19 +579,114 @@ export default async function ReportesPage({
       </div>
 
       <section>
-        <h2 className="mb-2 font-semibold">Plata disponible hasta ahora</h2>
+        <h2 className="mb-1 font-semibold">Caja global · cuánta plata hay ahora</h2>
+        <p className="mb-2 text-xs text-tinta-suave">
+          Todo lo cobrado desde el primer día, menos todo lo que ya salió. No depende del filtro de
+          fechas de arriba: es el número con el que se cuadra el sobre del efectivo y el saldo de la
+          cuenta.
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="relative overflow-hidden rounded-3xl bg-emerald-700 p-4 text-white shadow-[0_2px_10px_-3px_rgba(61,57,41,0.25)]">
+            <p className="text-sm font-medium text-emerald-50">💵 Efectivo en mano</p>
+            <p className="mt-1 text-3xl font-black">{clp(cajaGlobal.hayEfectivo)}</p>
+            <p className="mt-0.5 text-xs text-emerald-100">
+              {clp(cajaGlobal.entroEfectivo)} cobrado − {clp(cajaGlobal.salioEfectivo)} sacado
+            </p>
+          </div>
+          <div className="relative overflow-hidden rounded-3xl bg-sky-800 p-4 text-white shadow-[0_2px_10px_-3px_rgba(61,57,41,0.25)]">
+            <p className="text-sm font-medium text-sky-50">🏦 Caja digital</p>
+            <p className="mt-1 text-3xl font-black">{clp(cajaGlobal.hayDigital)}</p>
+            <p className="mt-0.5 text-xs text-sky-100">
+              {clp(cajaGlobal.entroDigital)} cobrado −{" "}
+              {clp(cajaGlobal.salioDigital + cajaGlobal.comisionTarjeta)} sacado y comisiones
+            </p>
+          </div>
+          <div className="relative overflow-hidden rounded-3xl bg-tinta p-4 text-white shadow-[0_2px_10px_-3px_rgba(61,57,41,0.25)]">
+            <p className="text-sm font-medium text-white/70">🧮 Total del negocio</p>
+            <p className="mt-1 text-3xl font-black">{clp(cajaGlobal.total)}</p>
+            <p className="mt-0.5 text-xs text-white/60">efectivo + caja digital</p>
+          </div>
+        </div>
+        {cajaGlobalFallo && (
+          <p className="mt-2 rounded-xl bg-red-100 px-3 py-2 text-sm font-semibold text-red-900">
+            ⚠ No se pudo leer la caja: los números de arriba están en cero porque la consulta falló,
+            no porque no haya plata. Recarga la página; si sigue igual, avísale a Pablo.
+          </p>
+        )}
+        {!cajaGlobalFallo && (cajaGlobal.hayEfectivo < 0 || cajaGlobal.hayDigital < 0) && (
+          <p className="mt-2 rounded-xl bg-red-100 px-3 py-2 text-sm font-semibold text-red-900">
+            ⚠ Una de las cajas quedó en negativo: salió más plata de la que entró. Casi siempre es un
+            retiro anotado en la caja equivocada — revisa la lista de retiros y gastos de más abajo.
+          </p>
+        )}
+        <details className="mt-2 rounded-2xl bg-crema-claro p-3 text-sm shadow-sm">
+          <summary className="cursor-pointer font-medium text-tinta-suave">
+            🧾 Ver de dónde sale cada número
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-white p-3">
+              <p className="mb-1.5 font-semibold">💵 Efectivo</p>
+              <p className="flex justify-between py-0.5">
+                <span>Cobrado en efectivo</span>
+                <span className="font-semibold">{clp(cajaGlobal.entroEfectivo)}</span>
+              </p>
+              <p className="flex justify-between py-0.5">
+                <span>− Retiros y gastos en efectivo</span>
+                <span className="font-semibold">{clp(cajaGlobal.salioEfectivo)}</span>
+              </p>
+              <p className="mt-1 flex justify-between border-t border-tinta-suave/20 pt-1 font-bold">
+                <span>= Queda</span>
+                <span>{clp(cajaGlobal.hayEfectivo)}</span>
+              </p>
+            </div>
+            <div className="rounded-xl bg-white p-3">
+              <p className="mb-1.5 font-semibold">🏦 Caja digital</p>
+              <p className="flex justify-between py-0.5">
+                <span>Cobrado por débito, crédito y transferencia</span>
+                <span className="font-semibold">{clp(cajaGlobal.entroDigital)}</span>
+              </p>
+              <p className="flex justify-between py-0.5">
+                <span>− Comisión de la máquina</span>
+                <span className="font-semibold">{clp(cajaGlobal.comisionTarjeta)}</span>
+              </p>
+              <p className="flex justify-between py-0.5">
+                <span>− Retiros y gastos de la cuenta</span>
+                <span className="font-semibold">{clp(cajaGlobal.salioDigital)}</span>
+              </p>
+              <p className="mt-1 flex justify-between border-t border-tinta-suave/20 pt-1 font-bold">
+                <span>= Queda</span>
+                <span>{clp(cajaGlobal.hayDigital)}</span>
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-tinta-suave">
+            Los gastos propios de cada operativo (arriendo de equipos, transporte, viáticos) salen
+            siempre de la cuenta: acá van {clp(gastosOperativoGlobal)} de los operativos ya
+            realizados.
+          </p>
+        </details>
+      </section>
+
+      <section>
+        <h2 className="mb-1 font-semibold">Plata disponible en el período</h2>
+        <p className="mb-2 text-xs text-tinta-suave">
+          Solo lo que entró y salió entre {fechaLegible(desde)} y {fechaLegible(hasta)}. Para saber
+          cuánta plata hay <strong>ahora mismo</strong>, mira la caja global de aquí arriba.
+        </p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <Tarjeta icono="💰" titulo="Total cobrado" valor={clp(totalAbonado)} acento />
           <Tarjeta
             icono="🏦"
             titulo="En cuenta"
-            valor={clp(totalCuenta)}
+            valor={clp(cajaPeriodo.hayDigital)}
             detalle={
-              salidaCuenta > 0 || comisionTarjeta > 0
+              cajaPeriodo.salioDigital > 0 || cajaPeriodo.comisionTarjeta > 0
                 ? [
-                    `${clp(cobradoCuenta)} cobrado`,
-                    comisionTarjeta > 0 ? `− ${clp(comisionTarjeta)} comisión tarjeta` : null,
-                    salidaCuenta > 0 ? `− ${clp(salidaCuenta)} retirado/gastado` : null,
+                    `${clp(cajaPeriodo.entroDigital)} cobrado`,
+                    cajaPeriodo.comisionTarjeta > 0
+                      ? `− ${clp(cajaPeriodo.comisionTarjeta)} comisión tarjeta`
+                      : null,
+                    cajaPeriodo.salioDigital > 0 ? `− ${clp(cajaPeriodo.salioDigital)} retirado/gastado` : null,
                   ]
                     .filter(Boolean)
                     .join(" ")
@@ -472,10 +696,10 @@ export default async function ReportesPage({
           <Tarjeta
             icono="💵"
             titulo="Efectivo"
-            valor={clp(totalEfectivo)}
+            valor={clp(cajaPeriodo.hayEfectivo)}
             detalle={
-              salidaEfectivo > 0
-                ? `${clp(cobradoEfectivo)} cobrado − ${clp(salidaEfectivo)} retirado/gastado`
+              cajaPeriodo.salioEfectivo > 0
+                ? `${clp(cajaPeriodo.entroEfectivo)} cobrado − ${clp(cajaPeriodo.salioEfectivo)} retirado/gastado`
                 : "lo único disponible al tiro"
             }
           />
@@ -642,37 +866,59 @@ export default async function ReportesPage({
           </p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Tarjeta
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <TarjetaSueldo
                 icono="🧑‍💼"
-                titulo="Isadora · por entregar"
-                valor={clp(pendientePorPersona.isadora)}
-                detalle={`de ${clp(sueldoMesTotal.comisionIsadora)}${(retirosPorPersona.get("isadora") ?? 0) > 0 ? ` · ya retiró ${clp(retirosPorPersona.get("isadora") ?? 0)}` : ""}`}
+                nombre="Isadora · por entregar"
+                persona="isadora"
+                total={sueldoMesTotal.comisionIsadora}
+                adelantos={adelantosPorPersona.get("isadora") ?? 0}
+                pagado={sueldoPagadoPorPersona.get("isadora") ?? 0}
+                pendiente={pendientePorPersona.isadora}
+                mes={mes}
+                hoy={hoyEnChile()}
               />
-              <Tarjeta
+              <TarjetaSueldo
                 icono="👩"
-                titulo="Mamá · por entregar"
-                valor={clp(pendientePorPersona.madre)}
-                detalle={`de ${clp(sueldoMesTotal.parteMadre)}${(retirosPorPersona.get("madre") ?? 0) > 0 ? ` · ya retiró ${clp(retirosPorPersona.get("madre") ?? 0)}` : ""}`}
+                nombre="Pamela (mamá) · por entregar"
+                persona="madre"
+                total={sueldoMesTotal.parteMadre}
+                adelantos={adelantosPorPersona.get("madre") ?? 0}
+                pagado={sueldoPagadoPorPersona.get("madre") ?? 0}
+                pendiente={pendientePorPersona.madre}
+                mes={mes}
+                hoy={hoyEnChile()}
               />
-              <Tarjeta
+              <TarjetaSueldo
                 icono="🧑"
-                titulo="Pablo · por entregar"
-                valor={clp(pendientePorPersona.pablo)}
-                detalle={`de ${clp(sueldoMesTotal.partePablo)}${(retirosPorPersona.get("pablo") ?? 0) > 0 ? ` · ya retiró ${clp(retirosPorPersona.get("pablo") ?? 0)}` : ""}`}
+                nombre="Pablo · por entregar"
+                persona="pablo"
+                total={sueldoMesTotal.partePablo}
+                adelantos={adelantosPorPersona.get("pablo") ?? 0}
+                pagado={sueldoPagadoPorPersona.get("pablo") ?? 0}
+                pendiente={pendientePorPersona.pablo}
+                mes={mes}
+                hoy={hoyEnChile()}
               />
-              <Tarjeta
+              <TarjetaSueldo
                 icono="🏦"
-                titulo="Ahorro del negocio"
-                valor={clp(sueldoMesTotal.ahorro)}
-                detalle={
-                  (retirosPorPersona.get("ahorro") ?? 0) > 0
-                    ? `${clp(retirosPorPersona.get("ahorro") ?? 0)} ya apartado`
-                    : "acumulado, todavía no apartado — sigue mezclado en la caja"
-                }
+                nombre="Ahorro del negocio · por apartar"
+                persona="ahorro"
+                total={sueldoMesTotal.ahorro}
+                adelantos={adelantosPorPersona.get("ahorro") ?? 0}
+                pagado={sueldoPagadoPorPersona.get("ahorro") ?? 0}
+                pendiente={pendientePorPersona.ahorro}
+                mes={mes}
+                hoy={hoyEnChile()}
+                verbo="Apartar"
                 acento
               />
             </div>
+            <p className="mt-2 text-xs text-tinta-suave print:hidden">
+              Al marcar un sueldo como pagado, esa plata sale de la caja que elijas y la caja global
+              de arriba baja sola. Si alguien sacó un adelanto antes, anótalo abajo en
+              &quot;Retiros y aportes&quot;: se descuenta de su sueldo antes de pagárselo.
+            </p>
             <div className="mt-3 overflow-x-auto rounded-2xl bg-crema-claro p-3 shadow-sm">
               <table className="w-full min-w-150 text-sm">
                 <thead>
@@ -735,7 +981,7 @@ export default async function ReportesPage({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Tarjeta icono="📦" titulo="Total del mes" valor={clp(totalGastosGlobales)} acento />
           <div className="rounded-2xl bg-crema-claro p-3 shadow-sm lg:col-span-2">
-            <form action={crearGastoGlobal} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <form action={crearGastoGlobal} className="grid grid-cols-2 gap-2 sm:grid-cols-6">
               <input
                 type="date"
                 name="fecha"
@@ -766,6 +1012,15 @@ export default async function ReportesPage({
                 className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
               />
               <select
+                name="caja"
+                defaultValue="digital"
+                aria-label="¿De qué caja salió?"
+                className="col-span-1 rounded-lg border-2 border-brand/40 bg-white px-2 py-1.5 text-sm font-medium outline-none focus:border-brand"
+              >
+                <option value="efectivo">💵 Salió del efectivo</option>
+                <option value="digital">🏦 Salió de la caja digital</option>
+              </select>
+              <select
                 name="medio_pago"
                 defaultValue=""
                 className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
@@ -789,9 +1044,10 @@ export default async function ReportesPage({
               <li key={g.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
                 <span className="text-xs text-tinta-suave">{fechaLegible(g.fecha)}</span>
                 <span className="flex-1">{g.descripcion}</span>
-                {g.medio_pago && (
-                  <span className="text-xs text-tinta-suave">{MEDIOS_PAGO_LABEL[g.medio_pago]}</span>
-                )}
+                <span className="rounded-md bg-crema-claro px-1.5 py-0.5 text-xs font-medium text-tinta-suave">
+                  {g.caja === "efectivo" ? "💵" : "🏦"} {CAJAS_LABEL[g.caja] ?? g.caja}
+                  {g.medio_pago ? ` · ${MEDIOS_PAGO_LABEL[g.medio_pago]}` : ""}
+                </span>
                 <span className="font-semibold">{clp(g.monto)}</span>
                 <form action={eliminarGastoGlobal}>
                   <input type="hidden" name="id" value={g.id} />
@@ -806,13 +1062,16 @@ export default async function ReportesPage({
       <section className="print:hidden">
         <h2 className="mb-1 font-semibold">Retiros y aportes del mes</h2>
         <p className="mb-2 text-xs text-tinta-suave">
-          <strong>Retiro:</strong> Isadora, la mamá o Pablo sacan plata por adelantado contra lo que les
-          corresponde de sueldo (o se aparta el ahorro del negocio) — se descuenta de arriba.{" "}
+          <strong>Retiro:</strong> Isadora, Pamela o Pablo sacan plata por adelantado contra lo que les
+          corresponde de sueldo (o se aparta el ahorro del negocio) — se descuenta del sueldo de
+          arriba antes de pagárselo, y baja la caja de la que salió.{" "}
           <strong>Aporte:</strong> esa persona pone plata propia al negocio (ej. cubrir una diferencia al
-          pagar al laboratorio) — se SUMA a lo que se le debe, en vez de restarse.
+          pagar al laboratorio) — se SUMA a lo que se le debe y sube la caja, en vez de restarse.
+          Siempre hay que decir <strong>de qué caja sale</strong>: del efectivo que está en la mano o de
+          la cuenta.
         </p>
         <div className="rounded-2xl bg-crema-claro p-3 shadow-sm">
-          <form action={crearRetiro} className="grid grid-cols-2 gap-2 sm:grid-cols-7">
+          <form action={crearRetiro} className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
             <select
               name="persona"
               defaultValue="isadora"
@@ -847,6 +1106,15 @@ export default async function ReportesPage({
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
             />
             <select
+              name="caja"
+              defaultValue="efectivo"
+              aria-label="¿De qué caja salió?"
+              className="rounded-lg border-2 border-brand/40 bg-white px-2 py-1.5 text-sm font-medium outline-none focus:border-brand"
+            >
+              <option value="efectivo">💵 Del efectivo</option>
+              <option value="digital">🏦 De la caja digital</option>
+            </select>
+            <select
               name="medio_pago"
               defaultValue=""
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
@@ -875,14 +1143,21 @@ export default async function ReportesPage({
                 r.operativos as unknown as { nombre: string } | { nombre: string }[] | null
               )?.nombre;
               const esAporte = r.monto < 0;
+              const etiqueta = esAporte ? "Aporte" : r.es_sueldo ? "Sueldo pagado" : "Retiro";
+              const colorEtiqueta = esAporte
+                ? "bg-green-100 text-green-900"
+                : r.es_sueldo
+                  ? "bg-brand text-white"
+                  : "bg-amber-100 text-amber-900";
               return (
                 <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
                   <span className="text-xs text-tinta-suave">{fechaLegible(r.fecha)}</span>
                   <span className="font-medium">{PERSONAS[r.persona] ?? r.persona}</span>
-                  <span
-                    className={`rounded-md px-1.5 py-0.5 text-xs font-bold ${esAporte ? "bg-green-100 text-green-900" : "bg-amber-100 text-amber-900"}`}
-                  >
-                    {esAporte ? "Aporte" : "Retiro"}
+                  <span className={`rounded-md px-1.5 py-0.5 text-xs font-bold ${colorEtiqueta}`}>
+                    {etiqueta}
+                  </span>
+                  <span className="rounded-md bg-crema-claro px-1.5 py-0.5 text-xs font-medium text-tinta-suave">
+                    {r.caja === "efectivo" ? "💵" : "🏦"} {CAJAS_LABEL[r.caja] ?? r.caja}
                   </span>
                   <span className="flex-1 text-xs text-tinta-suave">
                     {[r.motivo, operativoNombre ? `contra ${operativoNombre}` : null, r.medio_pago ? MEDIOS_PAGO_LABEL[r.medio_pago] : null]
