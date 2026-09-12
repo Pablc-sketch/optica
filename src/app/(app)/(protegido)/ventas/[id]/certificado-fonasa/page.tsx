@@ -57,8 +57,20 @@ function Linea({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   );
 }
 
-export default async function CertificadoFonasaPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CertificadoFonasaPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ prestacion?: string }>;
+}) {
   const { id } = await params;
+  // "?prestacion=mano" imprime la fila de prestación sin marcar, para
+  // anotarla a mano al momento de entregar — igual que el número de
+  // boleta. Es útil cuando el papel se prepara antes de que el paciente
+  // decida si se lleva también el de cerca.
+  const { prestacion } = await searchParams;
+  const marcarAMano = prestacion === "mano";
   const supabase = await createClient();
 
   const [ventaRes, tenantRes] = await Promise.all([
@@ -120,6 +132,17 @@ export default async function CertificadoFonasaPage({ params }: { params: Promis
     else marcadas.add("Lejos");
   }
 
+  // Cuando el paciente se llevó DOS pares distintos (uno de lejos y otro
+  // de cerca), conviene que el certificado lo diga con todas sus letras:
+  // son dos compras distintas, no un par cobrado dos veces, y es lo que
+  // permite que Fonasa las considere por separado.
+  const tiposVendidos = [...marcadas].filter((m) => m === "Lejos" || m === "Cerca");
+  const dosParesDistintos = pares >= 2 && tiposVendidos.length >= 2;
+  const articuloEspecifico =
+    dosParesDistintos && !marcarAMano
+      ? "Lentes ópticos según receta médica (lejos y cerca, por separado)"
+      : "Lentes ópticos según receta médica";
+
   const fechaCompra = fechaLegible(diaEnChile(venta.fecha));
   const listo = Boolean(paciente?.nombre && paciente?.rut && nombreTienda && optica?.rut_empresa && pares > 0);
 
@@ -133,6 +156,31 @@ export default async function CertificadoFonasaPage({ params }: { params: Promis
           <h1 className="mt-1 text-xl font-bold">Certificado de compra Fonasa</h1>
         </div>
         <BotonImprimir />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-crema-claro p-3 text-sm print:hidden">
+        <span className="font-medium">Prestación:</span>
+        <Link
+          href={`/ventas/${venta.id}/certificado-fonasa`}
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+            marcarAMano ? "border border-tinta-suave/30 hover:bg-white" : "bg-sky-700 text-white"
+          }`}
+        >
+          Marcada según la venta
+        </Link>
+        <Link
+          href={`/ventas/${venta.id}/certificado-fonasa?prestacion=mano`}
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+            marcarAMano ? "bg-sky-700 text-white" : "border border-tinta-suave/30 hover:bg-white"
+          }`}
+        >
+          En blanco, para marcar a mano
+        </Link>
+        <span className="text-xs text-tinta-suave">
+          {marcarAMano
+            ? "Se imprime sin marcar: usted marca el tipo de lente al entregar."
+            : `Se marca ${[...marcadas].join(" y ") || "lo que tenga la orden"}, según lo que registra esta venta.`}
+        </span>
       </div>
 
       {!tieneEdad && (
@@ -186,7 +234,7 @@ export default async function CertificadoFonasaPage({ params }: { params: Promis
             etiqueta="Cantidad de artículos:"
             valor={cantidadArticulos > 0 ? `${cantidadArticulos} lentes ópticos` : ""}
           />
-          <Linea etiqueta="Artículo específico:" valor="Lentes ópticos según receta médica" />
+          <Linea etiqueta="Artículo específico:" valor={articuloEspecifico} />
           {/* A mano: el número de boleta se anota al entregar, y esta hoja
               se imprime antes. */}
           <Linea etiqueta="Número de boleta o voucher:" valor="" />
@@ -199,8 +247,12 @@ export default async function CertificadoFonasaPage({ params }: { params: Promis
             {PRESTACIONES.map((p, i) => (
               <span key={p}>
                 {i > 0 && " - "}
-                <span className={marcadas.has(p) ? "font-bold underline decoration-2 underline-offset-2" : ""}>
-                  {marcadas.has(p) ? `[X] ${p}` : p}
+                <span
+                  className={
+                    !marcarAMano && marcadas.has(p) ? "font-bold underline decoration-2 underline-offset-2" : ""
+                  }
+                >
+                  {!marcarAMano && marcadas.has(p) ? `[X] ${p}` : p}
                 </span>
               </span>
             ))}
