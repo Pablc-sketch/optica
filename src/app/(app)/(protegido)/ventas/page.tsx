@@ -38,7 +38,11 @@ export default async function VentasPage() {
     supabase.from("tenants").select("factor_venta_cristales, descuento_laboratorio_pct").single(),
     supabase
       .from("ventas")
-      .select("id, fecha, total, estado_pago, anulada, anulada_motivo, pacientes:paciente_id (nombre), pagos_abonos (monto)")
+      .select(
+        `id, fecha, total, estado_pago, anulada, anulada_motivo,
+         pacientes:paciente_id (nombre), pagos_abonos (monto),
+         venta_items (cristal_slot, ordenes_trabajo:ot_id (estado))`
+      )
       .order("fecha", { ascending: false })
       .limit(20),
     supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
@@ -115,6 +119,19 @@ export default async function VentasPage() {
               const abonado = (v.pagos_abonos ?? []).reduce((s: number, p: { monto: number }) => s + p.monto, 0);
               const saldo = v.total - abonado;
               const estado = ESTADO_PAGO[v.estado_pago] ?? ESTADO_PAGO.pendiente;
+              // Al marcar una orden como entregada desaparece de la lista
+              // de pendientes — que es lo correcto para la cola de
+              // trabajo, pero en medio de una entrega deja la duda de si
+              // quedó guardada. Acá se ve el estado de las órdenes de
+              // cada venta, para poder confirmarlo de una mirada.
+              const totalOts = (v.venta_items ?? []).filter((i) => i.cristal_slot !== null).length;
+              const entregadas = (v.venta_items ?? []).filter((i) => {
+                const rel = (i as { ordenes_trabajo?: unknown }).ordenes_trabajo;
+                const filas = (Array.isArray(rel) ? rel : rel ? [rel] : []) as { estado: string }[];
+                return filas.some((f) => f.estado === "entregado");
+              }).length;
+              const todoEntregado = totalOts > 0 && entregadas === totalOts;
+              const entregaParcial = entregadas > 0 && !todoEntregado;
               return (
                 <li key={v.id} className={`rounded-xl px-4 py-3 shadow-sm ${v.anulada ? "bg-neutral-100 opacity-70" : "bg-crema-claro"}`}>
                   <div className="flex flex-wrap items-center gap-2">
@@ -131,6 +148,19 @@ export default async function VentasPage() {
                     ) : (
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${estado.clase}`}>
                         {estado.label}
+                      </span>
+                    )}
+                    {/* Fondo lleno y no pastel como los demás: en pleno
+                        mesón hay que poder confirmar de un vistazo, sin
+                        acercarse a leer. */}
+                    {!v.anulada && todoEntregado && (
+                      <span className="rounded-full bg-green-600 px-2.5 py-0.5 text-xs font-bold tracking-wide text-white uppercase">
+                        ✓ Entregado
+                      </span>
+                    )}
+                    {!v.anulada && entregaParcial && (
+                      <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-bold tracking-wide text-white uppercase">
+                        Entregado {entregadas} de {totalOts}
                       </span>
                     )}
                     <span className="font-bold">{clp(v.total)}</span>
