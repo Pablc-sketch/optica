@@ -6,6 +6,25 @@ import AbonoForm from "@/components/abono-form";
 import PuntoDeVenta from "./pos";
 import AnularVenta from "./anular-venta";
 
+// El número tocable: en el celular abre el marcador con el número puesto,
+// que es como se usa de verdad en el mesón — nadie copia un teléfono a
+// mano para llamar. Cuando falta, se dice, para poder pedirlo ahí mismo
+// en vez de descubrirlo al querer llamar.
+function TelefonoPaciente({ telefono }: { telefono: string | null }) {
+  const digitos = String(telefono ?? "").replace(/\D/g, "");
+  if (digitos.length < 8) {
+    return <span className="rounded-full bg-neutral-200 px-2.5 py-0.5 text-xs text-neutral-600">Sin teléfono</span>;
+  }
+  return (
+    <a
+      href={`tel:+${digitos.startsWith("56") ? digitos : `56${digitos}`}`}
+      className="rounded-full bg-sky-700 px-2.5 py-1 text-xs font-bold text-white transition hover:bg-sky-800"
+    >
+      📞 {formatearTelefono(telefono)}
+    </a>
+  );
+}
+
 const ESTADO_PAGO: Record<string, { label: string; clase: string }> = {
   pendiente: { label: "Pendiente", clase: "bg-red-100 text-red-700" },
   abono_parcial: { label: "Abono parcial", clase: "bg-amber-100 text-amber-700" },
@@ -41,7 +60,7 @@ export default async function VentasPage() {
       .from("ventas")
       .select(
         `id, fecha, total, estado_pago, anulada, anulada_motivo,
-         pacientes:paciente_id (nombre), pagos_abonos (monto),
+         pacientes:paciente_id (nombre, telefono), pagos_abonos (monto),
          venta_items (cristal_slot, ordenes_trabajo:ot_id (estado))`
       )
       .order("fecha", { ascending: false })
@@ -159,23 +178,26 @@ export default async function VentasPage() {
           </p>
           <ul className="flex flex-col gap-2">
             {porEntregar.map((p) => (
-              <li key={p.id} className="rounded-xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 shadow-sm">
-                <Link href={`/ventas/${p.id}/comprobante`} className="flex flex-wrap items-center gap-2">
-                  <span className="flex-1 truncate text-sm font-semibold text-amber-950">{p.nombre}</span>
-                  {p.telefono && <span className="text-xs text-amber-800">{formatearTelefono(p.telefono)}</span>}
-                  {p.pares > 1 && (
-                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-amber-900">
-                      {p.pares} pares
-                    </span>
-                  )}
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                      p.saldo > 0 ? "bg-red-600 text-white" : "bg-green-600 text-white"
-                    }`}
-                  >
-                    {p.saldo > 0 ? `Debe ${clp(p.saldo)}` : "Pagado"}
-                  </span>
+              <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 shadow-sm">
+                <Link
+                  href={`/ventas/${p.id}/comprobante`}
+                  className="min-w-0 flex-1 truncate text-sm font-semibold text-amber-950 hover:underline"
+                >
+                  {p.nombre}
                 </Link>
+                {p.pares > 1 && (
+                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-amber-900">
+                    {p.pares} pares
+                  </span>
+                )}
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                    p.saldo > 0 ? "bg-red-600 text-white" : "bg-green-600 text-white"
+                  }`}
+                >
+                  {p.saldo > 0 ? `Debe ${clp(p.saldo)}` : "Pagado"}
+                </span>
+                <TelefonoPaciente telefono={p.telefono} />
               </li>
             ))}
           </ul>
@@ -211,9 +233,14 @@ export default async function VentasPage() {
                     <span className="text-xs text-tinta-suave">
                       {new Date(v.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
                     </span>
-                    <span className="flex-1 truncate text-sm font-medium">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
                       {(v.pacientes as unknown as { nombre: string } | null)?.nombre ?? "Sin paciente"}
                     </span>
+                    {!v.anulada && (
+                      <TelefonoPaciente
+                        telefono={(v.pacientes as unknown as { telefono: string | null } | null)?.telefono ?? null}
+                      />
+                    )}
                     {v.anulada ? (
                       <span className="rounded-full bg-neutral-300 px-2.5 py-0.5 text-xs font-semibold text-neutral-700">
                         Anulada
