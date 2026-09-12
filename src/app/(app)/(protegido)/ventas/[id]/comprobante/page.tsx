@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
-import { diaEnChile, fechaLegible } from "@/lib/fechas";
+import { diaEnChile, edadEnAnios, fechaLegible, hoyEnChile } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 import CopiarParaSII from "@/components/copiar-para-sii";
 import AnularVenta from "../../anular-venta";
@@ -23,7 +23,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       .from("ventas")
       .select(
         `id, fecha, total, estado_pago, anulada, anulada_motivo,
-         pacientes:paciente_id (nombre, rut),
+         pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (descripcion, cantidad, precio_unitario, descuento, ordenes_trabajo:ot_id (folio)),
          pagos_abonos (monto, medio_pago, fecha)`
       )
@@ -36,7 +36,18 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   if (!venta) notFound();
 
   const optica = tenantRes.data;
-  const paciente = venta.pacientes as unknown as { nombre: string; rut: string | null } | null;
+  const paciente = venta.pacientes as unknown as {
+    nombre: string;
+    rut: string | null;
+    fecha_nacimiento: string | null;
+  } | null;
+  // El certificado de Fonasa solo le sirve a mayores de 55 años: bajo esa
+  // edad no hay reembolso, así que el botón ni aparece para no hacer
+  // perder el viaje.
+  const edadPaciente = paciente?.fecha_nacimiento
+    ? edadEnAnios(paciente.fecha_nacimiento, hoyEnChile())
+    : null;
+  const puedeFonasa = edadPaciente !== null && edadPaciente >= 55;
   const items = venta.venta_items ?? [];
   const pagos = venta.pagos_abonos ?? [];
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
@@ -78,7 +89,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         <div className="flex flex-wrap items-center gap-2">
           <CopiarParaSII texto={textoSII} />
           <BotonImprimir />
-          {!venta.anulada && (
+          {!venta.anulada && puedeFonasa && (
             <Link
               href={`/ventas/${venta.id}/certificado-fonasa`}
               className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"

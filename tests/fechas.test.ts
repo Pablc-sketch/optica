@@ -3,6 +3,7 @@ import {
   desfaseChile,
   diaDeLaSemana,
   diaEnChile,
+  edadEnAnios,
   fechaConDia,
   finDelDia,
   inicioDelDia,
@@ -163,5 +164,18 @@ describe("día de la semana para el aviso de entrega", () => {
 
   it("fechaConDia junta fecha y día en un solo texto", () => {
     expect(fechaConDia("2026-09-12")).toBe("12-09-2026 (sábado)");
+  });
+});
+
+describe("edad cumplida", () => {
+  it("cuenta el año recién el día del cumpleaños", () => {
+    expect(edadEnAnios("1971-09-12", "2026-09-11")).toBe(54);
+    expect(edadEnAnios("1971-09-12", "2026-09-12")).toBe(55);
+    expect(edadEnAnios("1971-09-12", "2026-09-13")).toBe(55);
+  });
+
+  it("no se adelanta cuando el mes ya pasó pero el día no", () => {
+    expect(edadEnAnios("1971-12-31", "2026-09-12")).toBe(54);
+    expect(edadEnAnios("1971-01-01", "2026-09-12")).toBe(55);
   });
 });

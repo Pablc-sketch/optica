@@ -206,3 +206,15 @@ export function haceCuanto(fechaISO: string, hoyISO: string): string {
   if (resto === 0) return `hace ${parteAnios}`;
   return `hace ${parteAnios} y ${resto === 1 ? "1 mes" : `${resto} meses`}`;
 }
+
+// Edad cumplida a una fecha dada. Se cuenta por calendario y no dividiendo
+// milisegundos por 365.25: en el día del cumpleaños esa división se
+// equivoca por un día, y hay trámites (el reembolso de Fonasa, sin ir más
+// lejos) donde la edad exacta decide si corresponde o no.
+export function edadEnAnios(nacimientoISO: string, hoyISO: string): number {
+  const [an, mn, dn] = nacimientoISO.split("-").map(Number);
+  const [ah, mh, dh] = hoyISO.split("-").map(Number);
+  let edad = ah - an;
+  if (mh < mn || (mh === mn && dh < dn)) edad -= 1;
+  return edad;
+}

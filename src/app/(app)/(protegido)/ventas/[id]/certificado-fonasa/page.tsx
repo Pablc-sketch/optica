@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
-import { diaEnChile, fechaLegible } from "@/lib/fechas";
+import { diaEnChile, edadEnAnios, fechaLegible, hoyEnChile } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 
 // Certificado de compra para el reembolso de Fonasa.
@@ -66,7 +66,7 @@ export default async function CertificadoFonasaPage({ params }: { params: Promis
       .from("ventas")
       .select(
         `id, fecha, anulada,
-         pacientes:paciente_id (nombre, rut),
+         pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (
            cristal_slot,
            ordenes_trabajo:ot_id (tipo_lente, posicion, tipo_lente_2, posicion_2)
@@ -81,17 +81,31 @@ export default async function CertificadoFonasaPage({ params }: { params: Promis
   if (!venta) notFound();
 
   const optica = tenantRes.data;
-  const paciente = venta.pacientes as unknown as { nombre: string; rut: string | null } | null;
+  const paciente = venta.pacientes as unknown as {
+    nombre: string;
+    rut: string | null;
+    fecha_nacimiento: string | null;
+  } | null;
+  // Fonasa solo reembolsa lentes a mayores de 55 años (tramos B, C y D).
+  // Bajo esa edad el certificado no sirve de nada, así que se avisa en vez
+  // de dejar imprimir una hoja que van a rechazar en el mesón.
+  const edad = paciente?.fecha_nacimiento
+    ? edadEnAnios(paciente.fecha_nacimiento, hoyEnChile())
+    : null;
+  const tieneEdad = edad !== null && edad >= 55;
   // En los documentos formales manda la razón social; el nombre de
   // fantasía solo sirve de respaldo si todavía no se cargó.
   const nombreTienda = optica?.razon_social || optica?.nombre_comercial || "";
 
-  // Un ítem con cristal_slot es un PAR de cristales (un ojo cada uno), así
-  // que cada par cuenta como 2 artículos — que es como Fonasa los cuenta
-  // para el reembolso, uno por ojo.
+  // Un ítem con cristal_slot es un PAR de cristales, un ojo cada uno.
+  //
+  // La cantidad va siempre en "2 lentes ópticos", que es lo que Fonasa
+  // reembolsa por período: un par. Si el paciente se llevó dos o tres
+  // pares, el certificado igual dice 2 — no se suman, porque el tope no
+  // sube por poner un número más grande.
   const itemsCristal = (venta.venta_items ?? []).filter((i) => i.cristal_slot !== null);
   const pares = itemsCristal.length;
-  const cantidadArticulos = pares * 2;
+  const cantidadArticulos = pares > 0 ? 2 : 0;
 
   // Qué casillas marcar, según lo que de verdad se vendió en esta venta.
   const marcadas = new Set<string>();
@@ -120,6 +134,14 @@ export default async function CertificadoFonasaPage({ params }: { params: Promis
         </div>
         <BotonImprimir />
       </div>
+
+      {!tieneEdad && (
+        <p className="rounded-2xl bg-amber-100 p-4 text-sm font-medium text-amber-900 print:hidden">
+          {edad === null
+            ? "Este paciente no tiene fecha de nacimiento cargada, así que no se puede saber si le corresponde. Fonasa solo reembolsa lentes a mayores de 55 años."
+            : `Este paciente tiene ${edad} años. Fonasa reembolsa lentes solo desde los 55, así que este certificado no le va a servir.`}
+        </p>
+      )}
 
       {!listo && (
         <p className="rounded-2xl bg-amber-100 p-4 text-sm font-medium text-amber-900 print:hidden">
