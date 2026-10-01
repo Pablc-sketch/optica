@@ -403,8 +403,7 @@ function FilaLente({
               <option value="">Elegir…</option>
               {tratamientos.map((c) => (
                 <option key={c.tratamiento} value={c.tratamiento}>
-                  {nombreCristal(c.tipo_lente, c.tratamiento)} —{" "}
-                  {clp(c.precio_venta > 0 ? c.precio_venta : c.costo * factorVenta)}
+                  {nombreCristal(c.tipo_lente, c.tratamiento)} — {clp(precioDeCombo(c, factorVenta, origenReal(c)))}
                 </option>
               ))}
             </select>
