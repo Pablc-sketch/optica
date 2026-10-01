@@ -53,6 +53,17 @@ export function clasificarRango(esferas: (number | null)[], cilindros: (number |
   return (banda ?? BANDAS_RANGO[BANDAS_RANGO.length - 1]).rango;
 }
 
+// El tope de esfera/cilindro de una banda ("±4.00 / ±2.00" → 4 y 2). Sirve
+// para cuando NO hay receta cargada y la vendedora eligió el rango a mano:
+// probar el peor caso de esa banda contra el stock del laboratorio. Si el
+// laboratorio lo tiene hecho incluso en el peor caso, también lo va a tener
+// para la receta real de esa persona, que como mucho llega a ese tope —
+// nunca se cuela una receta más exigente de la que el casillero permite.
+export function limitesDeRango(rango: string): { esfera: number; cilindro: number } | null {
+  const banda = BANDAS_RANGO.find((b) => b.rango === rango);
+  return banda ? { esfera: banda.esfera, cilindro: banda.cilindro } : null;
+}
+
 // Para un Monofocal de cerca (lectura) la potencia real del cristal es la
 // esfera de lejos MÁS la adición (ADD) — un +1.00 de hipermetropía con
 // ADD +2.00 arma un lente de +3.00, que puede caer en un rango de costo más

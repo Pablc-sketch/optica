@@ -7,7 +7,7 @@ import { encolar, type CambioSync } from "@/lib/offline/outbox";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
-import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
+import { rangoParaPosicion, nombreCristal, limitesDeRango } from "@/lib/cristales";
 import { costoCristal, type CatalogoLaboratorio, type CostoCristal as CostoReal, type Ojo } from "@/lib/costo-fides";
 import { fechaLegible, hoyEnChile, sumarDias } from "@/lib/fechas";
 
@@ -249,13 +249,27 @@ function FilaLente({
   // esfera Y cilindro altos, pero la primera sale de stock y la segunda
   // no — cobrarles igual sería cobrarle de más a la simple).
   function origenReal(fila: CostoCristal): "stock" | "laboratorio" {
-    if (!receta) return "laboratorio";
-    const suma = posicionParaRango === "cerca" ? 1 : 0;
-    const ojos: Ojo[] = [
-      { esfera: (receta.od_esfera ?? 0) + suma * (receta.od_add ?? 0), cilindro: receta.od_cilindro },
-      { esfera: (receta.oi_esfera ?? 0) + suma * (receta.oi_add ?? 0), cilindro: receta.oi_cilindro },
-    ];
-    return costoCristal(fila, ojos, catalogoLab, hoyEnChile())?.origen ?? "laboratorio";
+    if (receta) {
+      const suma = posicionParaRango === "cerca" ? 1 : 0;
+      const ojos: Ojo[] = [
+        { esfera: (receta.od_esfera ?? 0) + suma * (receta.od_add ?? 0), cilindro: receta.od_cilindro },
+        { esfera: (receta.oi_esfera ?? 0) + suma * (receta.oi_add ?? 0), cilindro: receta.oi_cilindro },
+      ];
+      return costoCristal(fila, ojos, catalogoLab, hoyEnChile())?.origen ?? "laboratorio";
+    }
+    // Sin receta guardada (frecuente en operativo: se refracta y se vende
+    // en el momento, sin alcanzar a cargar la ficha) no se conoce la
+    // potencia exacta de cada ojo — pero si se eligió el rango a mano, se
+    // puede probar el PEOR CASO de ese casillero (su tope de esfera y
+    // cilindro). Si el laboratorio lo tiene hecho incluso en el peor caso,
+    // también lo va a tener para la receta real, que como mucho llega a
+    // ese tope. Antes esto siempre cobraba el precio de laboratorio aunque
+    // el lente fuera clarísimo de stock (un Orgánico Antirreflejo básico,
+    // por ejemplo), asustando al paciente con un precio más alto del real.
+    const limites = limitesDeRango(rango);
+    if (!limites) return "laboratorio";
+    const ojoTope: Ojo = { esfera: limites.esfera, cilindro: limites.cilindro };
+    return costoCristal(fila, [ojoTope, ojoTope], catalogoLab, hoyEnChile())?.origen ?? "laboratorio";
   }
 
   // Solo al montar: si venía precargada por la sugerencia del tecnólogo,
@@ -607,7 +621,7 @@ export default function PuntoDeVenta({
   const costoRealDeLinea = useCallback(
     (linea: LineaCarrito): CostoReal | null => {
       const cristal = linea.cristal;
-      if (!cristal || !receta) return null;
+      if (!cristal) return null;
       const fila = costos.find(
         (c) =>
           c.tipo_lente === cristal.tipoLente &&
@@ -615,16 +629,29 @@ export default function PuntoDeVenta({
           c.rango_receta === cristal.rangoReceta
       );
       if (!fila) return null;
-      // Un cristal de cerca se talla con la esfera de lejos MÁS la adición:
-      // es la potencia que recibe el laboratorio y por la que cobra.
-      const suma = cristal.posicion === "cerca" ? 1 : 0;
-      const ojos: Ojo[] = [
-        { esfera: (receta.od_esfera ?? 0) + suma * (receta.od_add ?? 0), cilindro: receta.od_cilindro },
-        { esfera: (receta.oi_esfera ?? 0) + suma * (receta.oi_add ?? 0), cilindro: receta.oi_cilindro },
-      ];
-      // Las promociones del laboratorio vencen: se evalúan contra el día
-      // de hoy, no contra la fecha en que se cargó la lista.
-      return costoCristal(fila, ojos, catalogoLab, hoyEnChile());
+      if (receta) {
+        // Un cristal de cerca se talla con la esfera de lejos MÁS la
+        // adición: es la potencia que recibe el laboratorio y por la que
+        // cobra.
+        const suma = cristal.posicion === "cerca" ? 1 : 0;
+        const ojos: Ojo[] = [
+          { esfera: (receta.od_esfera ?? 0) + suma * (receta.od_add ?? 0), cilindro: receta.od_cilindro },
+          { esfera: (receta.oi_esfera ?? 0) + suma * (receta.oi_add ?? 0), cilindro: receta.oi_cilindro },
+        ];
+        // Las promociones del laboratorio vencen: se evalúan contra el
+        // día de hoy, no contra la fecha en que se cargó la lista.
+        return costoCristal(fila, ojos, catalogoLab, hoyEnChile());
+      }
+      // Sin receta guardada (operativo: se refracta y se vende en el
+      // momento), se prueba el peor caso del casillero que ya se eligió a
+      // mano — mismo criterio que origenReal() en FilaLente, para que el
+      // origen que QUEDA GUARDADO en la orden de trabajo (y decide si se
+      // pide a stock o se manda a tallar) sea el mismo que el que ya se le
+      // cobró al paciente.
+      const limites = limitesDeRango(cristal.rangoReceta);
+      if (!limites) return null;
+      const ojoTope: Ojo = { esfera: limites.esfera, cilindro: limites.cilindro };
+      return costoCristal(fila, [ojoTope, ojoTope], catalogoLab, hoyEnChile());
     },
     [costos, receta, catalogoLab]
   );
