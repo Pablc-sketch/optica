@@ -35,7 +35,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       .select(
         `id, folio, estado, tipo_lente, rango_receta, tratamiento, origen_cristal, proveedor_lab_id, posicion,
          armazon_producto_id, marco_propio, tipo_lente_2, rango_receta_2, tratamiento_2, armazon_producto_id_2,
-         marco_propio_2, posicion_2,
+         marco_propio_2, posicion_2, origen_cristal_2,
          fecha_ingreso, fecha_entrega_estimada, fecha_entrega_real, notas,
          pacientes:paciente_id (nombre, rut, telefono, diabetes, hipertension, glaucoma, cirugia_ocular, alergias),
          recetas:receta_id (fecha, tipo, od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, av_od, av_oi, dp, altura, notas),
@@ -197,9 +197,27 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                   <input type="checkbox" name="marco_propio_2" defaultChecked={ot.marco_propio_2} className="h-4 w-4" />
                   El paciente trae su propio marco (no descuenta stock)
                 </label>
+                <div className="flex gap-2 text-sm">
+                  {(["laboratorio", "stock"] as const).map((op) => (
+                    <label
+                      key={op}
+                      className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-tinta-suave/25 bg-white px-2 py-2.5 has-checked:border-brand has-checked:bg-brand/10"
+                    >
+                      <input
+                        type="radio"
+                        name="origen_cristal_2"
+                        value={op}
+                        defaultChecked={(ot.origen_cristal_2 ?? "laboratorio") === op}
+                        className="accent-brand"
+                      />
+                      {op === "laboratorio" ? "Pedido al laboratorio" : "De stock"}
+                    </label>
+                  ))}
+                </div>
               </div>
             </fieldset>
           )}
+          {tieneSegundoCristal && <p className="-mb-1 text-sm font-medium">De dónde sale el cristal 1</p>}
           <div className="flex gap-2 text-sm">
             {(["laboratorio", "stock"] as const).map((op) => (
               <label

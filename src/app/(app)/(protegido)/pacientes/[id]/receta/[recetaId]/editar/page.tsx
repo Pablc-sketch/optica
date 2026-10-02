@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import NuevaReceta from "../../../nueva-receta";
+import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 
 export default async function EditarRecetaPage({
   params,
@@ -11,17 +12,14 @@ export default async function EditarRecetaPage({
   const { id, recetaId } = await params;
   const supabase = await createClient();
 
-  const [recetaRes, operativosRes, costosRes] = await Promise.all([
+  const [recetaRes, operativosRes, cotizar] = await Promise.all([
     supabase.from("recetas").select("*").eq("id", recetaId).eq("paciente_id", id).single(),
     supabase
       .from("operativos")
       .select("id, nombre, fecha, estado")
       .in("estado", ["planificado", "realizado"])
       .order("fecha", { ascending: false }),
-    supabase
-      .from("costos_cristales")
-      .select("tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta")
-      .order("tipo_lente"),
+    cargarCatalogoParaCotizar(supabase),
   ]);
 
   const receta = recetaRes.data;
@@ -43,7 +41,8 @@ export default async function EditarRecetaPage({
         <NuevaReceta
           pacienteId={id}
           operativos={operativosRes.data ?? []}
-          costos={costosRes.data ?? []}
+          costos={cotizar.filas}
+          catalogoLab={cotizar.catalogo}
           receta={receta}
         />
       </div>

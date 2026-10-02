@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { actualizarDetallesOperativo, actualizarOperativo, actualizarSueldosOperativo } from "@/lib/actions/operativos";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono, telefonoParaWhatsapp } from "@/lib/formato";
-import { clasificarRango, nombreCristal } from "@/lib/cristales";
+import { nombreCristal, rangoParaPosicion } from "@/lib/cristales";
 import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
 import ContactosOperativo from "../contactos-operativo";
 import { fechaConDia, fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
@@ -12,7 +12,8 @@ import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
 import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
-import { costoCristal, type CatalogoLaboratorio, type Ojo } from "@/lib/costo-fides";
+import { type CatalogoLaboratorio } from "@/lib/costo-fides";
+import { origenCristal, precioVentaCristal, type PotenciasReceta } from "@/lib/precio-venta";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
 // vendió y cuándo se le entrega — para que al ofrecer el próximo operativo
@@ -91,8 +92,9 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       // cotizarle por WhatsApp a quien se atendió y no compró: sin eso
       // habría que ir receta por receta a mano para saber qué ofrecerle.
       .select(
-        `id, fecha, paciente_id, sugerencia_tipo_lente, sugerencia_tratamiento,
-         od_esfera, od_cilindro, oi_esfera, oi_cilindro,
+        `id, fecha, paciente_id, tipo, sugerencia_tipo_lente, sugerencia_tratamiento,
+         sugerencia_tipo_lente_cerca, sugerencia_tratamiento_cerca,
+         od_esfera, od_cilindro, od_add, oi_esfera, oi_cilindro, oi_add,
          pacientes:paciente_id (id, nombre, rut, telefono)`
       )
       .eq("operativo_id", id)
@@ -343,37 +345,62 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     promociones: (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })),
     descuentoPct: Number(tenantRes.data?.descuento_laboratorio_pct ?? 0),
   };
-  const precioSugerido = (r: {
-    sugerencia_tipo_lente: string | null;
-    sugerencia_tratamiento: string | null;
-    od_esfera: number | null;
-    od_cilindro: number | null;
-    oi_esfera: number | null;
-    oi_cilindro: number | null;
-  }): { nombre: string; precio: number } | null => {
-    if (!r.sugerencia_tipo_lente || !r.sugerencia_tratamiento) return null;
-    const rango = clasificarRango([r.od_esfera, r.oi_esfera], [r.od_cilindro, r.oi_cilindro]);
+  // Lo que se le habría cobrado ese día por UN lente sugerido — mismo
+  // cálculo que el cotizador de la receta y el punto de venta
+  // (precio-venta.ts). Un lente de cerca suma la adición antes de buscar
+  // el rango, igual que al venderlo.
+  const cotizarLente = (
+    r: PotenciasReceta,
+    tipoLente: string | null,
+    tratamiento: string | null,
+    posicion: "lejos" | "cerca"
+  ): { nombre: string; precio: number } | null => {
+    if (!tipoLente || !tratamiento) return null;
+    const posicionRango = tipoLente === "Monofocal" ? posicion : "lejos";
+    const rango = rangoParaPosicion(
+      [r.od_esfera, r.oi_esfera],
+      [r.od_cilindro, r.oi_cilindro],
+      [r.od_add, r.oi_add],
+      posicionRango
+    );
     const fila = costosCristales.find(
-      (c) =>
-        c.tipo_lente === r.sugerencia_tipo_lente &&
-        c.tratamiento === r.sugerencia_tratamiento &&
-        c.rango_receta === rango
+      (c) => c.tipo_lente === tipoLente && c.tratamiento === tratamiento && c.rango_receta === rango
     );
     if (!fila || fila.precio_venta <= 0) return null;
-    // De dónde saldría de verdad este cristal para ESTA receta exacta
-    // (no la categoría ancha de rango): si el laboratorio ya lo tiene
-    // hecho, se cotiza al precio de stock, que suele ser bastante más
-    // barato.
-    const ojos: Ojo[] = [
-      { esfera: r.od_esfera, cilindro: r.od_cilindro },
-      { esfera: r.oi_esfera, cilindro: r.oi_cilindro },
-    ];
-    const real = costoCristal(fila, ojos, catalogoLab, hoyEnChile());
-    const precio =
-      real?.origen === "stock" && fila.precio_venta_stock !== null && fila.precio_venta_stock > 0
-        ? fila.precio_venta_stock
-        : fila.precio_venta;
-    return { nombre: nombreCristal(r.sugerencia_tipo_lente, r.sugerencia_tratamiento), precio };
+    const origen = origenCristal(fila, r, posicionRango, catalogoLab, hoyEnChile());
+    return { nombre: nombreCristal(tipoLente, tratamiento), precio: precioVentaCristal(fila, origen) };
+  };
+
+  // La receta puede traer uno o dos lentes sugeridos ("Dos lentes
+  // separados": uno de lejos y uno de cerca). Antes se cotizaba solo el
+  // primero, y como de lejos aunque la receta fuera de cerca — sin la
+  // adición, un lente de lectura salía en un rango más bajo del real.
+  const precioSugerido = (
+    r: PotenciasReceta & {
+      tipo: string | null;
+      sugerencia_tipo_lente: string | null;
+      sugerencia_tratamiento: string | null;
+      sugerencia_tipo_lente_cerca: string | null;
+      sugerencia_tratamiento_cerca: string | null;
+    }
+  ): { nombre: string; precio: number } | null => {
+    const principal = cotizarLente(
+      r,
+      r.sugerencia_tipo_lente,
+      r.sugerencia_tratamiento,
+      r.tipo === "cerca" ? "cerca" : "lejos"
+    );
+    const cerca =
+      r.tipo === "lejos_y_cerca"
+        ? cotizarLente(r, r.sugerencia_tipo_lente_cerca, r.sugerencia_tratamiento_cerca, "cerca")
+        : null;
+    if (principal && cerca) {
+      return {
+        nombre: `${principal.nombre} para lejos y ${cerca.nombre} para cerca`,
+        precio: principal.precio + cerca.precio,
+      };
+    }
+    return principal ?? cerca;
   };
 
   const paraCotizar: DestinatarioWsp[] = recetas

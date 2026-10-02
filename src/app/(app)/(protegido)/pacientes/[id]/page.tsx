@@ -7,6 +7,7 @@ import EliminarPaciente from "../eliminar-paciente";
 import EliminarReceta from "../eliminar-receta";
 import EditarPaciente from "../editar-paciente";
 import NuevaReceta from "./nueva-receta";
+import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 
 const TIPO_LABEL: Record<string, string> = {
   lejos: "Lejos",
@@ -45,8 +46,13 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       )
     : null;
 
-  const [{ data: recetas }, { data: operativos }, { data: costos }] = await Promise.all([
-    supabase.from("recetas").select("*").eq("paciente_id", id).order("fecha", { ascending: false }),
+  const [{ data: recetas }, { data: operativos }, cotizar] = await Promise.all([
+    supabase
+      .from("recetas")
+      .select("*")
+      .eq("paciente_id", id)
+      .order("fecha", { ascending: false })
+      .order("created_at", { ascending: false }),
     // Planificados/realizados primero (el más reciente arriba): es lo que
     // más frecuentemente se va a elegir al cargar una receta nueva.
     supabase
@@ -54,13 +60,11 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       .select("id, nombre, fecha, estado")
       .in("estado", ["planificado", "realizado"])
       .order("fecha", { ascending: false }),
-    // Misma matriz real del punto de venta: para que la sugerencia calce
-    // directo con lo que va a ver la vendedora, y para poder mostrarle el
-    // precio al paciente ahí mismo en el box (pestaña "Ver precios").
-    supabase
-      .from("costos_cristales")
-      .select("tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta")
-      .order("tipo_lente"),
+    // Misma matriz real del punto de venta, con la lista del laboratorio:
+    // para que la sugerencia calce directo con lo que va a ver la
+    // vendedora, y el precio que se le dice al paciente en el box sea el
+    // mismo que después se le cobra.
+    cargarCatalogoParaCotizar(supabase),
   ]);
 
   return (
@@ -178,7 +182,8 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       <NuevaReceta
         pacienteId={paciente.id}
         operativos={operativos ?? []}
-        costos={costos ?? []}
+        costos={cotizar.filas}
+        catalogoLab={cotizar.catalogo}
       />
 
       <section>

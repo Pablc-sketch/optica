@@ -48,6 +48,11 @@ export async function registrarVenta(input: {
   diasEntrega?: number;
   proveedorLabId?: string | null;
   operativoId?: string | null;
+  // La receta con que se cotizó en pantalla. Sin esto la orden se
+  // enlazaba a "la última receta por fecha", y si el paciente tenía dos
+  // recetas el mismo día podía quedar enlazada a otra distinta de la que
+  // se usó para calcular el precio y decidir stock o laboratorio.
+  recetaId?: string | null;
 }) {
   const supabase = await createClient();
   const {
@@ -92,13 +97,21 @@ export async function registrarVenta(input: {
   if (input.pacienteId && cristales.length > 0) {
     const necesitaLab = cristales.some((c) => c.origen === "laboratorio");
     const [recetaRes, sucursalRes, proveedorRes, config, operativoRes] = await Promise.all([
-      supabase
-        .from("recetas")
-        .select("id")
-        .eq("paciente_id", input.pacienteId)
-        .order("fecha", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+      input.recetaId
+        ? supabase
+            .from("recetas")
+            .select("id")
+            .eq("id", input.recetaId)
+            .eq("paciente_id", input.pacienteId)
+            .maybeSingle()
+        : supabase
+            .from("recetas")
+            .select("id")
+            .eq("paciente_id", input.pacienteId)
+            .order("fecha", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
       supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
       // El vendedor elige el laboratorio en el POS; si no llegó ninguno (venta
       // vieja o sincronizada desde offline sin ese dato) se cae al primero

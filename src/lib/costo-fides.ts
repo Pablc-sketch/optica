@@ -91,7 +91,12 @@ export function disenoVigente(mapa: MapaCristal, hoy: string): string | null {
 // de cerca — es la potencia con que se talla, y es la que cobra el
 // laboratorio (la boleta lo confirma: una receta de +0.50 con ADD +2.50
 // llegó a Fides como +3.00).
-export type Ojo = { esfera: number | null; cilindro: number | null };
+//
+// La adición viaja aparte para los bifocales y multifocales: ahí no se
+// suma a la esfera (el cristal trae las dos distancias), pero decide si
+// el laboratorio lo tiene hecho — su caja de stock solo cubre ADD +1.00 a
+// +3.00.
+export type Ojo = { esfera: number | null; cilindro: number | null; add?: number | null };
 
 export type CostoCristal = {
   origen: "stock" | "laboratorio";
@@ -156,9 +161,17 @@ export function precioStockOjo(
 
 // Bifocales y multifocales de stock: el laboratorio no los tiene en una
 // grilla de potencias sino en una caja aparte, con un rango fijo chico
-// (neutros hasta ESF +3.00, ADD +1.00 hasta +3.00). Fuera de ahí los
-// talla igual.
-const TOPE_ESFERA_STOCK_MULTIFOCAL = 3;
+// ("Neutros hasta ESF +3.00, ADD +1.00 hasta +3.00"). "Neutros" quiere
+// decir SIN CILINDRO: el cristal hecho viene esférico, y un multifocal no
+// se puede girar para corregir un astigmatismo que no trae tallado.
+// Antes solo se miraba la esfera, así que tres multifocales con cilindro
+// (folios 55, 57 y 59) quedaron marcados "de stock" y nunca aparecieron en
+// el pedido al laboratorio — que es donde de verdad había que mandarlos.
+// Fuera de esa caja, se tallan.
+const ESFERA_MIN_STOCK_MULTIFOCAL = 0;
+const ESFERA_MAX_STOCK_MULTIFOCAL = 3;
+const ADD_MIN_STOCK_MULTIFOCAL = 1;
+const ADD_MAX_STOCK_MULTIFOCAL = 3;
 
 export function precioStockMultifocalOjo(
   material: string,
@@ -166,7 +179,15 @@ export function precioStockMultifocalOjo(
   ojo: Ojo,
   stock: PrecioStock[]
 ): number | null {
-  if (abs(ojo.esfera) > TOPE_ESFERA_STOCK_MULTIFOCAL) return null;
+  if (abs(ojo.cilindro) > 0) return null;
+  const esfera = ojo.esfera ?? 0;
+  if (esfera < ESFERA_MIN_STOCK_MULTIFOCAL || esfera > ESFERA_MAX_STOCK_MULTIFOCAL) return null;
+  // Sin adición anotada no hay cómo saber si cae en la caja: ante la duda
+  // se talla, que nunca entrega un lente equivocado.
+  const add = ojo.add;
+  if (add === null || add === undefined || add < ADD_MIN_STOCK_MULTIFOCAL || add > ADD_MAX_STOCK_MULTIFOCAL) {
+    return null;
+  }
   const fila = stock.find((s) => s.material === material && s.diseno === diseno);
   return fila?.precio_unitario ?? null;
 }

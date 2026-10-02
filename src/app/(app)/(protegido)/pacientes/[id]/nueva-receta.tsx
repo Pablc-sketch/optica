@@ -5,6 +5,9 @@ import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { clp } from "@/lib/clp";
+import { hoyEnChile } from "@/lib/fechas";
+import type { CatalogoLaboratorio } from "@/lib/costo-fides";
+import { origenCristal, precioVentaCristal, type FilaCristal } from "@/lib/precio-venta";
 
 // Mismo criterio que en formatearDioptria: coma o punto, vacío o suelto ("+"
 // mientras se escribe) es "todavía no hay número".
@@ -42,13 +45,7 @@ function CampoOptico({
   );
 }
 
-type CostoCristal = {
-  tipo_lente: string;
-  rango_receta: string;
-  tratamiento: string;
-  costo: number;
-  precio_venta: number;
-};
+type CostoCristal = FilaCristal;
 
 // Lo que trae una receta ya guardada, para precargar el formulario en modo
 // edición. Si no llega (modo creación), el formulario parte en blanco.
@@ -84,6 +81,7 @@ type RecetaExistente = {
 function SelectorLenteConPrecio({
   titulo,
   costos,
+  catalogoLab,
   nombreTipo,
   nombreTratamiento,
   esferas,
@@ -95,6 +93,7 @@ function SelectorLenteConPrecio({
 }: {
   titulo: string;
   costos: CostoCristal[];
+  catalogoLab: CatalogoLaboratorio;
   nombreTipo: string;
   nombreTratamiento: string;
   esferas: [number | null, number | null];
@@ -117,6 +116,25 @@ function SelectorLenteConPrecio({
     [costos, tipoLente, rango]
   );
   const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
+
+  // El mismo precio que va a ver la vendedora en el punto de venta
+  // (precio-venta.ts): si el laboratorio tiene hecho este cristal para
+  // ESTA receta, el monofocal se cotiza a precio de stock. Antes acá se
+  // mostraba siempre el de laboratorio, y el tecnólogo le decía al
+  // paciente $55.000 por un antirreflejo que después se cobraba $38.000.
+  const potencias = {
+    od_esfera: esferas[0],
+    od_cilindro: cilindros[0],
+    od_add: add,
+    oi_esfera: esferas[1],
+    oi_cilindro: cilindros[1],
+    oi_add: add,
+  };
+  const hayReceta = esferas.some((e) => e !== null) || cilindros.some((c) => c !== null);
+  const origenDe = (fila: CostoCristal) =>
+    origenCristal(fila, hayReceta ? potencias : null, posicionParaRango, catalogoLab, hoyEnChile());
+  const origen = combo ? origenDe(combo) : null;
+  const precio = combo && origen ? precioVentaCristal(combo, origen) : 0;
 
   return (
     <fieldset className="rounded-xl border border-brand/25 bg-brand/5 p-3">
@@ -151,7 +169,7 @@ function SelectorLenteConPrecio({
             <option value="">— Sin sugerir —</option>
             {tratamientos.map((t) => (
               <option key={t.tratamiento} value={t.tratamiento}>
-                {nombreCristal(t.tipo_lente, t.tratamiento)}
+                {nombreCristal(t.tipo_lente, t.tratamiento)} — {clp(precioVentaCristal(t, origenDe(t)))}
               </option>
             ))}
           </select>
@@ -165,9 +183,14 @@ function SelectorLenteConPrecio({
       )}
 
       {combo && (
-        <p className="mt-2 rounded-lg bg-white px-3 py-2.5 text-center text-base font-bold text-brand-dark">
-          {combo.precio_venta > 0 ? clp(combo.precio_venta) : "Precio no configurado — revisa /precios"}
-        </p>
+        <div className="mt-2 rounded-lg bg-white px-3 py-2.5 text-center">
+          <p className="text-base font-bold text-brand-dark">
+            {precio > 0 ? clp(precio) : "Precio no configurado — revisa /precios"}
+          </p>
+          <p className="text-xs text-tinta-suave">
+            {origen === "stock" ? "El laboratorio lo tiene hecho (stock)" : "Hay que mandarlo a tallar (laboratorio)"}
+          </p>
+        </div>
       )}
 
       {/* Los selects de arriba no llevan name: son solo para mostrar el
@@ -184,11 +207,13 @@ export default function NuevaReceta({
   pacienteId,
   operativos,
   costos,
+  catalogoLab,
   receta,
 }: {
   pacienteId: string;
   operativos: { id: string; nombre: string }[];
   costos: CostoCristal[];
+  catalogoLab: CatalogoLaboratorio;
   // Si viene, el formulario parte precargado y guarda con actualizarReceta
   // en vez de crear una receta nueva.
   receta?: RecetaExistente;
@@ -323,6 +348,7 @@ export default function NuevaReceta({
       <SelectorLenteConPrecio
         titulo={necesitaCerca ? "Lente — lejos" : "Lente sugerido"}
         costos={costos}
+        catalogoLab={catalogoLab}
         nombreTipo="sugerencia_tipo_lente"
         nombreTratamiento="sugerencia_tratamiento"
         esferas={[odEsfera, oiEsfera]}
@@ -336,6 +362,7 @@ export default function NuevaReceta({
         <SelectorLenteConPrecio
           titulo="Lente — cerca"
           costos={costos}
+          catalogoLab={catalogoLab}
           nombreTipo="sugerencia_tipo_lente_cerca"
           nombreTratamiento="sugerencia_tratamiento_cerca"
           esferas={[odEsfera, oiEsfera]}

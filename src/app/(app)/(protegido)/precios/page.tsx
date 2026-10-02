@@ -240,7 +240,12 @@ export default async function PreciosPage({
                   // sale de stock para este tratamiento, y entonces no
                   // hay margen de stock que mostrar).
                   const margenLab = c.precio_venta - c.costo;
-                  const precioStockEfectivo = c.precio_venta_stock ?? c.precio_venta;
+                  // Bifocal y Multifocal se venden SIEMPRE al mismo precio,
+                  // salgan de stock o de laboratorio: si el laboratorio lo
+                  // tiene hecho, la diferencia de costo queda para la óptica.
+                  // Solo el Monofocal tiene un precio de stock aparte.
+                  const tienePrecioStock = c.tipo_lente === "Monofocal";
+                  const precioStockEfectivo = tienePrecioStock ? (c.precio_venta_stock ?? c.precio_venta) : c.precio_venta;
                   const margenStock = c.costo_stock !== null ? precioStockEfectivo - c.costo_stock : null;
                   return (
                     <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
@@ -282,17 +287,19 @@ export default async function PreciosPage({
                             className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
                           />
                         </label>
+                        {tienePrecioStock && (
+                          <label className="flex items-center gap-1 text-xs text-tinta-suave">
+                            Venta (stock)
+                            <CampoMonto
+                              name="precio_stock"
+                              defaultValue={c.precio_venta_stock ?? undefined}
+                              placeholder="= laboratorio"
+                              className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+                            />
+                          </label>
+                        )}
                         <label className="flex items-center gap-1 text-xs text-tinta-suave">
-                          Venta (stock)
-                          <CampoMonto
-                            name="precio_stock"
-                            defaultValue={c.precio_venta_stock ?? undefined}
-                            placeholder="= laboratorio"
-                            className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-                          />
-                        </label>
-                        <label className="flex items-center gap-1 text-xs text-tinta-suave">
-                          Venta (laboratorio)
+                          {tienePrecioStock ? "Venta (laboratorio)" : "Venta (stock o laboratorio)"}
                           <CampoMonto
                             name="precio"
                             defaultValue={c.precio_venta}

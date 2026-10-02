@@ -62,13 +62,17 @@ export default async function LaboratorioPage({
     .from("ordenes_trabajo")
     .select(
       `folio, fecha_ingreso, tipo_lente, rango_receta, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2,
+       origen_cristal, origen_cristal_2,
        diseno_laboratorio, diseno_laboratorio_2, marco_propio, marco_propio_2,
        pacientes:paciente_id (nombre),
        recetas:receta_id (od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, dp, altura),
        productos:armazon_producto_id (sku, nombre, marca, color),
        productos_2:armazon_producto_id_2 (sku, nombre, marca, color)`
     )
-    .eq("origen_cristal", origen);
+    // Cada cristal de la orden va en la hoja de SU origen: lejos de stock y
+    // cerca tallado son dos pedidos distintos. Antes se filtraba solo por el
+    // primero, y el segundo par salía en la hoja equivocada (o en ninguna).
+    .or(`origen_cristal.eq.${origen},origen_cristal_2.eq.${origen}`);
 
   query = modoFecha
     ? // Los límites llevan el desfase de Chile. Sin él, Postgres interpreta
@@ -85,7 +89,7 @@ export default async function LaboratorioPage({
       ? supabase
           .from("ordenes_trabajo")
           .select("fecha_ingreso")
-          .eq("origen_cristal", origen)
+          .or(`origen_cristal.eq.${origen},origen_cristal_2.eq.${origen}`)
           .order("fecha_ingreso", { ascending: false })
           .limit(1)
           .maybeSingle()
@@ -301,8 +305,10 @@ export default async function LaboratorioPage({
                     if (propio) return "Marco propio del paciente";
                     return m ? `${m.sku ?? ""} ${m.color ?? ""}`.trim() || m.nombre : "—";
                   };
-                  const tieneSegundo = Boolean(ot.tipo_lente_2 || ot.tratamiento_2);
-                  const filas = [
+                  const vaPrimero = ot.origen_cristal === origen;
+                  const tieneSegundo = Boolean(ot.tipo_lente_2 || ot.tratamiento_2) && ot.origen_cristal_2 === origen;
+                  const filas = [];
+                  if (vaPrimero) filas.push(
                     <tr key={`${ot.folio}-1`} className="border-b border-neutral-200 align-top">
                       <td className="py-1.5 pr-2 font-bold">#{ot.folio}</td>
                       <td className="py-1.5 pr-2">{nombrePaciente}</td>
@@ -314,13 +320,17 @@ export default async function LaboratorioPage({
                           la usa ni la necesita para fabricar. */}
                       <td className="py-1.5 pr-2">{ot.tipo_lente}</td>
                       <td className="py-1.5">{fmtCristal(ot.tipo_lente, ot.tratamiento, ot.diseno_laboratorio)}</td>
-                    </tr>,
-                  ];
+                    </tr>
+                  );
                   if (tieneSegundo) {
                     filas.push(
                       <tr key={`${ot.folio}-2`} className="border-b-2 border-neutral-300 align-top bg-neutral-50">
-                        <td className="py-1.5 pr-2 font-bold text-neutral-400">↳ #{ot.folio}</td>
-                        <td className="py-1.5 pr-2 text-neutral-500">{nombrePaciente} (2° par, mismo pedido)</td>
+                        <td className={`py-1.5 pr-2 font-bold ${vaPrimero ? "text-neutral-400" : ""}`}>
+                          {vaPrimero ? "↳ " : ""}#{ot.folio}
+                        </td>
+                        <td className="py-1.5 pr-2 text-neutral-500">
+                          {nombrePaciente} ({vaPrimero ? "2° par, mismo pedido" : "2° par — el 1° va en la otra hoja"})
+                        </td>
                         {celdasOjos(ot.posicion_2)}
                         <td className="py-1.5 pr-2">{fmtMarco(marco2, ot.marco_propio_2)}</td>
                         {celdaPara(ot.tipo_lente_2, ot.posicion_2)}

@@ -84,7 +84,10 @@ export default async function VentasPage() {
          sugerencia_tipo_lente, sugerencia_tratamiento,
          sugerencia_tipo_lente_cerca, sugerencia_tratamiento_cerca`
       )
-      .order("fecha", { ascending: false }),
+      // Dos recetas el mismo día: manda la última que se guardó, igual que
+      // en la ficha del paciente.
+      .order("fecha", { ascending: false })
+      .order("created_at", { ascending: false }),
     supabase.from("proveedores").select("id, nombre").eq("tipo", "laboratorio").order("nombre"),
     // La lista del laboratorio, para calcular el costo real de cada
     // cristal contra la potencia de cada ojo (no contra un rango

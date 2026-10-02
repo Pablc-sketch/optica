@@ -196,9 +196,57 @@ describe("costoCristal: cuadra con la nota de venta 53160 de Fides", () => {
     expect(r.costo).toBe(r.costoSinPromocion);
   });
 
-  it("el multifocal sale de stock si la receta entra en el rango", () => {
-    const r = costoCristal(MULTIFOCAL, [{ esfera: 1.5, cilindro: -0.5 }, { esfera: 1.5, cilindro: -0.5 }], CATALOGO, DIA)!;
+  it("el multifocal sale de stock si la receta entra en la caja: sin cilindro, esfera 0 a +3, ADD +1 a +3", () => {
+    const r = costoCristal(
+      MULTIFOCAL,
+      [{ esfera: 1.5, cilindro: null, add: 2 }, { esfera: 1.5, cilindro: 0, add: 2 }],
+      CATALOGO,
+      DIA
+    )!;
     expect(r.origen).toBe("stock");
+  });
+
+  it("un multifocal con cilindro se talla: la caja de stock es de cristales esféricos (folios 55, 57 y 59)", () => {
+    // María Verónica (folio 55): +2.75 -0.50 / +2.50 -0.50, ADD +2.50.
+    const r = costoCristal(
+      MULTIFOCAL,
+      [{ esfera: 2.75, cilindro: -0.5, add: 2.5 }, { esfera: 2.5, cilindro: -0.5, add: 2.5 }],
+      CATALOGO,
+      DIA
+    )!;
+    expect(r.origen).toBe("laboratorio");
+  });
+
+  it("basta un ojo con cilindro para que el par se talle (folio 59: OD sin cilindro, OI -0.25)", () => {
+    const r = costoCristal(
+      MULTIFOCAL,
+      [{ esfera: 2.75, cilindro: null, add: 2.5 }, { esfera: 2.75, cilindro: -0.25, add: 2.5 }],
+      CATALOGO,
+      DIA
+    )!;
+    expect(r.origen).toBe("laboratorio");
+  });
+
+  it("un multifocal miope se talla: la caja de stock parte en neutro (0) hacia positivo", () => {
+    const r = costoCristal(
+      MULTIFOCAL,
+      [{ esfera: -1, cilindro: null, add: 2 }, { esfera: -1, cilindro: null, add: 2 }],
+      CATALOGO,
+      DIA
+    )!;
+    expect(r.origen).toBe("laboratorio");
+  });
+
+  it("un multifocal con ADD fuera de +1 a +3, o sin ADD anotada, se talla", () => {
+    const addAlta = costoCristal(
+      MULTIFOCAL,
+      [{ esfera: 1, cilindro: null, add: 3.25 }, { esfera: 1, cilindro: null, add: 3.25 }],
+      CATALOGO,
+      DIA
+    )!;
+    expect(addAlta.origen).toBe("laboratorio");
+    const sinAdd = costoCristal(MULTIFOCAL, [{ esfera: 1, cilindro: null }, { esfera: 1, cilindro: null }], CATALOGO, DIA)!;
+    expect(sinAdd.origen).toBe("laboratorio");
   });
 
   it("no inventa un costo cuando el laboratorio no hace esa combinación", () => {

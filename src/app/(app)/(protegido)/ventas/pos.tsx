@@ -7,8 +7,9 @@ import { encolar, type CambioSync } from "@/lib/offline/outbox";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
-import { rangoParaPosicion, nombreCristal, limitesDeRango } from "@/lib/cristales";
-import { costoCristal, type CatalogoLaboratorio, type CostoCristal as CostoReal, type Ojo } from "@/lib/costo-fides";
+import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
+import { type CatalogoLaboratorio, type CostoCristal as CostoReal } from "@/lib/costo-fides";
+import { costoRealCristal, origenCristal as origenDelCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { fechaLegible, hoyEnChile, sumarDias } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
@@ -139,17 +140,12 @@ const COLOR_PASO = [
   },
 ] as const;
 
-// Precio de lista sugerido por el catálogo (/precios), separado según de
-// dónde sale de verdad el cristal — el mismo motor que decide el costo
-// real (costo-fides.ts) decide también qué precio corresponde, en vez de
-// cobrar por la categoría ancha de rango, que mezclaba recetas baratas
-// (de stock) con caras (tallado a medida) bajo un solo número. El factor
-// es solo respaldo si todavía no se ha fijado ningún precio en /precios.
+// Precio de lista sugerido por el catálogo (/precios), según de dónde sale
+// de verdad el cristal. Es el mismo cálculo que usa el cotizador de la
+// receta y la cotización por WhatsApp (lib/precio-venta.ts), para que el
+// tecnólogo y la vendedora vean siempre el mismo número.
 function precioDeCombo(combo: CostoCristal, factorVenta: number, origen: "stock" | "laboratorio"): number {
-  if (origen === "stock" && combo.precio_venta_stock !== null && combo.precio_venta_stock > 0) {
-    return combo.precio_venta_stock;
-  }
-  return combo.precio_venta > 0 ? combo.precio_venta : combo.costo * factorVenta;
+  return precioVentaCristal(combo, origen, factorVenta);
 }
 
 function lineaDeCombo(
@@ -248,28 +244,10 @@ function FilaLente({
   // esfera baja con cilindro alto cae en el mismo casillero que una
   // esfera Y cilindro altos, pero la primera sale de stock y la segunda
   // no — cobrarles igual sería cobrarle de más a la simple).
+  // Sin receta guardada (operativo: se refracta y se vende en el momento)
+  // se prueba el peor caso del rango elegido a mano — ver precio-venta.ts.
   function origenReal(fila: CostoCristal): "stock" | "laboratorio" {
-    if (receta) {
-      const suma = posicionParaRango === "cerca" ? 1 : 0;
-      const ojos: Ojo[] = [
-        { esfera: (receta.od_esfera ?? 0) + suma * (receta.od_add ?? 0), cilindro: receta.od_cilindro },
-        { esfera: (receta.oi_esfera ?? 0) + suma * (receta.oi_add ?? 0), cilindro: receta.oi_cilindro },
-      ];
-      return costoCristal(fila, ojos, catalogoLab, hoyEnChile())?.origen ?? "laboratorio";
-    }
-    // Sin receta guardada (frecuente en operativo: se refracta y se vende
-    // en el momento, sin alcanzar a cargar la ficha) no se conoce la
-    // potencia exacta de cada ojo — pero si se eligió el rango a mano, se
-    // puede probar el PEOR CASO de ese casillero (su tope de esfera y
-    // cilindro). Si el laboratorio lo tiene hecho incluso en el peor caso,
-    // también lo va a tener para la receta real, que como mucho llega a
-    // ese tope. Antes esto siempre cobraba el precio de laboratorio aunque
-    // el lente fuera clarísimo de stock (un Orgánico Antirreflejo básico,
-    // por ejemplo), asustando al paciente con un precio más alto del real.
-    const limites = limitesDeRango(rango);
-    if (!limites) return "laboratorio";
-    const ojoTope: Ojo = { esfera: limites.esfera, cilindro: limites.cilindro };
-    return costoCristal(fila, [ojoTope, ojoTope], catalogoLab, hoyEnChile())?.origen ?? "laboratorio";
+    return origenDelCristal(fila, receta, posicionParaRango, catalogoLab, hoyEnChile());
   }
 
   // Solo al montar: si venía precargada por la sugerencia del tecnólogo,
@@ -629,29 +607,11 @@ export default function PuntoDeVenta({
           c.rango_receta === cristal.rangoReceta
       );
       if (!fila) return null;
-      if (receta) {
-        // Un cristal de cerca se talla con la esfera de lejos MÁS la
-        // adición: es la potencia que recibe el laboratorio y por la que
-        // cobra.
-        const suma = cristal.posicion === "cerca" ? 1 : 0;
-        const ojos: Ojo[] = [
-          { esfera: (receta.od_esfera ?? 0) + suma * (receta.od_add ?? 0), cilindro: receta.od_cilindro },
-          { esfera: (receta.oi_esfera ?? 0) + suma * (receta.oi_add ?? 0), cilindro: receta.oi_cilindro },
-        ];
-        // Las promociones del laboratorio vencen: se evalúan contra el
-        // día de hoy, no contra la fecha en que se cargó la lista.
-        return costoCristal(fila, ojos, catalogoLab, hoyEnChile());
-      }
-      // Sin receta guardada (operativo: se refracta y se vende en el
-      // momento), se prueba el peor caso del casillero que ya se eligió a
-      // mano — mismo criterio que origenReal() en FilaLente, para que el
-      // origen que QUEDA GUARDADO en la orden de trabajo (y decide si se
-      // pide a stock o se manda a tallar) sea el mismo que el que ya se le
-      // cobró al paciente.
-      const limites = limitesDeRango(cristal.rangoReceta);
-      if (!limites) return null;
-      const ojoTope: Ojo = { esfera: limites.esfera, cilindro: limites.cilindro };
-      return costoCristal(fila, [ojoTope, ojoTope], catalogoLab, hoyEnChile());
+      // Mismo cálculo que FilaLente (precio-venta.ts), para que el origen
+      // que QUEDA GUARDADO en la orden de trabajo —el que decide si se pide
+      // hecho o se manda a tallar— sea el mismo con que se cotizó. Las
+      // promociones del laboratorio vencen: se evalúan contra hoy.
+      return costoRealCristal(fila, receta, cristal.posicion, catalogoLab, hoyEnChile());
     },
     [costos, receta, catalogoLab]
   );
@@ -1030,6 +990,7 @@ export default function PuntoDeVenta({
         marcosPropios: lineasArmazon.map((l) => l.marcoPropio ?? false),
         proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
         operativoId: operativoId || null,
+        recetaId: recetaPacienteId ?? null,
       });
       if (resultado.ok) {
         reiniciar();

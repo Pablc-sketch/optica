@@ -73,6 +73,10 @@ function parsearPosicion(valor: FormDataEntryValue | null): "lejos" | "cerca" | 
 // se tocan acá — están ligados al precio cobrado en la venta, así que un
 // cambio de lente pasa por anular y rehacer (o "Editar" en la venta, para
 // ajustar solo el monto).
+function parsearOrigen(valor: FormDataEntryValue | null): "stock" | "laboratorio" {
+  return String(valor ?? "") === "stock" ? "stock" : "laboratorio";
+}
+
 export async function actualizarOT(formData: FormData) {
   const supabase = await createClient();
   const otId = String(formData.get("ot_id"));
@@ -92,7 +96,11 @@ export async function actualizarOT(formData: FormData) {
       marco_propio_2: marcoPropio2,
       posicion: parsearPosicion(formData.get("posicion")),
       posicion_2: parsearPosicion(formData.get("posicion_2")),
-      origen_cristal: String(formData.get("origen_cristal") ?? "laboratorio"),
+      origen_cristal: parsearOrigen(formData.get("origen_cristal")),
+      // El segundo cristal puede salir de otro lado que el primero (lejos de
+      // stock, cerca tallado): se corrige por separado, y solo si la orden
+      // tiene segundo cristal — si no, el formulario no lo manda y no se toca.
+      ...(formData.has("origen_cristal_2") ? { origen_cristal_2: parsearOrigen(formData.get("origen_cristal_2")) } : {}),
       proveedor_lab_id: String(formData.get("proveedor_lab_id") ?? "").trim() || null,
       fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,
       notas: String(formData.get("notas") ?? "").trim() || null,
