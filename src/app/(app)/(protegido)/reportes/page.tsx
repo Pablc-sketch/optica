@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
 import BotonImprimir from "@/components/boton-imprimir";
 import Tarjeta from "@/components/tarjeta";
@@ -168,6 +169,8 @@ export default async function ReportesPage({
   // selector.
   const mes = params.mes || mesEnChile();
 
+  // Costos y utilidades: solo administración (A09).
+  await exigirRolPagina(["admin"]);
   const supabase = await createClient();
 
   let ventasQuery = supabase

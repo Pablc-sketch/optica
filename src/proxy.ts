@@ -36,16 +36,21 @@ export async function proxy(request: NextRequest) {
   const ruta = request.nextUrl.pathname;
   const esPublica = ruta.startsWith("/login") || ruta.startsWith("/registro");
 
-  if (!user && !esPublica) {
+  // Al redirigir hay que llevar las cookies que el refresco de sesión dejó
+  // en `response` (token renovado, o borrado si el refresh token ya no
+  // sirve). Sin esto la redirección salía sin ellas: el navegador seguía
+  // mandando el token viejo y la sesión quedaba en un estado roto
+  // (refresh_token_not_found en los logs) (A13).
+  const redirigir = (pathname: string) => {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
-  if (user && ruta.startsWith("/login")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
-  }
+    url.pathname = pathname;
+    const destino = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((c) => destino.cookies.set(c));
+    return destino;
+  };
+
+  if (!user && !esPublica) return redirigir("/login");
+  if (user && ruta.startsWith("/login")) return redirigir("/");
 
   return response;
 }

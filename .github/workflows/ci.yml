@@ -1,0 +1,35 @@
+# Verificación en cada push y PR (A15): tipos, lint, pruebas de lógica y
+# build. Las pruebas de integración necesitan una base Supabase local y
+# claves de prueba; corren aparte, nunca contra producción.
+name: CI
+
+on:
+  push:
+    branches: [master, "claude/**"]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - name: Pruebas de lógica (sin base de datos)
+        run: >-
+          npx vitest run
+          --exclude tests/flujo-completo.test.ts
+          --exclude tests/tenant-isolation.test.ts
+          --exclude tests/onboarding.test.ts
+          --exclude tests/permisos-rol.test.ts
+          --exclude tests/session-security.test.ts
+          --exclude tests/sync-offline.test.ts
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder

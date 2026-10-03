@@ -130,7 +130,7 @@ function SelectorLenteConPrecio({
     oi_cilindro: cilindros[1],
     oi_add: add,
   };
-  const hayReceta = esferas.some((e) => e !== null) || cilindros.some((c) => c !== null);
+  const hayReceta = esferas.some((e) => e !== null) || cilindros.some((c) => c !== null) || add !== null;
   const origenDe = (fila: CostoCristal) =>
     origenCristal(fila, hayReceta ? potencias : null, posicionParaRango, catalogoLab, hoyEnChile());
   const origen = combo ? origenDe(combo) : null;

@@ -121,17 +121,25 @@ export default function EnviarWhatsapp({
               }}
               className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${colorBoton}`}
             >
-              📨 Enviar a todos - siguiente: {primerNombre(siguiente.nombre)} ({conTelefono.length - pendientes.length + 1}
+              📨 Abrir el siguiente: {primerNombre(siguiente.nombre)} ({conTelefono.length - pendientes.length + 1}
               /{conTelefono.length})
             </button>
           ) : (
-            <span className="rounded-lg bg-green-100 px-4 py-2 text-sm font-semibold text-green-800">
-              ✓ Ya se le mandó a los {conTelefono.length} con celular
+            <span className="flex flex-wrap items-center gap-2 rounded-lg bg-green-100 px-4 py-2 text-sm font-semibold text-green-800">
+              ✓ Se abrió el chat de los {conTelefono.length} con celular — revisa en WhatsApp que se hayan enviado
+              <button
+                type="button"
+                onClick={() => setEnviados(new Set())}
+                className="rounded-md border border-green-700 px-2 py-0.5 text-xs font-semibold text-green-900"
+              >
+                Volver a empezar
+              </button>
             </span>
           )}
           <span className="text-xs text-tinta-suave">
-            Cada clic abre al siguiente ya escrito. Igual hay que apretar enviar adentro de WhatsApp,
-            eso no se puede automatizar.
+            Cada clic abre el chat del siguiente con el mensaje ya escrito. &quot;Abierto&quot; no quiere decir
+            enviado: hay que apretar enviar adentro de WhatsApp, eso no se puede automatizar ni confirmar
+            desde acá.
           </span>
         </div>
       )}
@@ -154,7 +162,7 @@ export default function EnviarWhatsapp({
           return (
             <li key={d.id} className="rounded-lg bg-white px-3 py-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`min-w-32 flex-1 text-sm font-medium ${enviado ? "text-tinta-suave line-through" : ""}`}>
+                <span className={`min-w-32 flex-1 text-sm font-medium ${enviado ? "text-tinta-suave" : ""}`}>
                   {d.nombre}
                 </span>
                 {d.detalle && <span className="text-xs text-tinta-suave">{d.detalle}</span>}
@@ -173,7 +181,7 @@ export default function EnviarWhatsapp({
                   onClick={() => setEnviados((prev) => new Set(prev).add(d.id))}
                   className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition ${enviado ? "bg-tinta-suave" : colorBoton}`}
                 >
-                  {enviado ? "Enviado ✓" : "Enviar"}
+                  {enviado ? "Abierto ✓ · reabrir" : "Abrir chat"}
                 </a>
               </div>
               {verPrevia === d.id && (

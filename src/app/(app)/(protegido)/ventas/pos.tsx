@@ -2,15 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { registrarVenta } from "@/lib/actions/ventas";
-import { encolar, type CambioSync } from "@/lib/offline/outbox";
+import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
+import { encolarVenta } from "@/lib/offline/outbox";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { type CatalogoLaboratorio, type CostoCristal as CostoReal } from "@/lib/costo-fides";
 import { costoRealCristal, origenCristal as origenDelCristal, precioVentaCristal } from "@/lib/precio-venta";
-import { fechaLegible, hoyEnChile, sumarDias } from "@/lib/fechas";
+import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
 type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string };
@@ -540,7 +540,6 @@ export default function PuntoDeVenta({
   catalogoLab,
   laboratorios,
   factorVenta,
-  tenantId,
   sucursalId,
   vendedorId,
   recetasPorPaciente,
@@ -575,6 +574,10 @@ export default function PuntoDeVenta({
   const [medioPago, setMedioPago] = useState("efectivo");
   const [laboratorioId, setLaboratorioId] = useState<string>(laboratorios[0]?.id ?? "");
   const [guardando, setGuardando] = useState(false);
+  // Un id por venta, fijo hasta que se cierra: si se aprieta "Cobrar" dos
+  // veces, o se reintenta tras un corte, la base ve el mismo id y no crea
+  // una segunda venta (A05).
+  const [ventaId, setVentaId] = useState(() => crypto.randomUUID());
   const [mensaje, setMensaje] = useState<string | null>(null);
 
   const receta = pacienteId ? recetasPorPaciente[pacienteId] : undefined;
@@ -616,20 +619,11 @@ export default function PuntoDeVenta({
     [costos, receta, catalogoLab]
   );
 
-  function costoDeLinea(linea: LineaCarrito): number {
-    return costoRealDeLinea(linea)?.costo ?? linea.cristal?.costoLaboratorio ?? 0;
-  }
 
   function origenDeLinea(linea: LineaCarrito): "laboratorio" | "stock" {
     return costoRealDeLinea(linea)?.origen ?? "laboratorio";
   }
 
-  // Con qué diseño del catálogo del laboratorio se está pidiendo. Queda
-  // congelado en la orden para que la planilla imprima lo que se cotizó,
-  // aunque se imprima días después de tomada la venta.
-  function disenoDeLinea(linea: LineaCarrito): string | null {
-    return costoRealDeLinea(linea)?.diseno ?? null;
-  }
 
   // El plazo y el proveedor son de la orden completa: si cualquiera de los
   // dos cristales hay que tallarlo, la orden entera se va al laboratorio.
@@ -803,6 +797,7 @@ export default function PuntoDeVenta({
   }
 
   function reiniciar() {
+    setVentaId(crypto.randomUUID());
     setCarrito([]);
     setAbono("");
     setPacienteId("");
@@ -817,181 +812,66 @@ export default function PuntoDeVenta({
   // Sin señal (operativo en terreno, spec 8.2): la venta se arma completa
   // en el dispositivo con UUIDs locales y va al outbox; se sincroniza sola
   // al reconectar. Los IDs locales hacen el reintento idempotente.
-  function cobrarOffline() {
-    const abonoReal = Math.max(0, Math.min(montoANumero(abono), total));
-    const estadoPago = abonoReal >= total ? "pagada" : abonoReal > 0 ? "abono_parcial" : "pendiente";
-    const ventaId = crypto.randomUUID();
-    const ahora = new Date().toISOString();
+  // Lo mismo se manda online y offline: la cola offline guarda esta misma
+  // carga y la reenvía tal cual al reconectar, así que no hay un segundo
+  // camino que olvide campos (A03). Costo, origen y diseño NO viajan: los
+  // recalcula el servidor con el catálogo y la receta (A07).
+  function armarVenta(): VentaInput {
+    return {
+      ventaId,
+      fecha: new Date().toISOString(),
+      pacienteId: pacienteId || null,
+      operativoId: operativoId || null,
+      recetaId: recetaPacienteId ?? null,
+      sucursalId,
+      items: carrito.map((l) => ({
+        productoId: l.productoId ?? null,
+        descripcion: l.descripcion,
+        cantidad: l.cantidad,
+        precioUnitario: l.precioUnitario,
+        // El cupo va explícito, no por posición en una lista (F01).
+        cristalSlot: l.key === "cristal-1" ? 1 : l.key === "cristal-2" ? 2 : null,
+      })),
+      cristales: creaOT
+        ? lineasCristal.map((l) => ({
+            slot: (l.key === "cristal-1" ? 1 : 2) as 1 | 2,
+            tipoLente: l.cristal!.tipoLente,
+            rangoReceta: l.cristal!.rangoReceta,
+            tratamiento: l.cristal!.tratamiento,
+            posicion: l.cristal!.posicion ?? null,
+          }))
+        : [],
+      armazones: lineasArmazon.map((l) => ({
+        slot: l.armazonSlot,
+        productoId: l.productoId ?? null,
+        marcoPropio: l.marcoPropio ?? false,
+      })),
+      abonoInicial: Math.max(0, Math.min(montoANumero(abono), total)),
+      medioPago,
+      proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
+    };
+  }
 
-    // Misma regla que online: con paciente y cristales, la OT viaja en el
-    // mismo lote (el servidor la enlaza cuando vuelve la señal). Lejos y
-    // cerca por separado comparten UNA sola OT (un cupo cada uno), no dos
-    // OT distintas — así vuelve del laboratorio como un solo paquete.
-    const otId = pacienteId && lineasCristal.length > 0 ? crypto.randomUUID() : null;
-    // Si la venta es de un operativo con fecha de entrega configurada, esa
-    // manda (a todos les toca el mismo día, cuando se vuelve al lugar) — si
-    // no, hoyEnChile() en vez del reloj/huso del dispositivo, para que la
-    // estimación no dependa de que el celular tenga bien puesta la zona
-    // horaria (frecuente justo en el escenario para el que existe este modo:
-    // vendiendo en terreno).
-    const operativoActivo = operativos.find((o) => o.id === operativoId);
-    const entregaISO = operativoActivo?.fecha_entrega_estimada ?? sumarDias(hoyEnChile(), 7);
-
-    const cambios: CambioSync[] = [
-      {
-        tabla: "ventas",
-        op: "insert",
-        id: ventaId,
-        datos: {
-          tenant_id: tenantId,
-          paciente_id: pacienteId || null,
-          sucursal_id: sucursalId,
-          operativo_id: operativoId || null,
-          vendedor_id: vendedorId,
-          fecha: ahora,
-          total,
-          estado_pago: estadoPago,
-        },
-      },
-    ];
-
-    if (otId) {
-      const [primero, segundo] = lineasCristal;
-      cambios.push({
-        tabla: "ordenes_trabajo",
-        op: "insert",
-        id: otId,
-        datos: {
-          tenant_id: tenantId,
-          paciente_id: pacienteId,
-          receta_id: recetaPacienteId ?? null,
-          sucursal_id: sucursalId,
-          operativo_id: operativoId || null,
-          estado: "recepcion",
-          armazon_producto_id: lineasArmazon[0]?.productoId ?? null,
-          marco_propio: lineasArmazon[0]?.marcoPropio ?? false,
-          tipo_lente: primero.cristal!.tipoLente,
-          rango_receta: primero.cristal!.rangoReceta,
-          tratamiento: primero.cristal!.tratamiento,
-          origen_cristal: origenDeLinea(primero),
-          diseno_laboratorio: disenoDeLinea(primero),
-          proveedor_lab_id: origenCristal === "laboratorio" ? laboratorioId || null : null,
-          costo_laboratorio: costoDeLinea(primero),
-          posicion: primero.cristal!.posicion ?? null,
-          fecha_ingreso: ahora,
-          fecha_entrega_estimada: entregaISO,
-          armazon_producto_id_2: segundo ? (lineasArmazon[1]?.productoId ?? null) : null,
-          marco_propio_2: segundo ? (lineasArmazon[1]?.marcoPropio ?? false) : false,
-          tipo_lente_2: segundo?.cristal?.tipoLente ?? null,
-          rango_receta_2: segundo?.cristal?.rangoReceta ?? null,
-          tratamiento_2: segundo?.cristal?.tratamiento ?? null,
-          costo_laboratorio_2: segundo ? costoDeLinea(segundo) : null,
-          origen_cristal_2: segundo ? origenDeLinea(segundo) : null,
-          diseno_laboratorio_2: segundo ? disenoDeLinea(segundo) : null,
-          posicion_2: segundo?.cristal?.posicion ?? null,
-        },
-      });
-    }
-
-    cambios.push(
-      ...carrito.map((l) => ({
-        tabla: "venta_items",
-        op: "insert" as const,
-        id: crypto.randomUUID(),
-        datos: {
-          tenant_id: tenantId,
-          venta_id: ventaId,
-          producto_id: l.productoId ?? null,
-          ot_id: l.cristal ? otId : null,
-          cristal_slot: l.key === "cristal-1" ? 1 : l.key === "cristal-2" ? 2 : null,
-          descripcion: l.descripcion,
-          cantidad: l.cantidad,
-          precio_unitario: l.precioUnitario,
-          descuento: 0,
-        },
-      }))
-    );
-
-    if (abonoReal > 0) {
-      cambios.push({
-        tabla: "pagos_abonos",
-        op: "insert",
-        id: crypto.randomUUID(),
-        datos: {
-          tenant_id: tenantId,
-          venta_id: ventaId,
-          monto: abonoReal,
-          medio_pago: medioPago,
-          fecha: ahora,
-        },
-      });
-    }
-
-    if (sucursalId) {
-      for (const l of carrito) {
-        if (!l.productoId) continue;
-        cambios.push({
-          tabla: "movimientos_inventario",
-          op: "insert",
-          id: crypto.randomUUID(),
-          datos: {
-            tenant_id: tenantId,
-            producto_id: l.productoId,
-            sucursal_id: sucursalId,
-            tipo: "salida",
-            cantidad: l.cantidad,
-            referencia: `venta:${ventaId}`,
-            fecha: ahora,
-          },
-        });
-      }
-    }
-
-    encolar(cambios);
+  function guardarSinConexion(venta: VentaInput) {
+    encolarVenta(vendedorId ?? "sin-usuario", venta);
     reiniciar();
     setMensaje("✓ Venta guardada sin conexión — se sincronizará sola al volver la señal");
   }
 
   async function cobrar() {
+    if (guardando) return;
     setGuardando(true);
     setMensaje(null);
+    const venta = armarVenta();
 
     if (!navigator.onLine) {
-      cobrarOffline();
+      guardarSinConexion(venta);
       setGuardando(false);
       return;
     }
 
     try {
-      const resultado = await registrarVenta({
-        pacienteId: pacienteId || null,
-        items: carrito.map((l) => ({
-          productoId: l.productoId,
-          descripcion: l.descripcion,
-          cantidad: l.cantidad,
-          precioUnitario: l.precioUnitario,
-          // A cuál de los dos cupos de cristal de la OT corresponde (lejos
-          // y cerca por separado comparten UNA sola OT, no una cada uno).
-          cristalSlot: l.key === "cristal-1" ? 1 : l.key === "cristal-2" ? 2 : undefined,
-        })),
-        abonoInicial: montoANumero(abono),
-        medioPago,
-        cristales: creaOT
-          ? lineasCristal.map((l) => ({
-              ...l.cristal!,
-              costoLaboratorio: costoDeLinea(l),
-              origen: origenDeLinea(l),
-              disenoLaboratorio: disenoDeLinea(l),
-            }))
-          : [],
-        // Un armazón por cristal, en el mismo orden — dos pares separados
-        // llevan cada uno su propio marco.
-        armazonProductoIds: lineasArmazon.map((l) => l.productoId ?? null),
-        marcosPropios: lineasArmazon.map((l) => l.marcoPropio ?? false),
-        proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
-        operativoId: operativoId || null,
-        recetaId: recetaPacienteId ?? null,
-      });
+      const resultado = await registrarVenta(venta);
       if (resultado.ok) {
         reiniciar();
         setMensaje(
@@ -1001,10 +881,13 @@ export default function PuntoDeVenta({
         );
         router.refresh();
       } else {
-        setMensaje(resultado.error ?? "No se pudo registrar la venta.");
+        setMensaje(resultado.error);
       }
     } catch {
-      setMensaje("Error al registrar la venta.");
+      // Se cortó la conexión a mitad: puede que la venta haya alcanzado a
+      // guardarse o no. Se encola con el MISMO id — si ya estaba guardada,
+      // la base la reconoce y no la duplica.
+      guardarSinConexion(venta);
     } finally {
       setGuardando(false);
     }

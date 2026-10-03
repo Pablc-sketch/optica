@@ -1,9 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { clp } from "@/lib/clp";
+import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 
 const SIGUIENTE: Record<string, string> = {
   recepcion: "laboratorio",
@@ -19,44 +18,44 @@ const ANTERIOR: Record<string, string> = {
   entregado: "listo",
 };
 
-export async function avanzarOT(formData: FormData) {
-  const supabase = await createClient();
+// El cambio se aplica solo si la OT sigue en el estado que se vio en
+// pantalla: si otra persona ya la avanzó, no se salta una etapa ni se
+// deshace su cambio con un formulario viejo (A05).
+async function moverOT(formData: FormData, direccion: "avanzar" | "retroceder") {
+  const { supabase } = await requerirPerfil({ roles: ["admin", "clinico", "ventas", "bodega"], suscripcion: true });
   const otId = String(formData.get("ot_id"));
-  const estadoActual = String(formData.get("estado_actual"));
+  const estadoVisto = String(formData.get("estado_actual"));
+  const destino = direccion === "avanzar" ? SIGUIENTE[estadoVisto] : ANTERIOR[estadoVisto];
+  if (!destino) return;
 
-  const siguiente = SIGUIENTE[estadoActual];
-  if (!siguiente) return;
+  const cambios: Record<string, unknown> = { estado: destino };
+  if (destino === "entregado") cambios.fecha_entrega_real = new Date().toISOString();
+  if (direccion === "retroceder" && estadoVisto === "entregado") cambios.fecha_entrega_real = null;
 
-  const cambios: Record<string, unknown> = { estado: siguiente };
-  if (siguiente === "entregado") cambios.fecha_entrega_real = new Date().toISOString();
-
-  // RLS garantiza que solo se puede tocar una OT del propio tenant.
-  const { error } = await supabase.from("ordenes_trabajo").update(cambios).eq("id", otId);
+  const { data, error } = await supabase
+    .from("ordenes_trabajo")
+    .update(cambios)
+    .eq("id", otId)
+    .eq("estado", estadoVisto)
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("Esta orden cambió de estado mientras la tenías abierta. Recarga la página.");
+  }
 
   revalidatePath("/ot");
   revalidatePath("/");
+}
+
+export async function avanzarOT(formData: FormData) {
+  await moverOT(formData, "avanzar");
 }
 
 // Deshacer un "avanzar" apretado por error (pasa harto en un operativo con
 // apuro, atendiendo a muchas personas seguidas) — vuelve una columna atrás
 // sin tener que borrar la OT ni pedirle ayuda a nadie.
 export async function retrocederOT(formData: FormData) {
-  const supabase = await createClient();
-  const otId = String(formData.get("ot_id"));
-  const estadoActual = String(formData.get("estado_actual"));
-
-  const anterior = ANTERIOR[estadoActual];
-  if (!anterior) return;
-
-  const cambios: Record<string, unknown> = { estado: anterior };
-  if (estadoActual === "entregado") cambios.fecha_entrega_real = null;
-
-  const { error } = await supabase.from("ordenes_trabajo").update(cambios).eq("id", otId);
-  if (error) throw error;
-
-  revalidatePath("/ot");
-  revalidatePath("/");
+  await moverOT(formData, "retroceder");
 }
 
 // Solo "lejos" o "cerca" son válidos; cualquier otra cosa (incluido vacío)
@@ -87,13 +86,28 @@ export async function actualizarOT(formData: FormData) {
   const marcoPropio = formData.get("marco_propio") === "on";
   const marcoPropio2 = formData.get("marco_propio_2") === "on";
 
+  // Si la orden ya tiene venta, el marco es parte de lo vendido: cambiarlo
+  // acá dejaba el ítem de venta y el stock con el marco anterior (A06). En
+  // ese caso los marcos no se tocan desde la OT; se corrigen anulando y
+  // rehaciendo la venta.
+  const { count: itemsVenta } = await supabase
+    .from("venta_items")
+    .select("id", { count: "exact", head: true })
+    .eq("ot_id", otId);
+  const marcos =
+    (itemsVenta ?? 0) > 0
+      ? {}
+      : {
+          armazon_producto_id: marcoPropio ? null : String(formData.get("armazon_producto_id") ?? "").trim() || null,
+          marco_propio: marcoPropio,
+          armazon_producto_id_2: marcoPropio2 ? null : String(formData.get("armazon_producto_id_2") ?? "").trim() || null,
+          marco_propio_2: marcoPropio2,
+        };
+
   const { error } = await supabase
     .from("ordenes_trabajo")
     .update({
-      armazon_producto_id: marcoPropio ? null : String(formData.get("armazon_producto_id") ?? "").trim() || null,
-      marco_propio: marcoPropio,
-      armazon_producto_id_2: marcoPropio2 ? null : String(formData.get("armazon_producto_id_2") ?? "").trim() || null,
-      marco_propio_2: marcoPropio2,
+      ...marcos,
       posicion: parsearPosicion(formData.get("posicion")),
       posicion_2: parsearPosicion(formData.get("posicion_2")),
       origen_cristal: parsearOrigen(formData.get("origen_cristal")),
@@ -122,73 +136,19 @@ export async function actualizarOT(formData: FormData) {
 // Si no se ha cobrado nada, se puede deshacer todo el error: se revierte el
 // stock que salió con esa venta, se borra la venta completa y la OT.
 export async function eliminarOT(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
-  if (!perfil) throw new Error("Perfil no encontrado");
-  const tenantId = perfil.tenant_id as string;
-
+  let supabase;
+  try {
+    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
+    throw e;
+  }
   const otId = String(formData.get("ot_id"));
 
-  const { data: itemsOT, error: itemsError } = await supabase
-    .from("venta_items")
-    .select("venta_id")
-    .eq("ot_id", otId);
-  if (itemsError) throw itemsError;
-
-  const ventaId = itemsOT?.[0]?.venta_id as string | undefined;
-
-  if (!ventaId) {
-    // OT sin venta asociada (caso raro): se borra directo.
-    const { error } = await supabase.from("ordenes_trabajo").delete().eq("id", otId);
-    if (error) return { ok: false as const, error: "No se pudo eliminar la orden de trabajo." };
-    revalidatePath("/ot");
-    revalidatePath("/");
-    return { ok: true as const };
-  }
-
-  const [{ data: pagos }, { data: venta }] = await Promise.all([
-    supabase.from("pagos_abonos").select("monto").eq("venta_id", ventaId),
-    supabase.from("ventas").select("total").eq("id", ventaId).single(),
-  ]);
-
-  if (pagos && pagos.length > 0) {
-    return {
-      ok: false as const,
-      error: `No se puede eliminar: la venta asociada a esta orden (${venta ? clp(venta.total) : ""}) ya tiene pagos registrados. Es un comprobante que hay que conservar.`,
-    };
-  }
-
-  // Devolver al stock lo que salió con esa venta, antes de borrar todo.
-  const { data: movimientos } = await supabase
-    .from("movimientos_inventario")
-    .select("producto_id, sucursal_id, cantidad, tipo")
-    .eq("referencia", `venta:${ventaId}`);
-
-  for (const m of movimientos ?? []) {
-    if (m.tipo !== "salida") continue;
-    const { error: devError } = await supabase.from("movimientos_inventario").insert({
-      tenant_id: tenantId,
-      producto_id: m.producto_id,
-      sucursal_id: m.sucursal_id,
-      tipo: "entrada",
-      cantidad: m.cantidad,
-      referencia: `anulacion_ot:${otId}`,
-    });
-    if (devError) throw devError;
-  }
-
-  const { error: itemsDelError } = await supabase.from("venta_items").delete().eq("venta_id", ventaId);
-  if (itemsDelError) throw itemsDelError;
-
-  const { error: ventaDelError } = await supabase.from("ventas").delete().eq("id", ventaId);
-  if (ventaDelError) throw ventaDelError;
-
-  const { error: otDelError } = await supabase.from("ordenes_trabajo").delete().eq("id", otId);
-  if (otDelError) throw otDelError;
+  // Una transacción: devuelve el stock neto (venta + ediciones) y borra
+  // OT, ítems y venta juntos; con pagos registrados se niega (A06).
+  const { error } = await supabase.rpc("eliminar_venta_de_ot", { p_ot_id: otId });
+  if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/ot");
   revalidatePath("/ventas");

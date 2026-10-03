@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
@@ -18,9 +18,23 @@ export default function AbonoForm({
   compacto?: boolean;
 }) {
   const [montoInicial, setMontoInicial] = useState<number | undefined>(undefined);
+  // Id de esta operación: si el formulario se envía dos veces (doble clic,
+  // reintento), la base cobra una sola vez. Se crea al primer envío y se
+  // renueva al terminar (en un ref, no en el HTML, para que el servidor y
+  // el navegador no rendericen ids distintos).
+  const operacionId = useRef<string | null>(null);
 
   return (
-    <form action={registrarAbono} className="flex flex-wrap items-center gap-1.5">
+    <form
+      action={async (formData) => {
+        operacionId.current ??= crypto.randomUUID();
+        formData.set("operacion_id", operacionId.current);
+        await registrarAbono(formData);
+        operacionId.current = null;
+        setMontoInicial(undefined);
+      }}
+      className="flex flex-wrap items-center gap-1.5"
+    >
       <input type="hidden" name="venta_id" value={ventaId} />
       {!compacto && (
         <span className="text-xs text-tinta-suave">

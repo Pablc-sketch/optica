@@ -43,7 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const [perfilRes, suscripcionRes, rolTokenRes, logoRes] = await Promise.all([
     supabase
       .from("users")
-      .select("nombre, rol, es_superadmin, tenants:tenant_id (nombre_comercial)")
+      .select("nombre, rol, estado, es_superadmin, tenants:tenant_id (nombre_comercial)")
       .eq("id", user.id)
       .single(),
     supabase
@@ -65,6 +65,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Sin perfil el usuario existe en Auth pero no completó el registro de
   // su óptica (por ejemplo, si se cortó a mitad del alta).
   if (!perfil) redirect("/registro");
+
+  // Cuenta desactivada: la base ya le cierra todos los datos (A01); acá se
+  // le dice qué pasó en vez de mostrarle pantallas vacías.
+  if (perfil.estado !== "activo") {
+    return (
+      <div className="mx-auto mt-16 max-w-md rounded-2xl bg-crema-claro p-6 text-center shadow-sm">
+        <h1 className="text-lg font-bold">Tu cuenta está desactivada</h1>
+        <p className="mt-2 text-sm text-tinta-suave">
+          El administrador de la óptica desactivó esta cuenta. Si crees que es un error, pídele que la vuelva a
+          activar desde Configuración.
+        </p>
+        <form action={cerrarSesion} className="mt-4">
+          <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white transition hover:bg-brand-dark">
+            Cerrar sesión
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   const nombreOptica =
     (perfil.tenants as unknown as { nombre_comercial: string } | null)?.nombre_comercial ?? "Óptica";
@@ -106,7 +125,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </span>
           </Link>
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <EstadoSync />
+            <EstadoSync usuarioId={user.id} />
             <span className="hidden text-tinta-suave sm:inline">
               {perfil.nombre} · {perfil.rol}
             </span>

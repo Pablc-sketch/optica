@@ -3,274 +3,237 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { hoyEnChile, sumarDias } from "@/lib/fechas";
+import { diaEnChile, sumarDias } from "@/lib/fechas";
+import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
+import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
+import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
+import { rangoParaPosicion } from "@/lib/cristales";
+import { normalizarVenta, type ArmazonPedido, type CristalPedido, type ItemPedido } from "@/lib/venta-normalizar";
 
-type ItemVenta = {
-  productoId?: string;
-  descripcion: string;
-  cantidad: number;
-  precioUnitario: number;
-  // A cuál de los dos cupos de cristal de la OT corresponde este ítem (1 o
-  // 2) — lejos y cerca por separado comparten la misma OT, no una cada uno.
-  cristalSlot?: 1 | 2;
-};
-
-export type DatosCristal = {
-  tipoLente: string;
-  rangoReceta: string;
-  tratamiento: string;
-  costoLaboratorio: number;
-  origen: "stock" | "laboratorio";
-  // Con qué diseño del catálogo del laboratorio se pidió (ej. "MULTIFOCAL
-  // ADVANCE"). Solo en los tallados a medida; los de stock van por código
-  // de cristal hecho.
-  disenoLaboratorio?: string | null;
-  // Solo aplica a Monofocal cuando la receta es "lejos y cerca por
-  // separado" — para saber en la OT cuál cristal (y por lo tanto cuál
-  // marco) es cuál. Bifocal/Multifocal no tienen esta distinción.
-  posicion?: "lejos" | "cerca";
-};
-
-export async function registrarVenta(input: {
+// Lo que manda el punto de venta, online u offline (es el mismo contrato:
+// la cola offline guarda exactamente esto y lo vuelve a mandar al
+// reconectar). El precio cobrado lo decide la vendedora —puede rebajarlo o
+// regalar el lente—, pero costo, origen (stock/laboratorio) y diseño se
+// recalculan acá, en el servidor, con el catálogo y la receta: el navegador
+// ya no los puede imponer (A07/F09).
+export type VentaInput = {
+  // Clave de idempotencia: la genera el POS una vez por venta. El mismo id
+  // dos veces (doble clic, reintento, sync offline) no crea dos ventas.
+  ventaId: string;
+  // Cuándo se hizo de verdad la venta (offline: antes de sincronizar).
+  fecha?: string | null;
   pacienteId: string | null;
-  items: ItemVenta[];
+  operativoId?: string | null;
+  recetaId?: string | null;
+  sucursalId?: string | null;
+  items: ItemPedido[];
+  cristales: CristalPedido[];
+  armazones: ArmazonPedido[];
   abonoInicial: number;
   medioPago: string;
-  cristales?: DatosCristal[];
-  // Un armazón por cristal, en el mismo orden: dos pares separados (lejos y
-  // cerca) llevan cada uno su propio marco.
-  armazonProductoIds?: (string | null)[];
-  // En el mismo orden que armazonProductoIds: true = el paciente trajo su
-  // propio marco para ese cristal (no sale de nuestro stock). Ese slot no
-  // lleva armazonProductoId, así que sin esto era indistinguible de que
-  // a la vendedora se le olvidó registrar el marco.
-  marcosPropios?: boolean[];
-  diasEntrega?: number;
   proveedorLabId?: string | null;
-  operativoId?: string | null;
-  // La receta con que se cotizó en pantalla. Sin esto la orden se
-  // enlazaba a "la última receta por fecha", y si el paciente tenía dos
-  // recetas el mismo día podía quedar enlazada a otra distinta de la que
-  // se usó para calcular el precio y decidir stock o laboratorio.
-  recetaId?: string | null;
-}) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+};
 
-  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
-  if (!perfil) throw new Error("Perfil no encontrado");
-  const tenantId = perfil.tenant_id as string;
+export type ResultadoVenta = { ok: true; ventaId: string; otFolio: number | null } | { ok: false; error: string };
 
-  const items = input.items.filter((i) => i.cantidad > 0 && i.precioUnitario >= 0);
-  if (items.length === 0) return { ok: false, error: "La venta no tiene ítems." };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MEDIOS = ["efectivo", "debito", "credito", "transferencia"];
 
-  const total = items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0);
-  const abono = Math.max(0, Math.min(input.abonoInicial, total));
-  const estadoPago = abono >= total ? "pagada" : abono > 0 ? "abono_parcial" : "pendiente";
+export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta> {
+  let ctx;
+  try {
+    ctx = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false, error: e.message };
+    throw e;
+  }
+  const { supabase, tenantId } = ctx;
 
-  const { data: venta, error: ventaError } = await supabase
-    .from("ventas")
-    .insert({
-      tenant_id: tenantId,
-      paciente_id: input.pacienteId,
-      vendedor_id: user.id,
-      total,
-      estado_pago: estadoPago,
-      operativo_id: input.operativoId ?? null,
-    })
-    .select("id")
-    .single();
-  if (ventaError) throw ventaError;
+  if (!UUID.test(input.ventaId ?? "")) return { ok: false, error: "Falta el identificador de la venta." };
+  if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
+  if (!Number.isInteger(input.abonoInicial) || input.abonoInicial < 0) {
+    return { ok: false, error: "El abono tiene que ser un monto entero, sin negativos." };
+  }
+  const normal = normalizarVenta(input.cristales ?? [], input.armazones ?? [], input.items ?? []);
+  if (!normal.ok) return normal;
+  const { cristales, marcoDeCupo, items } = normal.venta;
+  if (cristales.length > 0 && !input.pacienteId) {
+    return { ok: false, error: "Para vender cristales hay que elegir al paciente (la orden de trabajo es suya)." };
+  }
 
-  // Si la venta lleva cristales y hay paciente, la orden de trabajo se crea
-  // sola: en el mesón (y sobre todo en un operativo) no hay tiempo para
-  // cargar dos veces los mismos datos. Lejos y cerca por separado comparten
-  // UNA sola OT (un folio, un cupo cada uno) — así cuando vuelve del
-  // laboratorio es un solo paquete por paciente, no dos que emparejar por
-  // nombre y RUT.
-  const cristales = input.cristales ?? [];
-  let otId: string | null = null;
-  let otFolio: number | null = null;
+  const fechaVenta = input.fecha && !Number.isNaN(Date.parse(input.fecha)) ? input.fecha : new Date().toISOString();
+  const diaVenta = diaEnChile(fechaVenta);
+
+  // Receta: la que se usó en pantalla, siempre que sea de este paciente.
+  let receta: Record<string, unknown> | null = null;
   if (input.pacienteId && cristales.length > 0) {
-    const necesitaLab = cristales.some((c) => c.origen === "laboratorio");
-    const [recetaRes, sucursalRes, proveedorRes, config, operativoRes] = await Promise.all([
-      input.recetaId
-        ? supabase
-            .from("recetas")
-            .select("id")
-            .eq("id", input.recetaId)
-            .eq("paciente_id", input.pacienteId)
-            .maybeSingle()
-        : supabase
-            .from("recetas")
-            .select("id")
-            .eq("paciente_id", input.pacienteId)
-            .order("fecha", { ascending: false })
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-      supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
-      // El vendedor elige el laboratorio en el POS; si no llegó ninguno (venta
-      // vieja o sincronizada desde offline sin ese dato) se cae al primero
-      // que haya registrado la óptica, para no dejar la OT sin laboratorio.
-      necesitaLab && !input.proveedorLabId
-        ? supabase.from("proveedores").select("id").eq("tipo", "laboratorio").limit(1).maybeSingle()
-        : Promise.resolve({ data: null }),
-      // El plazo lo define cada óptica en Configuración según lo que demore
-      // su laboratorio; 7 días es solo el respaldo si aún no lo ajustó.
-      supabase.from("tenants").select("dias_entrega_default").eq("id", tenantId).single(),
-      // Si la venta es de un operativo con fecha de entrega configurada, esa
-      // fecha manda: a todos los que compraron ahí se les entrega el mismo
-      // día que se vuelve al lugar, no una fecha calculada venta por venta.
-      input.operativoId
-        ? supabase.from("operativos").select("fecha_entrega_estimada").eq("id", input.operativoId).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
+    const consulta = supabase
+      .from("recetas")
+      .select("id, od_esfera, od_cilindro, od_add, oi_esfera, oi_cilindro, oi_add")
+      .eq("paciente_id", input.pacienteId);
+    const { data } = input.recetaId
+      ? await consulta.eq("id", input.recetaId).maybeSingle()
+      : await consulta.order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (input.recetaId && !data) return { ok: false, error: "La receta elegida no es de este paciente." };
+    receta = data;
+  }
+  const potencias = receta
+    ? {
+        od_esfera: receta.od_esfera as number | null,
+        od_cilindro: receta.od_cilindro as number | null,
+        od_add: receta.od_add as number | null,
+        oi_esfera: receta.oi_esfera as number | null,
+        oi_cilindro: receta.oi_cilindro as number | null,
+        oi_add: receta.oi_add as number | null,
+      }
+    : null;
 
-    // "Hoy" tiene que ser el de Chile: entrada en el servidor (UTC) usaba
-    // getDate()/setDate() con el reloj del servidor, así que una venta de
-    // noche en Chile (ya "mañana" en UTC) calculaba la entrega un día de
-    // más.
-    const entregaISO =
-      operativoRes.data?.fecha_entrega_estimada ??
-      sumarDias(hoyEnChile(), input.diasEntrega ?? config.data?.dias_entrega_default ?? 7);
-
-    const [primero, segundo] = cristales;
-    const { data: ot, error: otError } = await supabase
-      .from("ordenes_trabajo")
-      .insert({
-        tenant_id: tenantId,
-        paciente_id: input.pacienteId,
-        receta_id: recetaRes.data?.id ?? null,
-        sucursal_id: sucursalRes.data?.id ?? null,
-        operativo_id: input.operativoId ?? null,
-        armazon_producto_id: input.armazonProductoIds?.[0] ?? null,
-        marco_propio: input.marcosPropios?.[0] ?? false,
-        tipo_lente: primero.tipoLente,
-        rango_receta: primero.rangoReceta,
-        tratamiento: primero.tratamiento,
-        origen_cristal: primero.origen,
-        diseno_laboratorio: primero.disenoLaboratorio ?? null,
-        proveedor_lab_id: input.proveedorLabId ?? proveedorRes.data?.id ?? null,
-        costo_laboratorio: primero.costoLaboratorio,
-        posicion: primero.posicion ?? null,
-        fecha_entrega_estimada: entregaISO,
-        armazon_producto_id_2: segundo ? (input.armazonProductoIds?.[1] ?? null) : null,
-        marco_propio_2: segundo ? (input.marcosPropios?.[1] ?? false) : false,
-        tipo_lente_2: segundo?.tipoLente ?? null,
-        rango_receta_2: segundo?.rangoReceta ?? null,
-        tratamiento_2: segundo?.tratamiento ?? null,
-        costo_laboratorio_2: segundo?.costoLaboratorio ?? null,
-        // Los dos cristales de una misma orden pueden no salir del mismo
-        // lado: uno de lejos que el laboratorio tiene hecho y uno de cerca
-        // que hay que tallar.
-        origen_cristal_2: segundo?.origen ?? null,
-        diseno_laboratorio_2: segundo?.disenoLaboratorio ?? null,
-        posicion_2: segundo?.posicion ?? null,
-      })
-      .select("id, folio")
+  // Costo y origen, recalculados acá. Si el catálogo no se puede leer o
+  // falta la equivalencia, NO se inventa un costo: la venta se detiene con
+  // un mensaje claro (F07).
+  let ot: Record<string, unknown> | null = null;
+  const preciosLista = new Map<number, number>();
+  if (cristales.length > 0) {
+    let cotizar;
+    try {
+      cotizar = await cargarCatalogoParaCotizar(supabase);
+    } catch {
+      return { ok: false, error: "No se pudo leer el catálogo de precios. Revisa la conexión e intenta de nuevo." };
+    }
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("factor_venta_cristales, dias_entrega_default")
+      .eq("id", tenantId)
       .single();
-    if (otError) throw otError;
-    otId = ot.id;
-    otFolio = ot.folio;
+
+    const calculados = [];
+    for (const c of cristales) {
+      const fila = cotizar.filas.find(
+        (f) => f.tipo_lente === c.tipoLente && f.tratamiento === c.tratamiento && f.rango_receta === c.rangoReceta
+      );
+      if (!fila) return { ok: false, error: `El cristal ${c.tipoLente} ${c.tratamiento} (${c.rangoReceta}) no está en el catálogo.` };
+      const posicion = c.tipoLente === "Monofocal" ? (c.posicion ?? "lejos") : "lejos";
+      if (potencias) {
+        const rangoReal = rangoParaPosicion(
+          [potencias.od_esfera, potencias.oi_esfera],
+          [potencias.od_cilindro, potencias.oi_cilindro],
+          [potencias.od_add, potencias.oi_add],
+          posicion
+        );
+        if (rangoReal !== c.rangoReceta) {
+          return { ok: false, error: "La receta cambió desde que se cotizó. Vuelve a elegir el cristal para recalcular el precio." };
+        }
+      }
+      const costo = costoRealCristal(fila, potencias, posicion, cotizar.catalogo, diaVenta);
+      if (!costo) {
+        return { ok: false, error: `Falta la equivalencia con el laboratorio para ${c.tipoLente} ${c.tratamiento}. Revísala en Precios.` };
+      }
+      preciosLista.set(c.cupo, precioVentaCristal(fila, costo.origen, Number(tenant?.factor_venta_cristales ?? 0)));
+      calculados.push({ c, costo });
+    }
+
+    const { data: operativo } = input.operativoId
+      ? await supabase.from("operativos").select("fecha_entrega_estimada").eq("id", input.operativoId).maybeSingle()
+      : { data: null };
+    const entrega: string = operativo?.fecha_entrega_estimada ?? sumarDias(diaVenta, Number(tenant?.dias_entrega_default ?? 7));
+
+    const necesitaLab = calculados.some((x) => x.costo.origen === "laboratorio");
+    let proveedor = input.proveedorLabId ?? null;
+    if (necesitaLab && !proveedor) {
+      const { data } = await supabase.from("proveedores").select("id").eq("tipo", "laboratorio").order("nombre").limit(1).maybeSingle();
+      proveedor = data?.id ?? null;
+    }
+
+    const [uno, dos] = calculados;
+    ot = {
+      receta_id: (receta?.id as string | undefined) ?? null,
+      fecha_entrega_estimada: entrega,
+      proveedor_lab_id: necesitaLab ? proveedor : null,
+      armazon_producto_id: marcoDeCupo[1]?.marcoPropio ? null : (marcoDeCupo[1]?.productoId ?? null),
+      marco_propio: marcoDeCupo[1]?.marcoPropio ?? false,
+      tipo_lente: uno.c.tipoLente,
+      rango_receta: uno.c.rangoReceta,
+      tratamiento: uno.c.tratamiento,
+      origen_cristal: uno.costo.origen,
+      diseno_laboratorio: uno.costo.diseno,
+      costo_laboratorio: uno.costo.costo,
+      posicion: uno.c.tipoLente === "Monofocal" ? (uno.c.posicion ?? "lejos") : null,
+      ...(dos
+        ? {
+            armazon_producto_id_2: marcoDeCupo[2]?.marcoPropio ? null : (marcoDeCupo[2]?.productoId ?? null),
+            marco_propio_2: marcoDeCupo[2]?.marcoPropio ?? false,
+            tipo_lente_2: dos.c.tipoLente,
+            rango_receta_2: dos.c.rangoReceta,
+            tratamiento_2: dos.c.tratamiento,
+            origen_cristal_2: dos.costo.origen,
+            diseno_laboratorio_2: dos.costo.diseno,
+            costo_laboratorio_2: dos.costo.costo,
+            posicion_2: dos.c.tipoLente === "Monofocal" ? (dos.c.posicion ?? "lejos") : null,
+          }
+        : {}),
+    };
   }
 
-  const { error: itemsError } = await supabase.from("venta_items").insert(
-    items.map((i) => ({
-      tenant_id: tenantId,
-      venta_id: venta.id,
-      producto_id: i.productoId ?? null,
-      ot_id: i.cristalSlot !== undefined ? otId : null,
-      cristal_slot: i.cristalSlot ?? null,
-      descripcion: i.descripcion,
-      cantidad: i.cantidad,
-      precio_unitario: i.precioUnitario,
-    }))
-  );
-  if (itemsError) throw itemsError;
+  // Precio de lista de los productos (marcos, accesorios), para dejar a la
+  // vista cuándo se vendieron con descuento o de regalo.
+  const idsProductos = [...new Set(items.map((i) => i.productoId).filter((x): x is string => Boolean(x)))];
+  const { data: productos } = idsProductos.length
+    ? await supabase.from("productos").select("id, precio_venta").in("id", idsProductos)
+    : { data: [] as { id: string; precio_venta: number }[] };
+  if ((productos ?? []).length !== idsProductos.length) return { ok: false, error: "Un producto de la venta no existe." };
 
-  if (abono > 0) {
-    const { error: pagoError } = await supabase.from("pagos_abonos").insert({
-      tenant_id: tenantId,
-      venta_id: venta.id,
-      monto: abono,
+  const { data, error } = await supabase.rpc("registrar_venta", {
+    p: {
+      venta_id: input.ventaId,
+      fecha: fechaVenta,
+      paciente_id: input.pacienteId,
+      sucursal_id: input.sucursalId ?? null,
+      operativo_id: input.operativoId ?? null,
+      abono: input.abonoInicial,
       medio_pago: input.medioPago,
-    });
-    if (pagoError) throw pagoError;
-  }
-
-  // Salida de inventario por ítem físico; el trigger trg_movimiento_stock
-  // aplica el descuento sobre inventario.stock_actual.
-  for (const item of items) {
-    if (!item.productoId) continue;
-    const { data: inv } = await supabase
-      .from("inventario")
-      .select("sucursal_id")
-      .eq("producto_id", item.productoId)
-      .limit(1)
-      .maybeSingle();
-    if (!inv) continue;
-
-    await supabase.from("movimientos_inventario").insert({
-      tenant_id: tenantId,
-      producto_id: item.productoId,
-      sucursal_id: inv.sucursal_id,
-      tipo: "salida",
-      cantidad: item.cantidad,
-      referencia: `venta:${venta.id}`,
-    });
-  }
+      ot,
+      items: items.map((i) => ({
+        producto_id: i.productoId ?? null,
+        descripcion: i.descripcion,
+        cantidad: i.cantidad,
+        precio_unitario: i.precioUnitario,
+        cristal_slot: i.cristalSlot ?? null,
+        precio_lista: i.cristalSlot
+          ? (preciosLista.get(i.cristalSlot) ?? null)
+          : (productos ?? []).find((p) => p.id === i.productoId)?.precio_venta ?? null,
+      })),
+    },
+  });
+  if (error) return { ok: false, error: `No se pudo guardar la venta: ${error.message}` };
 
   revalidatePath("/ventas");
   revalidatePath("/ot");
   revalidatePath("/laboratorio");
   revalidatePath("/reportes");
   revalidatePath("/");
-  return { ok: true, ventaId: venta.id as string, otFolio };
+  return { ok: true, ventaId: input.ventaId, otFolio: (data as { ot_folio: number | null }).ot_folio ?? null };
 }
 
+// Abono con la venta bloqueada en la base: nunca más que el saldo, aunque
+// lleguen dos al mismo tiempo, y el mismo formulario enviado dos veces
+// (operacion_id) cobra una sola vez (A05).
 export async function registrarAbono(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
 
-  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
-  if (!perfil) throw new Error("Perfil no encontrado");
-
-  const ventaId = String(formData.get("venta_id"));
-  const montoIngresado = Math.round(Number(String(formData.get("monto")).replace(/\./g, "")));
+  const ventaId = String(formData.get("venta_id") ?? "");
+  const operacionId = String(formData.get("operacion_id") ?? "");
+  const monto = Math.round(Number(String(formData.get("monto") ?? "").replace(/\./g, "")));
   const medioPago = String(formData.get("medio_pago") ?? "efectivo");
-  if (!montoIngresado || montoIngresado <= 0) return;
+  if (!UUID.test(ventaId) || !UUID.test(operacionId) || !Number.isFinite(monto) || monto <= 0) return;
+  if (!MEDIOS.includes(medioPago)) return;
 
-  // El saldo real manda: sin este tope, un typo (de más ceros de la
-  // cuenta) queda guardado tal cual y nunca más se puede corregir desde la
-  // interfaz — inflando "cobrado" en los reportes con plata que nunca
-  // entró. Nunca se registra más de lo que efectivamente se debe.
-  const [{ data: venta }, { data: pagosPrevios }] = await Promise.all([
-    supabase.from("ventas").select("total").eq("id", ventaId).single(),
-    supabase.from("pagos_abonos").select("monto").eq("venta_id", ventaId),
-  ]);
-  if (!venta) return;
-  const abonadoPrevio = (pagosPrevios ?? []).reduce((s, p) => s + p.monto, 0);
-  const saldo = venta.total - abonadoPrevio;
-  const monto = Math.min(montoIngresado, Math.max(0, saldo));
-  if (monto <= 0) return;
-
-  const { error: pagoError } = await supabase.from("pagos_abonos").insert({
-    tenant_id: perfil.tenant_id,
-    venta_id: ventaId,
-    monto,
-    medio_pago: medioPago,
+  const { error } = await supabase.rpc("registrar_abono", {
+    p_id: operacionId,
+    p_venta_id: ventaId,
+    p_monto: monto,
+    p_medio_pago: medioPago,
   });
-  if (pagoError) throw pagoError;
-
-  const estado = abonadoPrevio + monto >= venta.total ? "pagada" : "abono_parcial";
-  await supabase.from("ventas").update({ estado_pago: estado }).eq("id", ventaId);
+  if (error) throw new Error(error.message);
 
   revalidatePath("/ventas");
   revalidatePath("/ot");
@@ -306,55 +269,21 @@ export async function actualizarVoucherAbono(formData: FormData) {
 // pasó. Se revierte el stock que había salido y se cancela la OT ligada
 // (si no se había entregado ya).
 export async function anularVenta(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
-  if (!perfil) throw new Error("Perfil no encontrado");
-  const tenantId = perfil.tenant_id as string;
-
-  const ventaId = String(formData.get("venta_id"));
+  let supabase;
+  try {
+    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
+    throw e;
+  }
+  const ventaId = String(formData.get("venta_id") ?? "");
   const motivo = String(formData.get("motivo") ?? "").trim() || null;
 
-  const { data: venta } = await supabase.from("ventas").select("id, anulada").eq("id", ventaId).single();
-  if (!venta) return { ok: false as const, error: "Venta no encontrada." };
-  if (venta.anulada) return { ok: true as const };
-
-  const { data: movimientos } = await supabase
-    .from("movimientos_inventario")
-    .select("producto_id, sucursal_id, cantidad, tipo")
-    .eq("referencia", `venta:${ventaId}`);
-  for (const m of movimientos ?? []) {
-    if (m.tipo !== "salida") continue;
-    const { error: devError } = await supabase.from("movimientos_inventario").insert({
-      tenant_id: tenantId,
-      producto_id: m.producto_id,
-      sucursal_id: m.sucursal_id,
-      tipo: "entrada",
-      cantidad: m.cantidad,
-      referencia: `anulacion_venta:${ventaId}`,
-    });
-    if (devError) throw devError;
-  }
-
-  const { data: items } = await supabase.from("venta_items").select("ot_id").eq("venta_id", ventaId);
-  const otIds = [...new Set((items ?? []).map((i) => i.ot_id).filter((id): id is string => Boolean(id)))];
-  if (otIds.length > 0) {
-    const { error: otError } = await supabase
-      .from("ordenes_trabajo")
-      .update({ estado: "cancelado" })
-      .in("id", otIds)
-      .neq("estado", "entregado");
-    if (otError) throw otError;
-  }
-
-  const { error: ventaError } = await supabase
-    .from("ventas")
-    .update({ anulada: true, anulada_motivo: motivo })
-    .eq("id", ventaId);
-  if (ventaError) throw ventaError;
+  // Una sola transacción: devuelve el stock NETO (venta + ediciones) una
+  // vez, cancela las OT y deja registro. Antes devolvía solo lo de la
+  // venta original y, si se editó la cantidad, el stock quedaba mal (A06).
+  const { error } = await supabase.rpc("anular_venta", { p_venta_id: ventaId, p_motivo: motivo });
+  if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/ventas");
   revalidatePath("/ot");
@@ -371,82 +300,48 @@ export async function anularVenta(formData: FormData) {
 // solo los números. El total de la venta se recalcula solo, y el stock del
 // marco se ajusta por la diferencia si la cantidad cambió.
 export async function actualizarVenta(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
-  if (!perfil) throw new Error("Perfil no encontrado");
-  const tenantId = perfil.tenant_id as string;
-
-  const ventaId = String(formData.get("venta_id"));
-  const { data: venta } = await supabase.from("ventas").select("id, anulada").eq("id", ventaId).single();
-  if (!venta) return { ok: false as const, error: "Venta no encontrada." };
-  if (venta.anulada) return { ok: false as const, error: "Esta venta está anulada, no se puede editar." };
+  let supabase;
+  try {
+    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
+    throw e;
+  }
+  const ventaId = String(formData.get("venta_id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
 
   const { data: itemsActuales } = await supabase
     .from("venta_items")
-    .select("id, producto_id, cantidad, precio_unitario, descuento")
+    .select("id, cantidad, precio_unitario, descuento")
     .eq("venta_id", ventaId);
   if (!itemsActuales || itemsActuales.length === 0) {
     return { ok: false as const, error: "No se encontraron los ítems de la venta." };
   }
 
-  const numero = (v: FormDataEntryValue | null, actual: number) => {
-    if (v === null) return actual;
-    const n = Math.round(Number(String(v).replace(/\./g, "")));
-    return Number.isFinite(n) && n >= 0 ? n : actual;
+  // Lo que no se tocó en el formulario conserva su valor; lo escrito se
+  // manda tal cual y la base lo valida (enteros, sin negativos, descuento
+  // no mayor al ítem, total no bajo lo ya pagado).
+  const leer = (v: FormDataEntryValue | null, actual: number) => {
+    if (v === null || String(v).trim() === "") return actual;
+    const n = Number(String(v).replace(/\./g, ""));
+    return Number.isFinite(n) ? n : Number.NaN;
   };
-
-  let nuevoTotal = 0;
-  for (const item of itemsActuales) {
-    const cantidad = Math.max(1, numero(formData.get(`cantidad_${item.id}`), item.cantidad));
-    const precio = numero(formData.get(`precio_${item.id}`), item.precio_unitario);
-    const descuento = numero(formData.get(`descuento_${item.id}`), item.descuento);
-
-    if (cantidad !== item.cantidad || precio !== item.precio_unitario || descuento !== item.descuento) {
-      const { error } = await supabase
-        .from("venta_items")
-        .update({ cantidad, precio_unitario: precio, descuento })
-        .eq("id", item.id);
-      if (error) throw error;
-    }
-
-    if (item.producto_id && cantidad !== item.cantidad) {
-      const delta = cantidad - item.cantidad;
-      const { data: mov } = await supabase
-        .from("movimientos_inventario")
-        .select("sucursal_id")
-        .eq("referencia", `venta:${ventaId}`)
-        .eq("producto_id", item.producto_id)
-        .limit(1)
-        .maybeSingle();
-      if (mov?.sucursal_id) {
-        const { error: movError } = await supabase.from("movimientos_inventario").insert({
-          tenant_id: tenantId,
-          producto_id: item.producto_id,
-          sucursal_id: mov.sucursal_id,
-          tipo: delta > 0 ? "salida" : "entrada",
-          cantidad: Math.abs(delta),
-          referencia: `edicion_venta:${ventaId}`,
-        });
-        if (movError) throw movError;
-      }
-    }
-
-    nuevoTotal += cantidad * precio - descuento;
+  const cambios = itemsActuales.map((item) => ({
+    id: item.id,
+    cantidad: leer(formData.get(`cantidad_${item.id}`), item.cantidad),
+    precio_unitario: leer(formData.get(`precio_${item.id}`), item.precio_unitario),
+    descuento: leer(formData.get(`descuento_${item.id}`), item.descuento),
+  }));
+  if (cambios.some((c) => [c.cantidad, c.precio_unitario, c.descuento].some((n) => !Number.isInteger(n) || n < 0))) {
+    return { ok: false as const, error: "Cantidades, precios y descuentos tienen que ser números enteros, sin negativos." };
   }
 
-  const { data: pagos } = await supabase.from("pagos_abonos").select("monto").eq("venta_id", ventaId);
-  const abonado = (pagos ?? []).reduce((s, p) => s + p.monto, 0);
-  const estado = abonado >= nuevoTotal ? "pagada" : abonado > 0 ? "abono_parcial" : "pendiente";
-
-  const { error: totalError } = await supabase
-    .from("ventas")
-    .update({ total: Math.max(0, nuevoTotal), estado_pago: estado })
-    .eq("id", ventaId);
-  if (totalError) throw totalError;
+  const { error } = await supabase.rpc("actualizar_venta", {
+    p_venta_id: ventaId,
+    p_items: cambios.map((c) => ({ ...c, cantidad: String(c.cantidad), precio_unitario: String(c.precio_unitario), descuento: String(c.descuento) })),
+    p_motivo: motivo,
+  });
+  if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/ventas");
   revalidatePath(`/ventas/${ventaId}`);

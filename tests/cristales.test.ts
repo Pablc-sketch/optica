@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dpParaPedido, limitesDeRango } from "../src/lib/cristales";
+import { dpParaPedido, limitesDeRango, rangoParaPosicion } from "../src/lib/cristales";
 import { costoCristal, type CatalogoLaboratorio, type MapaCristal, type Ojo } from "../src/lib/costo-fides";
 
 describe("dpParaPedido", () => {
@@ -73,3 +73,19 @@ describe("origen sin receta cargada (operativo: se refracta y se vende en el mom
   });
 });
 
+
+describe("rangoParaPosicion con esfera vacía (F06)", () => {
+  it("una receta de solo ADD +2.75 para cerca cae en ±4.00 / ±2.00, igual que el costo", () => {
+    expect(rangoParaPosicion([null, null], [null, null], [2.75, 2.75], "cerca")).toBe("±4.00 / ±2.00");
+  });
+
+  it("plano explícito (0) y vacío dan lo mismo", () => {
+    expect(rangoParaPosicion([0, 0], [null, null], [2.75, 2.75], "cerca")).toBe(
+      rangoParaPosicion([null, null], [null, null], [2.75, 2.75], "cerca")
+    );
+  });
+
+  it("sin esfera ni ADD no inventa potencia", () => {
+    expect(rangoParaPosicion([null, null], [null, null], [null, null], "cerca")).toBe("±2.00 / ±2.00");
+  });
+});

@@ -16,14 +16,18 @@ export default async function PacientesPage({
     data: { user },
   } = await supabase.auth.getUser();
 
+  const LIMITE = 50;
   let query = supabase
     .from("pacientes")
-    .select("id, nombre, rut, telefono")
+    .select("id, nombre, rut, telefono", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(50);
-  if (q) query = query.or(`nombre.ilike.%${q}%,rut.ilike.%${q}%`);
+    .limit(LIMITE);
+  // Comas y paréntesis tienen significado dentro del filtro .or() de
+  // PostgREST: se sacan del texto buscado para que no cambien la consulta.
+  const texto = (q ?? "").replace(/[,()*%\\]/g, " ").trim();
+  if (texto) query = query.or(`nombre.ilike.%${texto}%,rut.ilike.%${texto}%`);
 
-  const [{ data: pacientes }, perfilRes] = await Promise.all([
+  const [{ data: pacientes, count: totalPacientes }, perfilRes] = await Promise.all([
     query,
     supabase.from("users").select("rol").eq("id", user!.id).single(),
   ]);
@@ -69,6 +73,13 @@ export default async function PacientesPage({
           {q ? `Sin resultados para “${q}”.` : "Todavía no hay pacientes registrados."}
         </p>
       ) : (
+        <>
+        {(totalPacientes ?? 0) > pacientes.length && (
+          <p className="text-xs text-tinta-suave">
+            Mostrando los {pacientes.length} más recientes de {totalPacientes}. Para encontrar a otro, búscalo por nombre o
+            RUT.
+          </p>
+        )}
         <ul className="flex flex-col gap-2">
           {pacientes.map((p) => (
             <li key={p.id} className="flex items-center gap-1 rounded-xl bg-crema-claro shadow-sm transition hover:bg-white">
@@ -87,6 +98,7 @@ export default async function PacientesPage({
             </li>
           ))}
         </ul>
+        </>
       )}
     </div>
   );

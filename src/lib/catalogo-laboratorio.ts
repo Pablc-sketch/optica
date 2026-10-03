@@ -29,6 +29,13 @@ export async function cargarCatalogoParaCotizar(
     supabase.from("lab_promociones").select("diseno, material, descuento_pct, desde, hasta, nota"),
   ]);
 
+  // Un catálogo incompleto cotiza mal sin avisar: sin la lista de stock,
+  // todo sale "de laboratorio"; sin el descuento, todo cuesta de más. Si
+  // cualquiera de las lecturas falla, se avisa en vez de seguir con listas
+  // vacías (F07).
+  const fallo = [costosRes, tenantRes, stockRes, labRes, montajeRes, recargoRes, promoRes].find((r) => r.error);
+  if (fallo?.error) throw new Error(`No se pudo leer el catálogo de precios: ${fallo.error.message}`);
+
   return {
     filas: (costosRes.data ?? []) as FilaCristal[],
     catalogo: {

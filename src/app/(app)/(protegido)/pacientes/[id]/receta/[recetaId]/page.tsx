@@ -152,6 +152,7 @@ export default async function RecetaImprimible({
             ✎ Editar
           </Link>
           <EnviarRecetaCorreo
+            recetaId={recetaId}
             pacienteNombre={paciente.nombre}
             emailDefault={emailDestino}
             datos={datosPdf}

@@ -76,7 +76,11 @@ export function rangoParaPosicion(
   posicion: "lejos" | "cerca"
 ): string {
   if (posicion === "lejos") return clasificarRango(esferas, cilindros);
-  const esferasEfectivas = esferas.map((e, i) => (e === null ? null : e + (adds[i] ?? 0)));
+  // Esfera vacía = plano (0), igual que en el cálculo de costo
+  // (ojosParaCristal): una receta de solo ADD (présbita sin defecto de
+  // lejos) se talla con la ADD. Antes acá la esfera vacía hacía perder la
+  // ADD y el rango salía más bajo que el del costo (F06).
+  const esferasEfectivas = esferas.map((e, i) => (e === null && adds[i] == null ? null : (e ?? 0) + (adds[i] ?? 0)));
   return clasificarRango(esferasEfectivas, cilindros);
 }
 

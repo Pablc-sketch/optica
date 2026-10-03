@@ -22,11 +22,14 @@ async function requerirAdmin() {
 
   const { data: perfil } = await supabase
     .from("users")
-    .select("tenant_id, rol")
+    .select("tenant_id, rol, estado")
     .eq("id", user.id)
     .single();
 
-  if (!perfil || perfil.rol !== "admin") {
+  // Un admin desactivado no administra nada, aunque su sesión siga abierta
+  // (A01). Estas acciones usan la llave de servicio para crear cuentas y
+  // subir el logo, así que este control es el que manda.
+  if (!perfil || perfil.rol !== "admin" || perfil.estado !== "activo") {
     throw new Error("Solo el administrador de la óptica puede cambiar la configuración");
   }
   return { supabase, tenantId: perfil.tenant_id as string, userId: user.id };
@@ -48,14 +51,15 @@ export async function subirLogoOptica(formData: FormData) {
   if (!(archivo instanceof File) || archivo.size === 0) {
     return { ok: false as const, error: "No se recibió ninguna imagen." };
   }
-  if (!archivo.type.startsWith("image/")) {
-    return { ok: false as const, error: "Tiene que ser una imagen (PNG, JPG o SVG)." };
+  // SVG no: puede llevar código, y el bucket es público.
+  if (!["image/png", "image/jpeg", "image/webp"].includes(archivo.type)) {
+    return { ok: false as const, error: "Tiene que ser una imagen PNG, JPG o WEBP." };
   }
   if (archivo.size > 2 * 1024 * 1024) {
     return { ok: false as const, error: "La imagen pesa demasiado (máximo 2 MB)." };
   }
 
-  const extension = archivo.name.split(".").pop() || "png";
+  const extension = archivo.type === "image/png" ? "png" : archivo.type === "image/webp" ? "webp" : "jpg";
   const ruta = `${tenantId}/logo.${extension}`;
 
   const admin = createAdminClient();

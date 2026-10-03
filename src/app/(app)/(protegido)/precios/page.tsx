@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { exigirRolPagina } from "@/lib/autorizacion";
 import {
   actualizarPrecioProducto,
   actualizarCostoCristal,
@@ -23,6 +24,8 @@ export default async function PreciosPage({
   searchParams: Promise<{ q?: string; marca?: string }>;
 }) {
   const { q, marca } = await searchParams;
+  // Costos y utilidades: solo administración (A09).
+  await exigirRolPagina(["admin"]);
   const supabase = await createClient();
 
   const [{ data: todos }, { data: cristales }, { data: promociones }] = await Promise.all([

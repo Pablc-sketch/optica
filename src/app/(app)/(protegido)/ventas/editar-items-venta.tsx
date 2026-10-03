@@ -34,6 +34,14 @@ export default function EditarItemsVenta({ ventaId, items, total }: { ventaId: s
       className="flex flex-col gap-3 rounded-2xl bg-crema-claro p-4 shadow-sm"
     >
       <input type="hidden" name="venta_id" value={ventaId} />
+      <label className="flex flex-col gap-1 text-xs font-medium text-tinta-suave">
+        Motivo del cambio (queda registrado)
+        <input
+          name="motivo"
+          placeholder="Ej. se cobró mal el precio del marco"
+          className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+        />
+      </label>
       <ul className="flex flex-col gap-3">
         {items.map((item) => (
           <li key={item.id} className="flex flex-col gap-2 rounded-xl bg-white p-3 shadow-sm sm:flex-row sm:items-end sm:gap-3">

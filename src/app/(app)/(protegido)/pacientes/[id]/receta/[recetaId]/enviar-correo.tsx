@@ -10,10 +10,12 @@ import { enviarRecetaPorCorreo } from "@/lib/actions/correo";
 // no se queda sin nada: abajo siempre queda a mano abrir Gmail con la
 // receta ya escrita, para mandarla a mano.
 export default function EnviarRecetaCorreo({
+  recetaId,
   pacienteNombre,
   emailDefault,
   datos,
 }: {
+  recetaId: string;
   pacienteNombre: string;
   emailDefault: string;
   datos: DatosRecetaImpresion;
@@ -64,7 +66,7 @@ export default function EnviarRecetaCorreo({
       const uri = doc.output("datauristring");
       const pdfBase64 = uri.substring(uri.indexOf("base64,") + 7);
 
-      const resultado = await enviarRecetaPorCorreo({ destino, pacienteNombre, datos, pdfBase64 });
+      const resultado = await enviarRecetaPorCorreo({ recetaId, destino, datos, pdfBase64 });
       if (resultado.ok) {
         setExito(`Correo enviado a ${destino}.`);
       } else {

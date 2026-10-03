@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { montoANumero } from "@/lib/formato";
 
 // El stock nunca se escribe a mano: se registra un movimiento y el trigger
@@ -214,14 +215,18 @@ export async function crearProductosMasivo(formData: FormData) {
 // Storage evaluaba todo correcto y aun así rechazaba la subida). El
 // producto y la óptica se verifican a mano antes de tocar Storage.
 export async function subirFotoProducto(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
-  if (!perfil) throw new Error("Perfil no encontrado");
+  // La subida usa la llave de servicio, que se salta RLS: por eso acá se
+  // exige todo lo que RLS habría exigido — cuenta activa, permiso de
+  // inventario y suscripción vigente (A08).
+  let ctx;
+  try {
+    ctx = await requerirPerfil({ roles: ["admin", "ventas", "bodega"], suscripcion: true });
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
+    throw e;
+  }
+  const { supabase } = ctx;
+  const perfil = { tenant_id: ctx.tenantId };
 
   const productoId = String(formData.get("producto_id") ?? "");
   const { data: producto } = await supabase
@@ -236,14 +241,14 @@ export async function subirFotoProducto(formData: FormData) {
   if (!(archivo instanceof File) || archivo.size === 0) {
     return { ok: false as const, error: "No se recibió ninguna imagen." };
   }
-  if (!archivo.type.startsWith("image/")) {
-    return { ok: false as const, error: "Tiene que ser una imagen (PNG o JPG)." };
+  if (!["image/png", "image/jpeg", "image/webp"].includes(archivo.type)) {
+    return { ok: false as const, error: "Tiene que ser una imagen PNG, JPG o WEBP." };
   }
   if (archivo.size > 2 * 1024 * 1024) {
     return { ok: false as const, error: "La imagen pesa demasiado (máximo 2 MB)." };
   }
 
-  const extension = archivo.name.split(".").pop() || "jpg";
+  const extension = archivo.type === "image/png" ? "png" : archivo.type === "image/webp" ? "webp" : "jpg";
   const ruta = `${perfil.tenant_id}/${productoId}.${extension}`;
 
   const admin = createAdminClient();
