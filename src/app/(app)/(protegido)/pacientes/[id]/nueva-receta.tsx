@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { clp } from "@/lib/clp";
 import { hoyEnChile } from "@/lib/fechas";
-import type { CatalogoLaboratorio } from "@/lib/costo-fides";
-import { origenCristal, precioVentaCristal, type FilaCristal } from "@/lib/precio-venta";
+import { motivoFueraDeCajaMultifocal, type CatalogoLaboratorio } from "@/lib/costo-fides";
+import { ojosParaCristal, origenCristal, precioVentaCristal, type FilaCristal } from "@/lib/precio-venta";
 
 // Mismo criterio que en formatearDioptria: coma o punto, vacío o suelto ("+"
 // mientras se escribe) es "todavía no hay número".
@@ -72,14 +72,15 @@ type RecetaExistente = {
   sugerencia_tratamiento_cerca: string | null;
 };
 
-// Un solo control que hace las dos cosas a la vez: acá el tecnólogo elige
-// qué lente le conviene al paciente (y de paso ve el precio para cotizarle
-// en el momento) — y esa MISMA elección es la que se guarda como sugerencia
-// de venta. Antes eran dos controles separados (uno para cotizar, otro para
-// guardar la sugerencia) y había que elegir dos veces lo mismo; ahora es
-// uno solo, así que el rut trae precargado exactamente lo que se conversó.
+// El cotizador del tecnólogo. Muestra TODAS las opciones que le sirven a
+// esta receta, separadas en las que el laboratorio tiene hechas (stock:
+// llegan antes y cuestan menos) y las que hay que mandar a tallar. Así se
+// puede aconsejar al paciente una opción de stock sin saberse de memoria la
+// lista de Fides. Lo que se elige acá queda guardado como sugerencia y se
+// precarga en el punto de venta.
 function SelectorLenteConPrecio({
   titulo,
+  tiposPermitidos,
   costos,
   catalogoLab,
   nombreTipo,
@@ -92,6 +93,7 @@ function SelectorLenteConPrecio({
   inicialTratamiento,
 }: {
   titulo: string;
+  tiposPermitidos: string[];
   costos: CostoCristal[];
   catalogoLab: CatalogoLaboratorio;
   nombreTipo: string;
@@ -103,25 +105,13 @@ function SelectorLenteConPrecio({
   inicialTipoLente?: string | null;
   inicialTratamiento?: string | null;
 }) {
-  const [tipoLente, setTipoLente] = useState(inicialTipoLente ?? "");
-  const [tratamiento, setTratamiento] = useState(inicialTratamiento ?? "");
+  const inicial =
+    inicialTipoLente && inicialTratamiento && tiposPermitidos.includes(inicialTipoLente)
+      ? `${inicialTipoLente}|${inicialTratamiento}`
+      : "";
+  const [elegido, setElegido] = useState(inicial);
+  const [tipoLente, tratamiento] = elegido ? elegido.split("|") : ["", ""];
 
-  const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
-  // Solo Monofocal de cerca suma la adición al rango — Bifocal/Multifocal
-  // ya la traen incorporada al diseño del lente.
-  const posicionParaRango = tipoLente === "Monofocal" ? posicionSlot : "lejos";
-  const rango = rangoParaPosicion(esferas, cilindros, [add, add], posicionParaRango);
-  const tratamientos = useMemo(
-    () => costos.filter((c) => c.tipo_lente === tipoLente && c.rango_receta === rango),
-    [costos, tipoLente, rango]
-  );
-  const combo = tratamientos.find((c) => c.tratamiento === tratamiento);
-
-  // El mismo precio que va a ver la vendedora en el punto de venta
-  // (precio-venta.ts): si el laboratorio tiene hecho este cristal para
-  // ESTA receta, el monofocal se cotiza a precio de stock. Antes acá se
-  // mostraba siempre el de laboratorio, y el tecnólogo le decía al
-  // paciente $55.000 por un antirreflejo que después se cobraba $38.000.
   const potencias = {
     od_esfera: esferas[0],
     od_cilindro: cilindros[0],
@@ -131,72 +121,96 @@ function SelectorLenteConPrecio({
     oi_add: add,
   };
   const hayReceta = esferas.some((e) => e !== null) || cilindros.some((c) => c !== null) || add !== null;
-  const origenDe = (fila: CostoCristal) =>
-    origenCristal(fila, hayReceta ? potencias : null, posicionParaRango, catalogoLab, hoyEnChile());
-  const origen = combo ? origenDe(combo) : null;
-  const precio = combo && origen ? precioVentaCristal(combo, origen) : 0;
+
+  // Cada opción con su precio y de dónde sale, para ESTA receta. Solo el
+  // Monofocal de cerca suma la ADD al rango; bifocal y multifocal la traen
+  // en el diseño del cristal.
+  const hoy = hoyEnChile();
+  const opciones = tiposPermitidos.flatMap((tipo) => {
+      const posicion = tipo === "Monofocal" ? posicionSlot : "lejos";
+      const rango = rangoParaPosicion(esferas, cilindros, [add, add], posicion);
+      return costos
+        .filter((c) => c.tipo_lente === tipo && c.rango_receta === rango)
+        .map((fila) => {
+          const origen = origenCristal(fila, hayReceta ? potencias : null, posicion, catalogoLab, hoy);
+          return { fila, origen, precio: precioVentaCristal(fila, origen) };
+        });
+  });
+
+  const deStock = opciones.filter((o) => o.origen === "stock");
+  const deLaboratorio = opciones.filter((o) => o.origen === "laboratorio");
+  const esBifMulti = tiposPermitidos.some((t) => t !== "Monofocal");
+  const motivoSinStock =
+    esBifMulti && hayReceta && deStock.length === 0
+      ? motivoFueraDeCajaMultifocal(ojosParaCristal(potencias, "Multifocal", "lejos"))
+      : null;
+
+  const fila = (o: (typeof opciones)[number]) => {
+    const clave = `${o.fila.tipo_lente}|${o.fila.tratamiento}`;
+    return (
+      <label
+        key={clave}
+        className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border-2 border-transparent bg-white px-3 py-2 text-sm has-checked:border-brand"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <input
+            type="radio"
+            checked={elegido === clave}
+            onChange={() => setElegido(clave)}
+            className="accent-brand"
+          />
+          <span className="min-w-0">{nombreCristal(o.fila.tipo_lente, o.fila.tratamiento)}</span>
+        </span>
+        <span className="shrink-0 font-semibold tabular-nums">{o.precio > 0 ? clp(o.precio) : "sin precio"}</span>
+      </label>
+    );
+  };
 
   return (
     <fieldset className="rounded-xl border border-brand/25 bg-brand/5 p-3">
       <legend className="px-1 text-sm font-bold text-brand-dark">{titulo}</legend>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs font-medium">
-          Tipo de lente
-          <select
-            value={tipoLente}
-            onChange={(e) => {
-              setTipoLente(e.target.value);
-              setTratamiento("");
-            }}
-            className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand"
-          >
-            <option value="">— Sin sugerir —</option>
-            {tiposLente.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium">
-          Tratamiento
-          <select
-            value={tratamiento}
-            onChange={(e) => setTratamiento(e.target.value)}
-            disabled={!tipoLente}
-            className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand disabled:opacity-50"
-          >
-            <option value="">— Sin sugerir —</option>
-            {tratamientos.map((t) => (
-              <option key={t.tratamiento} value={t.tratamiento}>
-                {nombreCristal(t.tipo_lente, t.tratamiento)} — {clp(precioVentaCristal(t, origenDe(t)))}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
 
-      {tipoLente && (
-        <p className="mt-2 text-xs text-tinta-suave">
-          Rango de la receta calculado: <b>{rango}</b>
+      {!hayReceta && (
+        <p className="mb-2 text-xs text-tinta-suave">
+          Escribe la receta arriba y te digo qué opciones salen de stock.
         </p>
       )}
 
-      {combo && (
-        <div className="mt-2 rounded-lg bg-white px-3 py-2.5 text-center">
-          <p className="text-base font-bold text-brand-dark">
-            {precio > 0 ? clp(precio) : "Precio no configurado — revisa /precios"}
+      {hayReceta && (
+        <div className="mb-2 flex flex-col gap-1.5">
+          <p className="text-xs font-bold text-emerald-800">
+            ✓ De stock (el laboratorio lo tiene hecho)
           </p>
-          <p className="text-xs text-tinta-suave">
-            {origen === "stock" ? "El laboratorio lo tiene hecho (stock)" : "Hay que mandarlo a tallar (laboratorio)"}
-          </p>
+          {deStock.length > 0 ? (
+            deStock.map(fila)
+          ) : (
+            <p className="rounded-lg bg-white px-3 py-2 text-xs text-tinta-suave">
+              Con esta receta no hay opciones de stock
+              {motivoSinStock ? `: ${motivoSinStock}.` : "."}
+              {esBifMulti && " Los bifocales y multifocales de stock son sin cilindro, esfera de 0 a +3.00 y ADD de +1.00 a +3.00."}
+            </p>
+          )}
         </div>
       )}
 
-      {/* Los selects de arriba no llevan name: son solo para mostrar el
-          precio. Lo que de verdad viaja en el formulario son estos dos
-          ocultos, para que la sugerencia guardada sea exactamente la misma
-          elección que se usó para cotizar. */}
+      <div className="flex flex-col gap-1.5">
+        <p className="text-xs font-bold text-tinta-suave">
+          {hayReceta ? "De laboratorio (se manda a tallar)" : "Opciones"}
+        </p>
+        {(hayReceta ? deLaboratorio : opciones).map(fila)}
+      </div>
+
+      {elegido && (
+        <button
+          type="button"
+          onClick={() => setElegido("")}
+          className="mt-2 text-xs text-tinta-suave underline"
+        >
+          Quitar la sugerencia
+        </button>
+      )}
+
+      {/* Lo que viaja en el formulario: la misma elección que se cotizó. */}
       <input type="hidden" name={nombreTipo} value={tipoLente} />
       <input type="hidden" name={nombreTratamiento} value={tratamiento} />
     </fieldset>
@@ -218,9 +232,24 @@ export default function NuevaReceta({
   // en vez de crear una receta nueva.
   receta?: RecetaExistente;
 }) {
-  type TipoLente = "lejos" | "cerca" | "lejos_y_cerca";
-  const [tipo, setTipo] = useState<TipoLente>((receta?.tipo as TipoLente) ?? "lejos");
-  const necesitaCerca = tipo === "lejos_y_cerca";
+  // Qué se le va a hacer al paciente. "Multifocal" es UN lente que sirve
+  // para lejos y cerca; "dos pares" son dos lentes monofocales distintos.
+  // En la base se guarda como el tipo de receta de siempre (lejos, cerca o
+  // lejos_y_cerca): un bifocal/multifocal es una receta de lejos y cerca.
+  type Modo = "lejos" | "cerca" | "multifocal" | "dos_pares";
+  const esBifMulti = (t: string | null | undefined) => t === "Bifocal" || t === "Multifocal";
+  const modoInicial: Modo = !receta
+    ? "lejos"
+    : receta.tipo === "cerca"
+      ? "cerca"
+      : esBifMulti(receta.sugerencia_tipo_lente) && !receta.sugerencia_tipo_lente_cerca
+        ? "multifocal"
+        : receta.tipo === "lejos_y_cerca"
+          ? "dos_pares"
+          : "lejos";
+  const [modo, setModo] = useState<Modo>(modoInicial);
+  const tipo = modo === "lejos" ? "lejos" : modo === "cerca" ? "cerca" : "lejos_y_cerca";
+  const necesitaCerca = modo !== "lejos";
 
   // Espejo de los campos ópticos solo para el selector de lente + precio de
   // más abajo — el formulario en sí sigue leyendo por FormData (name), esto
@@ -236,25 +265,16 @@ export default function NuevaReceta({
       <input type="hidden" name="paciente_id" value={pacienteId} />
       {receta && <input type="hidden" name="receta_id" value={receta.id} />}
 
-      {/* Antes era un <select> con "Lejos y cerca por separado" como tercera
-          opción de texto — pasaba fácil desapercibida, así que nunca se
-          usaba: todas las recetas quedaban con un solo lente sugerido y, al
-          vender, el Lente 2 aparecía vacío sin que quedara claro por qué.
-          Ahora es la primera pregunta, bien grande, con la consecuencia
-          explicada en cada botón. */}
       <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
-        <legend className="px-1 text-sm font-bold">¿Cuántos lentes necesita el paciente?</legend>
+        <legend className="px-1 text-sm font-bold">¿Qué lente necesita?</legend>
         <input type="hidden" name="tipo" value={tipo} />
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(
             [
-              { valor: "lejos", titulo: "Uno, para lejos", detalle: "Un solo par." },
-              { valor: "cerca", titulo: "Uno, para cerca", detalle: "Un solo par." },
-              {
-                valor: "lejos_y_cerca",
-                titulo: "Dos lentes separados",
-                detalle: "Uno para lejos y otro para cerca — se sugiere y cotiza cada uno por su lado.",
-              },
+              { valor: "lejos", titulo: "Lejos", detalle: "Monofocal" },
+              { valor: "cerca", titulo: "Cerca", detalle: "Monofocal de lectura" },
+              { valor: "multifocal", titulo: "Bifocal o multifocal", detalle: "Un lente para lejos y cerca" },
+              { valor: "dos_pares", titulo: "Dos pares", detalle: "Uno de lejos y otro de cerca" },
             ] as const
           ).map((op) => (
             <label
@@ -264,8 +284,8 @@ export default function NuevaReceta({
               <span className="flex items-center gap-1.5 text-sm font-semibold">
                 <input
                   type="radio"
-                  checked={tipo === op.valor}
-                  onChange={() => setTipo(op.valor)}
+                  checked={modo === op.valor}
+                  onChange={() => setModo(op.valor)}
                   className="accent-brand"
                 />
                 {op.titulo}
@@ -326,13 +346,9 @@ export default function NuevaReceta({
         </div>
       </fieldset>
 
-      {/* Recuadro propio para el ADD: si se examinó lejos y cerca por
-          separado, este valor es justo el que define el lente de cerca —
-          que quede aparte de esfera/cilindro evita que se confunda con la
-          receta de lejos. */}
       <fieldset className="w-40 rounded-xl border border-tinta-suave/20 p-3">
         <legend className="px-1 text-sm font-bold">
-          Adición (ADD){necesitaCerca ? " — cerca" : ""}
+          ADD{necesitaCerca ? "" : " (si tiene)"}
         </legend>
         <CampoDioptria
           name="add"
@@ -342,11 +358,12 @@ export default function NuevaReceta({
         />
       </fieldset>
 
-      {/* Lo que se conversó con el paciente: se cotiza acá mismo y esa
-          elección se precarga sola en el punto de venta cuando lo busquen
-          por RUT — a la vendedora solo le queda elegir el marco. */}
+      {/* key={modo}: al cambiar de opción arriba, la elección de abajo
+          parte de nuevo con las opciones que corresponden. */}
       <SelectorLenteConPrecio
-        titulo={necesitaCerca ? "Lente — lejos" : "Lente sugerido"}
+        key={modo}
+        titulo={modo === "dos_pares" ? "Lente de lejos" : modo === "multifocal" ? "Bifocal o multifocal" : "Lente"}
+        tiposPermitidos={modo === "multifocal" ? ["Bifocal", "Multifocal"] : ["Monofocal"]}
         costos={costos}
         catalogoLab={catalogoLab}
         nombreTipo="sugerencia_tipo_lente"
@@ -354,13 +371,14 @@ export default function NuevaReceta({
         esferas={[odEsfera, oiEsfera]}
         cilindros={[odCilindro, oiCilindro]}
         add={add}
-        posicionSlot={tipo === "cerca" ? "cerca" : "lejos"}
+        posicionSlot={modo === "cerca" ? "cerca" : "lejos"}
         inicialTipoLente={receta?.sugerencia_tipo_lente}
         inicialTratamiento={receta?.sugerencia_tratamiento}
       />
-      {necesitaCerca && (
+      {modo === "dos_pares" && (
         <SelectorLenteConPrecio
-          titulo="Lente — cerca"
+          titulo="Lente de cerca"
+          tiposPermitidos={["Monofocal"]}
           costos={costos}
           catalogoLab={catalogoLab}
           nombreTipo="sugerencia_tipo_lente_cerca"
@@ -389,7 +407,7 @@ export default function NuevaReceta({
 
       {operativos.length > 0 && (
         <label className="flex flex-col gap-1 text-xs font-medium">
-          Operativo (si el examen fue en terreno)
+          Operativo (si fue en terreno)
           <select
             name="operativo_id"
             defaultValue={receta?.operativo_id ?? ""}

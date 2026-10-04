@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   costoCristal,
+  motivoFueraDeCajaMultifocal,
   disenoVigente,
   precioStockOjo,
   recargoOjo,
@@ -292,5 +293,19 @@ describe("qué se le pide al laboratorio", () => {
     const r = costoCristal(BLUE, [{ esfera: 0, cilindro: -0.5 }, { esfera: 0, cilindro: -0.75 }], CATALOGO, DIA)!;
     expect(r.diseno).toBeNull();
     expect(r.material).toBe("CR AR BLUE 1.56");
+  });
+});
+
+describe("motivoFueraDeCajaMultifocal", () => {
+  it("explica por qué un multifocal no sale de stock", () => {
+    expect(motivoFueraDeCajaMultifocal([{ esfera: 1, cilindro: -0.75, add: 2 }])).toBe("tiene cilindro");
+    expect(motivoFueraDeCajaMultifocal([{ esfera: -1, cilindro: 0, add: 2 }])).toBe("tiene esfera negativa (miope)");
+    expect(motivoFueraDeCajaMultifocal([{ esfera: 3.5, cilindro: null, add: 2 }])).toBe("la esfera pasa de +3.00");
+    expect(motivoFueraDeCajaMultifocal([{ esfera: 1, cilindro: null, add: null }])).toBe("falta anotar la ADD");
+    expect(motivoFueraDeCajaMultifocal([{ esfera: 1, cilindro: null, add: 3.25 }])).toBe("la ADD está fuera de +1.00 a +3.00");
+  });
+
+  it("null cuando entra en la caja", () => {
+    expect(motivoFueraDeCajaMultifocal([{ esfera: 1.5, cilindro: 0, add: 2.5 }, { esfera: null, cilindro: null, add: 2.5 }])).toBeNull();
   });
 });

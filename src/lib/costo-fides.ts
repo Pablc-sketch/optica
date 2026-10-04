@@ -173,6 +173,19 @@ const ESFERA_MAX_STOCK_MULTIFOCAL = 3;
 const ADD_MIN_STOCK_MULTIFOCAL = 1;
 const ADD_MAX_STOCK_MULTIFOCAL = 3;
 
+// Por qué esta receta NO entra en la caja de stock de bifocal/multifocal,
+// en palabras para el tecnólogo. null = sí entra.
+export function motivoFueraDeCajaMultifocal(ojos: Ojo[]): string | null {
+  if (ojos.some((o) => abs(o.cilindro) > 0)) return "tiene cilindro";
+  if (ojos.some((o) => (o.esfera ?? 0) < ESFERA_MIN_STOCK_MULTIFOCAL)) return "tiene esfera negativa (miope)";
+  if (ojos.some((o) => (o.esfera ?? 0) > ESFERA_MAX_STOCK_MULTIFOCAL)) return "la esfera pasa de +3.00";
+  if (ojos.some((o) => o.add === null || o.add === undefined)) return "falta anotar la ADD";
+  if (ojos.some((o) => o.add! < ADD_MIN_STOCK_MULTIFOCAL || o.add! > ADD_MAX_STOCK_MULTIFOCAL)) {
+    return "la ADD está fuera de +1.00 a +3.00";
+  }
+  return null;
+}
+
 export function precioStockMultifocalOjo(
   material: string,
   diseno: "BIFOCAL" | "MULTIFOCAL",

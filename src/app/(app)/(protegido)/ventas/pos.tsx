@@ -331,7 +331,7 @@ function FilaLente({
         {tipoLente === "Monofocal" && (
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-tinta-suave">
-              ¿Es para lejos o para cerca? (cerca suma la adición al rango)
+              ¿Lejos o cerca?
             </span>
             <div className="flex gap-2 text-sm">
               {(["lejos", "cerca"] as const).map((p) => (
@@ -360,7 +360,7 @@ function FilaLente({
         {tipoLente &&
           (rangoAuto ? (
             <p className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">
-              Rango calculado automático: <b>{rangoAuto}</b>
+              Rango según la receta: <b>{rangoAuto}</b>
             </p>
           ) : (
             <label className="flex flex-col gap-1 text-xs font-medium">
@@ -383,7 +383,7 @@ function FilaLente({
                 ))}
               </select>
               <span className="text-xs font-normal text-tinta-suave">
-                Este paciente no tiene receta cargada, hay que elegir el rango a mano.
+                Sin receta cargada: elige el rango a mano.
               </span>
             </label>
           ))}
@@ -396,6 +396,7 @@ function FilaLente({
               {tratamientos.map((c) => (
                 <option key={c.tratamiento} value={c.tratamiento}>
                   {nombreCristal(c.tipo_lente, c.tratamiento)} — {clp(precioDeCombo(c, factorVenta, origenReal(c)))}
+                  {origenReal(c) === "stock" ? " · stock" : " · laboratorio"}
                 </option>
               ))}
             </select>
@@ -410,7 +411,7 @@ function FilaLente({
               onChange={(e) => alternarRegalo(e.target.checked)}
               className="accent-brand"
             />
-            🎁 Cortesía / regalo (coordinador social, etc.) — se manda a hacer igual, pero queda en $0
+            🎁 Cortesía: se hace igual, pero queda en $0
           </label>
         )}
 
@@ -421,7 +422,7 @@ function FilaLente({
         {combo && !esRegalo && (
           <div className="flex flex-col gap-1">
             <label className="flex flex-col gap-1 text-xs font-medium text-violet-900">
-              Precio (se puede rebajar acá mismo si hay descuento)
+              Precio (puedes rebajarlo si hay descuento)
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/80">$</span>
                 <input
@@ -934,7 +935,7 @@ export default function PuntoDeVenta({
         })}
       </ol>
       <p className="-mt-2 text-xs text-tinta-suave">
-        Toca cualquier paso ya hecho arriba (el que tiene ‹) para volver directo a él.
+        Toca un paso ya hecho (‹) para volver a él.
       </p>
 
       {mensaje && (
@@ -954,14 +955,13 @@ export default function PuntoDeVenta({
           <div>
             <h2 className={`font-bold ${COLOR_PASO[0].titulo}`}>¿Para quién es la venta?</h2>
             <p className="text-sm text-tinta-suave">
-              Elige el paciente para que la orden de trabajo se cree sola con su receta. Si es una
-              venta de mesón sin ficha, puedes continuar sin paciente.
+              Con paciente, la orden se arma sola con su receta. Sin ficha, sigue sin paciente.
             </p>
           </div>
 
           {operativos.length > 0 && (
             <label className="flex flex-col gap-1 text-sm font-medium">
-              Operativo (si esta venta es en terreno)
+              Operativo (si es en terreno)
               <select value={operativoId} onChange={(e) => setOperativoId(e.target.value)} className={select}>
                 <option value="">— Sin especificar —</option>
                 {operativos.map((o) => (
@@ -974,7 +974,7 @@ export default function PuntoDeVenta({
           )}
           {receta?.operativo_id && receta.operativo_id === operativoId && (
             <p className="rounded-lg bg-blue-100 px-3 py-2 text-xs font-medium text-blue-900">
-              Ligada sola al operativo donde se le tomó el examen a este paciente.
+              Operativo tomado de la receta del paciente.
             </p>
           )}
 
@@ -1044,8 +1044,8 @@ export default function PuntoDeVenta({
           <div>
             <h2 className={`font-bold ${COLOR_PASO[1].titulo}`}>¿Lleva cristales?</h2>
             <p className="text-sm text-tinta-suave">
-              Lente 1 es el primer par. Si el paciente lleva dos pares separados (por ejemplo uno
-              para lejos y otro para cerca), complétalos también en Lente 2.
+              Un multifocal es un solo lente: va en Lente 1. Lente 2 es solo para un segundo par
+              (por ejemplo, uno de cerca).
             </p>
           </div>
 
@@ -1084,9 +1084,7 @@ export default function PuntoDeVenta({
               cerca. */}
           {receta && receta.tipo !== "lejos_y_cerca" && (
             <p className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">
-              La receta de este paciente es de un solo lente ({receta.tipo === "cerca" ? "cerca" : "lejos"}), por
-              eso Lente 2 no trae nada precargado. Si necesita dos pares separados, entra a su ficha y
-              cambia la receta a &quot;Dos lentes separados&quot;.
+              La receta trae un solo lente. Para un segundo par, elígelo en Lente 2.
             </p>
           )}
 
@@ -1098,7 +1096,7 @@ export default function PuntoDeVenta({
               error, y es un dato que se le informa al paciente. */}
           {lineasCristal.length > 0 && receta && (
             <div className="flex flex-col gap-1.5 rounded-xl border border-tinta-suave/20 bg-white p-3">
-              <p className="text-sm font-semibold">Cómo se pide al laboratorio</p>
+              <p className="text-sm font-semibold">Cómo se pide a Fides</p>
               {lineasCristal.map((l) => {
                 const real = costoRealDeLinea(l);
                 const esStock = real?.origen === "stock";
@@ -1113,18 +1111,17 @@ export default function PuntoDeVenta({
                         esStock ? "bg-green-100 text-green-900" : "bg-amber-100 text-amber-900"
                       }`}
                     >
-                      {esStock ? "Ya hecho (stock)" : "Tallado a medida"}
+                      {esStock ? "Stock" : "Laboratorio"}
                     </span>
                     <span className="text-xs text-tinta-suave">
-                      {real ? `${real.motivo} · nos cuesta ${clp(real.costo)}` : "Falta la equivalencia con el catálogo del laboratorio (revisa /precios)"}
+                      {real ? `${real.motivo} · costo ${clp(real.costo)}` : "Este cristal no está enlazado al catálogo de Fides (revisa Precios)"}
                     </span>
                     {/* Una promoción del laboratorio con fecha de término.
                         Se avisa acá porque el precio de venta se fija hoy
                         y el costo sube el día que se acaba. */}
                     {real?.promocion && (
                       <span className="w-full text-xs font-medium text-violet-900">
-                        Con promoción del laboratorio hasta el {fechaLegible(real.promocion.hasta)} — después
-                        este mismo cristal nos va a costar {clp(real.costoSinPromocion)}.
+                        Promoción hasta el {fechaLegible(real.promocion.hasta)}. Después cuesta {clp(real.costoSinPromocion)}.
                       </span>
                     )}
                   </div>
@@ -1150,17 +1147,13 @@ export default function PuntoDeVenta({
 
           {creaOT && (
             <p className={`rounded-lg px-3 py-2 text-xs font-medium ${COLOR_PASO[1].aviso}`}>
-              Al cobrar se crea{lineasCristal.length > 1 ? "n" : ""} la
-              {lineasCristal.length > 1 ? "s órdenes" : " orden"} de trabajo automáticamente
-              {recetaPacienteId
-                ? " con la última receta del paciente"
-                : " (el paciente aún no tiene receta cargada)"}
-              .
+              Al cobrar se crea la orden de trabajo
+              {recetaPacienteId ? " con la última receta." : ". Ojo: el paciente no tiene receta cargada."}
             </p>
           )}
           {lineasCristal.length > 0 && !pacienteId && (
             <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800">
-              Sin paciente no se puede crear la orden de trabajo. Vuelve al paso 1 si corresponde.
+              Sin paciente no se crea la orden de trabajo. Vuelve al paso 1.
             </p>
           )}
 
@@ -1190,8 +1183,8 @@ export default function PuntoDeVenta({
             <h2 className={`font-bold ${COLOR_PASO[2].titulo}`}>¿Lleva armazón u otro producto?</h2>
             <p className="text-sm text-tinta-suave">
               {lineasCristal.length > 0
-                ? "Elige el marco de cada lente por separado — quedan enlazados sin confusión."
-                : "Toca los productos para agregarlos. Si solo lleva cristales, continúa sin agregar nada."}
+                ? "Elige el marco de cada lente."
+                : "Toca un producto para agregarlo, o sigue sin agregar nada."}
             </p>
           </div>
 
@@ -1253,7 +1246,7 @@ export default function PuntoDeVenta({
             {productosFiltrados.length === 0 && (
               <li className="rounded-lg bg-white px-3 py-2.5 text-sm text-tinta-suave">
                 {productos.length === 0
-                  ? "Todavía no hay productos cargados. Puedes agregarlos en Inventario."
+                  ? "No hay productos. Se agregan en Inventario."
                   : "Sin productos que coincidan."}
               </li>
             )}
@@ -1286,8 +1279,7 @@ export default function PuntoDeVenta({
           <div>
             <h2 className={`font-bold ${COLOR_PASO[3].titulo}`}>Cobro</h2>
             <p className="text-sm text-tinta-suave">
-              {paciente ? `Venta a ${paciente.nombre}.` : "Venta sin paciente."} Revisa el detalle
-              antes de cobrar.
+              {paciente ? `Venta a ${paciente.nombre}.` : "Venta sin paciente."} Revisa antes de cobrar.
             </p>
           </div>
 
@@ -1308,8 +1300,7 @@ export default function PuntoDeVenta({
               />
             </div>
             <span className="text-xs font-normal text-tinta-suave">
-              Déjalo vacío si paga el total ahora. Si abona una parte, el saldo queda registrado
-              para cobrarlo al entregar.
+              Vacío = paga todo. Si abona una parte, el saldo queda para la entrega.
             </span>
           </label>
 
@@ -1347,8 +1338,7 @@ export default function PuntoDeVenta({
 
           {esAbonoParcial && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-              Se cobra el abono de {clp(abonoNum)} ahora. Queda un saldo de {clp(total - abonoNum)}{" "}
-              por cobrar cuando se entreguen los lentes.
+              Abona {clp(abonoNum)} ahora. Saldo al entregar: {clp(total - abonoNum)}.
             </p>
           )}
 
