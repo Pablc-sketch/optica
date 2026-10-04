@@ -176,7 +176,13 @@ export async function crearReceta(formData: FormData) {
   // historial, etc.).
   const add = num("add");
 
+  // Id que genera el formulario: si la misma receta llega dos veces (doble
+  // toque mientras guarda), la segunda choca con la primera y no se duplica.
+  const idNuevo = String(formData.get("receta_id_nuevo") ?? "");
+  const idValido = /^[0-9a-f-]{36}$/i.test(idNuevo) ? idNuevo : undefined;
+
   const { error } = await supabase.from("recetas").insert({
+    ...(idValido ? { id: idValido } : {}),
     tenant_id: tenantId,
     paciente_id: pacienteId,
     profesional_id: userId,
@@ -211,6 +217,7 @@ export async function crearReceta(formData: FormData) {
     observacion_venta: String(formData.get("observacion_venta") ?? "").trim() || null,
   });
 
+  if (error && error.code === "23505" && idValido) return;
   if (error) throw error;
 
   // La receta recién cargada es la que tomará la OT al cobrar en el POS.

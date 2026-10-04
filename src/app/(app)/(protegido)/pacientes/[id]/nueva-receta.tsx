@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
@@ -217,6 +218,18 @@ function SelectorLenteConPrecio({
   );
 }
 
+function BotonGuardar({ texto }: { texto: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      disabled={pending}
+      className="rounded-lg bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
+    >
+      {pending ? "Guardando…" : texto}
+    </button>
+  );
+}
+
 export default function NuevaReceta({
   pacienteId,
   operativos,
@@ -260,8 +273,51 @@ export default function NuevaReceta({
   const [oiCilindro, setOiCilindro] = useState<number | null>(receta?.oi_cilindro ?? null);
   const [add, setAdd] = useState<number | null>(receta?.od_add ?? receta?.oi_add ?? null);
 
+  // Una receta nueva lleva su propio id desde el formulario: aunque se
+  // toque "Guardar" dos veces, queda una sola. Se crea al enviar (no al
+  // dibujar la página) y se renueva al empezar otra receta.
+  const idNuevo = useRef("");
+  const [guardada, setGuardada] = useState(false);
+  const [vuelta, setVuelta] = useState(0);
+
+  async function guardar(formData: FormData) {
+    if (receta) {
+      await actualizarReceta(formData);
+      return;
+    }
+    if (!idNuevo.current) idNuevo.current = crypto.randomUUID();
+    formData.set("receta_id_nuevo", idNuevo.current);
+    await crearReceta(formData);
+    setGuardada(true);
+  }
+
+  if (guardada) {
+    return (
+      <div className="flex flex-col items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-emerald-900 shadow-sm">
+        <p className="font-semibold">✓ Receta guardada. Ya aparece en el historial.</p>
+        <button
+          type="button"
+          onClick={() => {
+            idNuevo.current = "";
+            setOdEsfera(null);
+            setOdCilindro(null);
+            setOiEsfera(null);
+            setOiCilindro(null);
+            setAdd(null);
+            setModo("lejos");
+            setGuardada(false);
+            setVuelta((v) => v + 1);
+          }}
+          className="rounded-lg border border-emerald-700/30 bg-white px-4 py-2 text-sm font-semibold"
+        >
+          ＋ Otra receta
+        </button>
+      </div>
+    );
+  }
+
   const contenido = (
-    <form action={receta ? actualizarReceta : crearReceta} className="mt-4 flex flex-col gap-4">
+    <form key={vuelta} action={guardar} className="mt-4 flex flex-col gap-4">
       <input type="hidden" name="paciente_id" value={pacienteId} />
       {receta && <input type="hidden" name="receta_id" value={receta.id} />}
 
@@ -434,9 +490,7 @@ export default function NuevaReceta({
       </label>
 
       <div>
-        <button className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-brand-dark">
-          {receta ? "Guardar cambios" : "Guardar receta"}
-        </button>
+        <BotonGuardar texto={receta ? "Guardar cambios" : "Guardar receta"} />
       </div>
     </form>
   );
