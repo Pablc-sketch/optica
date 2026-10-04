@@ -153,7 +153,9 @@ function SelectorLenteConPrecio({
     return (
       <label
         key={clave}
-        className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border-2 border-transparent bg-white px-3 py-2 text-sm has-checked:border-brand"
+        className={`flex cursor-pointer items-center justify-between gap-2 rounded-xl border-2 px-3 py-2.5 text-sm has-checked:border-brand has-checked:shadow-sm ${
+          o.origen === "stock" && hayReceta ? "border-emerald-200 bg-emerald-50" : "border-transparent bg-white"
+        }`}
       >
         <span className="flex min-w-0 items-center gap-2">
           <input
@@ -162,7 +164,12 @@ function SelectorLenteConPrecio({
             onChange={() => setElegido(clave)}
             className="accent-brand"
           />
-          <span className="min-w-0">{nombreCristal(o.fila.tipo_lente, o.fila.tratamiento)}</span>
+          <span className="min-w-0 font-medium">{nombreCristal(o.fila.tipo_lente, o.fila.tratamiento)}</span>
+          {o.origen === "stock" && hayReceta && (
+            <span className="shrink-0 rounded-full bg-emerald-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+              Stock
+            </span>
+          )}
         </span>
         <span className="shrink-0 font-semibold tabular-nums">{o.precio > 0 ? clp(o.precio) : "sin precio"}</span>
       </label>
@@ -181,8 +188,8 @@ function SelectorLenteConPrecio({
 
       {hayReceta && (
         <div className="mb-2 flex flex-col gap-1.5">
-          <p className="text-xs font-bold text-emerald-800">
-            ✓ De stock (el laboratorio lo tiene hecho)
+          <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+            ✓ De stock · llega antes y cuesta menos
           </p>
           {deStock.length > 0 ? (
             deStock.map(fila)
@@ -197,8 +204,8 @@ function SelectorLenteConPrecio({
       )}
 
       <div className="flex flex-col gap-1.5">
-        <p className="text-xs font-bold text-tinta-suave">
-          {hayReceta ? "De laboratorio (se manda a tallar)" : "Opciones"}
+        <p className="text-xs font-bold uppercase tracking-wider text-tinta-suave">
+          {hayReceta ? "De laboratorio · se manda a tallar" : "Opciones"}
         </p>
         {(hayReceta ? deLaboratorio : opciones).map(fila)}
       </div>

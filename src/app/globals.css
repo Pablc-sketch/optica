@@ -1,25 +1,46 @@
 @import "tailwindcss";
 
 @theme {
-  /* Paleta del logo: terracota sobre crema, con un acento complementario
-     (verde azulado) para que las tarjetas de números no sean todas del
-     mismo color — se usa en detalles chicos, no reemplaza al terracota
-     como color principal de marca. */
-  --color-brand: #d97756;
-  --color-brand-dark: #b85c3e;
-  --color-brand-light: #f3ac8c;
-  --color-accent: #2f9e94;
-  --color-accent-dark: #227870;
-  --color-crema: #f0eee6;
-  --color-crema-claro: #fbf9f4;
-  --color-tinta: #3d3929;
-  --color-tinta-suave: #6b6553;
+  /* Paleta premium de alto contraste (pedido: "más contraste, más
+     premium"). Mismo terracota de la marca, pero más profundo para que el
+     texto blanco sobre botones se lea bien (contraste AA), tinta casi
+     negra y un gris de apoyo bastante más oscuro que antes: el texto
+     secundario se usa en muchas partes y antes costaba leerlo. */
+  --color-brand: #b4532f;
+  --color-brand-dark: #8a3b1f;
+  --color-brand-light: #f0b79c;
+  --color-accent: #1f7a72;
+  --color-accent-dark: #155a54;
+  --color-crema: #f3f1ec;
+  --color-crema-claro: #ffffff;
+  --color-tinta: #17150f;
+  --color-tinta-suave: #4b4638;
   --font-sans: var(--font-geist-sans);
+}
+
+/* Letra un poco más grande en toda la app (todas las medidas están en
+   rem, así que escala parejo): se trabaja en iPad y a veces al sol. */
+html {
+  font-size: 106.25%;
 }
 
 body {
   background: var(--color-crema);
   color: var(--color-tinta);
+  font-feature-settings: "tnum" 1;
+}
+
+/* Campos y selects: borde visible y foco claro para saber dónde se está
+   escribiendo. */
+input:not([type="radio"]):not([type="checkbox"]),
+select,
+textarea {
+  border-color: color-mix(in srgb, var(--color-tinta) 28%, transparent);
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-brand) 70%, transparent);
+  outline-offset: 2px;
 }
 
 /* Toda la app usa <button> y <Link> para sus acciones (ver componentes en
@@ -42,7 +63,7 @@ body {
      hechas con <Link> (ej. "Ver tablero →"), no solo <button>. */
   button:not(:disabled):active,
   a:active {
-    transform: scale(0.95);
-    filter: brightness(0.92);
+    transform: scale(0.98);
+    filter: brightness(0.94);
   }
 }

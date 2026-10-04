@@ -10,15 +10,15 @@ export default function NavLinks({ nav }: { nav: { href: string; label: string }
   const pathname = usePathname();
 
   return (
-    <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
+    <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2.5">
       {nav.map((item) => {
         const activo = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         return (
           <Link
             key={item.href}
             href={item.href}
-            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-              activo ? "bg-brand text-white" : "text-tinta-suave hover:bg-crema hover:text-tinta"
+            className={`whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-semibold transition ${
+              activo ? "bg-white text-tinta shadow-sm" : "text-white/80 hover:bg-white/10 hover:text-white"
             }`}
           >
             {item.label}

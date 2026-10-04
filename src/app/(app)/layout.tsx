@@ -108,29 +108,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-10 border-b border-tinta-suave/15 bg-crema-claro/95 backdrop-blur print:hidden">
+      <header className="sticky top-0 z-10 bg-tinta text-white shadow-[0_6px_20px_-12px_rgba(0,0,0,0.6)] print:hidden">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <Link href="/" className="flex items-center gap-2.5">
             {logoOptica ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoOptica} alt="" width={36} height={36} className="h-9 w-9 rounded-xl object-contain" />
+              <img src={logoOptica} alt="" width={36} height={36} className="h-9 w-9 rounded-xl bg-white object-contain p-0.5" />
             ) : (
-              <Image src="/logo.svg" alt="" width={36} height={36} className="rounded-xl" />
+              <Image src="/logo.svg" alt="" width={36} height={36} className="rounded-xl bg-white p-0.5" />
             )}
             <span className="leading-tight">
               <span className="block font-bold">{nombreOptica}</span>
-              <span className="block text-[10px] font-medium uppercase tracking-wide text-tinta-suave">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-light">
                 Lentia
               </span>
             </span>
           </Link>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <EstadoSync usuarioId={user.id} />
-            <span className="hidden text-tinta-suave sm:inline">
+            <span className="hidden text-white/75 sm:inline">
               {perfil.nombre} · {perfil.rol}
             </span>
             <form action={cerrarSesion}>
-              <button className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 font-medium transition hover:bg-crema">
+              <button className="rounded-lg border border-white/30 px-3 py-1.5 font-medium transition hover:bg-white/10">
                 Salir
               </button>
             </form>
