@@ -136,7 +136,12 @@ function SelectorLenteConPrecio({
         .filter((c) => c.tipo_lente === tipo && c.rango_receta === rango)
         .map((fila) => {
           const origen = origenCristal(fila, hayReceta ? potencias : null, posicion, catalogoLab, hoy);
-          return { fila, origen, precio: precioVentaCristal(fila, origen) };
+          return {
+            fila,
+            origen,
+            precio: precioVentaCristal(fila, origen),
+            precioLaboratorio: precioVentaCristal(fila, "laboratorio"),
+          };
         });
   });
 
@@ -171,7 +176,14 @@ function SelectorLenteConPrecio({
             </span>
           )}
         </span>
-        <span className="shrink-0 font-semibold tabular-nums">{o.precio > 0 ? clp(o.precio) : "sin precio"}</span>
+        <span className="flex shrink-0 flex-col items-end leading-tight">
+          <span className="font-semibold tabular-nums">{o.precio > 0 ? clp(o.precio) : "sin precio"}</span>
+          {/* Un lente de stock también se puede mandar a tallar: si el
+              precio cambia, se muestra el de laboratorio también. */}
+          {o.origen === "stock" && hayReceta && o.precioLaboratorio !== o.precio && (
+            <span className="text-[11px] text-tinta-suave tabular-nums">tallado {clp(o.precioLaboratorio)}</span>
+          )}
+        </span>
       </label>
     );
   };
@@ -209,6 +221,29 @@ function SelectorLenteConPrecio({
         </p>
         {(hayReceta ? deLaboratorio : opciones).map(fila)}
       </div>
+
+      {(() => {
+        const sel = opciones.find((o) => `${o.fila.tipo_lente}|${o.fila.tratamiento}` === elegido);
+        if (!sel) return null;
+        return (
+          <div className="mt-3 rounded-xl bg-white px-4 py-3 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-tinta-suave">Elegido para este paciente</p>
+            <p className="mt-0.5 font-semibold">{nombreCristal(sel.fila.tipo_lente, sel.fila.tratamiento)}</p>
+            <p className="text-2xl font-bold tracking-tight text-brand-dark tabular-nums">
+              {sel.precio > 0 ? clp(sel.precio) : "Sin precio (revisa Precios)"}
+            </p>
+            <p className="text-sm text-tinta-suave">
+              {!hayReceta
+                ? "Escribe la receta para saber si sale de stock."
+                : sel.origen === "stock"
+                  ? sel.precioLaboratorio !== sel.precio
+                    ? `Se puede hacer de stock (este precio) o de laboratorio (${clp(sel.precioLaboratorio)}). Se pide de stock.`
+                    : "Se puede hacer de stock o de laboratorio. Se pide de stock."
+                  : "Solo de laboratorio: con esta receta no hay de stock."}
+            </p>
+          </div>
+        );
+      })()}
 
       {elegido && (
         <button
