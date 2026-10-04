@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cerrarSesion } from "@/lib/actions/auth";
 import EstadoSync from "@/components/estado-sync";
 import NavLinks from "@/components/nav-links";
+import BarraCarga from "@/components/barra-carga";
 import { diasRestantes, estaVigente, type Suscripcion } from "@/lib/suscripcion";
 
 const NAV = [
@@ -108,6 +109,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-dvh flex-col">
+      <BarraCarga />
       <header className="sticky top-0 z-10 bg-tinta text-white shadow-[0_6px_20px_-12px_rgba(0,0,0,0.6)] print:hidden">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <Link href="/" className="flex items-center gap-2.5">
