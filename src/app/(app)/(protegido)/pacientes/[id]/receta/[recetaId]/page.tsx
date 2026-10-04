@@ -9,6 +9,7 @@ import BotonImprimir from "@/components/boton-imprimir";
 import EnviarRecetaCorreo from "./enviar-correo";
 import DescargarPdf from "./descargar-pdf";
 import type { DatosRecetaImpresion } from "@/lib/receta-datos";
+import { leerSugerenciasExtra } from "@/lib/sugerencias";
 import { nombreCristal } from "@/lib/cristales";
 
 // Receta óptica imprimible/descargable: lo que se le entrega en mano al
@@ -89,11 +90,14 @@ export default async function RecetaImprimible({
     paciente.antecedentes_otros,
     paciente.notas,
     receta.sugerencia_tipo_lente && receta.sugerencia_tratamiento
-      ? `Lente sugerido${receta.tipo === "lejos_y_cerca" ? " (lejos)" : ""}: ${nombreCristal(receta.sugerencia_tipo_lente, receta.sugerencia_tratamiento)}`
+      ? `Lente sugerido${receta.sugerencia_tipo_lente_cerca ? " (lejos)" : ""}: ${nombreCristal(receta.sugerencia_tipo_lente, receta.sugerencia_tratamiento)}`
       : null,
     receta.sugerencia_tipo_lente_cerca && receta.sugerencia_tratamiento_cerca
       ? `Lente sugerido (cerca): ${nombreCristal(receta.sugerencia_tipo_lente_cerca, receta.sugerencia_tratamiento_cerca)}`
       : null,
+    ...leerSugerenciasExtra(receta.sugerencias_extra).map(
+      (e) => `Otro par sugerido${e.posicion ? ` (${e.posicion})` : ""}: ${nombreCristal(e.tipo_lente, e.tratamiento)}`
+    ),
   ].filter(Boolean) as string[];
 
   const emailDestino = paciente.email ?? "";

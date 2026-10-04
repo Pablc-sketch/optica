@@ -4,6 +4,7 @@ import { clp } from "@/lib/clp";
 import { formatearTelefono } from "@/lib/formato";
 import AbonoForm from "@/components/abono-form";
 import PuntoDeVenta from "./pos";
+import { leerSugerenciasExtra } from "@/lib/sugerencias";
 import AnularVenta from "./anular-venta";
 
 // El número tocable: en el celular abre el marcador con el número puesto,
@@ -85,7 +86,7 @@ export default async function VentasPage() {
       .select(
         `id, paciente_id, fecha, tipo, operativo_id, od_esfera, od_cilindro, od_add, oi_esfera, oi_cilindro, oi_add,
          sugerencia_tipo_lente, sugerencia_tratamiento,
-         sugerencia_tipo_lente_cerca, sugerencia_tratamiento_cerca`
+         sugerencia_tipo_lente_cerca, sugerencia_tratamiento_cerca, sugerencias_extra`
       )
       // Dos recetas el mismo día: manda la última que se guardó, igual que
       // en la ficha del paciente.
@@ -116,7 +117,9 @@ export default async function VentasPage() {
   // precargada sin que la vendedora tenga que preguntar ni calcular nada.
   const recetasPorPaciente: Record<string, NonNullable<typeof recetasRes.data>[number]> = {};
   for (const r of recetasRes.data ?? []) {
-    if (!recetasPorPaciente[r.paciente_id]) recetasPorPaciente[r.paciente_id] = r;
+    if (!recetasPorPaciente[r.paciente_id]) {
+      recetasPorPaciente[r.paciente_id] = { ...r, sugerencias_extra: leerSugerenciasExtra(r.sugerencias_extra) };
+    }
   }
 
   // Quién tiene su lente terminado y todavía no ha venido a buscarlo. Se

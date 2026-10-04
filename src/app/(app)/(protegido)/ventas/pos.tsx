@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { encolarVenta } from "@/lib/offline/outbox";
+import { MAX_PARES } from "@/lib/venta-normalizar";
+import type { SugerenciaExtra } from "@/lib/sugerencias";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
@@ -54,6 +56,7 @@ type RecetaResumen = {
   sugerencia_tratamiento: string | null;
   sugerencia_tipo_lente_cerca: string | null;
   sugerencia_tratamiento_cerca: string | null;
+  sugerencias_extra?: SugerenciaExtra[] | null;
 };
 
 type LineaCarrito = {
@@ -81,7 +84,7 @@ type LineaCarrito = {
   // A cuál de los dos lentes corresponde este armazón (1 o 2) — así cada
   // par queda explícitamente emparejado con su lente y no depende del
   // orden en que se hayan ido tocando en pantalla.
-  armazonSlot?: 1 | 2;
+  armazonSlot?: number;
   // El paciente trajo su propio marco: no hay productoId (no sale de
   // nuestro stock, no se descuenta inventario ni se cuenta el costo de
   // reposición), pero el cupo queda "lleno" igual — sin esto quedaba
@@ -148,8 +151,13 @@ function precioDeCombo(combo: CostoCristal, factorVenta: number, origen: "stock"
   return precioVentaCristal(combo, origen, factorVenta);
 }
 
+// Número de par de una línea del carrito ("cristal-3" → 3).
+function numeroDePar(key: string): number {
+  return Number(key.split("-")[1]);
+}
+
 function lineaDeCombo(
-  numero: 1 | 2,
+  numero: number,
   combo: CostoCristal,
   factorVenta: number,
   opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number }
@@ -193,7 +201,7 @@ function FilaLente({
   inicial,
   onCambio,
 }: {
-  numero: 1 | 2;
+  numero: number;
   costos: CostoCristal[];
   factorVenta: number;
   receta: RecetaResumen | undefined;
@@ -304,7 +312,7 @@ function FilaLente({
 
   return (
     <fieldset className="rounded-xl border border-violet-200 bg-white p-3">
-      <legend className="px-1 text-sm font-bold text-violet-900">Lente {numero}</legend>
+      <legend className="px-1 text-sm font-bold text-violet-900">Par {numero}</legend>
       <div className="flex flex-col gap-2">
         <label className="flex flex-col gap-1 text-xs font-medium">
           Tipo de lente
@@ -584,16 +592,17 @@ export default function PuntoDeVenta({
   const receta = pacienteId ? recetasPorPaciente[pacienteId] : undefined;
   // Lo que trae precargado cada fila cuando se elige el paciente — cada
   // fila lo usa solo como valor inicial y lo puede cambiar sin problema.
-  const [inicialLente1, setInicialLente1] = useState<PrefillLente>(null);
-  const [inicialLente2, setInicialLente2] = useState<PrefillLente>(null);
+  // Un elemento por par (Par 1, Par 2, …). Parten dos filas; se agregan más
+  // con "＋ Agregar otro par".
+  const [iniciales, setIniciales] = useState<PrefillLente[]>([null, null]);
 
   const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
   const abonoNum = Math.max(0, Math.min(montoANumero(abono), total));
   const esAbonoParcial = abonoNum > 0 && abonoNum < total;
   const montoACobrar = esAbonoParcial ? abonoNum : total;
-  // Orden estable "Lente 1" antes que "Lente 2" (la key lo garantiza),
+  // Orden estable Par 1, Par 2, … (por el número de la key),
   // independiente del orden en que se hayan ido completando las filas.
-  const lineasCristal = carrito.filter((l) => l.cristal).sort((a, b) => a.key.localeCompare(b.key));
+  const lineasCristal = carrito.filter((l) => l.cristal).sort((a, b) => numeroDePar(a.key) - numeroDePar(b.key));
 
   // De dónde sale cada cristal y cuánto cuesta, calculado contra la lista
   // del laboratorio y la potencia de CADA OJO de esta receta. No se
@@ -637,7 +646,7 @@ export default function PuntoDeVenta({
   // en que se hayan agregado — así no se puede confundir cuál marco es para
   // el Lente 1 y cuál para el Lente 2.
   const lineasArmazon = carrito
-    .filter((l): l is LineaCarrito & { armazonSlot: 1 | 2 } => l.armazonSlot !== undefined)
+    .filter((l): l is LineaCarrito & { armazonSlot: number } => l.armazonSlot !== undefined)
     .sort((a, b) => a.armazonSlot - b.armazonSlot);
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
   // Abono mínimo: cubre mandar a hacer estos cristales al laboratorio, así
@@ -670,7 +679,7 @@ export default function PuntoDeVenta({
     return base.filter((p) => `${p.marca ?? ""} ${p.nombre}`.toLowerCase().includes(t));
   }, [productos, buscaProducto, tieneCristal]);
 
-  function elegirArmazon(numero: 1 | 2, producto: Producto | null) {
+  function elegirArmazon(numero: number, producto: Producto | null) {
     const key = `armazon-${numero}`;
     setCarrito((prev) => {
       const sinEsteSlot = prev.filter((l) => l.key !== key);
@@ -692,7 +701,7 @@ export default function PuntoDeVenta({
   // El paciente trae su propio marco: el cupo queda "lleno" sin elegir
   // ningún producto del inventario — no hay productoId, así que no se
   // descuenta stock ni se cuenta el costo de reposición para este lente.
-  function marcarMarcoPropio(numero: 1 | 2) {
+  function marcarMarcoPropio(numero: number) {
     const key = `armazon-${numero}`;
     setCarrito((prev) => [
       ...prev.filter((l) => l.key !== key),
@@ -731,7 +740,7 @@ export default function PuntoDeVenta({
   }
 
   function manejarCambioLente(
-    numero: 1 | 2,
+    numero: number,
     datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number } | null
   ) {
     const key = `cristal-${numero}`;
@@ -763,34 +772,24 @@ export default function PuntoDeVenta({
     // acuerde de elegirlo a mano.
     if (r?.operativo_id) setOperativoId(r.operativo_id);
     if (!r) {
-      setInicialLente1(null);
-      setInicialLente2(null);
+      setIniciales([null, null]);
       return;
     }
-    if (r.tipo === "lejos_y_cerca") {
-      setInicialLente1(
-        r.sugerencia_tipo_lente && r.sugerencia_tratamiento
-          ? { tipoLente: r.sugerencia_tipo_lente, tratamiento: r.sugerencia_tratamiento, posicion: "lejos", sugerido: true }
-          : null
-      );
-      setInicialLente2(
-        r.sugerencia_tipo_lente_cerca && r.sugerencia_tratamiento_cerca
-          ? { tipoLente: r.sugerencia_tipo_lente_cerca, tratamiento: r.sugerencia_tratamiento_cerca, posicion: "cerca", sugerido: true }
-          : null
-      );
-    } else {
-      setInicialLente1(
-        r.sugerencia_tipo_lente && r.sugerencia_tratamiento
-          ? {
-              tipoLente: r.sugerencia_tipo_lente,
-              tratamiento: r.sugerencia_tratamiento,
-              posicion: r.tipo === "cerca" ? "cerca" : undefined,
-              sugerido: true,
-            }
-          : null
-      );
-      setInicialLente2(null);
-    }
+    const sugerido = (tipoLente: string | null, tratamiento: string | null, posicion?: "lejos" | "cerca"): PrefillLente =>
+      tipoLente && tratamiento ? { tipoLente, tratamiento, posicion, sugerido: true } : null;
+    const lista: PrefillLente[] =
+      r.tipo === "lejos_y_cerca"
+        ? [
+            sugerido(r.sugerencia_tipo_lente, r.sugerencia_tratamiento, "lejos"),
+            sugerido(r.sugerencia_tipo_lente_cerca, r.sugerencia_tratamiento_cerca, "cerca"),
+          ]
+        : [sugerido(r.sugerencia_tipo_lente, r.sugerencia_tratamiento, r.tipo === "cerca" ? "cerca" : undefined), null];
+    // Los pares extra que dejó sugeridos el tecnólogo, a continuación (sin
+    // dejar huecos: si el Par 2 venía vacío, el primer extra va ahí).
+    const extras = (r.sugerencias_extra ?? []).map((e) => sugerido(e.tipo_lente, e.tratamiento, e.posicion ?? undefined));
+    const llenos = [...lista.filter(Boolean), ...extras.filter(Boolean)];
+    while (llenos.length < 2) llenos.push(null);
+    setIniciales(llenos.slice(0, MAX_PARES));
   }
 
   function quitar(key: string) {
@@ -805,8 +804,7 @@ export default function PuntoDeVenta({
     setOperativoId("");
     setBuscaPaciente("");
     setBuscaProducto("");
-    setInicialLente1(null);
-    setInicialLente2(null);
+    setIniciales([null, null]);
     setPaso(0);
   }
 
@@ -831,11 +829,11 @@ export default function PuntoDeVenta({
         cantidad: l.cantidad,
         precioUnitario: l.precioUnitario,
         // El cupo va explícito, no por posición en una lista (F01).
-        cristalSlot: l.key === "cristal-1" ? 1 : l.key === "cristal-2" ? 2 : null,
+        cristalSlot: l.cristal ? numeroDePar(l.key) : null,
       })),
       cristales: creaOT
         ? lineasCristal.map((l) => ({
-            slot: (l.key === "cristal-1" ? 1 : 2) as 1 | 2,
+            slot: numeroDePar(l.key),
             tipoLente: l.cristal!.tipoLente,
             rangoReceta: l.cristal!.rangoReceta,
             tratamiento: l.cristal!.tratamiento,
@@ -876,9 +874,11 @@ export default function PuntoDeVenta({
       if (resultado.ok) {
         reiniciar();
         setMensaje(
-          resultado.otFolio
-            ? `✓ Venta registrada · Orden de trabajo #${resultado.otFolio} creada`
-            : "✓ Venta registrada"
+          (resultado.otFolios?.length ?? 0) > 1
+            ? `✓ Venta registrada · Órdenes de trabajo ${resultado.otFolios!.map((f) => `#${f}`).join(", ")} creadas`
+            : resultado.otFolio
+              ? `✓ Venta registrada · Orden de trabajo #${resultado.otFolio} creada`
+              : "✓ Venta registrada"
         );
         router.refresh();
       } else {
@@ -1044,48 +1044,33 @@ export default function PuntoDeVenta({
           <div>
             <h2 className={`font-bold ${COLOR_PASO[1].titulo}`}>¿Lleva cristales?</h2>
             <p className="text-sm text-tinta-suave">
-              Un multifocal es un solo lente: va en Lente 1. Lente 2 es solo para un segundo par
-              (por ejemplo, uno de cerca).
+              Cada par es un lente completo (un multifocal es un solo par). Si lleva más de dos,
+              toca &quot;＋ Agregar otro par&quot;.
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="flex-1">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {iniciales.map((inicial, i) => (
               <FilaLente
-                key={`slot1-${pacienteId}`}
-                numero={1}
+                key={`par${i + 1}-${pacienteId}`}
+                numero={i + 1}
                 costos={costos}
                 factorVenta={factorVenta}
                 receta={receta}
                 catalogoLab={catalogoLab}
-                inicial={inicialLente1}
-                onCambio={(d) => manejarCambioLente(1, d)}
+                inicial={inicial}
+                onCambio={(d) => manejarCambioLente(i + 1, d)}
               />
-            </div>
-            <div className="flex-1">
-              <FilaLente
-                key={`slot2-${pacienteId}`}
-                numero={2}
-                costos={costos}
-                factorVenta={factorVenta}
-                receta={receta}
-                catalogoLab={catalogoLab}
-                inicial={inicialLente2}
-                onCambio={(d) => manejarCambioLente(2, d)}
-              />
-            </div>
+            ))}
           </div>
-
-          {/* El Lente 2 solo se precarga si la receta se cargó con "Dos
-              lentes separados" — si al paciente le hicieron receta de un
-              solo tipo (lejos o cerca), acá no hay nada que precargar y no
-              es un error. Esto evita el "¿por qué no me llena el cristal 2?"
-              cuando en realidad la receta nunca tuvo una sugerencia de
-              cerca. */}
-          {receta && receta.tipo !== "lejos_y_cerca" && (
-            <p className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">
-              La receta trae un solo lente. Para un segundo par, elígelo en Lente 2.
-            </p>
+          {iniciales.length < MAX_PARES && (
+            <button
+              type="button"
+              onClick={() => setIniciales((prev) => [...prev, null])}
+              className="rounded-lg border-2 border-dashed border-violet-300 bg-white px-4 py-3 text-sm font-semibold text-violet-800 hover:bg-violet-50"
+            >
+              ＋ Agregar otro par
+            </button>
           )}
 
           {/* Los dos van igual al laboratorio; la diferencia es si el
@@ -1103,7 +1088,7 @@ export default function PuntoDeVenta({
                 return (
                   <div key={l.key} className="flex flex-wrap items-baseline gap-x-2 text-sm">
                     <span className="font-medium">
-                      {l.key === "cristal-1" ? "Lente 1" : "Lente 2"}
+                      Par {numeroDePar(l.key)}
                       {l.cristal!.posicion ? ` · ${l.cristal!.posicion}` : ""}
                     </span>
                     <span
@@ -1191,10 +1176,10 @@ export default function PuntoDeVenta({
           {lineasCristal.length > 0 && (
             <div className="flex flex-col gap-3 sm:flex-row">
               {lineasCristal.map((l) => {
-                const numero = (l.key === "cristal-1" ? 1 : 2) as 1 | 2;
+                const numero = numeroDePar(l.key);
                 const etiqueta =
-                  lineasCristal.length === 2
-                    ? `Lente ${numero}${l.cristal?.posicion ? ` (${l.cristal.posicion})` : ""}`
+                  lineasCristal.length > 1
+                    ? `Par ${numero}${l.cristal?.posicion ? ` (${l.cristal.posicion})` : ""}`
                     : "tu lente";
                 return (
                   <SelectorArmazon
@@ -1396,13 +1381,13 @@ function Resumen({
               {l.descripcion}
               {l.cristal && (
                 <span className="ml-1.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
-                  {l.key === "cristal-1" ? "Lente 1" : "Lente 2"}
+                  Par {numeroDePar(l.key)}
                   {l.cristal.posicion ? ` · ${l.cristal.posicion}` : ""}
                 </span>
               )}
               {l.armazonSlot && (
                 <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
-                  Lente {l.armazonSlot}
+                  Par {l.armazonSlot}
                 </span>
               )}
               {l.cristal?.sugerido && (

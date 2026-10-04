@@ -8,6 +8,7 @@ import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { clp } from "@/lib/clp";
 import { hoyEnChile } from "@/lib/fechas";
 import { motivoFueraDeCajaMultifocal, type CatalogoLaboratorio } from "@/lib/costo-fides";
+import { leerSugerenciasExtra, type SugerenciaExtra } from "@/lib/sugerencias";
 import { ojosParaCristal, origenCristal, precioVentaCristal, type FilaCristal } from "@/lib/precio-venta";
 
 // Mismo criterio que en formatearDioptria: coma o punto, vacío o suelto ("+"
@@ -71,6 +72,7 @@ type RecetaExistente = {
   sugerencia_tratamiento: string | null;
   sugerencia_tipo_lente_cerca: string | null;
   sugerencia_tratamiento_cerca: string | null;
+  sugerencias_extra?: SugerenciaExtra[] | null;
 };
 
 // El cotizador del tecnólogo. Muestra TODAS las opciones que le sirven a
@@ -261,6 +263,19 @@ export default function NuevaReceta({
           ? "dos_pares"
           : "lejos";
   const [modo, setModo] = useState<Modo>(modoInicial);
+
+  // Pares extra (además del lente principal): por ejemplo un polarizado de
+  // sol y un monofocal de cerca para alguien que se lleva varios.
+  type ModoExtra = "lejos" | "cerca" | "multifocal";
+  const extrasIniciales = leerSugerenciasExtra(receta?.sugerencias_extra);
+  const [extras, setExtras] = useState<{ id: number; modo: ModoExtra; inicial?: SugerenciaExtra }[]>(
+    extrasIniciales.map((e, i) => ({
+      id: i,
+      modo: esBifMulti(e.tipo_lente) ? "multifocal" : e.posicion === "cerca" ? "cerca" : "lejos",
+      inicial: e,
+    }))
+  );
+  const siguienteExtra = useRef(extrasIniciales.length);
   const tipo = modo === "lejos" ? "lejos" : modo === "cerca" ? "cerca" : "lejos_y_cerca";
   const necesitaCerca = modo !== "lejos";
 
@@ -305,6 +320,7 @@ export default function NuevaReceta({
             setOiCilindro(null);
             setAdd(null);
             setModo("lejos");
+            setExtras([]);
             setGuardada(false);
             setVuelta((v) => v + 1);
           }}
@@ -446,6 +462,69 @@ export default function NuevaReceta({
           inicialTipoLente={receta?.sugerencia_tipo_lente_cerca}
           inicialTratamiento={receta?.sugerencia_tratamiento_cerca}
         />
+      )}
+
+      <input type="hidden" name="extras_cantidad" value={extras.length} />
+      {extras.map((extra, i) => (
+        <div key={extra.id} className="flex flex-col gap-2 rounded-xl border border-dashed border-brand/40 p-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold text-brand-dark">Otro par</span>
+            {(
+              [
+                { valor: "lejos", titulo: "Lejos" },
+                { valor: "cerca", titulo: "Cerca" },
+                { valor: "multifocal", titulo: "Bifocal o multifocal" },
+              ] as const
+            ).map((op) => (
+              <label
+                key={op.valor}
+                className="flex cursor-pointer items-center gap-1 rounded-lg border border-tinta-suave/25 bg-white px-2 py-1 text-xs font-semibold has-checked:border-brand has-checked:bg-brand/5"
+              >
+                <input
+                  type="radio"
+                  checked={extra.modo === op.valor}
+                  onChange={() =>
+                    setExtras((prev) => prev.map((x) => (x.id === extra.id ? { ...x, modo: op.valor, inicial: undefined } : x)))
+                  }
+                  className="accent-brand"
+                />
+                {op.titulo}
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick={() => setExtras((prev) => prev.filter((x) => x.id !== extra.id))}
+              className="ml-auto text-xs text-red-700 underline"
+            >
+              Quitar este par
+            </button>
+          </div>
+          <input type="hidden" name={`extra_posicion_${i}`} value={extra.modo === "cerca" ? "cerca" : extra.modo === "lejos" ? "lejos" : ""} />
+          <SelectorLenteConPrecio
+            key={`${extra.id}-${extra.modo}`}
+            titulo={extra.modo === "multifocal" ? "Bifocal o multifocal" : extra.modo === "cerca" ? "Lente de cerca" : "Lente de lejos"}
+            tiposPermitidos={extra.modo === "multifocal" ? ["Bifocal", "Multifocal"] : ["Monofocal"]}
+            costos={costos}
+            catalogoLab={catalogoLab}
+            nombreTipo={`extra_tipo_${i}`}
+            nombreTratamiento={`extra_tratamiento_${i}`}
+            esferas={[odEsfera, oiEsfera]}
+            cilindros={[odCilindro, oiCilindro]}
+            add={add}
+            posicionSlot={extra.modo === "cerca" ? "cerca" : "lejos"}
+            inicialTipoLente={extra.inicial?.tipo_lente}
+            inicialTratamiento={extra.inicial?.tratamiento}
+          />
+        </div>
+      ))}
+      {extras.length < 4 && (
+        <button
+          type="button"
+          onClick={() => setExtras((prev) => [...prev, { id: siguienteExtra.current++, modo: "lejos" }])}
+          className="rounded-lg border-2 border-dashed border-brand/40 bg-white px-4 py-3 text-sm font-semibold text-brand-dark hover:bg-brand/5"
+        >
+          ＋ Agregar otro par (por ejemplo, lentes de sol o de cerca)
+        </button>
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

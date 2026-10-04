@@ -13,7 +13,16 @@
 // compactan de forma consistente: si solo vino el Lente 2, pasa a ser el
 // cupo 1 de la orden, y su ítem y su marco se renumeran igual.
 
-export type Cupo = 1 | 2;
+// Número de par dentro de la venta (1, 2, 3…). Cada orden de trabajo
+// tiene dos cupos de cristal: los pares 1 y 2 van en la primera orden, el
+// 3 y el 4 en la segunda, y así. Una venta de uno o dos pares queda igual
+// que siempre, en una sola orden.
+export type Cupo = number;
+export const MAX_PARES = 6;
+
+export function ubicacionDeCupo(cupo: Cupo): { orden: number; slot: 1 | 2 } {
+  return { orden: Math.ceil(cupo / 2) - 1, slot: cupo % 2 === 1 ? 1 : 2 };
+}
 
 export type CristalPedido = {
   slot: Cupo;
@@ -56,9 +65,11 @@ export function normalizarVenta(
     }
   }
 
-  if (cristales.length > 2) return { ok: false, error: "Una venta lleva como máximo dos pares de cristales." };
+  if (cristales.length > MAX_PARES) {
+    return { ok: false, error: `Una venta lleva como máximo ${MAX_PARES} pares de cristales.` };
+  }
   const slots = cristales.map((c) => c.slot);
-  if (new Set(slots).size !== slots.length || slots.some((s) => s !== 1 && s !== 2)) {
+  if (new Set(slots).size !== slots.length || slots.some((s) => !Number.isInteger(s) || s < 1 || s > MAX_PARES)) {
     return { ok: false, error: "Los cristales vienen con cupos repetidos o inválidos." };
   }
 
@@ -73,7 +84,7 @@ export function normalizarVenta(
   }
 
   const ordenados = [...cristales].sort((a, b) => a.slot - b.slot);
-  const cupoNuevo = new Map<Cupo, Cupo>(ordenados.map((c, i) => [c.slot, (i + 1) as Cupo]));
+  const cupoNuevo = new Map<Cupo, Cupo>(ordenados.map((c, i) => [c.slot, i + 1]));
 
   const marcoDeCupo: Partial<Record<Cupo, ArmazonPedido>> = {};
   for (const a of armazones) {

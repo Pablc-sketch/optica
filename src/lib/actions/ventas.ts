@@ -8,7 +8,7 @@ import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { rangoParaPosicion } from "@/lib/cristales";
-import { normalizarVenta, type ArmazonPedido, type CristalPedido, type ItemPedido } from "@/lib/venta-normalizar";
+import { normalizarVenta, ubicacionDeCupo, type ArmazonPedido, type CristalPedido, type ItemPedido } from "@/lib/venta-normalizar";
 
 // Lo que manda el punto de venta, online u offline (es el mismo contrato:
 // la cola offline guarda exactamente esto y lo vuelve a mandar al
@@ -34,7 +34,9 @@ export type VentaInput = {
   proveedorLabId?: string | null;
 };
 
-export type ResultadoVenta = { ok: true; ventaId: string; otFolio: number | null } | { ok: false; error: string };
+export type ResultadoVenta =
+  | { ok: true; ventaId: string; otFolio: number | null; otFolios?: number[] }
+  | { ok: false; error: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MEDIOS = ["efectivo", "debito", "credito", "transferencia"];
@@ -91,7 +93,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   // Costo y origen, recalculados acá. Si el catálogo no se puede leer o
   // falta la equivalencia, NO se inventa un costo: la venta se detiene con
   // un mensaje claro (F07).
-  let ot: Record<string, unknown> | null = null;
+  const ots: Record<string, unknown>[] = [];
   const preciosLista = new Map<number, number>();
   if (cristales.length > 0) {
     let cotizar;
@@ -106,7 +108,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       .eq("id", tenantId)
       .single();
 
-    const calculados = [];
+    const calculados: { c: (typeof cristales)[number]; costo: NonNullable<ReturnType<typeof costoRealCristal>> }[] = [];
     for (const c of cristales) {
       const fila = cotizar.filas.find(
         (f) => f.tipo_lente === c.tipoLente && f.tratamiento === c.tratamiento && f.rango_receta === c.rangoReceta
@@ -144,34 +146,35 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       proveedor = data?.id ?? null;
     }
 
-    const [uno, dos] = calculados;
-    ot = {
-      receta_id: (receta?.id as string | undefined) ?? null,
-      fecha_entrega_estimada: entrega,
-      proveedor_lab_id: necesitaLab ? proveedor : null,
-      armazon_producto_id: marcoDeCupo[1]?.marcoPropio ? null : (marcoDeCupo[1]?.productoId ?? null),
-      marco_propio: marcoDeCupo[1]?.marcoPropio ?? false,
-      tipo_lente: uno.c.tipoLente,
-      rango_receta: uno.c.rangoReceta,
-      tratamiento: uno.c.tratamiento,
-      origen_cristal: uno.costo.origen,
-      diseno_laboratorio: uno.costo.diseno,
-      costo_laboratorio: uno.costo.costo,
-      posicion: uno.c.tipoLente === "Monofocal" ? (uno.c.posicion ?? "lejos") : null,
-      ...(dos
-        ? {
-            armazon_producto_id_2: marcoDeCupo[2]?.marcoPropio ? null : (marcoDeCupo[2]?.productoId ?? null),
-            marco_propio_2: marcoDeCupo[2]?.marcoPropio ?? false,
-            tipo_lente_2: dos.c.tipoLente,
-            rango_receta_2: dos.c.rangoReceta,
-            tratamiento_2: dos.c.tratamiento,
-            origen_cristal_2: dos.costo.origen,
-            diseno_laboratorio_2: dos.costo.diseno,
-            costo_laboratorio_2: dos.costo.costo,
-            posicion_2: dos.c.tipoLente === "Monofocal" ? (dos.c.posicion ?? "lejos") : null,
-          }
-        : {}),
+    // Una orden por cada dos pares: 1 y 2 en la primera, 3 y 4 en la
+    // segunda… Cada orden lleva el laboratorio solo si alguno de SUS
+    // cristales hay que tallarlo.
+    const lado = (x: (typeof calculados)[number], sufijo: "" | "_2") => {
+      const marco = marcoDeCupo[x.c.cupo];
+      return {
+        [`armazon_producto_id${sufijo}`]: marco?.marcoPropio ? null : (marco?.productoId ?? null),
+        [`marco_propio${sufijo}`]: marco?.marcoPropio ?? false,
+        [`tipo_lente${sufijo}`]: x.c.tipoLente,
+        [`rango_receta${sufijo}`]: x.c.rangoReceta,
+        [`tratamiento${sufijo}`]: x.c.tratamiento,
+        [`origen_cristal${sufijo}`]: x.costo.origen,
+        [`diseno_laboratorio${sufijo}`]: x.costo.diseno,
+        [`costo_laboratorio${sufijo}`]: x.costo.costo,
+        [`posicion${sufijo}`]: x.c.tipoLente === "Monofocal" ? (x.c.posicion ?? "lejos") : null,
+      };
     };
+    for (let i = 0; i < calculados.length; i += 2) {
+      const uno = calculados[i];
+      const dos = calculados[i + 1];
+      const tallaAlguno = uno.costo.origen === "laboratorio" || dos?.costo.origen === "laboratorio";
+      ots.push({
+        receta_id: (receta?.id as string | undefined) ?? null,
+        fecha_entrega_estimada: entrega,
+        proveedor_lab_id: tallaAlguno ? proveedor : null,
+        ...lado(uno, ""),
+        ...(dos ? lado(dos, "_2") : {}),
+      });
+    }
   }
 
   // Precio de lista de los productos (marcos, accesorios), para dejar a la
@@ -191,13 +194,14 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       operativo_id: input.operativoId ?? null,
       abono: input.abonoInicial,
       medio_pago: input.medioPago,
-      ot,
+      ots,
       items: items.map((i) => ({
         producto_id: i.productoId ?? null,
         descripcion: i.descripcion,
         cantidad: i.cantidad,
         precio_unitario: i.precioUnitario,
-        cristal_slot: i.cristalSlot ?? null,
+        ot_index: i.cristalSlot ? ubicacionDeCupo(i.cristalSlot).orden : null,
+        cristal_slot: i.cristalSlot ? ubicacionDeCupo(i.cristalSlot).slot : null,
         precio_lista: i.cristalSlot
           ? (preciosLista.get(i.cristalSlot) ?? null)
           : (productos ?? []).find((p) => p.id === i.productoId)?.precio_venta ?? null,
@@ -211,7 +215,8 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   revalidatePath("/laboratorio");
   revalidatePath("/reportes");
   revalidatePath("/");
-  return { ok: true, ventaId: input.ventaId, otFolio: (data as { ot_folio: number | null }).ot_folio ?? null };
+  const res = data as { ot_folio: number | null; ot_folios?: number[] | null };
+  return { ok: true, ventaId: input.ventaId, otFolio: res.ot_folio ?? null, otFolios: res.ot_folios ?? [] };
 }
 
 // Abono con la venta bloqueada en la base: nunca más que el saldo, aunque

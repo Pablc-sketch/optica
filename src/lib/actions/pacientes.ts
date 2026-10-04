@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
 import { fechaCortaAISO, formatearTelefono } from "@/lib/formato";
+import { leerSugerenciasExtra } from "@/lib/sugerencias";
 import { hoyEnChile } from "@/lib/fechas";
 
 // El tenant_id NO viaja en el formulario: el insert va sin tenant y la
@@ -214,6 +215,7 @@ export async function crearReceta(formData: FormData) {
     sugerencia_tratamiento: String(formData.get("sugerencia_tratamiento") ?? "").trim() || null,
     sugerencia_tipo_lente_cerca: String(formData.get("sugerencia_tipo_lente_cerca") ?? "").trim() || null,
     sugerencia_tratamiento_cerca: String(formData.get("sugerencia_tratamiento_cerca") ?? "").trim() || null,
+    sugerencias_extra: sugerenciasExtraDelFormulario(formData),
     observacion_venta: String(formData.get("observacion_venta") ?? "").trim() || null,
   });
 
@@ -231,6 +233,20 @@ export async function crearReceta(formData: FormData) {
 // paciente cambió de opinión sobre el lente) sin tener que borrarla y
 // cargarla de nuevo — eso perdería el folio/fecha originales y cualquier OT
 // que ya la esté referenciando por receta_id.
+// Los pares extra que dejó sugeridos el tecnólogo (extra_tipo_0,
+// extra_tratamiento_0, extra_posicion_0, …). Los que quedaron sin elegir
+// se descartan.
+function sugerenciasExtraDelFormulario(formData: FormData) {
+  const n = Math.min(Number(formData.get("extras_cantidad") ?? 0) || 0, 4);
+  return leerSugerenciasExtra(
+    Array.from({ length: n }, (_, i) => ({
+      tipo_lente: String(formData.get(`extra_tipo_${i}`) ?? "").trim(),
+      tratamiento: String(formData.get(`extra_tratamiento_${i}`) ?? "").trim(),
+      posicion: String(formData.get(`extra_posicion_${i}`) ?? "") || null,
+    }))
+  );
+}
+
 export async function actualizarReceta(formData: FormData) {
   const { supabase, tenantId } = await tenantDelUsuario();
 
@@ -264,6 +280,7 @@ export async function actualizarReceta(formData: FormData) {
       sugerencia_tratamiento: String(formData.get("sugerencia_tratamiento") ?? "").trim() || null,
       sugerencia_tipo_lente_cerca: String(formData.get("sugerencia_tipo_lente_cerca") ?? "").trim() || null,
       sugerencia_tratamiento_cerca: String(formData.get("sugerencia_tratamiento_cerca") ?? "").trim() || null,
+    sugerencias_extra: sugerenciasExtraDelFormulario(formData),
     })
     .eq("id", recetaId)
     .eq("tenant_id", tenantId);

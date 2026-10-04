@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizarVenta, type CristalPedido, type ItemPedido } from "../src/lib/venta-normalizar";
+import { normalizarVenta, ubicacionDeCupo, type CristalPedido, type ItemPedido } from "../src/lib/venta-normalizar";
 
 const cristal = (slot: 1 | 2, tratamiento = "Orgánico Antirreflejo"): CristalPedido => ({
   slot,
@@ -95,5 +95,35 @@ describe("normalizarVenta — montos (A07)", () => {
 
   it("rechaza una venta vacía", () => {
     expect(normalizarVenta([], [], []).ok).toBe(false);
+  });
+});
+
+describe("varios pares en una venta", () => {
+  const cristal = (slot: number) => ({ slot, tipoLente: "Monofocal", rangoReceta: "±2.00 / ±2.00", tratamiento: "AR" });
+  const item = (slot: number) => ({ descripcion: `par ${slot}`, cantidad: 1, precioUnitario: 1000, cristalSlot: slot });
+
+  it("acepta tres pares y los numera seguido aunque falte uno en medio", () => {
+    const r = normalizarVenta([cristal(1), cristal(2), cristal(4)], [{ slot: 4, productoId: "m4", marcoPropio: false }], [item(1), item(2), item(4)]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.venta.cristales.map((c) => c.cupo)).toEqual([1, 2, 3]);
+    expect(r.venta.items.map((i) => i.cristalSlot)).toEqual([1, 2, 3]);
+    expect(r.venta.marcoDeCupo[3]?.productoId).toBe("m4");
+  });
+
+  it("rechaza más del máximo", () => {
+    const n = [1, 2, 3, 4, 5, 6, 7];
+    const r = normalizarVenta(n.map(cristal), [], n.map(item));
+    expect(r.ok).toBe(false);
+  });
+
+  it("ubica cada par en su orden y cupo", () => {
+    expect([1, 2, 3, 4, 5].map(ubicacionDeCupo)).toEqual([
+      { orden: 0, slot: 1 },
+      { orden: 0, slot: 2 },
+      { orden: 1, slot: 1 },
+      { orden: 1, slot: 2 },
+      { orden: 2, slot: 1 },
+    ]);
   });
 });
