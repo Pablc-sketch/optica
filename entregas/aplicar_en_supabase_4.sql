@@ -146,5 +146,29 @@ end;
 $$;
 
 
+
+-- Multifocal fotocromático de la paciente Jorquera: es GRIS con filtro
+-- azul (confirmado por Pablo). Solo se toca si quedó guardado como otro
+-- fotocromático; queda registro. No cambia lo cobrado ni lo pagado.
+with objetivo as (
+  select ot.id, ot.tenant_id, ot.tratamiento
+    from public.ordenes_trabajo ot join public.pacientes p on p.id = ot.paciente_id
+   where ot.tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a'
+     and p.nombre ilike '%jorquera%'
+     and ot.tipo_lente = 'Multifocal'
+     and ot.tratamiento ilike '%fotocrom%'
+     and ot.tratamiento <> 'Fotocromático Gris Filtro Azul'
+), registro as (
+  insert into public.reparaciones_datos (tenant_id, motivo, tabla, fila_id, antes, despues)
+  select tenant_id, 'Multifocal fotocromático de Jorquera es gris con filtro azul (Pablo)', 'ordenes_trabajo', id,
+         jsonb_build_object('tratamiento', tratamiento), jsonb_build_object('tratamiento', 'Fotocromático Gris Filtro Azul')
+    from objetivo
+  returning fila_id
+)
+update public.ordenes_trabajo set tratamiento = 'Fotocromático Gris Filtro Azul' where id in (select fila_id from registro);
 commit;
-select 'LISTO: marcos descritos activado' as resultado;
+
+select 'LISTO: marcos descritos activado' as resultado,
+  (select string_agg('#' || ot.folio || ' ' || p.nombre || ': ' || ot.tipo_lente || ' ' || ot.tratamiento, ' | ')
+     from public.ordenes_trabajo ot join public.pacientes p on p.id = ot.paciente_id
+    where ot.tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a' and p.nombre ilike '%jorquera%') as jorquera;
