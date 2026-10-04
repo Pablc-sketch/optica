@@ -472,6 +472,7 @@ export default function NuevaReceta({
       )}
 
       <input type="hidden" name="extras_cantidad" value={extras.length} />
+      <input type="hidden" name="extras_habia" value={extrasIniciales.length} />
       {extras.map((extra, i) => (
         <div key={extra.id} className="flex flex-col gap-2 rounded-xl border border-dashed border-brand/40 p-2">
           <div className="flex flex-wrap items-center gap-2">

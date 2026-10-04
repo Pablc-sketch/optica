@@ -83,11 +83,11 @@ export default async function VentasPage() {
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
     supabase
       .from("recetas")
-      .select(
-        `id, paciente_id, fecha, tipo, operativo_id, od_esfera, od_cilindro, od_add, oi_esfera, oi_cilindro, oi_add,
-         sugerencia_tipo_lente, sugerencia_tratamiento,
-         sugerencia_tipo_lente_cerca, sugerencia_tratamiento_cerca, sugerencias_extra`
-      )
+      // "*" y no una lista: si a la base le falta una columna nueva (una
+      // migración sin aplicar), la consulta igual funciona y la venta sigue
+      // encontrando la receta. Con una lista, faltaba sugerencias_extra y
+      // la venta pedía el rango a mano para todos los pacientes.
+      .select("*")
       // Dos recetas el mismo día: manda la última que se guardó, igual que
       // en la ficha del paciente.
       .order("fecha", { ascending: false })

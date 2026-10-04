@@ -215,7 +215,9 @@ export async function crearReceta(formData: FormData) {
     sugerencia_tratamiento: String(formData.get("sugerencia_tratamiento") ?? "").trim() || null,
     sugerencia_tipo_lente_cerca: String(formData.get("sugerencia_tipo_lente_cerca") ?? "").trim() || null,
     sugerencia_tratamiento_cerca: String(formData.get("sugerencia_tratamiento_cerca") ?? "").trim() || null,
-    sugerencias_extra: sugerenciasExtraDelFormulario(formData),
+    // Solo si hay pares extra: así guardar una receta normal no depende de
+    // que la columna exista (si falta la migración, no rompe).
+    ...conExtras(formData),
     observacion_venta: String(formData.get("observacion_venta") ?? "").trim() || null,
   });
 
@@ -245,6 +247,12 @@ function sugerenciasExtraDelFormulario(formData: FormData) {
       posicion: String(formData.get(`extra_posicion_${i}`) ?? "") || null,
     }))
   );
+}
+
+function conExtras(formData: FormData) {
+  const extras = sugerenciasExtraDelFormulario(formData);
+  const habiaExtras = Number(formData.get("extras_cantidad") ?? 0) > 0 || Number(formData.get("extras_habia") ?? 0) > 0;
+  return extras.length > 0 || habiaExtras ? { sugerencias_extra: extras } : {};
 }
 
 export async function actualizarReceta(formData: FormData) {
@@ -280,7 +288,9 @@ export async function actualizarReceta(formData: FormData) {
       sugerencia_tratamiento: String(formData.get("sugerencia_tratamiento") ?? "").trim() || null,
       sugerencia_tipo_lente_cerca: String(formData.get("sugerencia_tipo_lente_cerca") ?? "").trim() || null,
       sugerencia_tratamiento_cerca: String(formData.get("sugerencia_tratamiento_cerca") ?? "").trim() || null,
-    sugerencias_extra: sugerenciasExtraDelFormulario(formData),
+    // Solo si hay pares extra: así guardar una receta normal no depende de
+    // que la columna exista (si falta la migración, no rompe).
+    ...conExtras(formData),
     })
     .eq("id", recetaId)
     .eq("tenant_id", tenantId);
