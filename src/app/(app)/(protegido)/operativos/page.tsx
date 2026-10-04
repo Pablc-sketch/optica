@@ -5,6 +5,7 @@ import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoTelefono } from "@/components/campos";
+import BotonEnviar from "@/components/boton-enviar";
 import { costoDeItems, type ItemConCosto } from "@/lib/costo-venta";
 
 const TIPOS_VENUE = [
@@ -301,9 +302,9 @@ export default async function OperativosPage() {
               <textarea name="notas" rows={2} className={input} />
             </label>
             <div className="sm:col-span-2">
-              <button className="rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white transition hover:bg-sky-800">
+              <BotonEnviar className="rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white transition hover:bg-sky-800">
                 Crear operativo
-              </button>
+              </BotonEnviar>
             </div>
           </form>
         </details>

@@ -13,6 +13,7 @@ import { CampoMonto } from "@/components/campos";
 import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 import { type CatalogoLaboratorio } from "@/lib/costo-fides";
+import EliminarOperativo from "./eliminar-operativo";
 import { origenCristal, precioVentaCristal, type PotenciasReceta } from "@/lib/precio-venta";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
@@ -1227,6 +1228,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           </ul>
         )}
       </section>
+
+      {recetas.length === 0 && ventas.length === 0 && <EliminarOperativo id={id} />}
     </div>
   );
 }

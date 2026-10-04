@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dpParaPedido, limitesDeRango, rangoParaPosicion } from "../src/lib/cristales";
+import { dpParaPedido, indicacionesDePedido, limitesDeRango, rangoParaPosicion } from "../src/lib/cristales";
 import { costoCristal, type CatalogoLaboratorio, type MapaCristal, type Ojo } from "../src/lib/costo-fides";
 
 describe("dpParaPedido", () => {
@@ -87,5 +87,23 @@ describe("rangoParaPosicion con esfera vacía (F06)", () => {
 
   it("sin esfera ni ADD no inventa potencia", () => {
     expect(rangoParaPosicion([null, null], [null, null], [null, null], "cerca")).toBe("±2.00 / ±2.00");
+  });
+});
+
+describe("indicacionesDePedido", () => {
+  it("el multifocal fotocromático gris con filtro azul dice el color en el pedido", () => {
+    expect(indicacionesDePedido("Fotocromático Gris Filtro Azul", "ORGANICO FOTOCROMATICO BLUE FILTER 1.56 HMC")).toEqual([
+      "FOTOCROMÁTICO GRIS",
+    ]);
+  });
+  it("si el material no dice BLUE, avisa el filtro azul", () => {
+    expect(indicacionesDePedido("Fotocromático Gris Filtro Azul", "ORGANICO FOTOCROMATICO 1.56 HMC")).toEqual([
+      "FOTOCROMÁTICO GRIS",
+      "CON FILTRO AZUL",
+    ]);
+  });
+  it("café y polarizado", () => {
+    expect(indicacionesDePedido("Fotocromático Café Antirreflejo", "ORGANICO FOTOCROMATICO 1.56 HMC")).toEqual(["FOTOCROMÁTICO CAFÉ"]);
+    expect(indicacionesDePedido("Polarizado Verde Oscuro", "ORGANICO POLARIZADO 1.49 HMC")).toEqual(["COLOR VERDE OSCURO"]);
   });
 });

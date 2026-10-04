@@ -57,6 +57,15 @@ export async function crearOperativo(formData: FormData) {
 
   const tipoVenue = String(formData.get("tipo_venue") ?? "");
 
+  // Mismo nombre y misma fecha = el mismo operativo enviado dos veces (la
+  // app lenta, un segundo toque). No se crea otro.
+  const { data: existentes } = await supabase.from("operativos").select("id, nombre").eq("fecha", fecha);
+  const normal = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ");
+  if ((existentes ?? []).some((o) => normal(o.nombre) === normal(nombre))) {
+    revalidatePath("/operativos");
+    return;
+  }
+
   const { data: creado, error } = await supabase
     .from("operativos")
     .insert({
@@ -301,4 +310,25 @@ export async function actualizarCadenciaOperativo(formData: FormData) {
 
   revalidatePath(`/operativos/${id}`);
   revalidatePath("/operativos/contactos");
+}
+
+// Borrar un operativo creado por error (por ejemplo, el mismo guardado dos
+// veces con la app lenta). Solo si está vacío: sin recetas, ventas,
+// órdenes ni retiros. Uno con datos no se borra nunca desde acá.
+export async function eliminarOperativoVacio(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { supabase } = await requerirAdmin();
+  const contar = async (tabla: string) => {
+    const { count, error } = await supabase.from(tabla).select("id", { count: "exact", head: true }).eq("operativo_id", id);
+    if (error) throw error;
+    return count ?? 0;
+  };
+  const usados = await Promise.all(["ventas", "recetas", "ordenes_trabajo", "retiros_sueldo"].map(contar));
+  if (usados.some((n) => n > 0)) {
+    return { ok: false, error: "Este operativo tiene recetas, ventas u órdenes: no se puede borrar." };
+  }
+  const { error } = await supabase.from("operativos").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/operativos");
+  revalidatePath("/operativos/calendario");
+  redirect("/operativos");
 }

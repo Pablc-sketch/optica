@@ -84,3 +84,25 @@ export function rangoParaPosicion(
   return clasificarRango(esferasEfectivas, cilindros);
 }
 
+
+// Lo que el laboratorio tiene que leer sí o sí en el pedido y que el
+// nombre de su material no dice: el COLOR del fotocromático (Fides usa el
+// mismo material para gris y café) y del polarizado, y el filtro azul
+// cuando el material elegido no lo nombra. Sin esto llegó a pedirse un
+// multifocal "fotocromático" sin decir que era gris.
+export function indicacionesDePedido(tratamiento: string | null, material?: string | null): string[] {
+  if (!tratamiento) return [];
+  const t = tratamiento.toLowerCase();
+  const m = (material ?? "").toUpperCase();
+  const fuera: string[] = [];
+  if (t.startsWith("polarizado ")) fuera.push(`COLOR ${tratamiento.slice(11).toUpperCase()}`);
+  if (t.includes("fotocrom")) {
+    if (t.includes("gris")) fuera.push("FOTOCROMÁTICO GRIS");
+    else if (t.includes("café") || t.includes("cafe")) fuera.push("FOTOCROMÁTICO CAFÉ");
+  }
+  if (t.includes("filtro azul") && !m.includes("BLUE")) fuera.push("CON FILTRO AZUL");
+  if (t.includes("antirreflejo") && !m.includes("AR") && !m.includes("HMC") && !m.includes("ANTIREFLEJO")) {
+    fuera.push("CON ANTIRREFLEJO");
+  }
+  return fuera;
+}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
-import { distanciaCristal, dpParaPedido } from "@/lib/cristales";
+import { distanciaCristal, dpParaPedido, indicacionesDePedido } from "@/lib/cristales";
 import {
   ZONA_CHILE,
   diaEnChile,
@@ -120,12 +120,12 @@ export default async function LaboratorioPage({
   // (MULTIFOCAL ADVANCE no es lo mismo que MULTIFOCAL CONFORT).
   const fmtCristal = (tipo: string | null, tratamiento: string | null, diseno: string | null) => {
     const ref = nombreLab.get(`${tipo}|${tratamiento}`);
-    // Los polarizados comparten material en Fides: el color es lo único que
-    // los distingue, así que tiene que ir escrito en el pedido.
-    const color = tratamiento?.startsWith("Polarizado ") ? `COLOR ${tratamiento.slice(11).toUpperCase()}` : null;
-    if (ref?.nombre) return [ref.nombre, color].filter(Boolean).join(" · ");
     const material = origen === "stock" ? ref?.matStock : ref?.matLab;
-    return [diseno, material, color].filter(Boolean).join(" · ") || tratamiento || "—";
+    const base = ref?.nombre ? [ref.nombre] : [diseno, material];
+    // Color del fotocromático/polarizado y filtro azul, que el nombre del
+    // material de Fides no dice (ver indicacionesDePedido).
+    const indicaciones = indicacionesDePedido(tratamiento, `${ref?.nombre ?? ""} ${material ?? ""}`);
+    return [...base, ...indicaciones].filter(Boolean).join(" · ") || tratamiento || "—";
   };
 
   const ots = otsRes.data ?? [];

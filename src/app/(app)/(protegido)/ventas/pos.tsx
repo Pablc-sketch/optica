@@ -114,32 +114,32 @@ const ABONO_MINIMO_POR_TIPO: Record<string, number> = {
 // explícito: quien vende tiene baja visión).
 const COLOR_PASO = [
   {
-    pill: "bg-blue-600 text-white",
-    pillHecho: "bg-blue-100 text-blue-900 hover:bg-blue-200",
-    seccion: "border-blue-300 bg-blue-50",
+    pill: "bg-blue-800 text-white shadow-sm",
+    pillHecho: "bg-blue-50 text-blue-900 hover:bg-blue-100",
+    seccion: "border-blue-800/20 bg-white",
     titulo: "text-blue-900",
-    aviso: "bg-blue-100 text-blue-900",
+    aviso: "bg-blue-50 text-blue-900",
   },
   {
-    pill: "bg-violet-600 text-white",
-    pillHecho: "bg-violet-100 text-violet-900 hover:bg-violet-200",
-    seccion: "border-violet-300 bg-violet-50",
+    pill: "bg-violet-800 text-white shadow-sm",
+    pillHecho: "bg-violet-50 text-violet-900 hover:bg-violet-100",
+    seccion: "border-violet-800/20 bg-white",
     titulo: "text-violet-900",
-    aviso: "bg-violet-100 text-violet-900",
+    aviso: "bg-violet-50 text-violet-900",
   },
   {
-    pill: "bg-amber-500 text-white",
-    pillHecho: "bg-amber-100 text-amber-900 hover:bg-amber-200",
-    seccion: "border-amber-300 bg-amber-50",
+    pill: "bg-amber-700 text-white shadow-sm",
+    pillHecho: "bg-amber-50 text-amber-900 hover:bg-amber-100",
+    seccion: "border-amber-700/25 bg-white",
     titulo: "text-amber-900",
-    aviso: "bg-amber-100 text-amber-900",
+    aviso: "bg-amber-50 text-amber-900",
   },
   {
-    pill: "bg-green-600 text-white",
-    pillHecho: "bg-green-100 text-green-900 hover:bg-green-200",
-    seccion: "border-green-300 bg-green-50",
-    titulo: "text-green-900",
-    aviso: "bg-green-100 text-green-900",
+    pill: "bg-emerald-800 text-white shadow-sm",
+    pillHecho: "bg-emerald-50 text-emerald-900 hover:bg-emerald-100",
+    seccion: "border-emerald-800/20 bg-white",
+    titulo: "text-emerald-900",
+    aviso: "bg-emerald-50 text-emerald-900",
   },
 ] as const;
 
@@ -424,7 +424,7 @@ function FilaLente({
         )}
 
         {combo && esRegalo && (
-          <p className="rounded-lg bg-violet-600 px-3 py-2.5 text-center text-base font-bold text-white">$0 (cortesía)</p>
+          <p className="rounded-lg bg-violet-800 px-3 py-2.5 text-center text-base font-bold text-white">$0 (cortesía)</p>
         )}
 
         {combo && !esRegalo && (
@@ -437,7 +437,7 @@ function FilaLente({
                   inputMode="numeric"
                   value={precioTexto}
                   onChange={(e) => cambiarPrecio(e.target.value)}
-                  className="w-full rounded-lg bg-violet-600 py-2.5 pl-7 text-center text-base font-bold text-white outline-none focus:ring-2 focus:ring-violet-300"
+                  className="w-full rounded-lg bg-violet-800 py-2.5 pl-7 text-center text-base font-bold text-white outline-none focus:ring-2 focus:ring-violet-300"
                 />
               </div>
             </label>
@@ -895,7 +895,7 @@ export default function PuntoDeVenta({
   }
 
   const boton =
-    "rounded-lg px-4 py-3 text-base font-semibold transition disabled:opacity-50";
+    "rounded-xl px-5 py-3.5 text-base font-semibold transition disabled:opacity-50";
   const select =
     "w-full rounded-lg border border-tinta-suave/30 bg-white px-3 py-3 text-base outline-none focus:border-brand disabled:opacity-50";
 
@@ -916,16 +916,16 @@ export default function PuntoDeVenta({
                 type="button"
                 onClick={() => i <= paso && setPaso(i)}
                 disabled={i > paso}
-                className={`flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2.5 text-sm font-semibold transition ${
+                className={`flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2.5 text-sm font-semibold transition ${
                   actual
                     ? color.pill
                     : hecho
                       ? `${color.pillHecho} border-2 ${color.seccion.split(" ")[0]}`
-                      : "bg-crema-claro text-tinta-suave"
+                      : "border border-tinta/10 bg-white text-tinta-suave"
                 }`}
               >
                 {hecho && <span aria-hidden>‹</span>}
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/10 text-xs">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/15 text-xs tabular-nums">
                   {hecho ? "✓" : i + 1}
                 </span>
                 {titulo}
@@ -951,9 +951,9 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 0 && (
-        <section className={`flex flex-col gap-3 rounded-2xl border-2 ${COLOR_PASO[0].seccion} p-4 shadow-sm`}>
+        <section className={`flex flex-col gap-3 rounded-2xl border ${COLOR_PASO[0].seccion} p-5 shadow-[0_1px_3px_rgba(23,21,15,0.08)]`}>
           <div>
-            <h2 className={`font-bold ${COLOR_PASO[0].titulo}`}>¿Para quién es la venta?</h2>
+            <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[0].titulo}`}>¿Para quién es la venta?</h2>
             <p className="text-sm text-tinta-suave">
               Con paciente, la orden se arma sola con su receta. Sin ficha, sigue sin paciente.
             </p>
@@ -1000,7 +1000,7 @@ export default function PuntoDeVenta({
                   type="button"
                   onClick={() => elegirPaciente(p.id)}
                   className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                    pacienteId === p.id ? "bg-blue-600 text-white" : "bg-white hover:bg-blue-50"
+                    pacienteId === p.id ? "bg-blue-800 text-white" : "border border-tinta/10 bg-white hover:bg-blue-50"
                   }`}
                 >
                   <span className="flex-1 truncate font-medium">{p.nombre}</span>
@@ -1021,7 +1021,7 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(1)}
-              className={`${boton} flex-1 bg-blue-600 text-white hover:bg-blue-700`}
+              className={`${boton} flex-1 bg-blue-800 text-white hover:bg-blue-900`}
             >
               {paciente ? `Continuar con ${paciente.nombre.split(" ")[0]}` : "Continuar"}
             </button>
@@ -1040,9 +1040,9 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 1 && (
-        <section className={`flex flex-col gap-3 rounded-2xl border-2 ${COLOR_PASO[1].seccion} p-4 shadow-sm`}>
+        <section className={`flex flex-col gap-3 rounded-2xl border ${COLOR_PASO[1].seccion} p-5 shadow-[0_1px_3px_rgba(23,21,15,0.08)]`}>
           <div>
-            <h2 className={`font-bold ${COLOR_PASO[1].titulo}`}>¿Lleva cristales?</h2>
+            <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[1].titulo}`}>¿Lleva cristales?</h2>
             <p className="text-sm text-tinta-suave">
               Cada par es un lente completo (un multifocal es un solo par). Si lleva más de dos,
               toca &quot;＋ Agregar otro par&quot;.
@@ -1153,7 +1153,7 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(2)}
-              className={`${boton} flex-1 bg-violet-600 text-white hover:bg-violet-700`}
+              className={`${boton} flex-1 bg-violet-800 text-white hover:bg-violet-900`}
             >
               Continuar
             </button>
@@ -1163,9 +1163,9 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 2 && (
-        <section className={`flex flex-col gap-3 rounded-2xl border-2 ${COLOR_PASO[2].seccion} p-4 shadow-sm`}>
+        <section className={`flex flex-col gap-3 rounded-2xl border ${COLOR_PASO[2].seccion} p-5 shadow-[0_1px_3px_rgba(23,21,15,0.08)]`}>
           <div>
-            <h2 className={`font-bold ${COLOR_PASO[2].titulo}`}>¿Lleva armazón u otro producto?</h2>
+            <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[2].titulo}`}>¿Lleva armazón u otro producto?</h2>
             <p className="text-sm text-tinta-suave">
               {lineasCristal.length > 0
                 ? "Elige el marco de cada lente."
@@ -1250,7 +1250,7 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(3)}
-              className={`${boton} flex-1 bg-amber-500 text-white hover:bg-amber-600`}
+              className={`${boton} flex-1 bg-amber-700 text-white hover:bg-amber-800`}
             >
               Continuar al pago
             </button>
@@ -1260,9 +1260,9 @@ export default function PuntoDeVenta({
 
       {/* ---------------------------------------------------------------- */}
       {paso === 3 && (
-        <section className={`flex flex-col gap-3 rounded-2xl border-2 ${COLOR_PASO[3].seccion} p-4 shadow-sm`}>
+        <section className={`flex flex-col gap-3 rounded-2xl border ${COLOR_PASO[3].seccion} p-5 shadow-[0_1px_3px_rgba(23,21,15,0.08)]`}>
           <div>
-            <h2 className={`font-bold ${COLOR_PASO[3].titulo}`}>Cobro</h2>
+            <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[3].titulo}`}>Cobro</h2>
             <p className="text-sm text-tinta-suave">
               {paciente ? `Venta a ${paciente.nombre}.` : "Venta sin paciente."} Revisa antes de cobrar.
             </p>
@@ -1295,7 +1295,7 @@ export default function PuntoDeVenta({
                 key={i}
                 type="button"
                 onClick={() => setAbono(formatearMonto(monto))}
-                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-green-800 transition hover:bg-green-600 hover:text-white"
+                className="rounded-full border border-emerald-800/25 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-800 hover:text-white"
               >
                 {i === 0 ? `Paga todo (${clp(total)})` : `Mitad (${clp(monto)})`}
               </button>
@@ -1304,7 +1304,7 @@ export default function PuntoDeVenta({
               <button
                 type="button"
                 onClick={() => setAbono(formatearMonto(abonoMinimo))}
-                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-green-800 transition hover:bg-green-600 hover:text-white"
+                className="rounded-full border border-emerald-800/25 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-800 hover:text-white"
               >
                 Abono mínimo ({clp(abonoMinimo)})
               </button>
@@ -1339,7 +1339,7 @@ export default function PuntoDeVenta({
               type="button"
               onClick={cobrar}
               disabled={guardando || carrito.length === 0}
-              className={`${boton} flex-1 bg-green-600 text-white hover:bg-green-700`}
+              className={`${boton} flex-1 bg-emerald-800 text-white hover:bg-emerald-900`}
             >
               {guardando ? "Registrando…" : `Cobrar ${clp(montoACobrar)}`}
             </button>
