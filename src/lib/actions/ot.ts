@@ -108,6 +108,10 @@ export async function actualizarOT(formData: FormData) {
     .from("ordenes_trabajo")
     .update({
       ...marcos,
+      // La descripción del marco no mueve stock: se puede corregir siempre,
+      // también en órdenes con venta (ej. una que quedó "sin marco").
+      marco_descripcion: String(formData.get("marco_descripcion") ?? "").trim().slice(0, 120) || null,
+      marco_descripcion_2: String(formData.get("marco_descripcion_2") ?? "").trim().slice(0, 120) || null,
       posicion: parsearPosicion(formData.get("posicion")),
       posicion_2: parsearPosicion(formData.get("posicion_2")),
       origen_cristal: parsearOrigen(formData.get("origen_cristal")),

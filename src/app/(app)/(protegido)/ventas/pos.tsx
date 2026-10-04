@@ -90,6 +90,8 @@ type LineaCarrito = {
   // reposición), pero el cupo queda "lleno" igual — sin esto quedaba
   // indistinguible de que a la vendedora se le olvidó registrar el marco.
   marcoPropio?: boolean;
+  // Marco descrito en palabras ("acetato rojo"), sin cargarlo al inventario.
+  marcoDescrito?: string;
 };
 
 // La venta se arma en cuatro pasos, uno por pantalla, en vez de mostrar
@@ -458,22 +460,31 @@ function FilaLente({
 // con apuro era fácil que el marco del Lente 2 quedara guardado como si
 // fuera el del Lente 1. Ahora cada lente tiene su propio buscador y su
 // propio marco elegido, sin ambigüedad.
+const TIPOS_MARCO = ["acetato", "metal", "semi al aire", "al aire", "TR90"];
+const COLORES_MARCO = ["negro", "café", "carey", "dorado", "plateado", "rojo", "azul", "rosado", "transparente", "gris"];
+
 function SelectorArmazon({
   etiqueta,
   productos,
   elegido,
   onElegir,
   onMarcarPropio,
+  onDescribir,
 }: {
   etiqueta: string;
   productos: Producto[];
   elegido: LineaCarrito | undefined;
   onElegir: (producto: Producto | null) => void;
+  onDescribir: (descripcion: string) => void;
   // El paciente trae su propio marco: no sale de nuestro stock, así que no
   // hay nada que buscar ni elegir del inventario.
   onMarcarPropio: () => void;
 }) {
   const [busca, setBusca] = useState("");
+  const [tipoMarco, setTipoMarco] = useState("");
+  const [colorMarco, setColorMarco] = useState("");
+  const [verInventario, setVerInventario] = useState(false);
+  const descripcion = [tipoMarco, colorMarco.trim().toLowerCase()].filter(Boolean).join(" ");
   const armazones = useMemo(() => productos.filter((p) => p.categoria === "armazon"), [productos]);
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
@@ -501,6 +512,51 @@ function SelectorArmazon({
         </div>
       ) : (
         <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 rounded-lg bg-amber-50 p-2.5">
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-900">Describe el marco</p>
+            <div className="flex flex-wrap gap-1.5">
+              {TIPOS_MARCO.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTipoMarco(t)}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${
+                    tipoMarco === t ? "border-amber-800 bg-amber-800 text-white" : "border-amber-800/25 bg-white text-amber-900"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {COLORES_MARCO.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColorMarco(c)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                    colorMarco === c ? "border-tinta bg-tinta text-white" : "border-tinta/20 bg-white text-tinta"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+            <input
+              value={colorMarco}
+              onChange={(e) => setColorMarco(e.target.value)}
+              placeholder="Color u otro detalle (ej. carey con dorado)"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
+            />
+            <button
+              type="button"
+              disabled={!tipoMarco || !colorMarco.trim()}
+              onClick={() => onDescribir(descripcion)}
+              className="rounded-lg bg-amber-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40"
+            >
+              {tipoMarco && colorMarco.trim() ? `Usar: marco ${descripcion}` : "Elige tipo y color"}
+            </button>
+          </div>
           <button
             type="button"
             onClick={onMarcarPropio}
@@ -508,6 +564,17 @@ function SelectorArmazon({
           >
             👓 El paciente trae su propio marco
           </button>
+          {armazones.length > 0 && !verInventario && (
+            <button
+              type="button"
+              onClick={() => setVerInventario(true)}
+              className="text-left text-xs font-semibold text-amber-900 underline"
+            >
+              Buscar en el inventario ({armazones.length} marcos cargados)
+            </button>
+          )}
+          {verInventario && (
+          <>
           <input
             type="search"
             value={busca}
@@ -536,6 +603,8 @@ function SelectorArmazon({
               </li>
             )}
           </ul>
+          </>
+          )}
         </div>
       )}
     </fieldset>
@@ -649,6 +718,12 @@ export default function PuntoDeVenta({
     .filter((l): l is LineaCarrito & { armazonSlot: number } => l.armazonSlot !== undefined)
     .sort((a, b) => a.armazonSlot - b.armazonSlot);
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
+  // Pares sin marco: antes se podía cobrar igual y la orden salía "sin
+  // marco" al laboratorio. Ahora cada par necesita su marco (del
+  // inventario, descrito o del paciente) para seguir al pago.
+  const paresSinMarco = lineasCristal
+    .map((l) => numeroDePar(l.key))
+    .filter((n) => !carrito.some((c) => c.key === `armazon-${n}`));
   // Abono mínimo: cubre mandar a hacer estos cristales al laboratorio, así
   // no hay que poner plata propia mientras se espera el pago del saldo.
   // Un lente de cortesía (precio $0) no tiene nada que abonar — no tiene
@@ -712,6 +787,23 @@ export default function PuntoDeVenta({
         precioUnitario: 0,
         armazonSlot: numero,
         marcoPropio: true,
+      },
+    ]);
+  }
+
+  // Marco descrito en palabras: no sale del inventario (no descuenta stock),
+  // pero queda en la orden y en el pedido de cristales.
+  function describirMarco(numero: number, descripcion: string) {
+    const key = `armazon-${numero}`;
+    setCarrito((prev) => [
+      ...prev.filter((l) => l.key !== key),
+      {
+        key,
+        descripcion: `Marco ${descripcion}`,
+        cantidad: 1,
+        precioUnitario: 0,
+        armazonSlot: numero,
+        marcoDescrito: descripcion,
       },
     ]);
   }
@@ -844,6 +936,7 @@ export default function PuntoDeVenta({
         slot: l.armazonSlot,
         productoId: l.productoId ?? null,
         marcoPropio: l.marcoPropio ?? false,
+        descripcion: l.marcoDescrito ?? null,
       })),
       abonoInicial: Math.max(0, Math.min(montoANumero(abono), total)),
       medioPago,
@@ -1189,6 +1282,7 @@ export default function PuntoDeVenta({
                     elegido={carrito.find((c) => c.key === `armazon-${numero}`)}
                     onElegir={(p) => elegirArmazon(numero, p)}
                     onMarcarPropio={() => marcarMarcoPropio(numero)}
+                    onDescribir={(d) => describirMarco(numero, d)}
                   />
                 );
               })}
@@ -1250,9 +1344,12 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(3)}
+              disabled={paresSinMarco.length > 0}
               className={`${boton} flex-1 bg-amber-700 text-white hover:bg-amber-800`}
             >
-              Continuar al pago
+              {paresSinMarco.length > 0
+                ? `Falta el marco del par ${paresSinMarco.join(", ")}`
+                : "Continuar al pago"}
             </button>
           </div>
         </section>

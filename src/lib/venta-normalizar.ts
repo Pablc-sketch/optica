@@ -32,7 +32,9 @@ export type CristalPedido = {
   posicion?: "lejos" | "cerca" | null;
 };
 
-export type ArmazonPedido = { slot: Cupo; productoId: string | null; marcoPropio: boolean };
+// Un marco es del inventario (productoId), del paciente (marcoPropio) o
+// descrito en palabras ("acetato rojo"), sin cargarlo al inventario.
+export type ArmazonPedido = { slot: Cupo; productoId: string | null; marcoPropio: boolean; descripcion?: string | null };
 
 export type ItemPedido = {
   productoId?: string | null;

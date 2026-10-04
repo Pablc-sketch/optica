@@ -154,6 +154,8 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       return {
         [`armazon_producto_id${sufijo}`]: marco?.marcoPropio ? null : (marco?.productoId ?? null),
         [`marco_propio${sufijo}`]: marco?.marcoPropio ?? false,
+        [`marco_descripcion${sufijo}`]:
+          marco && !marco.marcoPropio && !marco.productoId ? (marco.descripcion ?? "").trim().slice(0, 120) || null : null,
         [`tipo_lente${sufijo}`]: x.c.tipoLente,
         [`rango_receta${sufijo}`]: x.c.rangoReceta,
         [`tratamiento${sufijo}`]: x.c.tratamiento,

@@ -35,7 +35,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       .select(
         `id, folio, estado, tipo_lente, rango_receta, tratamiento, origen_cristal, proveedor_lab_id, posicion,
          armazon_producto_id, marco_propio, tipo_lente_2, rango_receta_2, tratamiento_2, armazon_producto_id_2,
-         marco_propio_2, posicion_2, origen_cristal_2,
+         marco_propio_2, posicion_2, origen_cristal_2, marco_descripcion, marco_descripcion_2,
          fecha_ingreso, fecha_entrega_estimada, fecha_entrega_real, notas,
          pacientes:paciente_id (nombre, rut, telefono, diabetes, hipertension, glaucoma, cirugia_ocular, alergias),
          recetas:receta_id (fecha, tipo, od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, av_od, av_oi, dp, altura, notas),
@@ -97,8 +97,9 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
     if (!tipo) return "—";
     return distancia === "lejos" || distancia === "cerca" ? `${tipo} ${distancia}` : tipo;
   };
-  const fmtMarco = (m: Marco | null, propio: boolean) => {
+  const fmtMarco = (m: Marco | null, propio: boolean, descrito?: string | null) => {
     if (propio) return "Marco propio del paciente";
+    if (descrito) return `Marco ${descrito}`;
     return m ? `${m.sku ? `[${m.sku}] ` : ""}${m.marca ?? ""} ${m.nombre} ${m.color ?? ""}`.trim() : "—";
   };
 
@@ -155,6 +156,15 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                   ))}
                 </select>
               </label>
+              <label className="flex flex-col gap-1 text-sm font-medium">
+                O descríbelo (si no está en inventario)
+                <input
+                  name="marco_descripcion"
+                  defaultValue={ot.marco_descripcion ?? ""}
+                  placeholder="Ej. acetato rojo, metal dorado, semi al aire negro"
+                  className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+                />
+              </label>
               <label className="flex items-center gap-2 text-sm font-medium">
                 <input type="checkbox" name="marco_propio" defaultChecked={ot.marco_propio} className="h-4 w-4" />
                 El paciente trae su propio marco (no descuenta stock)
@@ -192,6 +202,15 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                       </option>
                     ))}
                   </select>
+                </label>
+              <label className="flex flex-col gap-1 text-sm font-medium">
+                  O descríbelo (si no está en inventario)
+                  <input
+                    name="marco_descripcion_2"
+                    defaultValue={ot.marco_descripcion_2 ?? ""}
+                    placeholder="Ej. acetato rojo, metal dorado, semi al aire negro"
+                    className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+                  />
                 </label>
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input type="checkbox" name="marco_propio_2" defaultChecked={ot.marco_propio_2} className="h-4 w-4" />
@@ -384,7 +403,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
             )}
           </p>
           <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento ?? "—"}</p>
-          <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco, ot.marco_propio)}</p>
+          <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco, ot.marco_propio, ot.marco_descripcion)}</p>
         </div>
 
         {tieneSegundoCristal && (
@@ -398,7 +417,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
               )}
             </p>
             <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento_2 ?? "—"}</p>
-            <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco2, ot.marco_propio_2)}</p>
+            <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco2, ot.marco_propio_2, ot.marco_descripcion_2)}</p>
           </div>
         )}
 
