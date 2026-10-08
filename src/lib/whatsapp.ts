@@ -1,12 +1,8 @@
 // Texto y links de WhatsApp, sin React para poder probarlo.
 
-// Emojis que se ven bien en cualquier WhatsApp (un solo símbolo, sin
-// combinaciones). Todo otro emoji o símbolo "elegante" se quita: algunos
-// teléfonos los mostraban como "?" o como un cuadrito.
-const EMOJIS_SEGUROS = new Set(["📅", "🕐", "📍", "👓", "✅", "💳", "😊", "🙏", "📞", "⏰", "🏠", "💬", "👋"]);
-
-// Deja el texto en caracteres que CUALQUIER WhatsApp sabe mostrar: letras
-// (con tildes y ñ), números, puntuación de teclado y los emojis de arriba.
+// Deja el texto SOLO con letras (con tildes y ñ), números y puntuación de
+// teclado. Sin emojis: WhatsApp Web los recibe rotos desde el link y los
+// muestra como "?" (pasó con el aviso de entrega de Mi Familia Educa).
 export function normalizarParaWhatsapp(texto: string): string {
   const base = texto
     .normalize("NFC")
@@ -15,15 +11,16 @@ export function normalizarParaWhatsapp(texto: string): string {
     .replace(/[\u201c\u201d\u00ab\u00bb]/g, '"')
     .replace(/[\u2022\u00b7]/g, "-")
     .replace(/\u2026/g, "...")
-    .replace(/[\u00a0\u2007\u202f]/g, " ")
-    .replace(/[\ufe0f\u200d\ufffd]/g, "");
+    .replace(/[\u00a0\u2007\u202f]/g, " ");
   let limpio = "";
   for (const ch of base) {
     const cp = ch.codePointAt(0)!;
-    const latino = cp < 0x250; // ASCII + letras latinas con tilde, ñ, ¿, ¡
-    if (latino || ch === "\n" || EMOJIS_SEGUROS.has(ch)) limpio += ch;
+    if (cp < 0x250 || ch === "\n") limpio += ch;
   }
-  return limpio.replace(/[ \t]+\n/g, "\n");
+  return limpio
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 // Con qué WhatsApp se abre cada mensaje. Se recuerda en cada aparato.

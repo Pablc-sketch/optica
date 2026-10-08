@@ -2,14 +2,11 @@ import { describe, expect, it } from "vitest";
 import { linkWhatsapp, normalizarParaWhatsapp } from "../src/lib/whatsapp";
 
 describe("normalizarParaWhatsapp", () => {
-  it("deja tildes, ñ y los emojis seguros", () => {
-    expect(normalizarParaWhatsapp("📅 *Miércoles* — año ñandú 👓")).toBe("📅 *Miércoles* - año ñandú 👓");
+  it("deja tildes y ñ, y quita todos los emojis", () => {
+    expect(normalizarParaWhatsapp("Hola 👋 Miércoles — ñandú 📅")).toBe("Hola Miércoles - ñandú");
   });
-  it("quita emojis compuestos y símbolos raros", () => {
-    expect(normalizarParaWhatsapp("Hola 👨‍👩‍👧 ✨ “listo” • ok…")).toBe('Hola   "listo" - ok...');
-  });
-  it("quita el selector de variación que algunos teléfonos muestran como cuadrito", () => {
-    expect(normalizarParaWhatsapp("⏰️ hora")).toBe("⏰ hora");
+  it("cambia comillas y viñetas raras por las de teclado", () => {
+    expect(normalizarParaWhatsapp("“listo” • ok…")).toBe('"listo" - ok...');
   });
 });
 

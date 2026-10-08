@@ -56,7 +56,7 @@ export default async function Avisos({ searchParams }: { searchParams: Promise<{
         telefonoWsp: telefonoParaWhatsapp(paciente.telefono),
         detalle: saldo > 0 ? "saldo pendiente" : "pagado",
         monto: saldo,
-        valores: { saldo: saldo > 0 ? clp(saldo) : "$0 (ya está pagado)", optica: nombreOptica },
+        valores: { saldo: saldo > 0 ? clp(saldo) : "nada, ya está pagado", optica: nombreOptica },
       },
     ];
   });

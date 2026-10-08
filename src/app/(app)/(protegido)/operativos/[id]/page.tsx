@@ -315,7 +315,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       detalle: saldo > 0 ? "saldo pendiente" : "pagado",
       monto: saldo,
       valores: {
-        saldo: saldo > 0 ? clp(saldo) : "$0 (ya está pagado)",
+        saldo: saldo > 0 ? clp(saldo) : "nada, ya está pagado",
         fecha: fechaEntregaConDia,
         hora: operativo.hora_entrega ?? "(falta definir la hora)",
         // Dirección del operativo, con el lugar de entrega entre paréntesis

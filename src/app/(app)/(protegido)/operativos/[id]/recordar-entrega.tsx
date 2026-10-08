@@ -10,7 +10,7 @@ const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "
 function fechaConDia(iso: string): string {
   const [a, m, d] = iso.split("-").map(Number);
   const dia = DIAS[new Date(Date.UTC(a, m - 1, d)).getUTCDay()];
-  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${a} (${dia})`;
+  return `${dia} ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
 }
 
 // Aviso de entrega por WhatsApp con la fecha, la hora y el lugar editables
@@ -33,12 +33,13 @@ export default function RecordarEntrega({
 }) {
   const [fecha, setFecha] = useState(operativo.fecha_entrega_estimada ?? "");
   const [hora, setHora] = useState(operativo.hora_entrega ?? "");
-  const [lugar, setLugar] = useState(operativo.lugar_entrega ?? "");
+  const [lugar, setLugar] = useState(operativo.lugar_entrega ?? operativo.direccion ?? "");
   const [estado, setEstado] = useState<string | null>(null);
   const [guardando, iniciar] = useTransition();
 
-  const lugarTexto =
-    operativo.direccion && lugar && lugar !== operativo.direccion ? `${operativo.direccion} (${lugar})` : (operativo.direccion ?? lugar);
+  // Un solo lugar: el que se escribe acá; si queda vacío, la dirección del
+  // operativo. Antes se juntaban los dos y salía el nombre repetido.
+  const lugarTexto = lugar.trim() || operativo.direccion || "";
 
   const conDatos = destinatarios.map((d) => ({
     ...d,
@@ -73,8 +74,14 @@ export default function RecordarEntrega({
         <input name="hora_entrega" value={hora} onChange={(e) => setHora(e.target.value)} placeholder="10:00 a 13:00" className={campo} />
       </label>
       <label className="flex flex-col gap-1 text-xs font-semibold text-green-900">
-        Lugar
-        <input name="lugar_entrega" value={lugar} onChange={(e) => setLugar(e.target.value)} placeholder="Sede central" className={campo} />
+        Lugar de retiro
+        <input
+          name="lugar_entrega"
+          value={lugar}
+          onChange={(e) => setLugar(e.target.value)}
+          placeholder={operativo.direccion ?? "Ej. Escuela Mi Familia Educa"}
+          className={campo}
+        />
       </label>
       <div className="flex items-center gap-3 sm:col-span-3">
         <button
@@ -96,20 +103,15 @@ export default function RecordarEntrega({
       abierto={abierto}
       arriba={editor}
       plantillaInicial={[
-        "Hola {nombre} 👋",
+        "Hola {nombre}, sus lentes están listos.",
         "",
-        "Sus lentes ya están listos para retirar:",
+        "Retiro: *{fecha}, {hora}*",
+        "Lugar: *{lugar}*",
+        "Saldo a pagar: *{saldo}*",
         "",
-        "📅 *{fecha}*",
-        "🕐 *{hora}*",
-        "📍 *{lugar}*",
-        "",
-        "💳 Saldo por pagar al retirar: *{saldo}*",
-        "",
-        "Si no puede venir ese día, avísenos o mande a otra persona con su nombre y RUT.",
-        "¡Gracias! {optica} 👓",
+        "{optica}",
       ].join("\n")}
-      ayudaMarcadores="{nombre} {fecha} {hora} {lugar} {saldo} {optica} se reemplazan solos. Entre *asteriscos* sale en negrita. Los signos o emojis que algunos teléfonos no muestran se quitan solos."
+      ayudaMarcadores="{nombre} {fecha} {hora} {lugar} {saldo} {optica} se reemplazan solos. Entre *asteriscos* sale en negrita al enviarlo. Los emojis se quitan solos porque WhatsApp Web los muestra como signos."
       destinatarios={conDatos}
     />
   );
