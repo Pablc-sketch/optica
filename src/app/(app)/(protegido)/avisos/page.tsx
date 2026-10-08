@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { telefonoParaWhatsapp } from "@/lib/formato";
 import { clp } from "@/lib/clp";
 import RecordarEntrega from "../operativos/[id]/recordar-entrega";
-import type { DestinatarioWsp } from "../operativos/[id]/enviar-whatsapp";
+import { cargarVentasParaAviso, clasificarAvisos, destinatariosDeAvisos } from "@/lib/avisos";
 
 // Avisos de entrega por WhatsApp, en una pantalla liviana: elegir el
 // operativo, ajustar fecha y horario, y mandar. La ficha completa del
@@ -24,42 +24,21 @@ export default async function Avisos({ searchParams }: { searchParams: Promise<{
   const operativos = operativosRes.data ?? [];
   const elegidoId = op ?? operativos[0]?.id;
 
-  const [operativoRes, ventasRes] = elegidoId
-    ? await Promise.all([
-        supabase
-          .from("operativos")
-          .select("id, nombre, direccion, fecha_entrega_estimada, hora_entrega, lugar_entrega")
-          .eq("id", elegidoId)
-          .maybeSingle(),
-        supabase
-          .from("ventas")
-          .select("id, total, pacientes:paciente_id (nombre, telefono), pagos_abonos (monto)")
-          .eq("operativo_id", elegidoId)
-          .eq("anulada", false)
-          .order("fecha", { ascending: false }),
-      ])
-    : [{ data: null }, { data: [] }];
-
+  const operativoRes = elegidoId
+    ? await supabase
+        .from("operativos")
+        .select("id, nombre, direccion, fecha_entrega_estimada, hora_entrega, lugar_entrega")
+        .eq("id", elegidoId)
+        .maybeSingle()
+    : { data: null, error: null };
   const operativo = operativoRes.data;
   const nombreOptica = tenantRes.data?.nombre_comercial ?? "la óptica";
-  type Pac = { nombre: string; telefono: string | null };
-  const destinatarios: DestinatarioWsp[] = (ventasRes.data ?? []).flatMap((v) => {
-    const raw = v.pacientes as unknown as Pac | Pac[] | null;
-    const paciente = Array.isArray(raw) ? raw[0] : raw;
-    if (!paciente) return [];
-    const abonado = (v.pagos_abonos ?? []).reduce((s: number, p: { monto: number }) => s + p.monto, 0);
-    const saldo = Math.max(0, v.total - abonado);
-    return [
-      {
-        id: v.id,
-        nombre: paciente.nombre,
-        telefonoWsp: telefonoParaWhatsapp(paciente.telefono),
-        detalle: saldo > 0 ? "saldo pendiente" : "pagado",
-        monto: saldo,
-        valores: { saldo: saldo > 0 ? clp(saldo) : "nada, ya está pagado", optica: nombreOptica },
-      },
-    ];
-  });
+  const { ventas, error: errorVentas } = operativo
+    ? await cargarVentasParaAviso(supabase, operativo.id)
+    : { ventas: [], error: null };
+  const { listos, enProceso } = clasificarAvisos(ventas);
+  const destinatarios = destinatariosDeAvisos(listos, telefonoParaWhatsapp, clp, nombreOptica);
+  const errorLectura = operativosRes.error?.message ?? operativoRes.error?.message ?? errorVentas;
 
   return (
     <div className="flex flex-col gap-4">
@@ -80,7 +59,12 @@ export default async function Avisos({ searchParams }: { searchParams: Promise<{
             {o.nombre}
           </Link>
         ))}
-        {operativos.length === 0 && <p className="text-sm text-tinta-suave">Todavía no hay operativos.</p>}
+        {operativos.length === 0 && !operativosRes.error && (
+          <p className="text-sm text-tinta-suave">Todavía no hay operativos.</p>
+        )}
+        {operativosRes.error && (
+          <p className="text-sm font-semibold text-red-700">No se pudieron leer los operativos. Recarga la página.</p>
+        )}
       </div>
 
       {operativo && (
@@ -89,6 +73,8 @@ export default async function Avisos({ searchParams }: { searchParams: Promise<{
           abierto
           operativo={operativo}
           destinatarios={destinatarios}
+          enProceso={enProceso.map((p) => p.nombre)}
+          error={errorLectura}
         />
       )}
     </div>

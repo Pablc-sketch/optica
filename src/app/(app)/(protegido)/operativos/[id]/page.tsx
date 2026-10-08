@@ -15,6 +15,7 @@ import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib
 import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 import { type CatalogoLaboratorio } from "@/lib/costo-fides";
 import EliminarOperativo from "./eliminar-operativo";
+import { cargarVentasParaAviso, clasificarAvisos, destinatariosDeAvisos } from "@/lib/avisos";
 import { origenCristal, precioVentaCristal, type PotenciasReceta } from "@/lib/precio-venta";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
@@ -297,35 +298,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     ? fechaConDia(operativo.fecha_entrega_estimada)
     : fechaEntregaTexto;
 
-  // 1. Recordar la entrega a quien compró y todavía tiene el lente acá.
-  //    Va con el saldo por pagar, que es el otro motivo por el que se
-  //    manda: llegan sabiendo cuánto tienen que traer.
-  const paraRecordarEntrega: DestinatarioWsp[] = ventas
-    .map((v) => {
-      const paciente = uno(v.pacientes as unknown as PacienteRel);
-      const abonado = (v.pagos_abonos ?? []).reduce((s, p) => s + p.monto, 0);
-      const saldo = Math.max(0, v.total - abonado);
-      return { v, paciente, saldo };
-    })
-    .filter(({ paciente }) => Boolean(paciente))
-    .map(({ v, paciente, saldo }) => ({
-      id: v.id,
-      nombre: paciente!.nombre,
-      telefonoWsp: telefonoParaWhatsapp(paciente!.telefono),
-      detalle: saldo > 0 ? "saldo pendiente" : "pagado",
-      monto: saldo,
-      valores: {
-        saldo: saldo > 0 ? clp(saldo) : "nada, ya está pagado",
-        fecha: fechaEntregaConDia,
-        hora: operativo.hora_entrega ?? "(falta definir la hora)",
-        // Dirección del operativo, con el lugar de entrega entre paréntesis
-        // si es distinto (ej. "San Pablo 7558 (Sede central del
-        // condominio)") — la dirección sola no dice a cuál sede ir dentro
-        // de un condominio grande.
-        lugar: direccionConLugar ?? "(falta definir el lugar)",
-        optica: nombreOptica,
-      },
-    }));
+  // 1. Avisar la entrega: solo a quien tiene al menos un par LISTO (F04),
+  //    agrupado por paciente y con el saldo de cada venta una sola vez.
+  const avisos = await cargarVentasParaAviso(supabase, operativo.id);
+  const clasificados = clasificarAvisos(avisos.ventas);
+  const paraRecordarEntrega = destinatariosDeAvisos(clasificados.listos, telefonoParaWhatsapp, clp, nombreOptica);
 
   // 2. Cotizarle a quien se atendió y no compró. El precio sale de la
   //    sugerencia que dejó el tecnólogo en la receta, cruzada con la
@@ -920,6 +897,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           lugar_entrega: operativo.lugar_entrega,
         }}
         destinatarios={paraRecordarEntrega}
+        enProceso={clasificados.enProceso.map((p) => p.nombre)}
+        error={avisos.error}
       />
 
       <EnviarWhatsapp
@@ -1024,19 +1003,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
-            Fecha de entrega (cuando se vuelve a dejar los lentes)
-            <input
-              type="date"
-              name="fecha_entrega_estimada"
-              defaultValue={operativo.fecha_entrega_estimada ?? ""}
-              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
-            />
-            <span className="text-xs font-normal text-sky-700">
-              Todas las ventas de este operativo quedan con esta misma fecha de entrega, en vez de calcularla
-              venta por venta.
-            </span>
-          </label>
+          {/* La fecha de entrega se edita solo en "Avisar la entrega" (F02). */}
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900 sm:col-span-2">
             Notas
             <textarea

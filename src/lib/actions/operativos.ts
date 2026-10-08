@@ -125,7 +125,8 @@ export async function actualizarOperativo(formData: FormData) {
       fecha_fin: parsearFechaFin(formData.get("fecha_fin"), fecha),
       hora_inicio: parsearHora(formData.get("hora_inicio")),
       hora_fin: parsearHora(formData.get("hora_fin")),
-      fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,
+      // La fecha de entrega NO se escribe acá (F02): solo la cambia
+      // actualizarEntregaOperativo. Así editar el nombre no la borra.
       tipo_venue: (TIPOS_VENUE as readonly string[]).includes(tipoVenue) ? tipoVenue : null,
       direccion: String(formData.get("direccion") ?? "").trim() || null,
       notas: String(formData.get("notas") ?? "").trim() || null,
@@ -337,16 +338,21 @@ export async function actualizarEntregaOperativo(formData: FormData): Promise<{ 
   const id = String(formData.get("id") ?? "");
   const fecha = String(formData.get("fecha_entrega_estimada") ?? "").trim();
   if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, error: "Fecha inválida." };
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("operativos")
     .update({
       fecha_entrega_estimada: fecha || null,
       hora_entrega: String(formData.get("hora_entrega") ?? "").trim().slice(0, 60) || null,
       lugar_entrega: String(formData.get("lugar_entrega") ?? "").trim().slice(0, 120) || null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  // Sin error pero sin filas = no se guardó nada (sin permiso o no existe).
+  // No decir "guardado" en ese caso.
+  if (!data || data.length === 0) return { ok: false, error: "No se guardó: el operativo no existe o no tienes permiso." };
   revalidatePath(`/operativos/${id}`);
+  revalidatePath("/operativos/calendario");
   revalidatePath("/avisos");
   return { ok: true };
 }

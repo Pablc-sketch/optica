@@ -75,6 +75,7 @@ export default function EnviarWhatsapp({
   colorBoton = "bg-green-600 hover:bg-green-700",
   abierto = false,
   arriba,
+  bloqueo = null,
 }: {
   titulo: string;
   descripcion: string;
@@ -85,6 +86,8 @@ export default function EnviarWhatsapp({
   abierto?: boolean;
   // Algo que va arriba del mensaje (por ejemplo, editar fecha y hora).
   arriba?: React.ReactNode;
+  // Si hay un motivo, no se abre ningún chat (ej. cambios sin guardar).
+  bloqueo?: string | null;
 }) {
   const [modo, setModo] = useModoEnvio();
   const [plantilla, setPlantilla] = useState(plantillaInicial);
@@ -140,7 +143,11 @@ export default function EnviarWhatsapp({
         ))}
       </div>
 
-      {conTelefono.length > 0 && (
+      {bloqueo && conTelefono.length > 0 && (
+        <p className="mt-3 rounded-lg bg-amber-100 px-3 py-2.5 text-sm font-semibold text-amber-900">{bloqueo}</p>
+      )}
+
+      {conTelefono.length > 0 && !bloqueo && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
           {siguiente ? (
             <button
@@ -219,7 +226,7 @@ export default function EnviarWhatsapp({
                 >
                   {verPrevia === d.id ? "Ocultar" : "Ver"}
                 </button>
-                <a
+                {!bloqueo && <a
                   href={linkWhatsapp(modo, d.telefonoWsp!, texto)}
                   target={modo === "business" ? undefined : "_blank"}
                   rel="noopener noreferrer"
@@ -227,7 +234,7 @@ export default function EnviarWhatsapp({
                   className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition ${enviado ? "bg-tinta-suave" : colorBoton}`}
                 >
                   {enviado ? "Abierto ✓ · reabrir" : "Abrir chat"}
-                </a>
+                </a>}
               </div>
               {verPrevia === d.id && (
                 <pre className="mt-2 rounded-lg bg-crema-claro px-3 py-2 text-xs whitespace-pre-wrap">{texto}</pre>

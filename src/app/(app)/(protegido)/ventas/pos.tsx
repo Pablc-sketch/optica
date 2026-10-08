@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { encolarVenta } from "@/lib/offline/outbox";
 import { MAX_PARES } from "@/lib/venta-normalizar";
+import { resolverContextoVenta } from "@/lib/contexto-venta";
 import type { SugerenciaExtra } from "@/lib/sugerencias";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
@@ -645,6 +646,10 @@ export default function PuntoDeVenta({
   }, [paso]);
   const [pacienteId, setPacienteId] = useState<string>("");
   const [operativoId, setOperativoId] = useState<string>("");
+  // Operativo de la jornada, fijado a mano ("hoy estamos en Educa"). Manda
+  // sobre el operativo de la receta y se mantiene entre una venta y otra.
+  const [operativoSesion, setOperativoSesion] = useState<string>("");
+  const [avisoContexto, setAvisoContexto] = useState<string | null>(null);
   const [buscaPaciente, setBuscaPaciente] = useState("");
   const [buscaProducto, setBuscaProducto] = useState("");
   const [carrito, setCarrito] = useState<LineaCarrito[]>([]);
@@ -862,7 +867,16 @@ export default function PuntoDeVenta({
     // la venta queda ligada a ese mismo operativo — para que el cierre de
     // "cuánto se vendió en tal operativo" no dependa de que la vendedora se
     // acuerde de elegirlo a mano.
-    if (r?.operativo_id) setOperativoId(r.operativo_id);
+    // F01: el operativo se resuelve de nuevo para CADA paciente; nunca queda
+    // pegado el del paciente anterior (ver lib/contexto-venta.ts).
+    const contexto = resolverContextoVenta(operativoSesion || null, id ? recetasPorPaciente[id]?.operativo_id : null);
+    setOperativoId(contexto.operativoId ?? "");
+    const otro = contexto.recetaDeOtroOperativo ? operativos.find((o) => o.id === contexto.recetaDeOtroOperativo) : null;
+    setAvisoContexto(
+      contexto.recetaDeOtroOperativo
+        ? `Su receta es de otro operativo (${otro?.nombre ?? "otro"}). La venta queda en el operativo de hoy.`
+        : null
+    );
     if (!r) {
       setIniciales([null, null]);
       return;
@@ -893,7 +907,8 @@ export default function PuntoDeVenta({
     setCarrito([]);
     setAbono("");
     setPacienteId("");
-    setOperativoId("");
+    setOperativoId(operativoSesion);
+    setAvisoContexto(null);
     setBuscaPaciente("");
     setBuscaProducto("");
     setIniciales([null, null]);
@@ -1054,8 +1069,17 @@ export default function PuntoDeVenta({
 
           {operativos.length > 0 && (
             <label className="flex flex-col gap-1 text-sm font-medium">
-              Operativo (si es en terreno)
-              <select value={operativoId} onChange={(e) => setOperativoId(e.target.value)} className={select}>
+              Operativo de hoy (si es en terreno)
+              <select
+                value={operativoId}
+                onChange={(e) => {
+                  // Elegirlo a mano lo fija para toda la jornada.
+                  setOperativoId(e.target.value);
+                  setOperativoSesion(e.target.value);
+                  setAvisoContexto(null);
+                }}
+                className={select}
+              >
                 <option value="">— Sin especificar —</option>
                 {operativos.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -1065,10 +1089,18 @@ export default function PuntoDeVenta({
               </select>
             </label>
           )}
-          {receta?.operativo_id && receta.operativo_id === operativoId && (
-            <p className="rounded-lg bg-blue-100 px-3 py-2 text-xs font-medium text-blue-900">
-              Operativo tomado de la receta del paciente.
+          {operativoSesion && (
+            <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900">
+              Operativo fijado para todas las ventas de hoy. Elige &quot;Sin especificar&quot; para venta particular.
             </p>
+          )}
+          {!operativoSesion && receta?.operativo_id && receta.operativo_id === operativoId && (
+            <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900">
+              Operativo tomado de la receta de este paciente.
+            </p>
+          )}
+          {avisoContexto && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">{avisoContexto}</p>
           )}
 
           <input

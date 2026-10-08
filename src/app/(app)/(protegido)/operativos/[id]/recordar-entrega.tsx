@@ -19,6 +19,8 @@ function fechaConDia(iso: string): string {
 export default function RecordarEntrega({
   operativo,
   destinatarios,
+  enProceso = [],
+  error = null,
   abierto = false,
 }: {
   operativo: {
@@ -29,25 +31,36 @@ export default function RecordarEntrega({
     lugar_entrega: string | null;
   };
   destinatarios: DestinatarioWsp[];
+  // Compraron pero ningún par está listo: no se les dice "listo".
+  enProceso?: string[];
+  error?: string | null;
   abierto?: boolean;
 }) {
   const [fecha, setFecha] = useState(operativo.fecha_entrega_estimada ?? "");
   const [hora, setHora] = useState(operativo.hora_entrega ?? "");
   const [lugar, setLugar] = useState(operativo.lugar_entrega ?? operativo.direccion ?? "");
   const [estado, setEstado] = useState<string | null>(null);
+  // Lo último guardado en la base: el mensaje usa SOLO esto (F06). Lo que
+  // se está escribiendo y no se guardó no viaja a nadie.
+  const [guardado, setGuardado] = useState({
+    fecha: operativo.fecha_entrega_estimada ?? "",
+    hora: operativo.hora_entrega ?? "",
+    lugar: operativo.lugar_entrega ?? operativo.direccion ?? "",
+  });
+  const sinGuardar = fecha !== guardado.fecha || hora !== guardado.hora || lugar !== guardado.lugar;
   const [guardando, iniciar] = useTransition();
 
   // Un solo lugar: el que se escribe acá; si queda vacío, la dirección del
   // operativo. Antes se juntaban los dos y salía el nombre repetido.
-  const lugarTexto = lugar.trim() || operativo.direccion || "";
+  const lugarTexto = guardado.lugar.trim() || operativo.direccion || "";
 
   const conDatos = destinatarios.map((d) => ({
     ...d,
     valores: {
       ...d.valores,
-      fecha: fecha ? fechaConDia(fecha) : "(falta definir la fecha)",
-      hora: hora || "(falta definir la hora)",
-      lugar: lugarTexto || "(falta definir el lugar)",
+      fecha: guardado.fecha ? fechaConDia(guardado.fecha) : "",
+      hora: guardado.hora,
+      lugar: lugarTexto,
     },
   }));
 
@@ -59,6 +72,7 @@ export default function RecordarEntrega({
         iniciar(async () => {
           setEstado(null);
           const r = await actualizarEntregaOperativo(fd);
+          if (r.ok) setGuardado({ fecha, hora, lugar });
           setEstado(r.ok ? "✓ Guardado" : (r.error ?? "No se pudo guardar"));
         })
       }
@@ -98,14 +112,38 @@ export default function RecordarEntrega({
     </form>
   );
 
+  // No se abre ningún chat con datos sin guardar o incompletos.
+  const bloqueo = sinGuardar
+    ? "Hay cambios sin guardar en la fecha, el horario o el lugar. Toca \"Guardar fecha y horario\" antes de enviar."
+    : !guardado.fecha || !guardado.hora.trim() || !lugarTexto
+      ? "Falta la fecha, el horario o el lugar de retiro. Complétalos y guarda antes de enviar."
+      : null;
+
+  const extra = (
+    <>
+      {editor}
+      {error && (
+        <p className="mt-3 rounded-lg bg-red-100 px-3 py-2 text-sm font-semibold text-red-800">
+          No se pudieron leer las ventas de este operativo: {error}. Recarga la página; no es que no haya nadie.
+        </p>
+      )}
+      {enProceso.length > 0 && (
+        <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs text-tinta-suave">
+          <b>Todavía no están listos</b> (no reciben este aviso): {enProceso.join(", ")}.
+        </p>
+      )}
+    </>
+  );
+
   return (
     <EnviarWhatsapp
+      bloqueo={bloqueo}
       titulo="Avisar la entrega"
-      descripcion="A quienes compraron en este operativo. Ajusta la fecha y el horario, revisa el mensaje y ábrelos uno por uno."
+      descripcion="Solo a quienes tienen al menos un par LISTO para retirar. Ajusta la fecha y el horario, guarda, y ábrelos uno por uno."
       abierto={abierto}
-      arriba={editor}
+      arriba={extra}
       plantillaInicial={[
-        "Hola {nombre}, sus lentes están listos.",
+        "Hola {nombre}, {listos}.",
         "",
         "Retiro: *{fecha}, {hora}*",
         "Lugar: *{lugar}*",
@@ -113,7 +151,7 @@ export default function RecordarEntrega({
         "",
         "{optica}",
       ].join("\n")}
-      ayudaMarcadores="{nombre} {fecha} {hora} {lugar} {saldo} {optica} se reemplazan solos. Entre *asteriscos* sale en negrita al enviarlo. Los emojis se quitan solos porque WhatsApp Web los muestra como signos."
+      ayudaMarcadores="{nombre} {listos} {fecha} {hora} {lugar} {saldo} {optica} se reemplazan solos. Entre *asteriscos* sale en negrita al enviarlo. Los emojis se quitan solos porque WhatsApp Web los muestra como signos."
       destinatarios={conDatos}
     />
   );
