@@ -194,9 +194,11 @@ export default async function VentasPage() {
           <ul className="flex flex-col gap-2">
             {porEntregar.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 shadow-sm">
+                {/* El nombre en su propia línea y completo: en el celular se
+                    cortaba y había que guiarse por el teléfono. */}
                 <Link
                   href={`/ventas/${p.id}/comprobante`}
-                  className="min-w-0 flex-1 truncate text-sm font-semibold text-amber-950 hover:underline"
+                  className="w-full text-base font-semibold break-words text-amber-950 hover:underline"
                 >
                   {p.nombre}
                 </Link>
@@ -244,13 +246,30 @@ export default async function VentasPage() {
               const entregaParcial = entregadas > 0 && !todoEntregado;
               return (
                 <li key={v.id} className={`rounded-xl px-4 py-3 shadow-sm ${v.anulada ? "bg-neutral-100 opacity-70" : "bg-crema-claro"}`}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-tinta-suave">
-                      {new Date(v.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {/* Nombre completo arriba, en su propia línea (en el celular
+                      se cortaba); debajo, lo que abonó y lo que debe. */}
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 text-base font-semibold break-words">
                       {(v.pacientes as unknown as { nombre: string } | null)?.nombre ?? "Sin paciente"}
                     </span>
+                    <span className="shrink-0 text-xs text-tinta-suave">
+                      {new Date(v.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
+                    </span>
+                  </div>
+                  {!v.anulada && (
+                    <p className="mt-0.5 text-sm tabular-nums">
+                      Total <b>{clp(v.total)}</b> · Abonó <b>{clp(abonado)}</b>
+                      {saldo > 0 ? (
+                        <>
+                          {" "}
+                          · <b className="text-red-700">Debe {clp(saldo)}</b>
+                        </>
+                      ) : (
+                        <span className="font-semibold text-green-700"> · Pagado</span>
+                      )}
+                    </p>
+                  )}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
                     {!v.anulada && (
                       <TelefonoPaciente
                         telefono={(v.pacientes as unknown as { telefono: string | null } | null)?.telefono ?? null}
@@ -278,7 +297,7 @@ export default async function VentasPage() {
                         Entregado {entregadas} de {totalOts}
                       </span>
                     )}
-                    <span className="font-bold">{clp(v.total)}</span>
+                    {v.anulada && <span className="font-bold">{clp(v.total)}</span>}
                     <Link
                       href={`/ventas/${v.id}/comprobante`}
                       className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-tinta-suave transition hover:bg-white"

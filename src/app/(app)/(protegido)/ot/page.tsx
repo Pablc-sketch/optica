@@ -130,7 +130,7 @@ export default async function TableroOT() {
                         )}
                         <EliminarOT otId={ot.id} folio={ot.folio} compacto />
                       </div>
-                      <p className="truncate text-sm font-medium">{paciente?.nombre ?? "—"}</p>
+                      <p className="min-w-0 break-words text-sm font-medium">{paciente?.nombre ?? "—"}</p>
                       <p className="truncate text-xs text-tinta-suave">
                         {[ot.tipo_lente, ot.posicion ? `(${ot.posicion})` : null, ot.tratamiento]
                           .filter(Boolean)

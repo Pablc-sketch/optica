@@ -114,7 +114,7 @@ export default async function Dashboard() {
           <p className="text-sm text-sky-800">📅 Próximo operativo</p>
           {proximo ? (
             <>
-              <p className="mt-1 truncate text-lg font-bold text-sky-950">{proximo.nombre}</p>
+              <p className="mt-1 min-w-0 break-words text-lg font-bold text-sky-950">{proximo.nombre}</p>
               <Link href={`/operativos/${proximo.id}`} className="text-xs font-medium text-sky-700 hover:underline">
                 {fechaLegible(proximo.fecha)} →
               </Link>
@@ -134,7 +134,7 @@ export default async function Dashboard() {
                 <span className="rounded-md bg-white px-2 py-0.5 text-xs font-bold text-brand-dark">
                   #{ot.folio}
                 </span>
-                <span className="flex-1 truncate text-sm font-medium">
+                <span className="flex-1 min-w-0 break-words text-sm font-medium">
                   {(ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—"}
                 </span>
                 <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-brand-dark">
@@ -159,7 +159,7 @@ export default async function Dashboard() {
                 <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-bold text-brand-dark">
                   #{ot.folio}
                 </span>
-                <span className="flex-1 truncate text-sm font-medium">
+                <span className="flex-1 min-w-0 break-words text-sm font-medium">
                   {(ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—"}
                 </span>
                 <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-medium text-tinta-suave">

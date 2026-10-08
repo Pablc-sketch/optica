@@ -105,7 +105,7 @@ export default function BuscarOTCliente({
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${estado.clase}`}>
                     {estado.label}
                   </span>
-                  <span className="flex-1 truncate text-sm font-medium">{ot.pacientes?.nombre ?? "—"}</span>
+                  <span className="flex-1 min-w-0 break-words text-sm font-medium">{ot.pacientes?.nombre ?? "—"}</span>
                   {ot.pacientes?.rut && (
                     <span className="text-xs text-tinta-suave">{formatearRut(ot.pacientes.rut)}</span>
                   )}

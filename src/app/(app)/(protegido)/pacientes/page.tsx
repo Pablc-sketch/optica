@@ -84,7 +84,7 @@ export default async function PacientesPage({
           {pacientes.map((p) => (
             <li key={p.id} className="flex items-center gap-1 rounded-xl bg-crema-claro shadow-sm transition hover:bg-white">
               <Link href={`/pacientes/${p.id}`} className="flex flex-1 items-center gap-3 px-4 py-3">
-                <span className="flex-1 truncate font-medium">{p.nombre}</span>
+                <span className="flex-1 min-w-0 break-words font-medium">{p.nombre}</span>
                 <span className="text-sm text-tinta-suave">{formatearRut(p.rut)}</span>
                 <span className="hidden text-sm text-tinta-suave sm:inline">
                   {formatearTelefono(p.telefono)}

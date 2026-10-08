@@ -51,7 +51,7 @@ export default function FiltroPagos({ pagos }: { pagos: PagoDetalle[] }) {
           filtrados.map((p, i) => (
             <div key={i} className="flex items-center gap-2 text-sm">
               <span className="text-xs text-tinta-suave">{fechaLegible(p.fecha.slice(0, 10))}</span>
-              <span className="flex-1 truncate">{p.paciente ?? "Sin paciente"}</span>
+              <span className="flex-1 min-w-0 break-words">{p.paciente ?? "Sin paciente"}</span>
               <span className="rounded-full bg-crema-claro px-2 py-0.5 text-xs font-medium text-tinta-suave">
                 {MEDIOS_PAGO[p.medioPago] ?? p.medioPago}
               </span>

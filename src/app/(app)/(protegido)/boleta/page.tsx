@@ -79,7 +79,7 @@ export default async function BoletaPage() {
                   <details>
                     <summary className="flex cursor-pointer flex-wrap items-center gap-2">
                       <span className="text-xs text-tinta-suave">{fechaLegible(diaEnChile(v.fecha))}</span>
-                      <span className="flex-1 truncate text-sm font-medium">
+                      <span className="flex-1 min-w-0 break-words text-sm font-medium">
                         {p?.nombre ?? "Sin paciente"}
                         {p?.rut ? ` · ${formatearRut(p.rut)}` : ""}
                       </span>

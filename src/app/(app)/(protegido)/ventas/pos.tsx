@@ -1096,7 +1096,7 @@ export default function PuntoDeVenta({
                     pacienteId === p.id ? "bg-blue-800 text-white" : "border border-tinta/10 bg-white hover:bg-blue-50"
                   }`}
                 >
-                  <span className="flex-1 truncate font-medium">{p.nombre}</span>
+                  <span className="flex-1 min-w-0 break-words font-medium">{p.nombre}</span>
                   <span className={pacienteId === p.id ? "text-xs" : "text-xs text-tinta-suave"}>
                     {formatearRut(p.rut)}
                   </span>
