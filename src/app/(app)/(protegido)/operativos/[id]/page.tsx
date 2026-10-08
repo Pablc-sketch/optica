@@ -6,6 +6,7 @@ import { formatearRut } from "@/lib/rut";
 import { formatearTelefono, telefonoParaWhatsapp } from "@/lib/formato";
 import { nombreCristal, rangoParaPosicion } from "@/lib/cristales";
 import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
+import RecordarEntrega from "./recordar-entrega";
 import ContactosOperativo from "../contactos-operativo";
 import { fechaConDia, fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
@@ -910,28 +911,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         </div>
       </details>
 
-      <EnviarWhatsapp
-        titulo="Recordar la entrega"
-        descripcion={`Entrega: ${fechaEntregaTexto}${operativo.hora_entrega ? `, ${operativo.hora_entrega}` : ""}${operativo.lugar_entrega ? ` · ${operativo.lugar_entrega}` : ""}. La hora y el lugar se editan más abajo en "Costos, metas y entrega", y la fecha en "Editar datos del operativo".`}
-        plantillaInicial={[
-          "Hola {nombre}!",
-          "",
-          "Le recordamos que sus lentes ya están listos para retirar:",
-          "",
-          "📅 *{fecha}*",
-          "🕐 *{hora}*",
-          "📍 *{lugar}*",
-          "",
-          "Saldo por pagar al retirar: *{saldo}*",
-          "",
-          "Si no puede venir ese día, avísenos o mande a otra persona a retirarlo con su nombre y RUT.",
-          "¡Gracias! - {optica}",
-        ].join("\n")}
-        ayudaMarcadores={
-          'Marcadores: {nombre} {fecha} {hora} {lugar} {saldo} {optica} — se reemplazan solos por los datos ' +
-          'de cada persona. Lo que va entre *asteriscos* sale en negrita en WhatsApp — no soporta color de texto, ' +
-          "así que la negrita es lo más que se puede destacar."
-        }
+      <RecordarEntrega
+        operativo={{
+          id: operativo.id,
+          direccion: operativo.direccion,
+          fecha_entrega_estimada: operativo.fecha_entrega_estimada,
+          hora_entrega: operativo.hora_entrega,
+          lugar_entrega: operativo.lugar_entrega,
+        }}
         destinatarios={paraRecordarEntrega}
       />
 

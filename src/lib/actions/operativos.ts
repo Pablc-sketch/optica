@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearTelefono } from "@/lib/formato";
+import { requerirPerfil } from "@/lib/autorizacion";
 
 const TIPOS_VENUE = [
   "condominio",
@@ -331,4 +332,25 @@ export async function eliminarOperativoVacio(id: string): Promise<{ ok: boolean;
   revalidatePath("/operativos");
   revalidatePath("/operativos/calendario");
   redirect("/operativos");
+}
+
+// Fecha, hora y lugar de la entrega, editados desde el mismo recuadro del
+// aviso por WhatsApp (sin tener que ir a "Editar datos del operativo").
+export async function actualizarEntregaOperativo(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const { supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
+  const id = String(formData.get("id") ?? "");
+  const fecha = String(formData.get("fecha_entrega_estimada") ?? "").trim();
+  if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, error: "Fecha inválida." };
+  const { error } = await supabase
+    .from("operativos")
+    .update({
+      fecha_entrega_estimada: fecha || null,
+      hora_entrega: String(formData.get("hora_entrega") ?? "").trim().slice(0, 60) || null,
+      lugar_entrega: String(formData.get("lugar_entrega") ?? "").trim().slice(0, 120) || null,
+    })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/operativos/${id}`);
+  revalidatePath("/avisos");
+  return { ok: true };
 }
