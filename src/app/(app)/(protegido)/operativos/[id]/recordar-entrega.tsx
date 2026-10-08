@@ -91,7 +91,9 @@ export default function RecordarEntrega({
           {guardando ? "Guardando…" : "Guardar fecha y horario"}
         </button>
         {estado && <span className="text-sm font-medium text-green-900">{estado}</span>}
-        <span className="text-xs text-tinta-suave">El mensaje de abajo ya usa lo que escribas.</span>
+        <span className="text-xs text-tinta-suave">
+          Este es el único lugar donde se anota la entrega. El mensaje ya usa lo que escribas.
+        </span>
       </div>
     </form>
   );

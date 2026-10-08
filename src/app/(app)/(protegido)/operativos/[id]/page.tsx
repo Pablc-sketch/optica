@@ -1055,7 +1055,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       </details>
 
       <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
-        <summary className="cursor-pointer font-semibold text-sky-800">💰 Costos, metas y entrega</summary>
+        <summary className="cursor-pointer font-semibold text-sky-800">💰 Costos y metas</summary>
         <form action={actualizarDetallesOperativo} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={operativo.id} />
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
@@ -1097,26 +1097,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             Meta de utilidad (opcional)
             <CampoMonto name="meta_utilidad" defaultValue={operativo.meta_utilidad} placeholder="200000" />
           </label>
-          {/* Hora y lugar de la entrega: es lo que va en el WhatsApp de
-              recordatorio, y suele ser distinto de donde se atendió. */}
-          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
-            Hora de entrega
-            <input
-              name="hora_entrega"
-              defaultValue={operativo.hora_entrega ?? ""}
-              placeholder="10:00 a 12:00"
-              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
-            Lugar de entrega
-            <input
-              name="lugar_entrega"
-              defaultValue={operativo.lugar_entrega ?? ""}
-              placeholder="Sede central del condominio"
-              className="rounded-lg border border-sky-200 bg-white px-3 py-2.5 text-base outline-none focus:border-sky-600"
-            />
-          </label>
+          {/* Hora y lugar de la entrega se editan en un solo lugar: el
+              recuadro "Avisar la entrega" (acá arriba y en Avisos). */}
           <div className="sm:col-span-2">
             <button className="rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white transition hover:bg-sky-800">
               Guardar

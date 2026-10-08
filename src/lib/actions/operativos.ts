@@ -185,12 +185,8 @@ export async function actualizarDetallesOperativo(formData: FormData) {
       meta_examenes: parsearMetaOpcional(formData.get("meta_examenes")),
       meta_ventas: parsearMetaOpcional(formData.get("meta_ventas")),
       meta_utilidad: parsearMetaOpcional(formData.get("meta_utilidad")),
-      // Hora y lugar de la entrega: texto libre a propósito ("10:00 a
-      // 12:00", "Sede central del condominio"), porque es lo que se copia
-      // tal cual al WhatsApp de recordatorio y cada operativo lo dice a su
-      // manera.
-      hora_entrega: String(formData.get("hora_entrega") ?? "").trim() || null,
-      lugar_entrega: String(formData.get("lugar_entrega") ?? "").trim() || null,
+      // Hora y lugar de la entrega ya no van acá: se editan solo en el
+      // recuadro del aviso (actualizarEntregaOperativo).
     })
     .eq("id", id);
   if (error) throw error;
