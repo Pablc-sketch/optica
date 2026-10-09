@@ -1,36 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { clp } from "@/lib/clp";
-import { formatearTelefono } from "@/lib/formato";
-import AbonoForm from "@/components/abono-form";
 import PuntoDeVenta from "./pos";
 import { leerSugerenciasExtra } from "@/lib/sugerencias";
-import AnularVenta from "./anular-venta";
-
-// El número tocable: en el celular abre el marcador con el número puesto,
-// que es como se usa de verdad en el mesón — nadie copia un teléfono a
-// mano para llamar. Cuando falta, se dice, para poder pedirlo ahí mismo
-// en vez de descubrirlo al querer llamar.
-function TelefonoPaciente({ telefono }: { telefono: string | null }) {
-  const digitos = String(telefono ?? "").replace(/\D/g, "");
-  if (digitos.length < 8) {
-    return <span className="rounded-full bg-neutral-200 px-2.5 py-0.5 text-xs text-neutral-600">Sin teléfono</span>;
-  }
-  return (
-    <a
-      href={`tel:+${digitos.startsWith("56") ? digitos : `56${digitos}`}`}
-      className="rounded-full bg-sky-700 px-2.5 py-1 text-xs font-bold text-white transition hover:bg-sky-800"
-    >
-      📞 {formatearTelefono(telefono)}
-    </a>
-  );
-}
-
-const ESTADO_PAGO: Record<string, { label: string; clase: string }> = {
-  pendiente: { label: "Pendiente", clase: "bg-red-100 text-red-700" },
-  abono_parcial: { label: "Abono parcial", clase: "bg-amber-100 text-amber-700" },
-  pagada: { label: "Pagada", clase: "bg-green-100 text-green-700" },
-};
 
 export default async function VentasPage() {
   const supabase = await createClient();
@@ -39,7 +10,7 @@ export default async function VentasPage() {
   } = await supabase.auth.getUser();
 
   const [
-    pacientesRes, productosRes, costosRes, tenantRes, ventasRes, porEntregarRes, perfilRes, sucursalRes,
+    pacientesRes, productosRes, costosRes, tenantRes, perfilRes, sucursalRes,
     recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, promoRes, operativosRes,
   ] = await Promise.all([
     // Hasta 2.000: el buscador del punto de venta filtra en el navegador, así
@@ -60,25 +31,6 @@ export default async function VentasPage() {
       )
       .order("tipo_lente"),
     supabase.from("tenants").select("factor_venta_cristales, descuento_laboratorio_pct").single(),
-    supabase
-      .from("ventas")
-      .select(
-        `id, fecha, total, estado_pago, anulada, anulada_motivo,
-         pacientes:paciente_id (nombre, telefono), pagos_abonos (monto),
-         venta_items (cristal_slot, ordenes_trabajo:ot_id (estado))`
-      )
-      .order("fecha", { ascending: false })
-      .limit(20),
-    // Lo que está listo y nadie ha venido a buscar. Va aparte de "últimas
-    // ventas" a propósito: acá no importa que sea reciente, importa que
-    // siga esperando — y alguien puede no haber pasado en semanas.
-    supabase
-      .from("ventas")
-      .select(
-        `id, total, pacientes:paciente_id (nombre, telefono), pagos_abonos (monto),
-         venta_items (cristal_slot, ordenes_trabajo:ot_id (estado))`
-      )
-      .eq("anulada", false),
     supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
     supabase
@@ -110,7 +62,6 @@ export default async function VentasPage() {
       .order("fecha", { ascending: false }),
   ]);
 
-  const ventas = ventasRes.data ?? [];
 
   // Última receta por paciente: la OT creada desde el POS la enlaza sola
   // (también offline), y sus esfera/cilindro + sugerencia dejan la venta
@@ -121,31 +72,6 @@ export default async function VentasPage() {
       recetasPorPaciente[r.paciente_id] = { ...r, sugerencias_extra: leerSugerenciasExtra(r.sugerencias_extra) };
     }
   }
-
-  // Quién tiene su lente terminado y todavía no ha venido a buscarlo. Se
-  // mira el estado "listo" de cada orden: lo que sigue en laboratorio
-  // todavía no se puede entregar, y lo ya entregado no corresponde. Se
-  // ordena por lo que falta cobrar, que es lo que conviene tener a mano
-  // primero cuando la persona llega al mesón.
-  const porEntregar = (porEntregarRes.data ?? [])
-    .map((v) => {
-      const listos = (v.venta_items ?? []).filter((i) => {
-        const rel = (i as { ordenes_trabajo?: unknown }).ordenes_trabajo;
-        const filas = (Array.isArray(rel) ? rel : rel ? [rel] : []) as { estado: string }[];
-        return filas.some((f) => f.estado === "listo");
-      });
-      const paciente = v.pacientes as unknown as { nombre: string; telefono: string | null } | null;
-      const abonado = (v.pagos_abonos ?? []).reduce((s: number, p: { monto: number }) => s + p.monto, 0);
-      return {
-        id: v.id,
-        nombre: paciente?.nombre ?? "Sin paciente",
-        telefono: paciente?.telefono ?? null,
-        pares: listos.length,
-        saldo: Math.max(0, v.total - abonado),
-      };
-    })
-    .filter((v) => v.pares > 0)
-    .sort((a, b) => b.saldo - a.saldo);
 
   return (
     <div className="flex flex-col gap-8">
@@ -179,155 +105,14 @@ export default async function VentasPage() {
         />
       </div>
 
-      {porEntregar.length > 0 && (
-        <section>
-          <h2 className="mb-1 font-semibold">
-            Falta por entregar{" "}
-            <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-bold text-white">
-              {porEntregar.length}
-            </span>
-          </h2>
-          <p className="mb-3 text-xs text-tinta-suave">
-            Lentes terminados que nadie ha venido a buscar. El monto es lo que falta cobrar al
-            entregar.
-          </p>
-          <ul className="flex flex-col gap-2">
-            {porEntregar.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 shadow-sm">
-                {/* El nombre en su propia línea y completo: en el celular se
-                    cortaba y había que guiarse por el teléfono. */}
-                <Link
-                  href={`/ventas/${p.id}/comprobante`}
-                  className="w-full text-base font-semibold break-words text-amber-950 hover:underline"
-                >
-                  {p.nombre}
-                </Link>
-                {p.pares > 1 && (
-                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-amber-900">
-                    {p.pares} pares
-                  </span>
-                )}
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                    p.saldo > 0 ? "bg-red-600 text-white" : "bg-green-600 text-white"
-                  }`}
-                >
-                  {p.saldo > 0 ? `Debe ${clp(p.saldo)}` : "Pagado"}
-                </span>
-                <TelefonoPaciente telefono={p.telefono} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section>
-        <h2 className="mb-3 font-semibold">Últimas ventas</h2>
-        {ventas.length === 0 ? (
-          <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">Sin ventas registradas.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {ventas.map((v) => {
-              const abonado = (v.pagos_abonos ?? []).reduce((s: number, p: { monto: number }) => s + p.monto, 0);
-              const saldo = v.total - abonado;
-              const estado = ESTADO_PAGO[v.estado_pago] ?? ESTADO_PAGO.pendiente;
-              // Al marcar una orden como entregada desaparece de la lista
-              // de pendientes — que es lo correcto para la cola de
-              // trabajo, pero en medio de una entrega deja la duda de si
-              // quedó guardada. Acá se ve el estado de las órdenes de
-              // cada venta, para poder confirmarlo de una mirada.
-              const totalOts = (v.venta_items ?? []).filter((i) => i.cristal_slot !== null).length;
-              const entregadas = (v.venta_items ?? []).filter((i) => {
-                const rel = (i as { ordenes_trabajo?: unknown }).ordenes_trabajo;
-                const filas = (Array.isArray(rel) ? rel : rel ? [rel] : []) as { estado: string }[];
-                return filas.some((f) => f.estado === "entregado");
-              }).length;
-              const todoEntregado = totalOts > 0 && entregadas === totalOts;
-              const entregaParcial = entregadas > 0 && !todoEntregado;
-              return (
-                <li key={v.id} className={`rounded-xl px-4 py-3 shadow-sm ${v.anulada ? "bg-neutral-100 opacity-70" : "bg-crema-claro"}`}>
-                  {/* Nombre completo arriba, en su propia línea (en el celular
-                      se cortaba); debajo, lo que abonó y lo que debe. */}
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 text-base font-semibold break-words">
-                      {(v.pacientes as unknown as { nombre: string } | null)?.nombre ?? "Sin paciente"}
-                    </span>
-                    <span className="shrink-0 text-xs text-tinta-suave">
-                      {new Date(v.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
-                    </span>
-                  </div>
-                  {!v.anulada && (
-                    <p className="mt-0.5 text-sm tabular-nums">
-                      Total <b>{clp(v.total)}</b> · Abonó <b>{clp(abonado)}</b>
-                      {saldo > 0 ? (
-                        <>
-                          {" "}
-                          · <b className="text-red-700">Debe {clp(saldo)}</b>
-                        </>
-                      ) : (
-                        <span className="font-semibold text-green-700"> · Pagado</span>
-                      )}
-                    </p>
-                  )}
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    {!v.anulada && (
-                      <TelefonoPaciente
-                        telefono={(v.pacientes as unknown as { telefono: string | null } | null)?.telefono ?? null}
-                      />
-                    )}
-                    {v.anulada ? (
-                      <span className="rounded-full bg-neutral-300 px-2.5 py-0.5 text-xs font-semibold text-neutral-700">
-                        Anulada
-                      </span>
-                    ) : (
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${estado.clase}`}>
-                        {estado.label}
-                      </span>
-                    )}
-                    {/* Fondo lleno y no pastel como los demás: en pleno
-                        mesón hay que poder confirmar de un vistazo, sin
-                        acercarse a leer. */}
-                    {!v.anulada && todoEntregado && (
-                      <span className="rounded-full bg-green-600 px-2.5 py-0.5 text-xs font-bold tracking-wide text-white uppercase">
-                        ✓ Entregado
-                      </span>
-                    )}
-                    {!v.anulada && entregaParcial && (
-                      <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-bold tracking-wide text-white uppercase">
-                        Entregado {entregadas} de {totalOts}
-                      </span>
-                    )}
-                    {v.anulada && <span className="font-bold">{clp(v.total)}</span>}
-                    <Link
-                      href={`/ventas/${v.id}/comprobante`}
-                      className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-tinta-suave transition hover:bg-white"
-                    >
-                      🖨 Comprobante
-                    </Link>
-                    {!v.anulada && (
-                      <Link
-                        href={`/ventas/${v.id}`}
-                        className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-tinta-suave transition hover:bg-white"
-                      >
-                        ✎ Editar
-                      </Link>
-                    )}
-                    {!v.anulada && <AnularVenta ventaId={v.id} compacto />}
-                  </div>
-                  {v.anulada && v.anulada_motivo && (
-                    <p className="mt-1 text-xs italic text-tinta-suave">Motivo: {v.anulada_motivo}</p>
-                  )}
-                  {!v.anulada && saldo > 0 && (
-                    <div className="mt-2">
-                      <AbonoForm ventaId={v.id} saldo={saldo} />
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      <div className="flex flex-wrap gap-2">
+        <Link href="/cobros" className="rounded-xl bg-white px-4 py-3 text-sm font-semibold shadow-sm hover:bg-crema">
+          💵 Cobros y entregas →
+        </Link>
+        <Link href="/ventas/historial" className="rounded-xl bg-white px-4 py-3 text-sm font-semibold shadow-sm hover:bg-crema">
+          Historial de ventas (editar, anular) →
+        </Link>
+      </div>
     </div>
   );
 }

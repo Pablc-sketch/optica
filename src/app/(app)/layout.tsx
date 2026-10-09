@@ -15,7 +15,8 @@ const NAV = [
   { href: "/avisos", label: "Avisos" },
   { href: "/ot", label: "Órdenes" },
   { href: "/ot/buscar", label: "Buscar OT" },
-  { href: "/ventas", label: "Ventas" },
+  { href: "/ventas", label: "Vender" },
+  { href: "/cobros", label: "Cobros" },
   { href: "/boleta", label: "Boleta" },
   { href: "/laboratorio", label: "Laboratorio" },
   { href: "/inventario", label: "Inventario" },
@@ -28,7 +29,7 @@ const NAV = [
 // El rol "ventas" (vendedoras de mesón) solo necesita esto para atender:
 // buscar/avanzar órdenes y vender. Nada de precios de costo, reportes
 // financieros ni configuración.
-const NAV_VENTAS = ["/ot", "/ot/buscar", "/ventas", "/avisos"];
+const NAV_VENTAS = ["/ot", "/ot/buscar", "/ventas", "/cobros", "/avisos"];
 
 // Cabecera y menú: siempre visibles para cualquier pantalla dentro de
 // (app), incluida /suscripcion. El bloqueo por suscripción vencida vive

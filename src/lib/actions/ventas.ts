@@ -356,3 +356,65 @@ export async function actualizarVenta(formData: FormData) {
   revalidatePath("/");
   return { ok: true as const };
 }
+
+// Entregar los lentes de una venta: pasa a "entregado" las órdenes que
+// estaban LISTAS. No registra ningún pago: cobrar y entregar son dos
+// acciones distintas (una entrega no prueba un pago).
+export async function entregarVenta(ventaId: string): Promise<{ ok: boolean; entregadas?: number; error?: string }> {
+  let supabase;
+  try {
+    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas", "bodega"], suscripcion: true }));
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false, error: e.message };
+    throw e;
+  }
+  const { data: items, error: errItems } = await supabase.from("venta_items").select("ot_id").eq("venta_id", ventaId);
+  if (errItems) return { ok: false, error: errItems.message };
+  const ots = [...new Set((items ?? []).map((i) => i.ot_id).filter((x): x is string => Boolean(x)))];
+  if (ots.length === 0) return { ok: false, error: "Esta venta no tiene órdenes de trabajo." };
+  const { data, error } = await supabase
+    .from("ordenes_trabajo")
+    .update({ estado: "entregado", fecha_entrega_real: new Date().toISOString() })
+    .in("id", ots)
+    .eq("estado", "listo")
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) return { ok: false, error: "No había lentes listos para entregar en esta venta." };
+  revalidatePath("/cobros");
+  revalidatePath("/ot");
+  revalidatePath("/avisos");
+  revalidatePath("/");
+  return { ok: true, entregadas: data.length };
+}
+
+// Cobro desde la pantalla de Cobros, con respuesta clara (registrarAbono
+// es para formularios y no devuelve nada).
+export async function cobrarSaldo(input: {
+  ventaId: string;
+  operacionId: string;
+  monto: number;
+  medioPago: string;
+}): Promise<{ ok: boolean; aplicado?: number; error?: string }> {
+  let supabase;
+  try {
+    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false, error: e.message };
+    throw e;
+  }
+  if (!UUID.test(input.ventaId) || !UUID.test(input.operacionId)) return { ok: false, error: "Datos inválidos." };
+  if (!Number.isInteger(input.monto) || input.monto <= 0) return { ok: false, error: "El monto tiene que ser mayor a cero." };
+  if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
+  const { data, error } = await supabase.rpc("registrar_abono", {
+    p_id: input.operacionId,
+    p_venta_id: input.ventaId,
+    p_monto: input.monto,
+    p_medio_pago: input.medioPago,
+  });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/cobros");
+  revalidatePath("/ventas");
+  revalidatePath("/reportes");
+  revalidatePath("/");
+  return { ok: true, aplicado: (data as { aplicado: number } | null)?.aplicado ?? input.monto };
+}
