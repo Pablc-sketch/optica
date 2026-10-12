@@ -143,6 +143,14 @@ export default async function HistorialVentas() {
                     </Link>
                     {!v.anulada && (
                       <Link
+                        href={`/ventas/${v.id}/certificado-fonasa`}
+                        className="rounded-lg border border-brand/40 px-2 py-1 text-xs font-semibold text-brand-dark transition hover:bg-white"
+                      >
+                        📄 Certificado Fonasa
+                      </Link>
+                    )}
+                    {!v.anulada && (
+                      <Link
                         href={`/ventas/${v.id}`}
                         className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-tinta-suave transition hover:bg-white"
                       >

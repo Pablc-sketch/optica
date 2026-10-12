@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cobrarSaldo, entregarVenta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
@@ -128,6 +129,15 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
             📞
           </a>
         )}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold">
+        <Link href={`/ventas/${fila.ventaId}/certificado-fonasa`} className="text-brand-dark underline">
+          📄 Certificado Fonasa
+        </Link>
+        <Link href={`/ventas/${fila.ventaId}/comprobante`} className="text-tinta-suave underline">
+          🧾 Comprobante
+        </Link>
       </div>
 
       {abierto && (

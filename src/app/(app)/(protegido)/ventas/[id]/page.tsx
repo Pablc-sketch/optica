@@ -58,6 +58,14 @@ export default async function EditarVenta({ params }: { params: Promise<{ id: st
           >
             🖨 Comprobante
           </Link>
+          {!venta.anulada && (
+            <Link
+              href={`/ventas/${venta.id}/certificado-fonasa`}
+              className="rounded-lg border border-brand/40 px-3 py-1.5 text-sm font-semibold text-brand-dark transition hover:bg-crema"
+            >
+              📄 Certificado Fonasa
+            </Link>
+          )}
           {!venta.anulada && <AnularVenta ventaId={venta.id} />}
         </div>
       </div>

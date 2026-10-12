@@ -662,6 +662,9 @@ export default function PuntoDeVenta({
   // una segunda venta (A05).
   const [ventaId, setVentaId] = useState(() => crypto.randomUUID());
   const [mensaje, setMensaje] = useState<string | null>(null);
+  // La última venta registrada: para abrir al tiro su comprobante o su
+  // certificado Fonasa sin tener que buscarla.
+  const [ultimaVenta, setUltimaVenta] = useState<string | null>(null);
 
   const receta = pacienteId ? recetasPorPaciente[pacienteId] : undefined;
   // Lo que trae precargado cada fila cuando se elige el paciente — cada
@@ -981,6 +984,7 @@ export default function PuntoDeVenta({
       const resultado = await registrarVenta(venta);
       if (resultado.ok) {
         reiniciar();
+        setUltimaVenta(resultado.ventaId);
         setMensaje(
           (resultado.otFolios?.length ?? 0) > 1
             ? `✓ Venta registrada · Órdenes de trabajo ${resultado.otFolios!.map((f) => `#${f}`).join(", ")} creadas`
@@ -1054,6 +1058,22 @@ export default function PuntoDeVenta({
           }`}
         >
           {mensaje}
+          {ultimaVenta && mensaje.startsWith("✓ Venta registrada") && (
+            <span className="mt-2 flex flex-wrap gap-2">
+              <a
+                href={`/ventas/${ultimaVenta}/certificado-fonasa`}
+                className="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-brand-dark shadow-sm"
+              >
+                📄 Certificado Fonasa
+              </a>
+              <a
+                href={`/ventas/${ultimaVenta}/comprobante`}
+                className="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-tinta shadow-sm"
+              >
+                🧾 Comprobante
+              </a>
+            </span>
+          )}
         </p>
       )}
 
