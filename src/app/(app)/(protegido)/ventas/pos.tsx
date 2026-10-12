@@ -484,8 +484,16 @@ function SelectorArmazon({
   const [busca, setBusca] = useState("");
   const [tipoMarco, setTipoMarco] = useState("");
   const [colorMarco, setColorMarco] = useState("");
+  // El código o modelo del marco (lo que trae la etiqueta), aparte del
+  // color: así sale en el pedido sin tener que cargar el marco al inventario.
+  const [codigoMarco, setCodigoMarco] = useState("");
   const [verInventario, setVerInventario] = useState(false);
-  const descripcion = [tipoMarco, colorMarco.trim().toLowerCase()].filter(Boolean).join(" ");
+  const descripcion = [
+    [tipoMarco, colorMarco.trim().toLowerCase()].filter(Boolean).join(" "),
+    codigoMarco.trim() ? `cód. ${codigoMarco.trim().toUpperCase()}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const armazones = useMemo(() => productos.filter((p) => p.categoria === "armazon"), [productos]);
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
@@ -495,7 +503,7 @@ function SelectorArmazon({
 
   return (
     <fieldset className="flex-1 rounded-xl border border-amber-300 bg-white p-3">
-      <legend className="px-1 text-sm font-bold text-amber-900">Armazón — {etiqueta}</legend>
+      <legend className="px-1 text-base font-bold text-amber-900">Marco {etiqueta === "tu lente" ? "" : `del ${etiqueta}`}</legend>
       {elegido ? (
         <div
           className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 ${elegido.marcoPropio ? "bg-sky-100" : "bg-amber-100"}`}
@@ -549,13 +557,19 @@ function SelectorArmazon({
               placeholder="Color u otro detalle (ej. carey con dorado)"
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
             />
+            <input
+              value={codigoMarco}
+              onChange={(e) => setCodigoMarco(e.target.value)}
+              placeholder="Código o modelo (opcional, ej. 8821 C2)"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm uppercase outline-none focus:border-amber-500"
+            />
             <button
               type="button"
-              disabled={!tipoMarco || !colorMarco.trim()}
+              disabled={!tipoMarco || (!colorMarco.trim() && !codigoMarco.trim())}
               onClick={() => onDescribir(descripcion)}
               className="rounded-lg bg-amber-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40"
             >
-              {tipoMarco && colorMarco.trim() ? `Usar: marco ${descripcion}` : "Elige tipo y color"}
+              {tipoMarco && (colorMarco.trim() || codigoMarco.trim()) ? `Usar: marco ${descripcion}` : "Elige tipo y color (o código)"}
             </button>
           </div>
           <button
@@ -1319,7 +1333,9 @@ export default function PuntoDeVenta({
           </div>
 
           {lineasCristal.length > 0 && (
-            <div className="flex flex-col gap-3 sm:flex-row">
+            // Uno debajo del otro (no lado a lado): en el iPad el segundo
+            // quedaba angosto al costado y se pasaba por alto.
+            <div className="flex flex-col gap-4">
               {lineasCristal.map((l) => {
                 const numero = numeroDePar(l.key);
                 const etiqueta =
