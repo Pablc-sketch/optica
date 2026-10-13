@@ -16,6 +16,7 @@ import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 import { type CatalogoLaboratorio } from "@/lib/costo-fides";
 import EliminarOperativo from "./eliminar-operativo";
 import { cargarVentasParaAviso, clasificarAvisos, destinatariosDeAvisos } from "@/lib/avisos";
+import { totalConsultas } from "@/lib/consulta";
 import { origenCristal, precioVentaCristal, type PotenciasReceta } from "@/lib/precio-venta";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
@@ -242,10 +243,16 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // negocio y el resto dividido entre la mamá y Pablo. Usa "utilidadNeta"
   // (lo vendido, no solo lo cobrado) porque es la misma base que la meta
   // de utilidad y la que va a reportes — no la caja del momento.
+  // Las consultas ($5.000) suman a la caja y a la utilidad, pero no a la
+  // comisión de Isadora (lib/consulta.ts).
+  const totalConsultasOperativo = totalConsultas(
+    ventas.flatMap((v) => v.venta_items ?? []) as unknown as Parameters<typeof totalConsultas>[0]
+  );
   const sueldos = calcularSueldos(totalVendido, utilidadNeta, {
     comisionVendedoraPct: Number(operativo.comision_vendedora_pct),
     comisionVendedoraBase: operativo.comision_vendedora_base as BaseComision,
     ahorroPct: Number(operativo.ahorro_pct),
+    ventaSinComision: totalConsultasOperativo,
   });
   // Lo que falta transferir de verdad: el reparto de arriba menos lo que
   // cada persona ya sacó por adelantado contra este mismo operativo. Nunca

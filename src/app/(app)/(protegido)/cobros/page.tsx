@@ -2,6 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import TarjetaCobro, { type FilaCobro } from "./tarjeta-cobro";
+import RegistrarConsulta from "./registrar-consulta";
+import { esConsulta } from "@/lib/consulta";
 
 // Cobros y entregas, separado de la pantalla de vender: se elige el
 // operativo y se ve, grande y sin ruido, quién debe, cuánto, y si su lente
@@ -13,11 +15,12 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
   const vista: Vista = ver === "deben" || ver === "listos" || ver === "todos" ? ver : "pendientes";
   const supabase = await createClient();
 
-  const operativosRes = await supabase
-    .from("operativos")
-    .select("id, nombre, fecha")
-    .order("fecha", { ascending: false })
-    .limit(30);
+  const [operativosRes, tenantRes] = await Promise.all([
+    supabase.from("operativos").select("id, nombre, fecha").order("fecha", { ascending: false }).limit(30),
+    supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+  ]);
+  const pctDebito = Number(tenantRes.data?.comision_debito_pct ?? 0);
+  const pctCredito = Number(tenantRes.data?.comision_credito_pct ?? 0);
   const operativos = operativosRes.data ?? [];
   // "sin" = ventas particulares, sin operativo.
   const elegido = op ?? operativos[0]?.id ?? "sin";
@@ -25,8 +28,8 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
   let consulta = supabase
     .from("ventas")
     .select(
-      `id, total, fecha, pacientes:paciente_id (nombre, telefono), pagos_abonos (monto),
-       venta_items (ot_id, ordenes_trabajo:ot_id (id, estado, tipo_lente, tipo_lente_2))`
+      `id, total, fecha, pacientes:paciente_id (nombre, telefono), pagos_abonos (monto, medio_pago),
+       venta_items (descripcion, ot_id, ordenes_trabajo:ot_id (id, estado, tipo_lente, tipo_lente_2))`
     )
     .eq("anulada", false)
     .order("fecha", { ascending: false })
@@ -35,7 +38,23 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
   const ventasRes = await consulta;
 
   type Ot = { id: string; estado: string; tipo_lente: string | null; tipo_lente_2: string | null };
-  const filas: FilaCobro[] = (ventasRes.data ?? []).map((v) => {
+  const todas = ventasRes.data ?? [];
+  // Una venta de solo consultas no es una persona a quien cobrarle lentes.
+  const soloConsulta = (v: (typeof todas)[number]) =>
+    (v.venta_items ?? []).length > 0 && (v.venta_items ?? []).every((i) => esConsulta((i as { descripcion: string | null }).descripcion));
+
+  // Caja del operativo: lo cobrado por medio de pago (lentes y consultas) y
+  // lo que la máquina se queda de comisión, para comparar con Mercado Pago.
+  const pagos = todas.flatMap((v) => (v.pagos_abonos ?? []) as { monto: number; medio_pago: string | null }[]);
+  const porMedio = (m: string) => pagos.filter((p) => p.medio_pago === m).reduce((s, p) => s + p.monto, 0);
+  const debito = porMedio("debito");
+  const credito = porMedio("credito");
+  const transferencia = porMedio("transferencia");
+  const efectivo = pagos.filter((p) => !p.medio_pago || p.medio_pago === "efectivo").reduce((s, p) => s + p.monto, 0);
+  const comision = Math.round((debito * pctDebito + credito * pctCredito) / 100);
+  const consultas = todas.filter(soloConsulta).reduce((s, v) => s + v.total, 0);
+
+  const filas: FilaCobro[] = todas.filter((v) => !soloConsulta(v)).map((v) => {
     const pacRaw = v.pacientes as unknown as { nombre: string; telefono: string | null } | { nombre: string; telefono: string | null }[] | null;
     const paciente = Array.isArray(pacRaw) ? pacRaw[0] : pacRaw;
     const pagado = (v.pagos_abonos ?? []).reduce((s: number, p: { monto: number }) => s + p.monto, 0);
@@ -137,6 +156,36 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
               <p className="text-xs text-tinta-suave">{listos === 1 ? "persona" : "personas"}</p>
             </div>
           </div>
+
+          <details className="rounded-2xl bg-white p-4 shadow-sm">
+            <summary className="cursor-pointer">
+              <span className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">Caja del operativo · </span>
+              <span className="font-semibold">llega a la cuenta {clp(debito + credito + transferencia - comision)}</span>
+              <span className="text-sm text-tinta-suave"> · efectivo {clp(efectivo)}</span>
+            </summary>
+            <table className="mt-3 w-full text-sm tabular-nums">
+              <tbody>
+                <tr><td className="py-1">Débito</td><td className="text-right">{clp(debito)}</td></tr>
+                <tr><td className="py-1">Crédito</td><td className="text-right">{clp(credito)}</td></tr>
+                <tr><td className="py-1">Transferencia</td><td className="text-right">{clp(transferencia)}</td></tr>
+                <tr className="text-red-700">
+                  <td className="py-1">Comisión de la máquina ({pctDebito}% débito · {pctCredito}% crédito)</td>
+                  <td className="text-right">−{clp(comision)}</td>
+                </tr>
+                <tr className="border-t font-bold">
+                  <td className="py-1.5">Llega a la cuenta (Mercado Pago)</td>
+                  <td className="text-right">{clp(debito + credito + transferencia - comision)}</td>
+                </tr>
+                <tr><td className="py-1">Efectivo (en la mano)</td><td className="text-right">{clp(efectivo)}</td></tr>
+                <tr className="text-tinta-suave"><td className="py-1">De eso, consultas</td><td className="text-right">{clp(consultas)}</td></tr>
+              </tbody>
+            </table>
+            <p className="mt-2 text-xs text-tinta-suave">
+              La comisión es aproximada (Mercado Pago redondea cada cobro). Las tasas se cambian en Reportes.
+            </p>
+          </details>
+
+          <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} />
 
           <div className="flex flex-wrap gap-1.5">
             {(

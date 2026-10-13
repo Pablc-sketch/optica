@@ -88,3 +88,18 @@ describe("sumarDesgloses", () => {
     expect(total.partePablo).toBe(0);
   });
 });
+
+describe("consultas fuera de la comisión de la vendedora", () => {
+  it("la consulta suma a la utilidad pero no a la base del 10%", () => {
+    const sinConsulta = calcularSueldos(986000, 500000, { comisionVendedoraPct: 10, comisionVendedoraBase: "venta_total", ahorroPct: 20 });
+    const conConsulta = calcularSueldos(1006000, 520000, {
+      comisionVendedoraPct: 10,
+      comisionVendedoraBase: "venta_total",
+      ahorroPct: 20,
+      ventaSinComision: 20000,
+    });
+    expect(conConsulta.comisionIsadora).toBe(sinConsulta.comisionIsadora);
+    expect(conConsulta.ventaTotal).toBe(1006000);
+    expect(conConsulta.utilidadDisponible).toBe(sinConsulta.utilidadDisponible + 20000);
+  });
+});

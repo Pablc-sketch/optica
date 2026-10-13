@@ -23,6 +23,7 @@ import {
   eliminarRetiro,
   pagarSueldo,
 } from "@/lib/actions/gastos";
+import { totalConsultas } from "@/lib/consulta";
 import FiltroPagos from "./filtro-pagos";
 
 const PERSONAS: Record<string, string> = {
@@ -337,7 +338,7 @@ export default async function ReportesPage({
         supabase
           .from("venta_items")
           .select(
-            `cantidad, precio_unitario, descuento, cristal_slot,
+            `cantidad, precio_unitario, descuento, cristal_slot, descripcion,
              productos:producto_id (costo, categoria),
              ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
              ventas!inner (operativo_id, anulada)`
@@ -374,6 +375,8 @@ export default async function ReportesPage({
       comisionVendedoraPct: Number(o.comision_vendedora_pct),
       comisionVendedoraBase: o.comision_vendedora_base as BaseComision,
       ahorroPct: Number(o.ahorro_pct),
+      // Consultas: a la utilidad sí, a la comisión de Isadora no.
+      ventaSinComision: totalConsultas((itemsPorOperativo.get(o.id) ?? []) as unknown as Parameters<typeof totalConsultas>[0]),
     });
     return { operativo: o, sueldo };
   });

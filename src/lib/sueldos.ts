@@ -20,6 +20,9 @@ export type ParametrosSueldo = {
   comisionVendedoraPct: number;
   comisionVendedoraBase: BaseComision;
   ahorroPct: number;
+  // Parte de lo vendido que NO lleva comisión de vendedora (las consultas
+  // cobradas aparte). Solo se descuenta cuando la base es "venta_total".
+  ventaSinComision?: number;
 };
 
 export type DesgloseSueldo = {
@@ -42,7 +45,8 @@ export function calcularSueldos(
   utilidadNeta: number,
   parametros: ParametrosSueldo
 ): DesgloseSueldo {
-  const base = parametros.comisionVendedoraBase === "venta_total" ? ventaTotal : utilidadNeta;
+  const base =
+    parametros.comisionVendedoraBase === "venta_total" ? ventaTotal - (parametros.ventaSinComision ?? 0) : utilidadNeta;
   // Si la base es "utilidad_neta" y el operativo dio pérdida, no hay de
   // dónde sacar comisión — se pone en 0 en vez de una comisión negativa.
   const comisionIsadora = Math.round(Math.max(0, base) * (parametros.comisionVendedoraPct / 100));

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
+import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { rangoParaPosicion } from "@/lib/cristales";
@@ -417,4 +418,56 @@ export async function cobrarSaldo(input: {
   revalidatePath("/reportes");
   revalidatePath("/");
   return { ok: true, aplicado: (data as { aplicado: number } | null)?.aplicado ?? input.monto };
+}
+
+// Consulta cobrada aparte ($5.000 por defecto): una venta de un solo ítem,
+// pagada al tiro, en el operativo elegido. Sin paciente obligatorio (en
+// terreno se cobra antes de abrir ficha). consultaId es la clave de
+// idempotencia: el mismo toque dos veces registra una sola consulta.
+export async function registrarConsulta(input: {
+  consultaId: string;
+  operativoId: string | null;
+  monto: number;
+  medioPago: string;
+  cantidad?: number;
+}): Promise<{ ok: boolean; error?: string }> {
+  let ctx;
+  try {
+    ctx = await requerirPerfil({ roles: ["admin", "ventas", "clinico"], suscripcion: true });
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false, error: e.message };
+    throw e;
+  }
+  const cantidad = input.cantidad ?? 1;
+  if (!UUID.test(input.consultaId)) return { ok: false, error: "Datos inválidos." };
+  if (input.operativoId && !UUID.test(input.operativoId)) return { ok: false, error: "Operativo inválido." };
+  if (!Number.isInteger(input.monto) || input.monto <= 0) return { ok: false, error: "El monto tiene que ser mayor a cero." };
+  if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 20) return { ok: false, error: "Cantidad inválida." };
+  if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
+  const { error } = await ctx.supabase.rpc("registrar_venta", {
+    p: {
+      venta_id: input.consultaId,
+      fecha: new Date().toISOString(),
+      paciente_id: null,
+      operativo_id: input.operativoId,
+      abono: input.monto * cantidad,
+      medio_pago: input.medioPago,
+      items: [
+        {
+          producto_id: null,
+          descripcion: DESCRIPCION_CONSULTA,
+          cantidad,
+          precio_unitario: input.monto,
+          cristal_slot: null,
+          precio_lista: PRECIO_CONSULTA,
+        },
+      ],
+    },
+  });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/cobros");
+  revalidatePath("/reportes");
+  revalidatePath("/");
+  if (input.operativoId) revalidatePath(`/operativos/${input.operativoId}`);
+  return { ok: true };
 }
