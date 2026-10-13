@@ -11,7 +11,7 @@ import ContactosOperativo from "../contactos-operativo";
 import { fechaConDia, fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
-import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 import { type CatalogoLaboratorio } from "@/lib/costo-fides";
 import EliminarOperativo from "./eliminar-operativo";
@@ -199,15 +199,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     (s, v) => s + (v.venta_items ?? []).reduce((si, it) => si + (it.cristal_slot !== null ? it.cantidad : 0), 0),
     0
   );
-  const totalMarcosVendidos = ventas.reduce(
-    (s, v) =>
-      s +
-      (v.venta_items ?? []).reduce((si, it) => {
-        const producto = uno(it.productos as unknown as { categoria: string } | { categoria: string }[] | null);
-        return si + (producto?.categoria === "armazon" ? it.cantidad : 0);
-      }, 0),
-    0
-  );
+  // Un marco por cada par de cristales vendido (lib/costo-venta.ts).
+  const totalMarcosVendidos = desglosarCostos(ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[]).marcos;
   // Costo real de lo vendido (cristales de laboratorio + marcos + otros
   // productos) — sin esto "utilidad" quedaba igual a "vendido", porque solo
   // se restaban los gastos del operativo (transporte, arriendo, etc), no lo
@@ -599,7 +592,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             <div className="flex flex-col gap-1.5">
               <p className="font-semibold text-sky-900">2. Marcos — ya pagados antes, solo contable</p>
               <div className="flex items-center justify-between pl-2 text-sky-800">
-                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"} × {clp(COSTO_MARCO_ABSORBIDO)}</span>
+                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"} × {clp(COSTO_MARCO_POR_PAR)}</span>
                 <span className="font-medium">{clp(desglose.totalArmazones)}</span>
               </div>
               <p className="pl-2 text-xs text-sky-700">

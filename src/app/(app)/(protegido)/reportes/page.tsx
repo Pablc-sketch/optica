@@ -12,7 +12,7 @@ import {
   primerDiaDelMes,
   ultimoDiaDelMes,
 } from "@/lib/fechas";
-import { COSTO_MARCO_ABSORBIDO, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
 import { calcularCaja, resumirCaja } from "@/lib/caja";
 import {
@@ -781,7 +781,7 @@ export default async function ReportesPage({
               <span>{clp(desglose.totalCristales)}</span>
             </div>
             <div className="flex items-center justify-between px-3 py-1 text-sm">
-              <span>+ Marcos ({clp(COSTO_MARCO_ABSORBIDO)} c/u, absorbido en el cristal)</span>
+              <span>+ Marcos ({desglose.marcos} × {clp(COSTO_MARCO_POR_PAR)}, uno por cada par de cristales)</span>
               <span className="font-semibold">{clp(desglose.totalArmazones)}</span>
             </div>
             {desglose.totalOtros > 0 && (

@@ -1,14 +1,19 @@
 // Costo real de lo vendido (para calcular utilidad neta, no solo "venta
 // menos gastos del operativo"): el cristal pesa por su costo_laboratorio
-// (cristal + montaje + IVA), cada armazón pesa un monto fijo (se regalan,
-// pero igual cuestan sourcing/stock — dos marcos en la misma venta cuentan
-// el doble), y cualquier otro producto pesa por su costo de Inventario.
+// (cristal + montaje + IVA), cada par de cristales suma el costo de su
+// marco (monto fijo, ver abajo), y cualquier otro producto pesa por su
+// costo de Inventario.
 //
-// El monto del marco sale de la compra real: $77.945 por 24 marcos
-// (Comercializadora Inosc, op. 176823790693) = $3.248 cada uno. Antes
-// estaba en $4.000 "a ojo", que cargaba $752 de más por marco y hundía la
-// utilidad de cada venta sin que eso fuera plata que salió de verdad.
-export const COSTO_MARCO_ABSORBIDO = 3248;
+// Costo de marco: $5.000 por CADA PAR de cristales vendido (pedido de
+// Pablo, 13-10-2026). Se cuenta por par y no por marco del inventario:
+// los marcos descritos a mano ("acetato negro"), los que quedaron sin
+// registrar y los de cortesía no estaban sumando costo, y la utilidad se
+// veía más alta que la real. Dos pares en una venta = dos marcos.
+// (Antes: $3.248 solo por marco cargado en Inventario, de la compra de
+// 24 marcos a Comercializadora Inosc, op. 176823790693.)
+export const COSTO_MARCO_POR_PAR = 5000;
+/** @deprecated nombre antiguo; es el mismo costo por par. */
+export const COSTO_MARCO_ABSORBIDO = COSTO_MARCO_POR_PAR;
 
 type OTConCosto = {
   costo_laboratorio: number | null;
@@ -41,6 +46,8 @@ export type DesgloseCosto = {
   // costo_laboratorio) en vez de solo confiar en el total.
   cristales: { descripcion: string; costo: number }[];
   totalCristales: number;
+  // Cuántos pares de cristales (= marcos) hay, y lo que cuestan.
+  marcos: number;
   totalArmazones: number;
   totalOtros: number;
   total: number;
@@ -48,7 +55,7 @@ export type DesgloseCosto = {
 
 export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
   const cristales: DesgloseCosto["cristales"] = [];
-  let totalArmazones = 0;
+  let marcos = 0;
   let totalOtros = 0;
 
   for (const it of items) {
@@ -61,18 +68,19 @@ export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
         descripcion: [tipoLente, tratamiento].filter(Boolean).join(" · ") || it.descripcion || "Cristal",
         costo: costo * it.cantidad,
       });
+      marcos += it.cantidad;
       continue;
     }
     const producto = uno(it.productos);
-    if (producto?.categoria === "armazon") {
-      totalArmazones += COSTO_MARCO_ABSORBIDO * it.cantidad;
-      continue;
-    }
+    // El marco del inventario ya está contado en el par de cristales al
+    // que va: no se cobra dos veces.
+    if (producto?.categoria === "armazon") continue;
     if (producto) totalOtros += producto.costo * it.cantidad;
   }
 
   const totalCristales = cristales.reduce((s, c) => s + c.costo, 0);
-  return { cristales, totalCristales, totalArmazones, totalOtros, total: totalCristales + totalArmazones + totalOtros };
+  const totalArmazones = marcos * COSTO_MARCO_POR_PAR;
+  return { cristales, totalCristales, marcos, totalArmazones, totalOtros, total: totalCristales + totalArmazones + totalOtros };
 }
 
 export function costoDeItems(items: ItemConCosto[]): number {
