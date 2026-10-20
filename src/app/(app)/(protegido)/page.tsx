@@ -103,7 +103,7 @@ export default async function Dashboard() {
           {pendiente("/laboratorio", "Por enviar a Fides", String(porEnviar.length), porEnviar.length ? `${clp(totalFides)} a pagar` : "nada pendiente", porEnviar.length > 0)}
           {pendiente(
             porCerrar[0] ? `/operativos/${porCerrar[0].id}/cierre` : "/operativos",
-            "Operativos por cerrar",
+            "Repartos por anotar",
             String(porCerrar.length),
             porCerrar[0] ? `${porCerrar[0].nombre}` : "todo pagado",
             porCerrar.length > 0
@@ -111,7 +111,8 @@ export default async function Dashboard() {
         </div>
         {porCerrar.length > 0 && (
           <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Cierra cada operativo y marca a quién le pagaste: así la plata que muestra la app es la que de verdad queda en la cuenta.
+            En cada operativo, anota en &quot;Reparto y pagos&quot; a quién le pagaste: así la plata que muestra la app es la que de verdad queda en la
+            cuenta. Anotar el reparto no borra lo que falta cobrar.
           </p>
         )}
       </section>

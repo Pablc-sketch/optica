@@ -204,7 +204,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
               href={`/operativos/${elegido}/cierre`}
               className="rounded-xl bg-emerald-800 px-4 py-3 text-center text-base font-semibold text-white hover:bg-emerald-900"
             >
-              💵 Cerrar operativo y pagar a cada uno
+              💵 Revisar reparto y pagos del operativo
             </Link>
           )}
 

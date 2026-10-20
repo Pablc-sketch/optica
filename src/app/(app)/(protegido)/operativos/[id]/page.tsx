@@ -470,7 +470,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             href={`/operativos/${operativo.id}/cierre`}
             className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-900"
           >
-            💵 Cerrar y pagar
+            💵 Reparto y pagos
           </Link>
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold ${
