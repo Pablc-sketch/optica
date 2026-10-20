@@ -936,6 +936,13 @@ export default function PuntoDeVenta({
   // del tecnólogo, cada fila la trae precargada sola — la vendedora solo
   // confirma o cambia algo si el paciente decidió otra cosa.
   function elegirPaciente(id: string) {
+    // Otro comprador: el abono y el medio de pago del anterior no se
+    // arrastran (revisión Codex 20-10-2026).
+    if (id !== pacienteId) {
+      setAbono("");
+      setUsaMinimo(false);
+      setMedioPago("");
+    }
     setPacienteId(id);
     // Paciente nuevo: fuera cristales, marcos y premium del anterior (sus
     // pares no son de esta persona). Los productos sueltos se mantienen.
