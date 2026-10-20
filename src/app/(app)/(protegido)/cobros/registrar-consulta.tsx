@@ -52,6 +52,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
           className="rounded-xl border-2 border-dashed border-brand/40 bg-white px-4 py-3 text-base font-semibold text-brand-dark hover:bg-brand/5"
         >
           ＋ Cobrar consulta {clp(PRECIO_CONSULTA)}
+          <span className="block text-sm font-normal text-tinta-suave">Solo si NO compra lentes</span>
         </button>
         {mensaje && (
           <p className={`text-sm font-semibold ${mensaje.startsWith("✓") ? "text-emerald-800" : "text-red-700"}`}>{mensaje}</p>
@@ -63,6 +64,13 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm">
       <p className="font-semibold">Cobrar consulta</p>
+      {/* Regla de Pablo (20-10-2026): si compra lentes, la consulta va
+          incluida en el paquete; solo paga $5.000 quien no compra. */}
+      <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <b>Solo para quien no compra lentes.</b> Si compra, la consulta ya va incluida en el precio: no la cobres aparte.
+        Si ya le cobraste la consulta y después decide comprar, no registres nada más acá: avísale a Pablo para descontarla
+        a mano del lente (así no se cobra dos veces).
+      </p>
       <div className="flex items-center gap-3">
         <span className="text-sm text-tinta-suave">Cantidad</span>
         <button type="button" onClick={() => setCantidad((c) => Math.max(1, c - 1))} className="h-10 w-10 rounded-full border text-lg font-bold">
