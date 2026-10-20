@@ -8,17 +8,19 @@ import NavLinks from "@/components/nav-links";
 import BarraCarga from "@/components/barra-carga";
 import { diasRestantes, estaVigente, type Suscripcion } from "@/lib/suscripcion";
 
+// Arriba, solo lo de todos los días. El resto va en "Más" (menú de
+// administración), para que el menú no sea una lista de 15 botones.
 const NAV = [
-  { href: "/", label: "Inicio" },
-  { href: "/pacientes", label: "Pacientes" },
-  { href: "/operativos", label: "Operativos" },
-  { href: "/avisos", label: "Avisos" },
-  { href: "/ot", label: "Órdenes" },
+  { href: "/", label: "Inicio", principal: true },
+  { href: "/pacientes", label: "Pacientes", principal: true },
+  { href: "/ventas", label: "Vender", principal: true },
+  { href: "/cobros", label: "Cobros", principal: true },
+  { href: "/operativos", label: "Operativos", principal: true },
+  { href: "/ot", label: "Órdenes", principal: true },
+  { href: "/laboratorio", label: "Laboratorio", principal: true },
+  { href: "/avisos", label: "Avisos", principal: true },
   { href: "/ot/buscar", label: "Buscar OT" },
-  { href: "/ventas", label: "Vender" },
-  { href: "/cobros", label: "Cobros" },
   { href: "/boleta", label: "Boleta" },
-  { href: "/laboratorio", label: "Laboratorio" },
   { href: "/inventario", label: "Inventario" },
   { href: "/reportes", label: "Reportes" },
   { href: "/precios", label: "Precios" },
@@ -104,7 +106,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const porVencer = vigente && dias !== null && dias <= 7;
 
   const nav = perfil.es_superadmin
-    ? [...NAV, { href: "/superadmin", label: "Ópticas" }]
+    ? [...NAV, { href: "/superadmin", label: "Ópticas", principal: false }]
     : perfil.rol === "ventas"
       ? NAV.filter((n) => NAV_VENTAS.includes(n.href))
       : NAV;

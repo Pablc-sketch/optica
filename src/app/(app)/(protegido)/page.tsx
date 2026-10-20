@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
-import Tarjeta from "@/components/tarjeta";
 import { fechaLegible, hoyEnChile, inicioDelDia } from "@/lib/fechas";
 
 const ESTADOS_OT: Record<string, string> = {
@@ -25,170 +24,123 @@ export default async function Dashboard() {
   if (perfil?.rol === "ventas") redirect("/ventas");
 
   const hoy = hoyEnChile();
-  // inicioDelDia() da la medianoche EN CHILE, no en UTC: comparar con
-  // toISOString() de un Date recién creado dejaba fuera todo lo vendido en
-  // la tarde (pasadas las 20:00 en Santiago ya contaba como "mañana").
-  const [ventasHoy, otsPendientes, inventario, proximoOperativo] = await Promise.all([
-    supabase.from("ventas").select("total, estado_pago").eq("anulada", false).gte("fecha", inicioDelDia(hoy)),
+  const [ventasHoy, otsPendientes, proximoOperativo, ventasRes, operativosRes, pagosSueldoRes] = await Promise.all([
+    supabase.from("ventas").select("total").eq("anulada", false).gte("fecha", inicioDelDia(hoy)),
     supabase
       .from("ordenes_trabajo")
-      .select(
-        "id, folio, estado, fecha_entrega_estimada, origen_cristal, costo_laboratorio, costo_laboratorio_2, pacientes:paciente_id (nombre)"
-      )
-      // Una venta anulada cancela su OT — que no siga contando como
-      // "pendiente" ni asomándose en "entregas de hoy".
+      .select("id, folio, estado, fecha_entrega_estimada, costo_laboratorio, costo_laboratorio_2, pacientes:paciente_id (nombre)")
       .not("estado", "in", "(entregado,cancelado)")
       .order("fecha_ingreso", { ascending: true }),
     supabase
-      .from("inventario")
-      .select("stock_actual, stock_minimo, productos:producto_id (nombre, marca)"),
-    supabase
       .from("operativos")
-      .select("id, nombre, fecha, direccion")
+      .select("id, nombre, fecha")
       .eq("estado", "planificado")
       .gte("fecha", hoy)
       .order("fecha", { ascending: true })
       .limit(1)
       .maybeSingle(),
+    supabase.from("ventas").select("total, pagos_abonos (monto)").eq("anulada", false).limit(3000),
+    supabase.from("operativos").select("id, nombre, fecha").lte("fecha", hoy).neq("estado", "cancelado").order("fecha", { ascending: false }).limit(20),
+    supabase.from("retiros_sueldo").select("operativo_id").eq("es_sueldo", true).not("operativo_id", "is", null),
   ]);
 
   const totalHoy = (ventasHoy.data ?? []).reduce((s, v) => s + v.total, 0);
-  const numVentasHoy = ventasHoy.data?.length ?? 0;
   const ots = otsPendientes.data ?? [];
-  const entregasHoy = ots.filter((ot) => ot.fecha_entrega_estimada === hoy);
-  const stockCritico = (inventario.data ?? []).filter((i) => i.stock_actual <= i.stock_minimo);
-  // Lo que hay que llevar en plata la próxima vez que se manden a hacer
-  // cristales: todas las OT recién recepcionadas (todavía no enviadas a
-  // Fides) — "de stock" no quiere decir que se queda en la óptica, es un
-  // cristal de catálogo que igual pide Fides (más barato que uno
-  // personalizado, pero se manda igual). costo_laboratorio ya es precio
-  // unitario × 2 + montaje + IVA — exactamente lo que cobra el laboratorio
-  // por el par.
-  const otsPorEnviar = ots.filter((ot) => ot.estado === "recepcion");
-  const totalPorPagarLaboratorio = otsPorEnviar.reduce(
-    (s, ot) => s + (ot.costo_laboratorio ?? 0) + (ot.costo_laboratorio_2 ?? 0),
+  const listos = ots.filter((o) => o.estado === "listo");
+  const porEnviar = ots.filter((o) => o.estado === "recepcion");
+  const totalFides = porEnviar.reduce((s, o) => s + (o.costo_laboratorio ?? 0) + (o.costo_laboratorio_2 ?? 0), 0);
+  const porCobrar = (ventasRes.data ?? []).reduce(
+    (s, v) => s + Math.max(0, v.total - (v.pagos_abonos ?? []).reduce((a: number, p: { monto: number }) => a + p.monto, 0)),
     0
   );
+  // Operativos que ya pasaron y todavía no tienen ningún sueldo marcado
+  // como pagado: hay que cerrarlos para que la caja cuadre.
+  const cerrados = new Set((pagosSueldoRes.data ?? []).map((r) => r.operativo_id));
+  const porCerrar = (operativosRes.data ?? []).filter((o) => !cerrados.has(o.id));
   const proximo = proximoOperativo.data;
+
+  const pendiente = (href: string, titulo: string, valor: string, detalle: string, alerta: boolean) => (
+    <Link
+      href={href}
+      className={`flex flex-col rounded-2xl p-4 shadow-sm transition hover:shadow-md ${alerta ? "bg-white" : "bg-white/60"}`}
+    >
+      <span className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">{titulo}</span>
+      <span className={`text-2xl font-bold tabular-nums ${alerta ? "text-tinta" : "text-tinta-suave"}`}>{valor}</span>
+      <span className="text-sm text-tinta-suave">{detalle}</span>
+    </Link>
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-bold">Hoy</h1>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tarjeta
-          icono="💰"
-          titulo="Ventas del día"
-          valor={clp(totalHoy)}
-          detalle={`${numVentasHoy} venta${numVentasHoy === 1 ? "" : "s"}`}
-        />
-        <div className="relative overflow-hidden rounded-3xl bg-white p-4 shadow-[0_2px_10px_-3px_rgba(61,57,41,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(61,57,41,0.22)]">
-          <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-brand to-accent" />
-          <p className="flex items-center gap-1.5 text-sm text-tinta-suave">📦 Entregas de hoy</p>
-          <p className={`mt-1 text-2xl font-bold ${entregasHoy.length > 0 ? "text-brand-dark" : "text-tinta"}`}>
-            {entregasHoy.length}
-          </p>
-          <Link href="/ot" className="text-xs font-medium text-brand hover:underline">
-            Ver tablero →
-          </Link>
-        </div>
-        <Tarjeta
-          icono="🔍"
-          titulo="Stock crítico"
-          valor={String(stockCritico.length)}
-          detalle="productos en o bajo mínimo"
-          acento={stockCritico.length > 0}
-        />
-        <Tarjeta
-          icono="💵"
-          titulo="Para pagar al laboratorio"
-          valor={clp(totalPorPagarLaboratorio)}
-          detalle={
-            otsPorEnviar.length > 0
-              ? `${otsPorEnviar.length} orden${otsPorEnviar.length === 1 ? "" : "es"} por enviar`
-              : "Nada pendiente de enviar"
-          }
-          acento={totalPorPagarLaboratorio > 0}
-        />
-        <div className="relative overflow-hidden rounded-3xl bg-sky-50 p-4 shadow-[0_2px_10px_-3px_rgba(3,105,161,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(3,105,161,0.22)]">
-          <p className="text-sm text-sky-800">📅 Próximo operativo</p>
-          {proximo ? (
-            <>
-              <p className="mt-1 min-w-0 break-words text-lg font-bold text-sky-950">{proximo.nombre}</p>
-              <Link href={`/operativos/${proximo.id}`} className="text-xs font-medium text-sky-700 hover:underline">
-                {fechaLegible(proximo.fecha)} →
-              </Link>
-            </>
-          ) : (
-            <p className="mt-1 text-sm text-sky-700">Ninguno planificado</p>
-          )}
-        </div>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-2xl font-bold">Hola 👋</h1>
+        <p className="text-sm text-tinta-suave">
+          Vendido hoy: <b className="text-tinta">{clp(totalHoy)}</b>
+        </p>
       </div>
 
-      {entregasHoy.length > 0 && (
-        <section>
-          <h2 className="mb-3 font-semibold">📦 Entregas de hoy</h2>
-          <ul className="flex flex-col gap-2">
-            {entregasHoy.map((ot) => (
-              <li key={ot.id} className="flex items-center gap-3 rounded-xl bg-brand/10 px-4 py-3">
-                <span className="rounded-md bg-white px-2 py-0.5 text-xs font-bold text-brand-dark">
-                  #{ot.folio}
-                </span>
-                <span className="flex-1 min-w-0 break-words text-sm font-medium">
-                  {(ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—"}
-                </span>
-                <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-brand-dark">
-                  {ESTADOS_OT[ot.estado] ?? ot.estado}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { href: "/ventas", titulo: "Vender", icono: "🛒", clase: "bg-brand text-white" },
+          { href: "/cobros", titulo: "Cobrar y entregar", icono: "💵", clase: "bg-emerald-800 text-white" },
+          { href: "/pacientes", titulo: "Paciente / receta", icono: "👁️", clase: "bg-tinta text-white" },
+          { href: "/avisos", titulo: "Avisar entrega", icono: "💬", clase: "bg-white text-tinta" },
+        ].map((b) => (
+          <Link key={b.href} href={b.href} className={`flex flex-col gap-1 rounded-2xl p-4 shadow-sm ${b.clase}`}>
+            <span className="text-2xl" aria-hidden>
+              {b.icono}
+            </span>
+            <span className="text-base font-bold">{b.titulo}</span>
+          </Link>
+        ))}
+      </div>
 
-      <section>
-        <h2 className="mb-3 font-semibold">Órdenes de trabajo pendientes</h2>
-        {ots.length === 0 ? (
-          <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
-            No hay órdenes pendientes. 🎉
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-bold">Pendiente</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {pendiente("/cobros?ver=deben", "Por cobrar", clp(porCobrar), "saldos de clientes", porCobrar > 0)}
+          {pendiente("/cobros?ver=listos", "Listos para entregar", String(listos.length), "lentes esperando", listos.length > 0)}
+          {pendiente("/laboratorio", "Por enviar a Fides", String(porEnviar.length), porEnviar.length ? `${clp(totalFides)} a pagar` : "nada pendiente", porEnviar.length > 0)}
+          {pendiente(
+            porCerrar[0] ? `/operativos/${porCerrar[0].id}/cierre` : "/operativos",
+            "Operativos por cerrar",
+            String(porCerrar.length),
+            porCerrar[0] ? `${porCerrar[0].nombre}` : "todo pagado",
+            porCerrar.length > 0
+          )}
+        </div>
+        {porCerrar.length > 0 && (
+          <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Cierra cada operativo y marca a quién le pagaste: así la plata que muestra la app es la que de verdad queda en la cuenta.
           </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {ots.slice(0, 8).map((ot) => (
-              <li key={ot.id} className="flex items-center gap-3 rounded-xl bg-crema-claro px-4 py-3 shadow-sm">
-                <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-bold text-brand-dark">
-                  #{ot.folio}
-                </span>
-                <span className="flex-1 min-w-0 break-words text-sm font-medium">
-                  {(ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—"}
-                </span>
-                <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-medium text-tinta-suave">
-                  {ESTADOS_OT[ot.estado] ?? ot.estado}
-                </span>
-              </li>
-            ))}
-          </ul>
         )}
       </section>
 
-      {stockCritico.length > 0 && (
-        <section>
-          <h2 className="mb-3 font-semibold">Alertas de stock</h2>
+      {proximo && (
+        <Link href={`/operativos/${proximo.id}`} className="rounded-2xl bg-sky-50 p-4 shadow-sm">
+          <span className="text-xs font-semibold uppercase tracking-wider text-sky-800">Próximo operativo</span>
+          <span className="block text-lg font-bold text-sky-950">{proximo.nombre}</span>
+          <span className="text-sm text-sky-800">{fechaLegible(proximo.fecha)}</span>
+        </Link>
+      )}
+
+      {ots.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg font-bold">Órdenes en curso</h2>
           <ul className="flex flex-col gap-2">
-            {stockCritico.map((item, i) => {
-              const p = item.productos as unknown as { nombre: string; marca: string | null } | null;
-              return (
-                <li key={i} className="flex items-center gap-3 rounded-xl bg-brand/10 px-4 py-3">
-                  <span className="flex-1 text-sm font-medium">
-                    {p?.marca ? `${p.marca} ` : ""}{p?.nombre ?? "Producto"}
-                  </span>
-                  <span className="text-sm font-bold text-brand-dark">
-                    {item.stock_actual} / mín {item.stock_minimo}
-                  </span>
-                </li>
-              );
-            })}
+            {ots.slice(0, 6).map((ot) => (
+              <li key={ot.id} className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-sm">
+                <span className="text-xs font-bold text-tinta-suave">#{ot.folio}</span>
+                <span className="min-w-0 flex-1 break-words text-sm font-medium">
+                  {(ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—"}
+                </span>
+                <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-semibold">{ESTADOS_OT[ot.estado] ?? ot.estado}</span>
+              </li>
+            ))}
           </ul>
+          <Link href="/ot" className="text-sm font-semibold text-brand-dark underline">
+            Ver todas las órdenes →
+          </Link>
         </section>
       )}
     </div>
