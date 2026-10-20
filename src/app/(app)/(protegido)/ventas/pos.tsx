@@ -6,6 +6,7 @@ import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { encolarVenta } from "@/lib/offline/outbox";
 import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
+import RegistrarConsulta from "../cobros/registrar-consulta";
 import type { SugerenciaExtra } from "@/lib/sugerencias";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
@@ -1136,6 +1137,10 @@ export default function PuntoDeVenta({
           {avisoContexto && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">{avisoContexto}</p>
           )}
+
+          {/* La consulta ($5.000) se cobra aparte, sin armar una venta de
+              lentes: queda en el operativo de hoy y cuadra con la máquina. */}
+          <RegistrarConsulta operativoId={operativoId || null} />
 
           <input
             type="search"
