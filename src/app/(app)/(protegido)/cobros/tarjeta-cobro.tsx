@@ -32,7 +32,7 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [monto, setMonto] = useState(formatearMonto(fila.saldo));
-  const [medio, setMedio] = useState<string>("efectivo");
+  const [medio, setMedio] = useState<string>("") // se elige en cada cobro, sin valor por defecto;
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [pendiente, iniciar] = useTransition();
   const operacion = useRef<string | null>(null);
@@ -54,6 +54,7 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
       const r = await cobrarSaldo({ ventaId: fila.ventaId, operacionId: operacion.current, monto: n, medioPago: medio });
       if (r.ok) {
         operacion.current = null;
+        setMedio("");
         setAbierto(false);
         setMensaje(`✓ Cobrado ${clp(r.aplicado ?? n)}`);
         router.refresh();
@@ -171,11 +172,11 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={pendiente || montoANumero(monto) <= 0}
+              disabled={pendiente || montoANumero(monto) <= 0 || !medio}
               onClick={cobrar}
               className="flex-1 rounded-xl bg-emerald-800 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-900 disabled:opacity-50"
             >
-              {pendiente ? "Registrando…" : `Registrar pago de ${clp(montoANumero(monto))}`}
+              {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : `Registrar pago de ${clp(montoANumero(monto))}`}
             </button>
             <button
               type="button"

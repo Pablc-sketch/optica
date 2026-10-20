@@ -688,7 +688,10 @@ export default function PuntoDeVenta({
   // tienen cristal (lib/carrito.ts).
   const carrito = useMemo(() => quitarHuerfanos(carritoTodo), [carritoTodo]);
   const [abono, setAbono] = useState<string>("");
-  const [medioPago, setMedioPago] = useState("efectivo");
+  // Sin valor por defecto: se elige en cada cobro. Antes partía en
+  // "efectivo" y quedaba pegado el de la venta anterior, y la caja no
+  // calzaba con la máquina (revisión 20-10-2026).
+  const [medioPago, setMedioPago] = useState("");
   const [laboratorioId, setLaboratorioId] = useState<string>(laboratorios[0]?.id ?? "");
   const [guardando, setGuardando] = useState(false);
   // Un id por venta, fijo hasta que se cierra: si se aprieta "Cobrar" dos
@@ -976,6 +979,7 @@ export default function PuntoDeVenta({
     setBuscaPaciente("");
     setBuscaProducto("");
     setIniciales([null, null]);
+    setMedioPago("");
     setPaso(0);
   }
 
@@ -1018,7 +1022,8 @@ export default function PuntoDeVenta({
         descripcion: l.marcoDescrito ?? null,
       })),
       abonoInicial: Math.max(0, Math.min(montoANumero(abono), total)),
-      medioPago,
+      // Sin cobro ahora (cortesía o sin abono) el medio no se usa.
+      medioPago: medioPago || "efectivo",
       proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
     };
   }
@@ -1565,15 +1570,30 @@ export default function PuntoDeVenta({
             </p>
           )}
 
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Medio de pago
-            <select value={medioPago} onChange={(e) => setMedioPago(e.target.value)} className={select}>
-              <option value="efectivo">Efectivo</option>
-              <option value="debito">Débito</option>
-              <option value="credito">Crédito</option>
-              <option value="transferencia">Transferencia</option>
-            </select>
-          </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">¿Cómo paga? (mira la máquina)</span>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(
+                [
+                  { valor: "debito", titulo: "Débito" },
+                  { valor: "credito", titulo: "Crédito" },
+                  { valor: "efectivo", titulo: "Efectivo" },
+                  { valor: "transferencia", titulo: "Transferencia" },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.valor}
+                  type="button"
+                  onClick={() => setMedioPago(m.valor)}
+                  className={`rounded-xl border-2 px-3 py-3 text-base font-semibold ${
+                    medioPago === m.valor ? "border-emerald-800 bg-emerald-800 text-white" : "border-tinta/15 bg-white"
+                  }`}
+                >
+                  {m.titulo}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {esAbonoParcial && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
@@ -1592,10 +1612,14 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={cobrar}
-              disabled={guardando || carrito.length === 0}
+              disabled={guardando || carrito.length === 0 || (montoACobrar > 0 && !medioPago)}
               className={`${boton} flex-1 bg-emerald-800 text-white hover:bg-emerald-900`}
             >
-              {guardando ? "Registrando…" : `Cobrar ${clp(montoACobrar)}`}
+              {guardando
+                ? "Registrando…"
+                : montoACobrar > 0 && !medioPago
+                  ? "Elige cómo paga"
+                  : `Cobrar ${clp(montoACobrar)}`}
             </button>
           </div>
         </section>

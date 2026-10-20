@@ -19,7 +19,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [cantidad, setCantidad] = useState(1);
-  const [medio, setMedio] = useState<string>("debito");
+  const [medio, setMedio] = useState<string>("") // se elige en cada cobro, sin valor por defecto;
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [pendiente, iniciar] = useTransition();
   const id = useRef<string | null>(null);
@@ -32,6 +32,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
         id.current = null;
         setAbierto(false);
         setCantidad(1);
+        setMedio("");
         setMensaje(`✓ ${cantidad === 1 ? "Consulta registrada" : `${cantidad} consultas registradas`} (${clp(PRECIO_CONSULTA * cantidad)})`);
         router.refresh();
       } else {
@@ -103,11 +104,11 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
       <div className="flex gap-2">
         <button
           type="button"
-          disabled={pendiente}
+          disabled={pendiente || !medio}
           onClick={registrar}
           className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
         >
-          {pendiente ? "Registrando…" : `Registrar ${clp(PRECIO_CONSULTA * cantidad)}`}
+          {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : `Registrar ${clp(PRECIO_CONSULTA * cantidad)}`}
         </button>
         <button type="button" onClick={() => setAbierto(false)} className="rounded-xl border-2 border-tinta/20 px-4 py-3 font-semibold">
           Cancelar
