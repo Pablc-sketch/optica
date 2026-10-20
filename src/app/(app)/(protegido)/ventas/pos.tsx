@@ -8,6 +8,7 @@ import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
 import { quitarHuerfanos } from "@/lib/carrito";
 import { abonoMinimoDe, tasaDelMedio } from "@/lib/abono-minimo";
+import { montoAbono } from "@/lib/monto-abono";
 import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import RegistrarConsulta from "../cobros/registrar-consulta";
 import type { SugerenciaExtra } from "@/lib/sugerencias";
@@ -688,6 +689,10 @@ export default function PuntoDeVenta({
   // tienen cristal (lib/carrito.ts).
   const carrito = useMemo(() => quitarHuerfanos(carritoTodo), [carritoTodo]);
   const [abono, setAbono] = useState<string>("");
+  // "Abono mínimo" apretado: el monto sigue al mínimo vigente (cambia con
+  // el medio de pago, por la comisión) hasta que se escriba otro monto o se
+  // elija otro botón.
+  const [usaMinimo, setUsaMinimo] = useState(false);
   // Sin valor por defecto: se elige en cada cobro. Antes partía en
   // "efectivo" y quedaba pegado el de la venta anterior, y la caja no
   // calzaba con la máquina (revisión 20-10-2026).
@@ -711,9 +716,6 @@ export default function PuntoDeVenta({
   const [iniciales, setIniciales] = useState<PrefillLente[]>([null, null]);
 
   const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
-  const abonoNum = Math.max(0, Math.min(montoANumero(abono), total));
-  const esAbonoParcial = abonoNum > 0 && abonoNum < total;
-  const montoACobrar = esAbonoParcial ? abonoNum : total;
   // Orden estable Par 1, Par 2, … (por el número de la key),
   // independiente del orden en que se hayan ido completando las filas.
   const lineasCristal = carrito.filter((l) => l.cristal).sort((a, b) => numeroDePar(a.key) - numeroDePar(b.key));
@@ -787,6 +789,12 @@ export default function PuntoDeVenta({
     // después de la comisión llegue el costo.
     tasaDelMedio(medioPago, comisionDebitoPct, comisionCreditoPct)
   );
+  // Lo que dice el campo y lo que se cobra: el botón y la venta usan este
+  // mismo monto (lib/monto-abono.ts).
+  const textoAbono = usaMinimo && abonoMinimo > 0 ? formatearMonto(abonoMinimo) : abono;
+  const cobro = montoAbono(textoAbono, total);
+  const montoACobrar = cobro.monto;
+  const esAbonoParcial = cobro.tipo === "parcial";
   const recetaPacienteId = receta?.id;
   const paciente = pacientes.find((p) => p.id === pacienteId);
 
@@ -973,6 +981,7 @@ export default function PuntoDeVenta({
     setVentaId(crypto.randomUUID());
     setCarrito([]);
     setAbono("");
+    setUsaMinimo(false);
     setPacienteId("");
     setOperativoId(operativoSesion);
     setAvisoContexto(null);
@@ -1021,7 +1030,7 @@ export default function PuntoDeVenta({
         marcoPropio: l.marcoPropio ?? false,
         descripcion: l.marcoDescrito ?? null,
       })),
-      abonoInicial: Math.max(0, Math.min(montoANumero(abono), total)),
+      abonoInicial: cobro.monto,
       // Sin cobro ahora (cortesía o sin abono) el medio no se usa.
       medioPago: medioPago || "efectivo",
       proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
@@ -1528,14 +1537,17 @@ export default function PuntoDeVenta({
               </span>
               <input
                 inputMode="numeric"
-                value={abono}
-                onChange={(e) => setAbono(formatearMonto(e.target.value))}
+                value={textoAbono}
+                onChange={(e) => {
+                  setUsaMinimo(false);
+                  setAbono(formatearMonto(e.target.value));
+                }}
                 placeholder={formatearMonto(total)}
                 className={`${select} pl-7 text-right`}
               />
             </div>
             <span className="text-xs font-normal text-tinta-suave">
-              Vacío = paga todo. Si abona una parte, el saldo queda para la entrega.
+              Vacío = paga todo. 0 = no paga nada ahora (queda debiendo todo). Si abona una parte, el saldo queda para la entrega.
             </span>
           </label>
 
@@ -1544,7 +1556,10 @@ export default function PuntoDeVenta({
               <button
                 key={i}
                 type="button"
-                onClick={() => setAbono(formatearMonto(monto))}
+                onClick={() => {
+                  setUsaMinimo(false);
+                  setAbono(formatearMonto(monto));
+                }}
                 className="rounded-full border border-emerald-800/25 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-800 hover:text-white"
               >
                 {i === 0 ? `Paga todo (${clp(total)})` : `Mitad (${clp(monto)})`}
@@ -1553,7 +1568,10 @@ export default function PuntoDeVenta({
             {abonoMinimo > 0 && abonoMinimo < total && (
               <button
                 type="button"
-                onClick={() => setAbono(formatearMonto(abonoMinimo))}
+                onClick={() => {
+                  setUsaMinimo(true);
+                  setAbono(formatearMonto(abonoMinimo));
+                }}
                 className="rounded-full border border-emerald-800/25 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-800 hover:text-white"
               >
                 Abono mínimo ({clp(abonoMinimo)})
@@ -1597,7 +1615,13 @@ export default function PuntoDeVenta({
 
           {esAbonoParcial && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-              Abona {clp(abonoNum)} ahora. Saldo al entregar: {clp(total - abonoNum)}.
+              Abona {clp(montoACobrar)} ahora. Saldo al entregar: {clp(total - montoACobrar)}.
+              {usaMinimo && " (Es el abono mínimo: se ajusta solo al medio de pago.)"}
+            </p>
+          )}
+          {cobro.tipo === "sin_abono" && total > 0 && (
+            <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">
+              No paga nada ahora: queda debiendo {clp(total)}.
             </p>
           )}
 
@@ -1619,7 +1643,11 @@ export default function PuntoDeVenta({
                 ? "Registrando…"
                 : montoACobrar > 0 && !medioPago
                   ? "Elige cómo paga"
-                  : `Cobrar ${clp(montoACobrar)}`}
+                  : montoACobrar === 0
+                    ? total > 0
+                      ? "Registrar sin abono"
+                      : "Registrar cortesía"
+                    : `Cobrar ${clp(montoACobrar)}`}
             </button>
           </div>
         </section>
