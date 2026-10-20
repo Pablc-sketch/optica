@@ -33,8 +33,11 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
     )
     .eq("anulada", false)
     .order("fecha", { ascending: false })
-    .limit(500);
-  consulta = elegido === "sin" ? consulta.is("operativo_id", null) : consulta.eq("operativo_id", elegido);
+    .limit(3000);
+  // "todos" = sin filtrar por operativo (lo usan los indicadores globales
+  // del Inicio, para que una deuda de otro operativo no quede escondida).
+  if (elegido === "sin") consulta = consulta.is("operativo_id", null);
+  else if (elegido !== "todos") consulta = consulta.eq("operativo_id", elegido);
   const ventasRes = await consulta;
 
   type Ot = { id: string; estado: string; tipo_lente: string | null; tipo_lente_2: string | null };
@@ -127,6 +130,14 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
           </Link>
         ))}
         <Link
+          href="/cobros?op=todos"
+          className={`whitespace-nowrap rounded-full border px-3.5 py-2 text-sm font-semibold ${
+            elegido === "todos" ? "border-tinta bg-tinta text-white" : "border-tinta/15 bg-white hover:bg-crema"
+          }`}
+        >
+          Todos
+        </Link>
+        <Link
           href="/cobros?op=sin"
           className={`whitespace-nowrap rounded-full border px-3.5 py-2 text-sm font-semibold ${
             elegido === "sin" ? "border-tinta bg-tinta text-white" : "border-tinta/15 bg-white hover:bg-crema"
@@ -185,8 +196,8 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
             </p>
           </details>
 
-          <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} />
-          {elegido !== "sin" && (
+          {elegido !== "todos" && <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} />}
+          {elegido !== "sin" && elegido !== "todos" && (
             <Link
               href={`/operativos/${elegido}/cierre`}
               className="rounded-xl bg-emerald-800 px-4 py-3 text-center text-base font-semibold text-white hover:bg-emerald-900"

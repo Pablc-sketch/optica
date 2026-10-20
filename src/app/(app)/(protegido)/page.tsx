@@ -98,8 +98,8 @@ export default async function Dashboard() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-bold">Pendiente</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {pendiente("/cobros?ver=deben", "Por cobrar", clp(porCobrar), "saldos de clientes", porCobrar > 0)}
-          {pendiente("/cobros?ver=listos", "Listos para entregar", String(listos.length), "lentes esperando", listos.length > 0)}
+          {pendiente("/cobros?op=todos&ver=deben", "Por cobrar", clp(porCobrar), "saldos de clientes", porCobrar > 0)}
+          {pendiente("/cobros?op=todos&ver=listos", "Listos para entregar", String(listos.length), "lentes esperando", listos.length > 0)}
           {pendiente("/laboratorio", "Por enviar a Fides", String(porEnviar.length), porEnviar.length ? `${clp(totalFides)} a pagar` : "nada pendiente", porEnviar.length > 0)}
           {pendiente(
             porCerrar[0] ? `/operativos/${porCerrar[0].id}/cierre` : "/operativos",
