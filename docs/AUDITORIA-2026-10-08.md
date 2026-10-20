@@ -22,7 +22,9 @@ Fuente: `Lentia-auditoria.md` y `Lentia-para-Claude.md` (ChatGPT/Codex), commit 
 | F16 | Inventario negativo sin conciliación | Pendiente (17 filas; no normalizar a cero) | — |
 | F17 | Faltan pruebas E2E/integración y esquema reproducible | Pendiente | — |
 
-Reglas que no se tocan: comisión Isadora 10%, ahorro 20%, reparto 50/50, costo marco absorbido $3.248, folios, cobrado y deuda.
+Reglas que no se tocan: comisión Isadora 10% (sobre venta de lentes, sin consultas), ahorro 20%, reparto 50/50, folios, cobrado y deuda.
+
+Costo de marco vigente (desde 13-10-2026, decisión de Pablo): provisión de **$5.000 por cada par de cristales**, incluido marco propio, descrito o sin registrar; el marco del inventario no se cuenta dos veces. Reemplaza la regla anterior de $3.248 solo por marco cargado en Inventario. No se recalculó historia: los cierres y pagos ya hechos quedan como se registraron.
 
 ## Revisión nocturna 19→20-10-2026 (Claude publica, Codex verifica)
 
@@ -32,7 +34,8 @@ Reglas que no se tocan: comisión Isadora 10%, ahorro 20%, reparto 50/50, costo 
 | 4da0b0c | Abono mínimo bruto de la comisión del medio; aviso si el precio no cubre producción; ticket solo de lentes | Codex en navegador: polarizado $70.000 → efectivo $35.000, débito $36.000, crédito $37.000 (sin guardar) |
 | 3c8c5b1 | Regla de consulta de Pablo: incluida si compra lentes; $5.000 solo al que no compra; consulta ya cobrada se descuenta a mano una vez | Codex: aviso leído, formulario cancelado sin registrar |
 | 5ea1be0 | Cobros "Todos" y links globales del Inicio | Codex: READY + CI run 39364440702; Por cobrar abre Todos con $72.000 / 3 personas |
-| 18cbb1c | Medio de pago obligatorio en cada cobro (sin defecto ni arrastre) en Vender, Cobros y Consulta | CI verde; pendiente prueba en navegador |
+| 18cbb1c | Medio de pago obligatorio en cada cobro (sin defecto ni arrastre) en Vender, Cobros y Consulta | Codex en navegador: "Elige cómo paga" deshabilitado hasta elegir, en las tres pantallas (sin guardar) |
+| 7a35b44 | Etiqueta de caja según alcance; este registro | Codex: READY + CI master run 39365003899; dos pares AR38 + azul48, quitar AR conserva el par 2 con un solo marco |
 
 Pendientes conocidos (no se tocan sin decisión):
 - Cierre: sin protección atómica en BD ante dos pagos simultáneos. Operar con un solo encargado del cierre.
