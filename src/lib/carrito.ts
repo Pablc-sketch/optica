@@ -12,3 +12,10 @@ export function quitarHuerfanos<T extends { key: string }>(lineas: T[]): T[] {
     return !m || pares.has(m[2]);
   });
 }
+
+// El servidor (registrarVenta) rechaza cristales sin paciente: la orden de
+// trabajo es suya. Se puede cotizar sin ficha, pero no guardar. Una venta
+// solo de accesorios sí se guarda sin paciente.
+export function faltaPacienteParaGuardar(lineas: { cristal?: unknown }[], pacienteId: string | null | undefined): boolean {
+  return !pacienteId && lineas.some((l) => Boolean(l.cristal));
+}

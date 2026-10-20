@@ -6,7 +6,7 @@ import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { encolarVenta } from "@/lib/offline/outbox";
 import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
-import { quitarHuerfanos } from "@/lib/carrito";
+import { faltaPacienteParaGuardar, quitarHuerfanos } from "@/lib/carrito";
 import { abonoMinimoDe, tasaDelMedio } from "@/lib/abono-minimo";
 import { montoAbono } from "@/lib/monto-abono";
 import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
@@ -765,6 +765,9 @@ export default function PuntoDeVenta({
     .filter((l): l is LineaCarrito & { armazonSlot: number } => l.armazonSlot !== undefined)
     .sort((a, b) => a.armazonSlot - b.armazonSlot);
   const creaOT = Boolean(pacienteId && lineasCristal.length > 0);
+  // Cotizar sin ficha se puede; guardar cristales sin paciente, no (el
+  // servidor lo rechaza). Accesorios solos sí.
+  const faltaPaciente = faltaPacienteParaGuardar(carrito, pacienteId);
   // Pares sin marco: antes se podía cobrar igual y la orden salía "sin
   // marco" al laboratorio. Ahora cada par necesita su marco (del
   // inventario, descrito o del paciente) para seguir al pago.
@@ -1044,7 +1047,7 @@ export default function PuntoDeVenta({
   }
 
   async function cobrar() {
-    if (guardando) return;
+    if (guardando || faltaPaciente) return;
     setGuardando(true);
     setMensaje(null);
     const venta = armarVenta();
@@ -1158,7 +1161,8 @@ export default function PuntoDeVenta({
           <div>
             <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[0].titulo}`}>¿Para quién es la venta?</h2>
             <p className="text-sm text-tinta-suave">
-              Con paciente, la orden se arma sola con su receta. Sin ficha, sigue sin paciente.
+              Con paciente, la orden se arma sola con su receta. Sin ficha puedes cotizar, pero para guardar una venta de lentes hay
+              que elegir al paciente.
             </p>
           </div>
 
@@ -1360,9 +1364,12 @@ export default function PuntoDeVenta({
               {recetaPacienteId ? " con la última receta." : ". Ojo: el paciente no tiene receta cargada."}
             </p>
           )}
-          {lineasCristal.length > 0 && !pacienteId && (
+          {faltaPaciente && (
             <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800">
-              Sin paciente no se crea la orden de trabajo. Vuelve al paso 1.
+              Esto es solo una cotización: elige un paciente para guardar la venta y crear su orden.{" "}
+              <button type="button" onClick={() => setPaso(0)} className="font-bold underline">
+                Elegir paciente
+              </button>
             </p>
           )}
 
@@ -1619,6 +1626,14 @@ export default function PuntoDeVenta({
               {usaMinimo && " (Es el abono mínimo: se ajusta solo al medio de pago.)"}
             </p>
           )}
+          {faltaPaciente && (
+            <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">
+              Elige un paciente para guardar la venta y crear su orden.{" "}
+              <button type="button" onClick={() => setPaso(0)} className="underline">
+                Ir a Paciente
+              </button>
+            </p>
+          )}
           {cobro.tipo === "sin_abono" && total > 0 && (
             <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">
               No paga nada ahora: queda debiendo {clp(total)}.
@@ -1636,12 +1651,14 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={cobrar}
-              disabled={guardando || carrito.length === 0 || (montoACobrar > 0 && !medioPago)}
+              disabled={guardando || carrito.length === 0 || faltaPaciente || (montoACobrar > 0 && !medioPago)}
               className={`${boton} flex-1 bg-emerald-800 text-white hover:bg-emerald-900`}
             >
               {guardando
                 ? "Registrando…"
-                : montoACobrar > 0 && !medioPago
+                : faltaPaciente
+                  ? "Falta elegir al paciente"
+                  : montoACobrar > 0 && !medioPago
                   ? "Elige cómo paga"
                   : montoACobrar === 0
                     ? total > 0

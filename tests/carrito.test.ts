@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quitarHuerfanos } from "../src/lib/carrito";
+import { faltaPacienteParaGuardar, quitarHuerfanos } from "../src/lib/carrito";
 
 const k = (...keys: string[]) => keys.map((key) => ({ key }));
 
@@ -14,5 +14,21 @@ describe("quitarHuerfanos", () => {
   });
   it("no toca productos sueltos", () => {
     expect(quitarHuerfanos(k("prod-a", "prod-b")).length).toBe(2);
+  });
+});
+
+describe("faltaPacienteParaGuardar", () => {
+  const cristal = { cristal: { tipoLente: "Monofocal" } };
+  const accesorio = {};
+  it("cristales sin paciente: no se puede guardar", () => {
+    expect(faltaPacienteParaGuardar([cristal, accesorio], "")).toBe(true);
+    expect(faltaPacienteParaGuardar([cristal], null)).toBe(true);
+  });
+  it("cristales con paciente: se guarda", () => {
+    expect(faltaPacienteParaGuardar([cristal], "p1")).toBe(false);
+  });
+  it("solo accesorios sin paciente: se guarda", () => {
+    expect(faltaPacienteParaGuardar([accesorio], "")).toBe(false);
+    expect(faltaPacienteParaGuardar([], "")).toBe(false);
   });
 });
