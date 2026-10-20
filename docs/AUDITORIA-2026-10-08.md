@@ -23,3 +23,19 @@ Fuente: `Lentia-auditoria.md` y `Lentia-para-Claude.md` (ChatGPT/Codex), commit 
 | F17 | Faltan pruebas E2E/integración y esquema reproducible | Pendiente | — |
 
 Reglas que no se tocan: comisión Isadora 10%, ahorro 20%, reparto 50/50, costo marco absorbido $3.248, folios, cobrado y deuda.
+
+## Revisión nocturna 19→20-10-2026 (Claude publica, Codex verifica)
+
+| Commit | Cambio | Verificación |
+|---|---|---|
+| aefa135 | Marcos/premium huérfanos fuera del cobro; abono mínimo con costo real; cierre sin doble pago secuencial, deshacer acotado, efectivo/transferencia | Codex en navegador: quitar cristal deja carrito vacío y "Cobrar $0" deshabilitado |
+| 4da0b0c | Abono mínimo bruto de la comisión del medio; aviso si el precio no cubre producción; ticket solo de lentes | Codex en navegador: polarizado $70.000 → efectivo $35.000, débito $36.000, crédito $37.000 (sin guardar) |
+| 3c8c5b1 | Regla de consulta de Pablo: incluida si compra lentes; $5.000 solo al que no compra; consulta ya cobrada se descuenta a mano una vez | Codex: aviso leído, formulario cancelado sin registrar |
+| 5ea1be0 | Cobros "Todos" y links globales del Inicio | Codex: READY + CI run 39364440702; Por cobrar abre Todos con $72.000 / 3 personas |
+| 18cbb1c | Medio de pago obligatorio en cada cobro (sin defecto ni arrastre) en Vender, Cobros y Consulta | CI verde; pendiente prueba en navegador |
+
+Pendientes conocidos (no se tocan sin decisión):
+- Cierre: sin protección atómica en BD ante dos pagos simultáneos. Operar con un solo encargado del cierre.
+- 17 filas de inventario negativo: conciliación física, sin normalizar a cero.
+- Consulta ya cobrada a quien después compra: descuento manual una sola vez, sin abono extra.
+- No se corrigieron datos históricos en esta revisión.

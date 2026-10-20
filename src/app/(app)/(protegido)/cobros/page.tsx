@@ -170,7 +170,9 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
 
           <details className="rounded-2xl bg-white p-4 shadow-sm">
             <summary className="cursor-pointer">
-              <span className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">Caja del operativo · </span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">
+                {elegido === "todos" ? "Caja de todos los operativos · " : elegido === "sin" ? "Caja sin operativo · " : "Caja del operativo · "}
+              </span>
               <span className="font-semibold">llega a la cuenta {clp(debito + credito + transferencia - comision)}</span>
               <span className="text-sm text-tinta-suave"> · efectivo {clp(efectivo)}</span>
             </summary>
