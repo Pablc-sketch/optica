@@ -30,7 +30,7 @@ export default async function VentasPage() {
          diseno_laboratorio_proximo, diseno_proximo_desde`
       )
       .order("tipo_lente"),
-    supabase.from("tenants").select("factor_venta_cristales, descuento_laboratorio_pct").single(),
+    supabase.from("tenants").select("factor_venta_cristales, descuento_laboratorio_pct, comision_debito_pct, comision_credito_pct").single(),
     supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
     supabase
@@ -102,6 +102,8 @@ export default async function VentasPage() {
           vendedorId={user?.id ?? null}
           recetasPorPaciente={recetasPorPaciente}
           operativos={operativosRes.data ?? []}
+          comisionDebitoPct={Number(tenantRes.data?.comision_debito_pct ?? 0)}
+          comisionCreditoPct={Number(tenantRes.data?.comision_credito_pct ?? 0)}
         />
       </div>
 

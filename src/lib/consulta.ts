@@ -20,3 +20,9 @@ export function totalConsultas(
     .filter((i) => esConsulta(i.descripcion))
     .reduce((s, i) => s + i.cantidad * i.precio_unitario - (i.descuento ?? 0), 0);
 }
+
+// Una venta que es solo consulta (sin lentes ni productos). No cuenta para
+// el ticket promedio de lentes ni para "cuántos compraron".
+export function esVentaDeConsulta(items: { descripcion?: string | null }[] | null | undefined): boolean {
+  return Boolean(items && items.length > 0 && items.every((i) => esConsulta(i.descripcion)));
+}

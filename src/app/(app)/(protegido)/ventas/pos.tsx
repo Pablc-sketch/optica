@@ -7,7 +7,7 @@ import { encolarVenta } from "@/lib/offline/outbox";
 import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
 import { quitarHuerfanos } from "@/lib/carrito";
-import { abonoMinimoDe } from "@/lib/abono-minimo";
+import { abonoMinimoDe, tasaDelMedio } from "@/lib/abono-minimo";
 import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import RegistrarConsulta from "../cobros/registrar-consulta";
 import type { SugerenciaExtra } from "@/lib/sugerencias";
@@ -650,6 +650,8 @@ export default function PuntoDeVenta({
   vendedorId,
   recetasPorPaciente,
   operativos,
+  comisionDebitoPct = 0,
+  comisionCreditoPct = 0,
 }: {
   pacientes: Paciente[];
   productos: Producto[];
@@ -662,6 +664,8 @@ export default function PuntoDeVenta({
   vendedorId: string | null;
   recetasPorPaciente: Record<string, RecetaResumen | undefined>;
   operativos: { id: string; nombre: string; fecha: string; fecha_entrega_estimada: string | null }[];
+  comisionDebitoPct?: number;
+  comisionCreditoPct?: number;
 }) {
   const router = useRouter();
   const [paso, setPaso] = useState(0);
@@ -768,14 +772,17 @@ export default function PuntoDeVenta({
   // sentido pedir un adelanto de algo que no se va a cobrar.
   // Con el costo real de cada par (lib/abono-minimo.ts), no solo un monto
   // fijo por tipo: un fotocromático tallado cuesta bastante más de $10.000.
-  const abonoMinimo = abonoMinimoDe(
+  const { monto: abonoMinimo, noCubre: abonoNoCubre } = abonoMinimoDe(
     lineasCristal.map((l) => ({
       precio: l.precioUnitario,
       costoCristal: costoRealDeLinea(l)?.costo ?? null,
       minimoFijo: ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0,
     })),
     COSTO_MARCO_POR_PAR,
-    total
+    total,
+    // Bruto del medio elegido: con tarjeta hay que cobrar algo más para que
+    // después de la comisión llegue el costo.
+    tasaDelMedio(medioPago, comisionDebitoPct, comisionCreditoPct)
   );
   const recetaPacienteId = receta?.id;
   const paciente = pacientes.find((p) => p.id === pacienteId);
@@ -1548,6 +1555,15 @@ export default function PuntoDeVenta({
               </button>
             )}
           </div>
+          <p className="-mt-1 text-xs text-tinta-suave">
+            Abono mínimo = lo que cuesta hacer los lentes (cristal + marco), sumando la comisión si es con tarjeta. Cambia según
+            el medio de pago de abajo.
+          </p>
+          {abonoNoCubre && (
+            <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">
+              Ojo: el precio de este lente no alcanza a cubrir lo que cuesta hacerlo. Ningún abono lo cubre.
+            </p>
+          )}
 
           <label className="flex flex-col gap-1 text-sm font-medium">
             Medio de pago

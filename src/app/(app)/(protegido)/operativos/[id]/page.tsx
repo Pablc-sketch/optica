@@ -16,7 +16,7 @@ import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 import { type CatalogoLaboratorio } from "@/lib/costo-fides";
 import EliminarOperativo from "./eliminar-operativo";
 import { cargarVentasParaAviso, clasificarAvisos, destinatariosDeAvisos } from "@/lib/avisos";
-import { totalConsultas } from "@/lib/consulta";
+import { esVentaDeConsulta, totalConsultas } from "@/lib/consulta";
 import { origenCristal, precioVentaCristal, type PotenciasReceta } from "@/lib/precio-venta";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
@@ -167,7 +167,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // porcentaje sin razón. Las cortesías se separan porque atendieron a esa
   // persona pero no entró plata: cuentan como atención, no como venta.
   const pacientesExaminados = new Set(recetas.map((r) => r.paciente_id).filter(Boolean));
-  const ventasPagadas = ventas.filter((v) => v.total > 0);
+  // Solo ventas de lentes: las consultas sueltas no son "compraron".
+  const ventasPagadas = ventas.filter((v) => v.total > 0 && !esVentaDeConsulta(v.venta_items));
   const pacientesQuePagaron = new Set(ventasPagadas.map((v) => v.paciente_id).filter(Boolean));
   const totalExaminados = pacientesExaminados.size;
   const cortesias = ventas.length - ventasPagadas.length;
@@ -176,7 +177,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // Ticket de los que SÍ pagaron — el promedio sobre todas las ventas
   // (incluidas las cortesías en $0) subestima lo que deja alguien que
   // compra, que es justo lo que se quiere proyectar acá.
-  const ticketPromedio = ventasPagadas.length > 0 ? Math.round(totalVendido / ventasPagadas.length) : 0;
+  const ticketPromedio =
+    ventasPagadas.length > 0 ? Math.round(ventasPagadas.reduce((s, v) => s + v.total, 0) / ventasPagadas.length) : 0;
   // Lo que habría entrado si la mitad de los que se atendieron y no
   // compraron hubieran comprado. La mitad y no todos: es una meta que se
   // puede perseguir, no un número de fantasía.

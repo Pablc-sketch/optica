@@ -23,7 +23,7 @@ import {
   eliminarRetiro,
   pagarSueldo,
 } from "@/lib/actions/gastos";
-import { totalConsultas } from "@/lib/consulta";
+import { esVentaDeConsulta, totalConsultas } from "@/lib/consulta";
 import FiltroPagos from "./filtro-pagos";
 
 const PERSONAS: Record<string, string> = {
@@ -176,7 +176,7 @@ export default async function ReportesPage({
 
   let ventasQuery = supabase
     .from("ventas")
-    .select("id, total, vendedor_id, users:vendedor_id (nombre), pagos_abonos (monto)")
+    .select("id, total, vendedor_id, users:vendedor_id (nombre), pagos_abonos (monto), venta_items (descripcion)")
     .eq("anulada", false)
     .gte("fecha", inicioDelDia(desde))
     .lte("fecha", finDelDia(hasta));
@@ -417,8 +417,10 @@ export default async function ReportesPage({
   };
 
   const totalVendido = ventas.reduce((s, v) => s + v.total, 0);
-  const numVentas = ventas.length;
-  const ticketPromedio = numVentas > 0 ? Math.round(totalVendido / numVentas) : 0;
+  // Ticket de LENTES: sin las ventas que son solo consulta ($5.000).
+  const ventasLentes = ventas.filter((v) => !esVentaDeConsulta((v as { venta_items?: { descripcion: string | null }[] }).venta_items));
+  const numVentas = ventasLentes.length;
+  const ticketPromedio = numVentas > 0 ? Math.round(ventasLentes.reduce((s, v) => s + v.total, 0) / numVentas) : 0;
   const totalAbonado = pagos.reduce((s, p) => s + p.monto, 0);
   // Uno por uno los abonos que arman "Cobrado en el período", para poder
   // revisar de dónde sale la plata (¿está el efectivo que me pagaron?, etc.)
@@ -586,7 +588,7 @@ export default async function ReportesPage({
       </p>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tarjeta icono="💰" titulo="Vendido" valor={clp(totalVendido)} detalle={`${numVentas} venta${numVentas === 1 ? "" : "s"}`} />
+        <Tarjeta icono="💰" titulo="Vendido" valor={clp(totalVendido)} detalle={`${numVentas} venta${numVentas === 1 ? "" : "s"} de lentes (el monto incluye consultas)`} />
         <Tarjeta icono="🎟" titulo="Ticket promedio" valor={clp(ticketPromedio)} />
         <details className="group relative overflow-hidden rounded-3xl bg-white p-4 shadow-[0_2px_10px_-3px_rgba(61,57,41,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(61,57,41,0.22)] [&_summary::-webkit-details-marker]:hidden">
           <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-brand to-accent" />

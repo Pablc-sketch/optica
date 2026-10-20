@@ -12,3 +12,12 @@ describe("totalConsultas", () => {
     ).toBe(15000);
   });
 });
+
+describe("esVentaDeConsulta", () => {
+  it("solo consulta: sí; con lentes: no", async () => {
+    const { esVentaDeConsulta, DESCRIPCION_CONSULTA } = await import("../src/lib/consulta");
+    expect(esVentaDeConsulta([{ descripcion: DESCRIPCION_CONSULTA }])).toBe(true);
+    expect(esVentaDeConsulta([{ descripcion: DESCRIPCION_CONSULTA }, { descripcion: "Cristales Monofocal" }])).toBe(false);
+    expect(esVentaDeConsulta([])).toBe(false);
+  });
+});
