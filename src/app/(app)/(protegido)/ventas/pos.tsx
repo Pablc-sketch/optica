@@ -462,6 +462,11 @@ function FilaLente({
 // con apuro era fácil que el marco del Lente 2 quedara guardado como si
 // fuera el del Lente 1. Ahora cada lente tiene su propio buscador y su
 // propio marco elegido, sin ambigüedad.
+// Marco de la bandeja premium (marcas): se cobra aparte, una vez por par.
+// El costo del marco ya está contado por par en la utilidad, así que este
+// extra es ganancia, y suma a la venta (y a la comisión de la vendedora).
+const PRECIO_MARCO_PREMIUM = 10000;
+
 const TIPOS_MARCO = ["acetato", "metal", "semi al aire", "al aire", "TR90"];
 const COLORES_MARCO = ["negro", "café", "carey", "dorado", "plateado", "rojo", "azul", "rosado", "transparente", "gris"];
 
@@ -802,7 +807,8 @@ export default function PuntoDeVenta({
   function marcarMarcoPropio(numero: number) {
     const key = `armazon-${numero}`;
     setCarrito((prev) => [
-      ...prev.filter((l) => l.key !== key),
+      // Marco propio: no hay marco nuestro, así que tampoco premium.
+      ...prev.filter((l) => l.key !== key && l.key !== `premium-${numero}`),
       {
         key,
         descripcion: "Marco propio del paciente",
@@ -812,6 +818,19 @@ export default function PuntoDeVenta({
         marcoPropio: true,
       },
     ]);
+  }
+
+  // Marco premium: una línea aparte por par ("premium-N"), $10.000.
+  function alternarPremium(numero: number, premium: boolean) {
+    const key = `premium-${numero}`;
+    setCarrito((prev) => {
+      const sin = prev.filter((l) => l.key !== key);
+      if (!premium) return sin;
+      return [
+        ...sin,
+        { key, descripcion: `Marco premium (par ${numero})`, cantidad: 1, precioUnitario: PRECIO_MARCO_PREMIUM },
+      ];
+    });
   }
 
   // Marco descrito en palabras: no sale del inventario (no descuenta stock),
@@ -1347,9 +1366,11 @@ export default function PuntoDeVenta({
                   lineasCristal.length > 1
                     ? `Par ${numero}${l.cristal?.posicion ? ` (${l.cristal.posicion})` : ""}`
                     : "tu lente";
+                const marco = carrito.find((c) => c.key === `armazon-${numero}`);
+                const esPremium = carrito.some((c) => c.key === `premium-${numero}`);
                 return (
+                  <div key={`armazon-slot-${numero}`} className="flex flex-col gap-2">
                   <SelectorArmazon
-                    key={`armazon-slot-${numero}`}
                     etiqueta={etiqueta}
                     productos={productos}
                     elegido={carrito.find((c) => c.key === `armazon-${numero}`)}
@@ -1357,6 +1378,33 @@ export default function PuntoDeVenta({
                     onMarcarPropio={() => marcarMarcoPropio(numero)}
                     onDescribir={(d) => describirMarco(numero, d)}
                   />
+                  {!marco?.marcoPropio && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => alternarPremium(numero, false)}
+                        className={`rounded-2xl border-2 px-3 py-4 text-left ${
+                          !esPremium ? "border-tinta bg-tinta text-white" : "border-tinta/15 bg-white text-tinta"
+                        }`}
+                      >
+                        <span className="block text-lg font-bold">Marco incluido</span>
+                        <span className={`block text-sm ${!esPremium ? "text-white/80" : "text-tinta-suave"}`}>Sin costo extra</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => alternarPremium(numero, true)}
+                        className={`rounded-2xl border-2 px-3 py-4 text-left ${
+                          esPremium ? "border-amber-600 bg-amber-500 text-white" : "border-amber-500/40 bg-amber-50 text-amber-900"
+                        }`}
+                      >
+                        <span className="block text-lg font-bold">⭐ Premium</span>
+                        <span className={`block text-sm font-semibold ${esPremium ? "text-white" : "text-amber-800"}`}>
+                          +{clp(PRECIO_MARCO_PREMIUM)} · bandeja de marcas
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                  </div>
                 );
               })}
             </div>
