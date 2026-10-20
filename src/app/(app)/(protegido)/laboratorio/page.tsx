@@ -304,10 +304,12 @@ export default async function LaboratorioPage({
                     return <td className="py-1.5 pr-2 font-bold uppercase">{distancia}</td>;
                   };
                   const nombrePaciente = (ot.pacientes as unknown as { nombre: string } | null)?.nombre ?? "—";
+                  // Código del inventario Y descripción escrita, si hay las dos:
+                  // en el laboratorio el código es lo que ubica el marco.
                   const fmtMarco = (m: typeof marco, propio: boolean, descrito: string | null) => {
                     if (propio) return "Marco propio del paciente";
-                    if (descrito) return `Marco ${descrito}`;
-                    return m ? `${m.sku ?? ""} ${m.color ?? ""}`.trim() || m.nombre : "—";
+                    const delInventario = m ? `${m.sku ?? ""} ${m.color ?? ""}`.trim() || m.nombre : "";
+                    return [delInventario, descrito ? `Marco ${descrito}` : ""].filter(Boolean).join(" · ") || "—";
                   };
                   const vaPrimero = ot.origen_cristal === origen;
                   const tieneSegundo = Boolean(ot.tipo_lente_2 || ot.tratamiento_2) && ot.origen_cristal_2 === origen;

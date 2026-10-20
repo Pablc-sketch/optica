@@ -563,12 +563,16 @@ function SelectorArmazon({
               placeholder="Color u otro detalle (ej. carey con dorado)"
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
             />
-            <input
-              value={codigoMarco}
-              onChange={(e) => setCodigoMarco(e.target.value)}
-              placeholder="Código o modelo (opcional, ej. 8821 C2)"
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm uppercase outline-none focus:border-amber-500"
-            />
+            <label className="flex flex-col gap-1 text-sm font-bold text-amber-900">
+              Código del marco (el de la etiqueta)
+              <input
+                value={codigoMarco}
+                onChange={(e) => setCodigoMarco(e.target.value)}
+                placeholder="Ej. GYS8039"
+                autoCapitalize="characters"
+                className="w-full rounded-xl border-2 border-amber-300 bg-white px-3 py-3 text-lg font-bold uppercase tracking-wide outline-none focus:border-amber-600"
+              />
+            </label>
             <button
               type="button"
               disabled={!tipoMarco || (!colorMarco.trim() && !codigoMarco.trim())}

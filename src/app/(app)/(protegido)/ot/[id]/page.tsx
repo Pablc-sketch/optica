@@ -99,8 +99,8 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
   };
   const fmtMarco = (m: Marco | null, propio: boolean, descrito?: string | null) => {
     if (propio) return "Marco propio del paciente";
-    if (descrito) return `Marco ${descrito}`;
-    return m ? `${m.sku ? `[${m.sku}] ` : ""}${m.marca ?? ""} ${m.nombre} ${m.color ?? ""}`.trim() : "—";
+    const delInventario = m ? `${m.sku ? `[${m.sku}] ` : ""}${m.marca ?? ""} ${m.nombre} ${m.color ?? ""}`.trim() : "";
+    return [delInventario, descrito ? `Marco ${descrito}` : ""].filter(Boolean).join(" · ") || "—";
   };
 
   return (
@@ -157,11 +157,11 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm font-medium">
-                O descríbelo (si no está en inventario)
+                Código o descripción del marco
                 <input
                   name="marco_descripcion"
                   defaultValue={ot.marco_descripcion ?? ""}
-                  placeholder="Ej. acetato rojo, metal dorado, semi al aire negro"
+                  placeholder="Ej. GYS8039 acetato negro"
                   className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
                 />
               </label>
@@ -204,11 +204,11 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                   </select>
                 </label>
               <label className="flex flex-col gap-1 text-sm font-medium">
-                  O descríbelo (si no está en inventario)
+                  Código o descripción del marco
                   <input
                     name="marco_descripcion_2"
                     defaultValue={ot.marco_descripcion_2 ?? ""}
-                    placeholder="Ej. acetato rojo, metal dorado, semi al aire negro"
+                    placeholder="Ej. GYS8039 acetato negro"
                     className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
                   />
                 </label>
