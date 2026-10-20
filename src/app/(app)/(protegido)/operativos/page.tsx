@@ -59,7 +59,7 @@ export default async function OperativosPage() {
     supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, direccion, estado, notas, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
+        "id, nombre, tipo_venue, fecha, direccion, estado, notas, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante"
       )
       .order("fecha", { ascending: false }),
     supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
@@ -118,7 +118,7 @@ export default async function OperativosPage() {
     0
   );
   const totalCostosOperativos = lista.reduce(
-    (s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros,
+    (s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + (o.costo_ayudante ?? 0),
     0
   );
   const totalCostos = totalCostosOperativos + totalCostoProductos;

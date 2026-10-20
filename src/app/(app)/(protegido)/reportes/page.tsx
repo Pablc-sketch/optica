@@ -245,7 +245,7 @@ export default async function ReportesPage({
   const operativosTodosQuery = supabase
     .from("operativos")
     .select(
-      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
+      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante"
     )
     .order("fecha", { ascending: true });
 
@@ -332,7 +332,7 @@ export default async function ReportesPage({
   // persona. Una sola consulta para todos, agrupada en el cliente, en vez
   // de una consulta por operativo.
   const idsOperativosMes = operativosDelMes.map((o) => o.id);
-  const [ventasMesRes, itemsMesRes] = idsOperativosMes.length
+  const [ventasMesRes, itemsMesRes, pagosMesRes] = idsOperativosMes.length
     ? await Promise.all([
         supabase.from("ventas").select("total, operativo_id").eq("anulada", false).in("operativo_id", idsOperativosMes),
         supabase
@@ -345,8 +345,29 @@ export default async function ReportesPage({
           )
           .eq("ventas.anulada", false)
           .in("ventas.operativo_id", idsOperativosMes),
+        // Para restar la comisión de la máquina, igual que "Cerrar operativo".
+        supabase
+          .from("pagos_abonos")
+          .select("monto, medio_pago, ventas!inner (operativo_id, anulada)")
+          .eq("ventas.anulada", false)
+          .in("ventas.operativo_id", idsOperativosMes),
       ])
-    : [{ data: [] as { total: number; operativo_id: string | null }[] }, { data: [] as unknown[] }];
+    : [
+        { data: [] as { total: number; operativo_id: string | null }[] },
+        { data: [] as unknown[] },
+        { data: [] as unknown[] },
+      ];
+  const comisionPorOperativo = new Map<string, number>();
+  for (const p of (pagosMesRes.data ?? []) as {
+    monto: number;
+    medio_pago: string | null;
+    ventas: { operativo_id: string | null } | { operativo_id: string | null }[] | null;
+  }[]) {
+    const rel = Array.isArray(p.ventas) ? p.ventas[0] : p.ventas;
+    if (!rel?.operativo_id) continue;
+    const pct = p.medio_pago === "debito" ? comisionDebitoPct : p.medio_pago === "credito" ? comisionCreditoPct : 0;
+    comisionPorOperativo.set(rel.operativo_id, (comisionPorOperativo.get(rel.operativo_id) ?? 0) + (p.monto * pct) / 100);
+  }
   const ventasMes = ventasMesRes.data ?? [];
   const itemsMes = (itemsMesRes.data ?? []) as unknown as (ItemConCosto & {
     ventas: { operativo_id: string | null } | { operativo_id: string | null }[] | null;
@@ -369,8 +390,8 @@ export default async function ReportesPage({
   const sueldosPorOperativo = operativosDelMes.map((o) => {
     const ventaTotal = ventaPorOperativo.get(o.id) ?? 0;
     const costoProductos = desglosarCostos(itemsPorOperativo.get(o.id) ?? []).total;
-    const costoOperativo = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros;
-    const utilidadNeta = ventaTotal - costoProductos - costoOperativo;
+    const costoOperativo = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + (o.costo_ayudante ?? 0);
+    const utilidadNeta = ventaTotal - costoProductos - costoOperativo - Math.round(comisionPorOperativo.get(o.id) ?? 0);
     const sueldo = calcularSueldos(ventaTotal, utilidadNeta, {
       comisionVendedoraPct: Number(o.comision_vendedora_pct),
       comisionVendedoraBase: o.comision_vendedora_base as BaseComision,
@@ -425,7 +446,7 @@ export default async function ReportesPage({
       const f = o.fecha_fin ?? o.fecha;
       return f >= desde && f <= hasta;
     })
-    .reduce((s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros, 0);
+    .reduce((s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + (o.costo_ayudante ?? 0), 0);
   const cajaPeriodo = calcularCaja({
     entradas: pagos,
     salidas: [...retirosPeriodo, ...gastosGlobalesPeriodo],

@@ -113,7 +113,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
            ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio, costo_laboratorio_2),
            productos:producto_id (costo, categoria)
          ),
-         pagos_abonos (monto)`
+         pagos_abonos (monto, medio_pago)`
       )
       .eq("operativo_id", id)
       .eq("anulada", false)
@@ -131,7 +131,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
          material_stock, material_laboratorio, diseno_laboratorio, montaje_material,
          diseno_laboratorio_proximo, diseno_proximo_desde`
       ),
-    supabase.from("tenants").select("nombre_comercial, descuento_laboratorio_pct").single(),
+    supabase.from("tenants").select("nombre_comercial, descuento_laboratorio_pct, comision_debito_pct, comision_credito_pct").single(),
     supabase.from("lab_precios_stock").select("material, diseno, esfera_max, cilindro_max, precio_unitario"),
     supabase.from("lab_precios_laboratorio").select("diseno, material, precio_unitario"),
     supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
@@ -211,9 +211,19 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const totalCostoProductos = desglose.total;
 
   const totalCostosOperativo =
-    operativo.costo_transporte + operativo.costo_arriendo + operativo.costo_viaticos + operativo.costo_otros;
+    operativo.costo_transporte + operativo.costo_arriendo + operativo.costo_viaticos + operativo.costo_otros + (operativo.costo_ayudante ?? 0);
   const totalCostos = totalCostosOperativo + totalCostoProductos;
-  const utilidadNeta = totalVendido - totalCostos;
+  // La comisión de la máquina de tarjetas también es costo (mismo cálculo
+  // que "Cerrar operativo"), si no la ganancia se veía más alta que la real.
+  const pagosOperativo = ventas.flatMap((v) => (v.pagos_abonos ?? []) as { monto: number; medio_pago?: string | null }[]);
+  const comisionTarjeta = Math.round(
+    (pagosOperativo.filter((p) => p.medio_pago === "debito").reduce((s, p) => s + p.monto, 0) *
+      Number(tenantRes.data?.comision_debito_pct ?? 0) +
+      pagosOperativo.filter((p) => p.medio_pago === "credito").reduce((s, p) => s + p.monto, 0) *
+        Number(tenantRes.data?.comision_credito_pct ?? 0)) /
+      100
+  );
+  const utilidadNeta = totalVendido - totalCostos - comisionTarjeta;
   // Lo que ya se le adelantó a alguien contra ESTE operativo (retiros de
   // sueldo) es plata que de verdad salió de la cuenta/efectivo — sin
   // restarla acá, "Utilidad actual" quedaba mostrando plata que ya no está.
@@ -454,6 +464,12 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           >
             💬 Compartir resumen
           </a>
+          <Link
+            href={`/operativos/${operativo.id}/cierre`}
+            className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-900"
+          >
+            💵 Cerrar y pagar
+          </Link>
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold ${
               operativo.estado === "planificado"

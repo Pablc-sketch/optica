@@ -40,7 +40,7 @@ export default async function CompararOperativos() {
     supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, estado, costo_transporte, costo_arriendo, costo_viaticos, costo_otros"
+        "id, nombre, tipo_venue, fecha, estado, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante"
       )
       .neq("estado", "cancelado")
       .order("fecha", { ascending: false }),
@@ -91,7 +91,7 @@ export default async function CompararOperativos() {
     // Costo real de lo vendido en este operativo, no solo sus propios
     // gastos (transporte, arriendo, etc) — si no, "utilidad" quedaba igual
     // a "vendido".
-    const costos = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + venta.costoProductos;
+    const costos = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + (o.costo_ayudante ?? 0) + venta.costoProductos;
     const conversion = examenes > 0 ? (venta.pagaron.size / examenes) * 100 : 0;
     return {
       ...o,
