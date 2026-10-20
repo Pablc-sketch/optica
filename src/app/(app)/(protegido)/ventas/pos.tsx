@@ -6,6 +6,9 @@ import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { encolarVenta } from "@/lib/offline/outbox";
 import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
+import { quitarHuerfanos } from "@/lib/carrito";
+import { abonoMinimoDe } from "@/lib/abono-minimo";
+import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import RegistrarConsulta from "../cobros/registrar-consulta";
 import type { SugerenciaExtra } from "@/lib/sugerencias";
 import { clp } from "@/lib/clp";
@@ -676,7 +679,10 @@ export default function PuntoDeVenta({
   const [avisoContexto, setAvisoContexto] = useState<string | null>(null);
   const [buscaPaciente, setBuscaPaciente] = useState("");
   const [buscaProducto, setBuscaProducto] = useState("");
-  const [carrito, setCarrito] = useState<LineaCarrito[]>([]);
+  const [carritoTodo, setCarrito] = useState<LineaCarrito[]>([]);
+  // Lo que de verdad se cobra: sin marcos ni premium de pares que ya no
+  // tienen cristal (lib/carrito.ts).
+  const carrito = useMemo(() => quitarHuerfanos(carritoTodo), [carritoTodo]);
   const [abono, setAbono] = useState<string>("");
   const [medioPago, setMedioPago] = useState("efectivo");
   const [laboratorioId, setLaboratorioId] = useState<string>(laboratorios[0]?.id ?? "");
@@ -760,9 +766,17 @@ export default function PuntoDeVenta({
   // no hay que poner plata propia mientras se espera el pago del saldo.
   // Un lente de cortesía (precio $0) no tiene nada que abonar — no tiene
   // sentido pedir un adelanto de algo que no se va a cobrar.
-  const abonoMinimo = lineasCristal
-    .filter((l) => l.precioUnitario > 0)
-    .reduce((s, l) => s + (ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0), 0);
+  // Con el costo real de cada par (lib/abono-minimo.ts), no solo un monto
+  // fijo por tipo: un fotocromático tallado cuesta bastante más de $10.000.
+  const abonoMinimo = abonoMinimoDe(
+    lineasCristal.map((l) => ({
+      precio: l.precioUnitario,
+      costoCristal: costoRealDeLinea(l)?.costo ?? null,
+      minimoFijo: ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0,
+    })),
+    COSTO_MARCO_POR_PAR,
+    total
+  );
   const recetaPacienteId = receta?.id;
   const paciente = pacientes.find((p) => p.id === pacienteId);
 
@@ -902,7 +916,9 @@ export default function PuntoDeVenta({
   // confirma o cambia algo si el paciente decidió otra cosa.
   function elegirPaciente(id: string) {
     setPacienteId(id);
-    setCarrito((prev) => prev.filter((l) => !l.cristal));
+    // Paciente nuevo: fuera cristales, marcos y premium del anterior (sus
+    // pares no son de esta persona). Los productos sueltos se mantienen.
+    setCarrito((prev) => prev.filter((l) => !l.cristal && !/^(armazon|premium)-/.test(l.key)));
     const r = recetasPorPaciente[id];
     // Si a este paciente lo atendieron en un operativo (ej. un condominio),
     // la venta queda ligada a ese mismo operativo — para que el cierre de

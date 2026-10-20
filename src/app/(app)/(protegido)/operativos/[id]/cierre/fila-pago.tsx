@@ -17,6 +17,7 @@ export default function FilaPago(props: Props) {
   const [pendiente, iniciar] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [texto, setTexto] = useState(props.tipo === "ayudante" ? formatearMonto(props.monto) : "");
+  const [caja, setCaja] = useState<"digital" | "efectivo">("digital");
 
   const correr = (f: () => Promise<{ ok: boolean; error?: string }>) =>
     iniciar(async () => {
@@ -72,6 +73,27 @@ export default function FilaPago(props: Props) {
         {props.tipo === "sueldo" && props.pagado > 0 && !yaPagado && (
           <p className="text-sm text-tinta-suave">Ya se le pagó {clp(props.pagado)} · falta {clp(falta)}</p>
         )}
+        {props.tipo === "sueldo" && !yaPagado && (
+          <div className="mt-1 flex gap-1.5">
+            {(
+              [
+                { valor: "digital", titulo: "Transferencia" },
+                { valor: "efectivo", titulo: "Efectivo" },
+              ] as const
+            ).map((o) => (
+              <button
+                key={o.valor}
+                type="button"
+                onClick={() => setCaja(o.valor)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                  caja === o.valor ? "border-tinta bg-tinta text-white" : "border-tinta/20 bg-white"
+                }`}
+              >
+                {o.titulo}
+              </button>
+            ))}
+          </div>
+        )}
         {error && <p className="text-sm font-semibold text-red-700">{error}</p>}
       </div>
       {yaPagado ? (
@@ -100,7 +122,7 @@ export default function FilaPago(props: Props) {
             correr(() =>
               props.tipo === "fides"
                 ? marcarFidesPagado({ operativoId: props.operativoId, nombre: props.nombreOperativo, monto: props.monto, pagado: true })
-                : marcarSueldoPagado({ operativoId: props.operativoId, persona: props.persona, monto: falta, caja: "digital" })
+                : marcarSueldoPagado({ operativoId: props.operativoId, persona: props.persona, objetivo: props.monto, caja })
             )
           }
           className="shrink-0 rounded-xl bg-emerald-800 px-5 py-4 text-base font-semibold text-white hover:bg-emerald-900 disabled:opacity-40"
