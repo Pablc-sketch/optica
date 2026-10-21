@@ -909,6 +909,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       <RecordarEntrega
         operativo={{
           id: operativo.id,
+          nombre: operativo.nombre,
           direccion: operativo.direccion,
           fecha_entrega_estimada: operativo.fecha_entrega_estimada,
           hora_entrega: operativo.hora_entrega,
