@@ -300,6 +300,11 @@ export async function actualizarReceta(formData: FormData) {
   revalidatePath(`/pacientes/${pacienteId}`);
   revalidatePath(`/pacientes/${pacienteId}/receta/${recetaId}`);
   revalidatePath("/ventas");
+  // La OT y el pedido al laboratorio leen la receta (altura, DP, graduación):
+  // si no se refrescan, siguen mostrando el valor de antes de editarla.
+  revalidatePath("/ot", "layout");
+  revalidatePath("/laboratorio");
+  revalidatePath("/operativos", "layout");
 }
 
 // Corregir una receta mal cargada por error (no una que ya se usó para
