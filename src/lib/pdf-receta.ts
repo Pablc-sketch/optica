@@ -93,6 +93,16 @@ export async function construirPdfReceta(datos: DatosRecetaImpresion) {
   doc.text(`ADD: ${datos.add}`, 195, y, { align: "right" });
   y += 8;
 
+  if (datos.diagnostico) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Diagnóstico:", 15, y);
+    doc.setFont("helvetica", "normal");
+    const texto = doc.splitTextToSize(datos.diagnostico, 150);
+    doc.text(texto, 40, y);
+    y += texto.length * 5 + 4;
+  }
+
   if (datos.alertas.length > 0 || datos.observaciones.length > 0) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);

@@ -11,6 +11,7 @@ import DescargarPdf from "./descargar-pdf";
 import type { DatosRecetaImpresion } from "@/lib/receta-datos";
 import { leerSugerenciasExtra } from "@/lib/sugerencias";
 import { nombreCristal } from "@/lib/cristales";
+import { diagnosticoDeReceta } from "@/lib/diagnostico";
 
 // Receta óptica imprimible/descargable: lo que se le entrega en mano al
 // paciente. Con el logo propio de la óptica y todos los antecedentes de la
@@ -106,6 +107,8 @@ export default async function RecetaImprimible({
   const addTexto =
     receta.od_add === receta.oi_add ? fmtD(receta.od_add) : `OD ${fmtD(receta.od_add)} · OI ${fmtD(receta.oi_add)}`;
 
+  const diagnostico = diagnosticoDeReceta(receta);
+
   const datosPdf: DatosRecetaImpresion = {
     opticaNombre: optica?.nombre_comercial ?? "",
     opticaDireccion: optica?.direccion ?? null,
@@ -131,6 +134,7 @@ export default async function RecetaImprimible({
     dp: receta.dp !== null ? String(receta.dp) : "—",
     altura: receta.altura !== null ? String(receta.altura) : "—",
     add: addTexto,
+    diagnostico,
     alertas,
     observaciones,
     notas: receta.notas,
@@ -238,6 +242,12 @@ export default async function RecetaImprimible({
               : `OD ${fmtD(receta.od_add)} · OI ${fmtD(receta.oi_add)}`}
           </p>
         </div>
+
+        {diagnostico && (
+          <p className="mb-5 text-sm">
+            <span className="font-semibold">Diagnóstico:</span> {diagnostico}
+          </p>
+        )}
 
         {(alertas.length > 0 || observaciones.length > 0) && (
           <div className="mb-5 rounded border border-brand/30 bg-crema-claro p-3 text-sm">

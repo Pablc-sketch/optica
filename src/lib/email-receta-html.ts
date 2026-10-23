@@ -116,6 +116,14 @@ export function construirHtmlReceta(datos: DatosRecetaImpresion, saludoNombre: s
       </tr>
 
       ${
+        datos.diagnostico
+          ? `<tr><td style="padding:14px 24px;border-top:1px solid #e4e0d5;font-size:13px;color:${TINTA};">
+               <p style="margin:0 0 3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${TINTA_SUAVE};">Diagnóstico</p>
+               <b>${escapar(datos.diagnostico)}</b>
+             </td></tr>`
+          : ""
+      }
+      ${
         filaObs
           ? `<tr><td style="padding:14px 24px;border-top:1px solid #e4e0d5;background:${CREMA};font-size:12px;color:${TINTA};">
                <p style="margin:0 0 5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${TINTA_SUAVE};">Observaciones</p>

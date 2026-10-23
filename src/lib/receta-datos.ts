@@ -16,6 +16,8 @@ export type DatosRecetaImpresion = {
   dp: string;
   altura: string;
   add: string;
+  // Miopía, astigmatismo, etc., según los números (lib/diagnostico.ts).
+  diagnostico: string | null;
   alertas: string[];
   observaciones: string[];
   notas: string | null;
@@ -67,6 +69,7 @@ export function construirTextoReceta(datos: DatosRecetaImpresion): string {
     tabla,
     "",
     `DP: ${datos.dp} mm · Altura: ${datos.altura} mm · ADD: ${datos.add}`,
+    datos.diagnostico ? `Diagnóstico: ${datos.diagnostico}` : null,
     datos.alertas.length > 0 ? `\nObservaciones: ${datos.alertas.join(" · ")}` : null,
     datos.observaciones.length > 0 ? datos.observaciones.join("\n") : null,
     datos.notas ? `\nNotas: ${datos.notas}` : null,
