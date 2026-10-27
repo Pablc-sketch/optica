@@ -37,7 +37,7 @@ export function pendientesCompra(compra: CompraReembolso): string[] {
   if (!compra.optica?.razon_social || !rutReembolso(compra.optica.rut_empresa)) pendientes.push("Completa la razón social y un RUT válido de la óptica en Configuración.");
   if (!compra.items.length || compra.items.some(i => !i.descripcion.trim() || i.cantidad <= 0 || i.precio_unitario < 0 || i.descuento < 0 || i.cantidad * i.precio_unitario < i.descuento)) pendientes.push("Revisa las descripciones, cantidades y precios de los artículos.");
   if (compra.items.reduce((s, i) => s + i.cantidad * i.precio_unitario - i.descuento, 0) !== compra.total) pendientes.push("El desglose no coincide con el total de la compra. Revisa la venta.");
-  if (compra.items.some(i => i.precio_unitario === 0)) pendientes.push("Hay artículos con precio $0. Confirma cómo se vendieron; conserva el precio real y respalda cualquier precio de conjunto sin inventar valores separados.");
+  if (compra.items.some(i => i.precio_unitario === 0)) pendientes.push("Artículo con precio $0: confirma el precio real o de conjunto, sin inventar valores.");
   const pagado = compra.pagos.reduce((s, p) => s + p.monto, 0);
   if (pagado < compra.total) pendientes.push("Hay saldo pendiente: el comprobante debe mostrar lo pagado y el saldo, sin declarar un pago total.");
   if (pagado > compra.total) pendientes.push("Los pagos superan el total. Revisa la conciliación antes de presentar los documentos.");
@@ -46,7 +46,7 @@ export function pendientesCompra(compra: CompraReembolso): string[] {
 }
 
 export const GUIAS_REEMBOLSO = {
-  banmedica: { nombre: "Banmédica", url: "https://www.banmedica.cl/guia-de-boletas/", texto: "Reúne la receta, el documento tributario correspondiente y el detalle de la compra. Comprueba beneficiario, prestador y profesional en los respaldos. Si hubo rechazo, responde a cada dato solicitado en esa comunicación." },
+  banmedica: { nombre: "Banmédica", url: "https://www.banmedica.cl/guia-de-boletas/", texto: "Reúne el documento tributario y el detalle de la compra, con los respaldos que correspondan. La receta no es exigible por la isapre para lentes destinados al tratamiento de la presbicia. Revisa los datos del beneficiario y prestador y responde a las observaciones de cualquier rechazo." },
   fonasa: { nombre: "Fonasa", url: "https://www.chileatiende.gob.cl/fichas/85589-solicitar-reembolso-de-protesis-y-ortesis-a-fonasa", texto: "Verifica primero si corresponde el beneficio, el tramo y la edad al comprar. Reúne cédula, receta original vigente, boleta/factura o voucher válido y certificado de compra si falta el detalle. Contrasta el formato vigente con Fonasa antes de firmar." },
   complementario: { nombre: "Seguro complementario", url: "https://seguros.sura.cl/complementarios/reembolsos", texto: "Consulta la póliza y el formulario de la aseguradora concreta. Reúne receta, boleta y detalle; verifica si exige liquidación de Isapre/Fonasa, certificado de afiliación o constancia de no bonificación. La guía enlazada es un ejemplo de SURA, no una regla para todos los seguros." },
 } as const;
