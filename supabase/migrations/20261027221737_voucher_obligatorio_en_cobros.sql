@@ -42,7 +42,10 @@ returns trigger language plpgsql security invoker set search_path = public
 as $$
 declare pago record;
 begin
-  if tg_op = 'UPDATE' and old.numero_voucher is null and new.numero_voucher is null then
+  if tg_op = 'UPDATE' and old.numero_voucher is null and new.numero_voucher is null
+     and old.medio_pago is not distinct from new.medio_pago
+     and old.monto is not distinct from new.monto
+     and old.venta_id is not distinct from new.venta_id then
     return null;
   end if;
   select medio_pago, numero_voucher into pago from public.pagos_abonos where id = new.id;
@@ -60,7 +63,7 @@ end;
 $$;
 
 create constraint trigger pago_requiere_voucher_tarjeta
-after insert or update of numero_voucher on public.pagos_abonos
+after insert or update of numero_voucher, medio_pago, monto, venta_id on public.pagos_abonos
 deferrable initially deferred for each row
 execute function public.validar_voucher_pago_diferido();
 

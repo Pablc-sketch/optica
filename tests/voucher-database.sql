@@ -69,7 +69,10 @@ returns trigger language plpgsql security invoker set search_path = public
 as $$
 declare pago record;
 begin
-  if tg_op = 'UPDATE' and old.numero_voucher is null and new.numero_voucher is null then
+  if tg_op = 'UPDATE' and old.numero_voucher is null and new.numero_voucher is null
+     and old.medio_pago is not distinct from new.medio_pago
+     and old.monto is not distinct from new.monto
+     and old.venta_id is not distinct from new.venta_id then
     return null;
   end if;
   select medio_pago, numero_voucher into pago from pg_temp.pagos_abonos where id = new.id;
@@ -87,7 +90,7 @@ end;
 $$;
 
 create constraint trigger pago_requiere_voucher_tarjeta
-after insert or update of numero_voucher on pg_temp.pagos_abonos
+after insert or update of numero_voucher, medio_pago, monto, venta_id on pg_temp.pagos_abonos
 deferrable initially deferred for each row
 execute function pg_temp.validar_voucher_pago_diferido();
 
@@ -139,6 +142,14 @@ begin
  -- El efectivo no exige un número ficticio.
  perform pg_temp.registrar_abono_con_voucher('00000000-0000-4000-8000-000000000004',sale,10,'efectivo',null);
  set constraints pago_requiere_voucher_tarjeta immediate;
+ set constraints pago_requiere_voucher_tarjeta deferred;
+ -- Cambiar un pago de efectivo a tarjeta tampoco elude el requisito.
+ begin
+  update pg_temp.pagos_abonos set medio_pago='debito' where id='00000000-0000-4000-8000-000000000004';
+  set constraints pago_requiere_voucher_tarjeta immediate;
+  raise exception 'FALLO: cambió a tarjeta sin voucher';
+ exception when check_violation then null;
+ end;
  set constraints pago_requiere_voucher_tarjeta deferred;
  -- Rechaza números inválidos en la propia base.
  begin
