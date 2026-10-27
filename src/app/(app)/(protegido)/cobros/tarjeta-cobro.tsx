@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { cobrarSaldo, entregarVenta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { formatearMonto, montoANumero } from "@/lib/formato";
+import CampoVoucher from "@/components/campo-voucher";
+import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 
 export type FilaCobro = {
   ventaId: string;
@@ -34,6 +36,7 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
   const [monto, setMonto] = useState(formatearMonto(fila.saldo));
   const [medio, setMedio] = useState<string>("") // se elige en cada cobro, sin valor por defecto;
   const [mensaje, setMensaje] = useState<string | null>(null);
+  const [numeroVoucher, setNumeroVoucher] = useState("");
   const [pendiente, iniciar] = useTransition();
   const operacion = useRef<string | null>(null);
 
@@ -51,10 +54,11 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
     const n = montoANumero(monto);
     iniciar(async () => {
       operacion.current ??= crypto.randomUUID();
-      const r = await cobrarSaldo({ ventaId: fila.ventaId, operacionId: operacion.current, monto: n, medioPago: medio });
+      const r = await cobrarSaldo({ ventaId: fila.ventaId, operacionId: operacion.current, monto: n, medioPago: medio, numeroVoucher });
       if (r.ok) {
         operacion.current = null;
         setMedio("");
+        setNumeroVoucher("");
         setAbierto(false);
         setMensaje(`✓ Cobrado ${clp(r.aplicado ?? n)}`);
         router.refresh();
@@ -169,14 +173,15 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
               </button>
             ))}
           </div>
+          {requiereVoucher(medio) && <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={pendiente} />}
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={pendiente || montoANumero(monto) <= 0 || !medio}
+              disabled={pendiente || montoANumero(monto) <= 0 || !medio || Boolean(validarVoucher(medio, montoANumero(monto), numeroVoucher).error)}
               onClick={cobrar}
               className="flex-1 rounded-xl bg-emerald-800 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-900 disabled:opacity-50"
             >
-              {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : `Registrar pago de ${clp(montoANumero(monto))}`}
+              {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : validarVoucher(medio, montoANumero(monto), numeroVoucher).error ? "Completa el voucher" : `Registrar pago de ${clp(montoANumero(monto))}`}
             </button>
             <button
               type="button"

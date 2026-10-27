@@ -75,14 +75,14 @@ export function encolarVenta(usuarioId: string, input: VentaInput) {
   );
 }
 
-export function reintentarFallida(usuarioId: string, id: string) {
+export function reintentarFallida(usuarioId: string, id: string, numeroVoucher?: string) {
   const venta = fallidas(usuarioId).find((v) => v.id === id);
   if (!venta) return;
   modificar<VentaFallida>(clave(usuarioId, "fallidas"), (l) => l.filter((v) => v.id !== id));
   modificar<VentaPendiente>(clave(usuarioId, "pendientes"), (cola) =>
     cola.some((v) => v.id === id)
       ? cola
-      : [...cola, { id: venta.id, input: venta.input, creada: venta.creada, intentos: venta.intentos }]
+      : [...cola, { id: venta.id, input: numeroVoucher ? { ...venta.input, numeroVoucher } : venta.input, creada: venta.creada, intentos: venta.intentos }]
   );
 }
 

@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
+import CampoVoucher from "@/components/campo-voucher";
+import { requiereVoucher } from "@/lib/voucher";
 
 // Formulario de abono con un botón "Todo" que autocompleta el saldo
 // pendiente completo — para cuando el paciente vuelve a pagar el resto y
@@ -18,6 +20,9 @@ export default function AbonoForm({
   compacto?: boolean;
 }) {
   const [montoInicial, setMontoInicial] = useState<number | undefined>(undefined);
+  const [medio, setMedio] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
   // Id de esta operación: si el formulario se envía dos veces (doble clic,
   // reintento), la base cobra una sola vez. Se crea al primer envío y se
   // renueva al terminar (en un ref, no en el HTML, para que el servidor y
@@ -26,12 +31,24 @@ export default function AbonoForm({
 
   return (
     <form
-      action={async (formData) => {
+      onSubmit={async (evento) => {
+        evento.preventDefault();
+        const formulario = evento.currentTarget;
+        const formData = new FormData(formulario);
+        if (guardando) return;
+        setGuardando(true);
+        setError(null);
         operacionId.current ??= crypto.randomUUID();
         formData.set("operacion_id", operacionId.current);
-        await registrarAbono(formData);
-        operacionId.current = null;
-        setMontoInicial(undefined);
+        try {
+          const resultado = await registrarAbono(formData);
+          if (!resultado.ok) { setError(resultado.error ?? "No se pudo registrar el abono."); return; }
+          operacionId.current = null;
+          setMontoInicial(undefined);
+          setMedio("");
+          formulario.reset();
+        } catch { setError("No se pudo confirmar el abono. Reintenta sin volver a cobrar en la máquina."); }
+        finally { setGuardando(false); }
       }}
       className="flex flex-wrap items-center gap-1.5"
     >
@@ -56,14 +73,22 @@ export default function AbonoForm({
       </button>
       <select
         name="medio_pago"
+        value={medio}
+        onChange={(e) => setMedio(e.target.value)}
+        disabled={guardando}
+        required
+        aria-label="Medio de pago del abono"
         className="rounded-lg border border-tinta-suave/30 bg-white px-1.5 py-1 text-xs outline-none focus:border-brand"
       >
+        <option value="" disabled>Cómo paga</option>
         <option value="efectivo">Efectivo</option>
         <option value="debito">Débito</option>
         <option value="credito">Crédito</option>
         <option value="transferencia">Transferencia</option>
       </select>
-      <button className="rounded-lg bg-brand/10 px-2 py-1 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
+      {requiereVoucher(medio) && <CampoVoucher disabled={guardando} />}
+      {error && <p role="alert" className="w-full text-xs text-red-800">{error}</p>}
+      <button disabled={guardando} className="rounded-lg bg-brand/10 px-2 py-1 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white disabled:opacity-50">
         {compacto ? "Cobrar" : "Abonar"}
       </button>
     </form>

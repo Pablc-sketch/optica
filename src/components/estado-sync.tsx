@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { registrarVenta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
+import { requiereVoucher } from "@/lib/voucher";
+import CampoVoucher from "@/components/campo-voucher";
 import {
   OUTBOX_EVENT,
   descartarFallida,
@@ -105,6 +107,15 @@ export default function EstadoSync({ usuarioId }: { usuarioId: string }) {
                   </p>
                   <p className="text-tinta-suave">{f.input.items.map((i) => i.descripcion).join(", ")}</p>
                   <p className="mt-1 text-red-800">{f.error}</p>
+                  {requiereVoucher(f.input.medioPago, f.input.abonoInicial) && !f.input.numeroVoucher && (
+                    <form action={(datos) => {
+                      reintentarFallida(usuarioId, f.id, String(datos.get("numero_voucher") ?? "").trim());
+                      void intentarSync();
+                    }} className="mt-2 space-y-2">
+                      <CampoVoucher />
+                      <button className="rounded-md bg-brand px-2 py-1 font-semibold text-white">Completar y reintentar</button>
+                    </form>
+                  )}
                   <div className="mt-1.5 flex gap-2">
                     <button
                       type="button"
