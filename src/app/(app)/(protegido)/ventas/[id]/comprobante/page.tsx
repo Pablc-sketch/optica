@@ -24,12 +24,13 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       .select(
         `id, fecha, total, estado_pago, anulada, anulada_motivo,
          pacientes:paciente_id (nombre, rut, fecha_nacimiento),
-         venta_items (descripcion, cantidad, precio_unitario, descuento, ordenes_trabajo:ot_id (folio)),
-         pagos_abonos (monto, medio_pago, fecha)`
+         venta_items (descripcion, cantidad, precio_unitario, descuento, cristal_slot,
+           ordenes_trabajo:ot_id (folio, tipo_lente, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2)),
+         pagos_abonos (monto, medio_pago, fecha, numero_voucher)`
       )
       .eq("id", id)
       .single(),
-    supabase.from("tenants").select("nombre_comercial, rut_empresa, telefono, direccion, logo_url").single(),
+    supabase.from("tenants").select("nombre_comercial, razon_social, rut_empresa, telefono, direccion, logo_url").single(),
   ]);
 
   const venta = ventaRes.data;
@@ -49,7 +50,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
     : null;
   const puedeFonasa = edadPaciente !== null && edadPaciente >= 55;
   const items = venta.venta_items ?? [];
-  const pagos = venta.pagos_abonos ?? [];
+  const pagos = [...(venta.pagos_abonos ?? [])].sort((a, b) => a.fecha.localeCompare(b.fecha));
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
   const saldo = venta.total - abonado;
   // La relación llega como objeto o arreglo según el shape que infiera
@@ -73,8 +74,8 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
     "",
     "Detalle (precios finales, IVA incluido):",
     ...items.map(
-      (i: { descripcion: string; cantidad: number; precio_unitario: number }) =>
-        `${i.cantidad} x ${i.descripcion} — $${i.precio_unitario.toLocaleString("es-CL")}`
+      (i: { descripcion: string; cantidad: number; precio_unitario: number; descuento: number }) =>
+        `${i.cantidad} x ${i.descripcion} — unitario ${clp(i.precio_unitario)}, descuento ${clp(i.descuento)}, subtotal ${clp(i.cantidad * i.precio_unitario - i.descuento)}`
     ),
     "",
     `TOTAL: $${venta.total.toLocaleString("es-CL")}`,
@@ -85,7 +86,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
-        <h1 className="text-xl font-bold">Comprobante de venta</h1>
+        <h1 className="text-xl font-bold">Comprobante de compra y pagos</h1>
         <div className="flex flex-wrap items-center gap-2">
           <CopiarParaSII texto={textoSII} />
           <BotonImprimir />
@@ -109,6 +110,12 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         </div>
       </div>
 
+      <details className="rounded-xl border border-tinta-suave/20 p-3 text-sm print:hidden">
+        <summary className="cursor-pointer font-semibold">Documentos para reembolso</summary>
+        <p className="mt-2 text-tinta-suave">Adjunta la receta y la boleta o voucher válido correspondiente. Este comprobante detalla la compra y los abonos; la cobertura depende de la entidad y del plan.</p>
+        <Link href="/seguros" className="mt-2 inline-block font-semibold text-brand-dark underline">Buscar documentos</Link>
+      </details>
+
       {venta.anulada && (
         <p className="rounded-2xl bg-neutral-200 p-4 text-center text-sm font-semibold text-neutral-700 print:hidden">
           Esta venta está ANULADA{venta.anulada_motivo ? ` — ${venta.anulada_motivo}` : ""}.
@@ -128,6 +135,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
           )}
           <div>
             <h2 className="text-lg font-bold">{optica?.nombre_comercial}</h2>
+            {optica?.razon_social && <p className="text-sm">{optica.razon_social}</p>}
             {optica?.rut_empresa && <p className="text-sm">RUT: {formatearRut(optica.rut_empresa)}</p>}
             {(optica?.direccion || optica?.telefono) && (
               <p className="text-sm">
@@ -138,7 +146,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         </div>
         <div className="mb-4 border-b border-neutral-300 pb-3">
           <p className="text-sm">
-            Comprobante de venta · {fechaLegible(diaEnChile(venta.fecha))}{" "}
+            Comprobante de compra y pagos · {fechaLegible(diaEnChile(venta.fecha))}{" "}
             {new Date(venta.fecha).toLocaleTimeString("es-CL", {
               hour: "2-digit",
               minute: "2-digit",
@@ -163,16 +171,28 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
             </tr>
           </thead>
           <tbody>
-            {items.map((item: { descripcion: string; cantidad: number; precio_unitario: number; descuento: number }, i: number) => (
+            {items.map((item, i: number) => {
+              const rel = item.ordenes_trabajo;
+              const ot = Array.isArray(rel) ? rel[0] : rel;
+              const detalleCristal = item.cristal_slot != null && ot
+                ? (item.cristal_slot === 2
+                  ? [ot.tipo_lente_2, ot.posicion_2, ot.tratamiento_2]
+                  : [ot.tipo_lente, ot.posicion, ot.tratamiento]).filter(Boolean).join(" · ")
+                : "";
+              return (
               <tr key={i} className="border-b border-neutral-100">
-                <td className="py-1.5 pr-2">{item.descripcion}</td>
+                <td className="py-1.5 pr-2">{item.descripcion}
+                  {detalleCristal && <span className="block text-xs text-neutral-600">{detalleCristal}</span>}
+                  {item.descuento > 0 && <span className="block text-xs text-neutral-600">Descuento: {clp(item.descuento)}</span>}
+                </td>
                 <td className="py-1.5 text-center">{item.cantidad}</td>
                 <td className="py-1.5 text-right">{clp(item.precio_unitario)}</td>
                 <td className="py-1.5 text-right">
                   {clp(item.cantidad * item.precio_unitario - item.descuento)}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
           <tfoot>
             <tr>
@@ -182,17 +202,21 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
           </tfoot>
         </table>
 
+        {pagos.length === 0 && <p className="mt-3 text-sm">Sin abonos registrados. Saldo pendiente: {clp(venta.total)}.</p>}
+
         {pagos.length > 0 && (
           <div className="mt-3 border-t border-neutral-200 pt-3 text-sm">
             <p className="mb-1 text-xs font-semibold text-neutral-500">Pagos</p>
-            {pagos.map((p: { monto: number; medio_pago: string; fecha: string }, i: number) => (
+            {pagos.map((p: { monto: number; medio_pago: string; fecha: string; numero_voucher: string | null }, i: number) => (
               <p key={i} className="flex justify-between">
                 <span className="capitalize">
                   {fechaLegible(diaEnChile(p.fecha))} · {p.medio_pago}
+                  {p.numero_voucher && <span className="block text-xs normal-case">Operación / voucher: {p.numero_voucher}</span>}
                 </span>
                 <span>{clp(p.monto)}</span>
               </p>
             ))}
+            <p className="mt-2 flex justify-between"><span>Total abonado</span><span>{clp(abonado)}</span></p>
             <p className="mt-2 flex justify-between font-bold">
               <span>{saldo > 0 ? "Saldo pendiente" : "Pagado"}</span>
               <span>{saldo > 0 ? clp(saldo) : "✓"}</span>
@@ -207,9 +231,6 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
           </div>
         )}
 
-        <p className="mt-5 text-center text-xs text-neutral-400">
-          Documento interno de respaldo — no constituye boleta electrónica del SII.
-        </p>
       </div>
     </div>
   );

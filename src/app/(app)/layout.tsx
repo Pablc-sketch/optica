@@ -17,8 +17,9 @@ const NAV = [
   { href: "/cobros", label: "Cobros", principal: true },
   { href: "/operativos", label: "Operativos", principal: true },
   { href: "/ot", label: "Órdenes", principal: true },
-  { href: "/laboratorio", label: "Laboratorio", principal: true },
-  { href: "/avisos", label: "Avisos", principal: true },
+  { href: "/laboratorio", label: "Laboratorio", principal: false },
+  { href: "/avisos", label: "Avisos", principal: false },
+  { href: "/seguros", label: "Seguros", principal: false },
   { href: "/ot/buscar", label: "Buscar OT" },
   { href: "/boleta", label: "Boleta" },
   { href: "/inventario", label: "Inventario" },
@@ -31,7 +32,7 @@ const NAV = [
 // El rol "ventas" (vendedoras de mesón) solo necesita esto para atender:
 // buscar/avanzar órdenes y vender. Nada de precios de costo, reportes
 // financieros ni configuración.
-const NAV_VENTAS = ["/ot", "/ot/buscar", "/ventas", "/cobros", "/avisos"];
+const NAV_VENTAS = ["/ot", "/ot/buscar", "/ventas", "/cobros", "/avisos", "/seguros"];
 
 // Cabecera y menú: siempre visibles para cualquier pantalla dentro de
 // (app), incluida /suscripcion. El bloqueo por suscripción vencida vive
@@ -109,7 +110,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ? [...NAV, { href: "/superadmin", label: "Ópticas", principal: false }]
     : perfil.rol === "ventas"
       ? NAV.filter((n) => NAV_VENTAS.includes(n.href))
-      : NAV;
+      : NAV.filter((n) => n.href !== "/seguros" || perfil.rol === "admin");
 
   return (
     <div className="flex min-h-dvh flex-col">
