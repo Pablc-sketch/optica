@@ -101,6 +101,12 @@ grant execute on function pg_temp.registrar_venta_con_voucher(jsonb) to authenti
 grant execute on function pg_temp.registrar_abono_con_voucher(uuid, uuid, bigint, text, text) to authenticated;
 notify pgrst, 'reload schema';
 
+grant select, insert, update on pg_temp.pagos_abonos to authenticated;
+do $$ declare nombre text; begin
+ select nspname into nombre from pg_namespace where oid=pg_my_temp_schema();
+ execute format('grant usage on schema %I to authenticated', nombre);
+end $$;
+set local role authenticated;
 do $$
 declare sale uuid := '00000000-0000-4000-8000-000000000002'; payment uuid := '00000000-0000-4000-8000-000000000003'; valor text;
 begin
