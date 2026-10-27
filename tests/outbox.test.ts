@@ -28,6 +28,17 @@ const venta = (id: string): VentaInput => ({
 describe("cola offline (A04)", () => {
   beforeEach(() => almacen.clear());
 
+  it("conserva el voucher al sincronizar y permite completar una venta anterior pendiente", async () => {
+    encolarVenta("u1", { ...venta("V"), medioPago: "debito", abonoInicial: 8000, numeroVoucher: "000123" });
+    await sincronizar("u1", async (input) => {
+      expect(input.numeroVoucher).toBe("000123");
+      return { ok: false, error: "Revisar" };
+    });
+    reintentarFallida("u1", "V", "000456");
+    expect(pendientes("u1")[0].input.numeroVoucher).toBe("000456");
+    expect(pendientes("u1")[0].id).toBe("V");
+  });
+
   it("una venta encolada MIENTRAS se sincroniza otra no se pierde", async () => {
     encolarVenta("u1", venta("A"));
     let soltar!: () => void;

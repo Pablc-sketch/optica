@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
+import CampoVoucher from "@/components/campo-voucher";
+import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 import { encolarVenta } from "@/lib/offline/outbox";
 import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
@@ -697,6 +699,7 @@ export default function PuntoDeVenta({
   // "efectivo" y quedaba pegado el de la venta anterior, y la caja no
   // calzaba con la máquina (revisión 20-10-2026).
   const [medioPago, setMedioPago] = useState("");
+  const [numeroVoucher, setNumeroVoucher] = useState("");
   const [laboratorioId, setLaboratorioId] = useState<string>(laboratorios[0]?.id ?? "");
   const [guardando, setGuardando] = useState(false);
   // Un id por venta, fijo hasta que se cierra: si se aprieta "Cobrar" dos
@@ -999,6 +1002,7 @@ export default function PuntoDeVenta({
     setBuscaProducto("");
     setIniciales([null, null]);
     setMedioPago("");
+    setNumeroVoucher("");
     setPaso(0);
   }
 
@@ -1043,6 +1047,7 @@ export default function PuntoDeVenta({
       abonoInicial: cobro.monto,
       // Sin cobro ahora (cortesía o sin abono) el medio no se usa.
       medioPago: medioPago || "efectivo",
+      numeroVoucher: requiereVoucher(medioPago, cobro.monto) ? numeroVoucher.trim() : null,
       proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
     };
   }
@@ -1055,6 +1060,8 @@ export default function PuntoDeVenta({
 
   async function cobrar() {
     if (guardando || faltaPaciente) return;
+    const voucher = validarVoucher(medioPago, cobro.monto, numeroVoucher);
+    if (voucher.error) { setMensaje(voucher.error); return; }
     setGuardando(true);
     setMensaje(null);
     const venta = armarVenta();
@@ -1627,6 +1634,7 @@ export default function PuntoDeVenta({
             </div>
           </div>
 
+          {requiereVoucher(medioPago, montoACobrar) && <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={guardando} />}
           {esAbonoParcial && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
               Abona {clp(montoACobrar)} ahora. Saldo al entregar: {clp(total - montoACobrar)}.
@@ -1658,7 +1666,7 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={cobrar}
-              disabled={guardando || carrito.length === 0 || faltaPaciente || (montoACobrar > 0 && !medioPago)}
+              disabled={guardando || carrito.length === 0 || faltaPaciente || (montoACobrar > 0 && !medioPago) || Boolean(validarVoucher(medioPago, montoACobrar, numeroVoucher).error)}
               className={`${boton} flex-1 bg-emerald-800 text-white hover:bg-emerald-900`}
             >
               {guardando
@@ -1667,6 +1675,8 @@ export default function PuntoDeVenta({
                   ? "Falta elegir al paciente"
                   : montoACobrar > 0 && !medioPago
                   ? "Elige cómo paga"
+                  : validarVoucher(medioPago, montoACobrar, numeroVoucher).error
+                    ? "Completa el número de voucher"
                   : montoACobrar === 0
                     ? total > 0
                       ? "Registrar sin abono"

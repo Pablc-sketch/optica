@@ -1,8 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
@@ -10,6 +8,7 @@ import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { rangoParaPosicion } from "@/lib/cristales";
 import { normalizarVenta, ubicacionDeCupo, type ArmazonPedido, type CristalPedido, type ItemPedido } from "@/lib/venta-normalizar";
+import { validarVoucher } from "@/lib/voucher";
 
 // Lo que manda el punto de venta, online u offline (es el mismo contrato:
 // la cola offline guarda exactamente esto y lo vuelve a mandar al
@@ -32,6 +31,7 @@ export type VentaInput = {
   armazones: ArmazonPedido[];
   abonoInicial: number;
   medioPago: string;
+  numeroVoucher?: string | null;
   proveedorLabId?: string | null;
 };
 
@@ -57,6 +57,8 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   if (!Number.isInteger(input.abonoInicial) || input.abonoInicial < 0) {
     return { ok: false, error: "El abono tiene que ser un monto entero, sin negativos." };
   }
+  const voucher = validarVoucher(input.medioPago, input.abonoInicial, input.numeroVoucher);
+  if (voucher.error) return { ok: false, error: voucher.error };
   const normal = normalizarVenta(input.cristales ?? [], input.armazones ?? [], input.items ?? []);
   if (!normal.ok) return normal;
   const { cristales, marcoDeCupo, items } = normal.venta;
@@ -188,7 +190,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
     : { data: [] as { id: string; precio_venta: number }[] };
   if ((productos ?? []).length !== idsProductos.length) return { ok: false, error: "Un producto de la venta no existe." };
 
-  const { data, error } = await supabase.rpc("registrar_venta", {
+  const { data, error } = await supabase.rpc("registrar_venta_con_voucher", {
     p: {
       venta_id: input.ventaId,
       fecha: fechaVenta,
@@ -197,6 +199,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       operativo_id: input.operativoId ?? null,
       abono: input.abonoInicial,
       medio_pago: input.medioPago,
+      numero_voucher: voucher.numero,
       ots,
       items: items.map((i) => ({
         producto_id: i.productoId ?? null,
@@ -226,47 +229,33 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
 // lleguen dos al mismo tiempo, y el mismo formulario enviado dos veces
 // (operacion_id) cobra una sola vez (A05).
 export async function registrarAbono(formData: FormData) {
-  const { supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
-
   const ventaId = String(formData.get("venta_id") ?? "");
   const operacionId = String(formData.get("operacion_id") ?? "");
   const monto = Math.round(Number(String(formData.get("monto") ?? "").replace(/\./g, "")));
-  const medioPago = String(formData.get("medio_pago") ?? "efectivo");
-  if (!UUID.test(ventaId) || !UUID.test(operacionId) || !Number.isFinite(monto) || monto <= 0) return;
-  if (!MEDIOS.includes(medioPago)) return;
-
-  const { error } = await supabase.rpc("registrar_abono", {
-    p_id: operacionId,
-    p_venta_id: ventaId,
-    p_monto: monto,
-    p_medio_pago: medioPago,
+  const medioPago = String(formData.get("medio_pago") ?? "");
+  return cobrarSaldo({
+    ventaId, operacionId, monto, medioPago,
+    numeroVoucher: String(formData.get("numero_voucher") ?? ""),
   });
-  if (error) throw new Error(error.message);
-
-  revalidatePath("/ventas");
-  revalidatePath("/ot");
-  revalidatePath("/reportes");
-  revalidatePath("/");
 }
 
 // El número que imprime la máquina (Mercado Pago, etc.) al cobrar con
-// tarjeta — se guarda después, cuando se arma la boleta detallada para un
-// reembolso, no necesariamente en el momento del cobro.
+// tarjeta. Permite completar también los respaldos históricos pendientes.
 export async function actualizarVoucherAbono(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
+  const { supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
   const abonoId = String(formData.get("abono_id") ?? "");
-  const numeroVoucher = String(formData.get("numero_voucher") ?? "").trim() || null;
-  if (!abonoId) return;
+  if (!UUID.test(abonoId)) throw new Error("Pago inválido.");
+  const { data: pago, error: lectura } = await supabase.from("pagos_abonos").select("medio_pago, venta_id").eq("id", abonoId).eq("tenant_id", tenantId).single();
+  if (lectura || !pago) throw new Error("No se pudo leer el pago.");
+  const voucher = validarVoucher(pago.medio_pago, 1, formData.get("numero_voucher"));
+  if (voucher.error) throw new Error(voucher.error);
+  const numeroVoucher = voucher.numero;
 
   const { error } = await supabase.from("pagos_abonos").update({ numero_voucher: numeroVoucher }).eq("id", abonoId);
   if (error) throw error;
 
   revalidatePath("/boleta");
+  revalidatePath(`/ventas/${pago.venta_id}/comprobante`);
 }
 
 // A diferencia de eliminarOT (que exige que no haya pagos), anular sí se
@@ -395,6 +384,7 @@ export async function cobrarSaldo(input: {
   operacionId: string;
   monto: number;
   medioPago: string;
+  numeroVoucher?: string | null;
 }): Promise<{ ok: boolean; aplicado?: number; error?: string }> {
   let supabase;
   try {
@@ -406,14 +396,18 @@ export async function cobrarSaldo(input: {
   if (!UUID.test(input.ventaId) || !UUID.test(input.operacionId)) return { ok: false, error: "Datos inválidos." };
   if (!Number.isInteger(input.monto) || input.monto <= 0) return { ok: false, error: "El monto tiene que ser mayor a cero." };
   if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
-  const { data, error } = await supabase.rpc("registrar_abono", {
+  const voucher = validarVoucher(input.medioPago, input.monto, input.numeroVoucher);
+  if (voucher.error) return { ok: false, error: voucher.error };
+  const { data, error } = await supabase.rpc("registrar_abono_con_voucher", {
     p_id: input.operacionId,
     p_venta_id: input.ventaId,
     p_monto: input.monto,
     p_medio_pago: input.medioPago,
+    p_numero_voucher: voucher.numero,
   });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/cobros");
+  revalidatePath("/ot");
   revalidatePath("/ventas");
   revalidatePath("/reportes");
   revalidatePath("/");
@@ -429,6 +423,7 @@ export async function registrarConsulta(input: {
   operativoId: string | null;
   monto: number;
   medioPago: string;
+  numeroVoucher?: string | null;
   cantidad?: number;
 }): Promise<{ ok: boolean; error?: string }> {
   let ctx;
@@ -444,7 +439,9 @@ export async function registrarConsulta(input: {
   if (!Number.isInteger(input.monto) || input.monto <= 0) return { ok: false, error: "El monto tiene que ser mayor a cero." };
   if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 20) return { ok: false, error: "Cantidad inválida." };
   if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
-  const { error } = await ctx.supabase.rpc("registrar_venta", {
+  const voucher = validarVoucher(input.medioPago, input.monto * cantidad, input.numeroVoucher);
+  if (voucher.error) return { ok: false, error: voucher.error };
+  const { error } = await ctx.supabase.rpc("registrar_venta_con_voucher", {
     p: {
       venta_id: input.consultaId,
       fecha: new Date().toISOString(),
@@ -452,6 +449,7 @@ export async function registrarConsulta(input: {
       operativo_id: input.operativoId,
       abono: input.monto * cantidad,
       medio_pago: input.medioPago,
+      numero_voucher: voucher.numero,
       items: [
         {
           producto_id: null,

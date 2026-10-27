@@ -8,6 +8,8 @@ import { diaEnChile, edadEnAnios, fechaLegible, hoyEnChile } from "@/lib/fechas"
 import BotonImprimir from "@/components/boton-imprimir";
 import CopiarParaSII from "@/components/copiar-para-sii";
 import AnularVenta from "../../anular-venta";
+import CompletarVoucher from "@/components/completar-voucher";
+import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 
 // Comprobante de venta imprimible (uso interno / respaldo para el cliente).
 // NOTA: no es boleta electrónica del SII — esa se emite vía un proveedor
@@ -26,7 +28,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
          pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (descripcion, cantidad, precio_unitario, descuento, cristal_slot,
            ordenes_trabajo:ot_id (folio, tipo_lente, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2)),
-         pagos_abonos (monto, medio_pago, fecha, numero_voucher)`
+         pagos_abonos (id, monto, medio_pago, fecha, numero_voucher)`
       )
       .eq("id", id)
       .single(),
@@ -53,6 +55,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const pagos = [...(venta.pagos_abonos ?? [])].sort((a, b) => a.fecha.localeCompare(b.fecha));
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
   const saldo = venta.total - abonado;
+  const sinVoucher = pagos.filter((p) => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
   // La relación llega como objeto o arreglo según el shape que infiera
   // supabase-js; normalizamos antes de listar los folios.
   const folios = [
@@ -89,7 +92,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         <h1 className="text-xl font-bold">Comprobante de compra y pagos</h1>
         <div className="flex flex-wrap items-center gap-2">
           <CopiarParaSII texto={textoSII} />
-          <BotonImprimir />
+          {sinVoucher.length === 0 && <BotonImprimir />}
           {!venta.anulada && puedeFonasa && (
             <Link
               href={`/ventas/${venta.id}/certificado-fonasa`}
@@ -116,13 +119,25 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         <Link href="/seguros" className="mt-2 inline-block font-semibold text-brand-dark underline">Buscar documentos</Link>
       </details>
 
+      {sinVoucher.length > 0 && !venta.anulada && (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 print:hidden">
+          <h2 className="font-semibold">Completa los vouchers antes de imprimir</h2>
+          <p className="text-sm">Falta el número de {sinVoucher.length} pago(s) con tarjeta. Cópialo del comprobante original de la máquina.</p>
+          {sinVoucher.map((p) => <div key={p.id} className="mt-3">
+            <p className="text-sm font-semibold">{fechaLegible(diaEnChile(p.fecha))} · {clp(p.monto)}</p>
+            <CompletarVoucher abonoId={p.id} />
+          </div>)}
+        </section>
+      )}
+
       {venta.anulada && (
         <p className="rounded-2xl bg-neutral-200 p-4 text-center text-sm font-semibold text-neutral-700 print:hidden">
           Esta venta está ANULADA{venta.anulada_motivo ? ` — ${venta.anulada_motivo}` : ""}.
         </p>
       )}
 
-      <div className="relative rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
+      {sinVoucher.length > 0 && !venta.anulada && <p className="hidden print:block">Comprobante pendiente: completa los números de voucher de los pagos con tarjeta antes de imprimir.</p>}
+      <div className={`relative rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none ${sinVoucher.length > 0 && !venta.anulada ? "print:hidden" : ""}`}>
         {venta.anulada && (
           <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-6xl font-black text-neutral-300/60 select-none">
             ANULADA
