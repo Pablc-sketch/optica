@@ -116,7 +116,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
 
       <details className="rounded-xl border border-tinta-suave/20 p-3 text-sm print:hidden">
         <summary className="cursor-pointer font-semibold">Documentos para reembolso</summary>
-        <p className="mt-2 text-tinta-suave">Adjunta la receta y la boleta o voucher válido correspondiente. Este comprobante detalla la compra y los abonos; la cobertura depende de la entidad y del plan.</p>
+        <p className="mt-2 text-tinta-suave">Acompaña este detalle con la boleta o voucher válido y los respaldos que correspondan. La isapre no puede exigir receta para bonificar lentes destinados al tratamiento de la presbicia.</p>
         <Link href={`/ventas/${venta.id}/reembolso`} className="mt-2 inline-block font-semibold text-brand-dark underline">Preparar reembolso y cotejar RUT</Link>
       </details>
 
