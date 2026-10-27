@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { exigirRolPagina } from "@/lib/autorizacion";
 import { formatearRut } from "@/lib/rut";
-import { diaEnChile, edadEnAnios, fechaLegible, hoyEnChile } from "@/lib/fechas";
+import { diaEnChile, edadEnAnios, fechaLegible } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
+import { validarVoucher, requiereVoucher } from "@/lib/voucher";
+import { rutReembolso } from "@/lib/reembolso";
 
 // Certificado de compra para el reembolso de Fonasa.
 //
@@ -14,9 +16,8 @@ import BotonImprimir from "@/components/boton-imprimir";
 //
 // Se llena solo con los datos de la venta: nombre y RUT del paciente,
 // razón social y RUT de la óptica, fecha de compra, cuántos cristales y
-// de qué tipo. El número de boleta/voucher queda en blanco a propósito,
-// para escribirlo a mano al momento de entregar (es el único dato que no
-// vive en el sistema).
+// de qué tipo. Las referencias de los vouchers salen de los pagos reales;
+// la boleta emitida fuera de Lentia debe cotejarse con su original.
 //
 // Lo que se marca en "prestación" sale de la orden de trabajo real, no de
 // una casilla fija: si el paciente llevó solo lentes de lejos, se marca
@@ -71,7 +72,7 @@ export default async function CertificadoFonasaPage({
   // decida si se lleva también el de cerca.
   const { prestacion } = await searchParams;
   const marcarAMano = prestacion === "mano";
-  const supabase = await createClient();
+  const { supabase, tenantId } = await exigirRolPagina(["admin", "ventas"]);
 
   const [ventaRes, tenantRes] = await Promise.all([
     supabase
@@ -80,13 +81,14 @@ export default async function CertificadoFonasaPage({
         `id, fecha, anulada,
          pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (
-           cristal_slot,
+           cristal_slot, cantidad,
            ordenes_trabajo:ot_id (tipo_lente, posicion, tipo_lente_2, posicion_2)
-         )`
+         ), pagos_abonos (monto, medio_pago, numero_voucher)`
       )
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .single(),
-    supabase.from("tenants").select("nombre_comercial, razon_social, rut_empresa").single(),
+    supabase.from("tenants").select("nombre_comercial, razon_social, rut_empresa").eq("id", tenantId).single(),
   ]);
 
   const venta = ventaRes.data;
@@ -98,26 +100,24 @@ export default async function CertificadoFonasaPage({
     rut: string | null;
     fecha_nacimiento: string | null;
   } | null;
-  // Fonasa solo reembolsa lentes a mayores de 55 años (tramos B, C y D).
-  // Bajo esa edad el certificado no sirve de nada, así que se avisa en vez
-  // de dejar imprimir una hoja que van a rechazar en el mesón.
+  // La edad relevante es la de la compra. El operador confirma los demás
+  // requisitos del beneficio con Fonasa, sin inferir cobertura de la ficha.
   const edad = paciente?.fecha_nacimiento
-    ? edadEnAnios(paciente.fecha_nacimiento, hoyEnChile())
+    ? edadEnAnios(paciente.fecha_nacimiento, diaEnChile(venta.fecha))
     : null;
   const tieneEdad = edad !== null && edad >= 55;
   // En los documentos formales manda la razón social; el nombre de
   // fantasía solo sirve de respaldo si todavía no se cargó.
   const nombreTienda = optica?.razon_social || optica?.nombre_comercial || "";
 
-  // Un ítem con cristal_slot es un PAR de cristales, un ojo cada uno.
-  //
-  // La cantidad va siempre en "2 lentes ópticos", que es lo que Fonasa
-  // reembolsa por período: un par. Si el paciente se llevó dos o tres
-  // pares, el certificado igual dice 2 — no se suman, porque el tope no
-  // sube por poner un número más grande.
+  // La cantidad describe la compra real; el tope del beneficio lo evalúa
+  // Fonasa y no debe alterar lo que certificamos que se vendió.
   const itemsCristal = (venta.venta_items ?? []).filter((i) => i.cristal_slot !== null);
-  const pares = itemsCristal.length;
-  const cantidadArticulos = pares > 0 ? 2 : 0;
+  const pares = itemsCristal.reduce((s, i) => s + i.cantidad, 0);
+  const cantidadArticulos = pares * 2;
+  const pagos = venta.pagos_abonos ?? [];
+  const sinVoucher = pagos.some(p => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
+  const referencias = [...new Set(pagos.map(p => p.numero_voucher).filter((n): n is string => Boolean(n)))];
 
   // Qué casillas marcar, según lo que de verdad se vendió en esta venta.
   const marcadas = new Set<string>();
@@ -129,13 +129,10 @@ export default async function CertificadoFonasaPage({
     if (tipo === "Bifocal") marcadas.add("Bifocales");
     else if (tipo === "Multifocal") marcadas.add("Multifocales");
     else if (posicion === "cerca") marcadas.add("Cerca");
-    else marcadas.add("Lejos");
+    else if (posicion === "lejos") marcadas.add("Lejos");
   }
 
-  // Cuando el paciente se llevó DOS pares distintos (uno de lejos y otro
-  // de cerca), conviene que el certificado lo diga con todas sus letras:
-  // son dos compras distintas, no un par cobrado dos veces, y es lo que
-  // permite que Fonasa las considere por separado.
+  // Si se compraron pares de cerca y de lejos, el detalle debe decirlo.
   const tiposVendidos = [...marcadas].filter((m) => m === "Lejos" || m === "Cerca");
   const dosParesDistintos = pares >= 2 && tiposVendidos.length >= 2;
   const articuloEspecifico =
@@ -144,7 +141,7 @@ export default async function CertificadoFonasaPage({
       : "Lentes ópticos según receta médica";
 
   const fechaCompra = fechaLegible(diaEnChile(venta.fecha));
-  const listo = Boolean(paciente?.nombre && paciente?.rut && nombreTienda && optica?.rut_empresa && pares > 0);
+  const listo = Boolean(paciente?.nombre && rutReembolso(paciente?.rut) && optica?.razon_social && rutReembolso(optica?.rut_empresa) && pares > 0 && !sinVoucher && !venta.anulada && (marcarAMano || marcadas.size > 0));
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -156,7 +153,7 @@ export default async function CertificadoFonasaPage({
           <h1 className="mt-1 text-xl font-bold">Certificado de compra Fonasa</h1>
         </div>
         <div className="text-right">
-          <BotonImprimir />
+          {listo && <BotonImprimir />}
           <p className="mt-1 text-xs text-tinta-suave">
             Para mandarlo por WhatsApp, elige <strong>Guardar como PDF</strong> en el destino.
           </p>
@@ -191,8 +188,8 @@ export default async function CertificadoFonasaPage({
       {!tieneEdad && (
         <p className="rounded-2xl bg-amber-100 p-4 text-sm font-medium text-amber-900 print:hidden">
           {edad === null
-            ? "Este paciente no tiene fecha de nacimiento cargada, así que no se puede saber si le corresponde. Fonasa solo reembolsa lentes a mayores de 55 años."
-            : `Este paciente tiene ${edad} años. Fonasa reembolsa lentes solo desde los 55, así que este certificado no le va a servir.`}
+            ? "Falta la fecha de nacimiento. Confirma con Fonasa si el paciente cumple los requisitos del beneficio."
+            : `Edad registrada a la fecha de compra: ${edad} años. Verifica con Fonasa si corresponde el beneficio antes de presentar el certificado.`}
         </p>
       )}
 
@@ -201,14 +198,17 @@ export default async function CertificadoFonasaPage({
           Faltan datos para que el certificado sirva:{" "}
           {[
             !paciente?.nombre && "el nombre del paciente",
-            !paciente?.rut && "el RUT del paciente",
-            !nombreTienda && "la razón social de la óptica",
-            !optica?.rut_empresa && "el RUT de la óptica",
+            !rutReembolso(paciente?.rut) && "un RUT válido del paciente",
+            !optica?.razon_social && "la razón social de la óptica",
+            !rutReembolso(optica?.rut_empresa) && "un RUT válido de la óptica",
             pares === 0 && "esta venta no tiene cristales",
+            sinVoucher && "los números de voucher de los pagos con tarjeta",
+            venta.anulada && "la venta está anulada",
+            !marcarAMano && marcadas.size === 0 && "la prestación en la orden (o elige marcar a mano después de cotejar la receta)",
           ]
             .filter(Boolean)
             .join(", ")}
-          . Fonasa rechaza el certificado si le falta cualquiera de esos datos.
+          . Completa los datos y coteja los originales antes de entregar.
         </p>
       )}
 
@@ -220,13 +220,15 @@ export default async function CertificadoFonasaPage({
 
       <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-900 print:hidden">
         Fonasa lo pide cuando la boleta no detalla qué se compró. Lo presenta el paciente junto a su
-        receta médica original (máximo un año) y su cédula. Aplica a mayores de 55 años de los tramos
-        B, C y D. <strong>El número de boleta o voucher va a mano</strong> al entregar.
+        receta y los demás antecedentes exigidos. Confirma edad a la fecha de compra, tramo, vigencia de la receta y cobertura con Fonasa.
+        <strong> Coteja los vouchers y el RUT del comercio con los originales; firma y timbra al entregar.</strong>{" "}
+        <Link href={`/ventas/${venta.id}/reembolso`} className="font-semibold underline">Preparar y revisar documentos</Link>
       </p>
 
       {/* Hoja del certificado: mismo orden y mismas palabras del formulario
           impreso de Fonasa, para que se pueda cotejar campo por campo. */}
-      <div className="rounded-2xl bg-white p-8 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none">
+      {!listo && <p className="hidden print:block">Certificado pendiente: completa los datos de la compra antes de imprimir.</p>}
+      <div className={`rounded-2xl bg-white p-8 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none ${!listo ? "print:hidden" : ""}`}>
         <h2 className="mb-6 text-center text-lg font-bold tracking-wide">CERTIFICADO DE COMPRA</h2>
 
         <div className="flex flex-col gap-1">
@@ -240,9 +242,8 @@ export default async function CertificadoFonasaPage({
             valor={cantidadArticulos > 0 ? `${cantidadArticulos} lentes ópticos` : ""}
           />
           <Linea etiqueta="Artículo específico:" valor={articuloEspecifico} />
-          {/* A mano: el número de boleta se anota al entregar, y esta hoja
-              se imprime antes. */}
-          <Linea etiqueta="Número de boleta o voucher:" valor="" />
+          <Linea etiqueta="Número(s) de voucher:" valor={referencias.join(", ")} />
+          <Linea etiqueta="Número de boleta (si corresponde):" valor="" />
         </div>
 
         <div className="mt-8">

@@ -37,7 +37,8 @@ export default function BuscadorSeguros() {
               <p className="text-sm text-tinta-suave">{formatearRut(compra.paciente.rut)} · {fechaLegible(diaEnChile(compra.fecha))}</p>
               <p className="mt-2 text-sm">Total <b>{clp(compra.total)}</b> · Pagado <b>{clp(compra.abonado)}</b> · Saldo <b>{clp(Math.max(0, compra.total - compra.abonado))}</b></p>
               <div className="mt-3 flex flex-wrap gap-2 text-sm font-semibold">
-                <Link href={`/ventas/${compra.id}/comprobante`} className="rounded-lg bg-brand px-3 py-2 text-white">Comprobante detallado</Link>
+                <Link href={`/ventas/${compra.id}/reembolso`} className="rounded-lg bg-brand px-3 py-2 text-white">Preparar reembolso</Link>
+                <Link href={`/ventas/${compra.id}/comprobante`} className="rounded-lg border border-brand/30 px-3 py-2">Comprobante detallado</Link>
                 <Link href={`/ventas/${compra.id}/certificado-fonasa`} className="rounded-lg border border-brand/30 px-3 py-2">Certificado Fonasa</Link>
                 <Link href={`/ventas/${compra.id}`} className="rounded-lg border border-tinta-suave/30 px-3 py-2">Ver compra</Link>
               </div>

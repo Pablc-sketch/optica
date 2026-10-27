@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
-import { diaEnChile, edadEnAnios, fechaLegible, hoyEnChile } from "@/lib/fechas";
+import { diaEnChile, edadEnAnios, fechaLegible } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 import CopiarParaSII from "@/components/copiar-para-sii";
 import AnularVenta from "../../anular-venta";
@@ -18,7 +18,7 @@ import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 
 export default async function ComprobantePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const { supabase, tenantId } = await exigirRolPagina(["admin", "ventas"]);
 
   const [ventaRes, tenantRes] = await Promise.all([
     supabase
@@ -31,8 +31,9 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
          pagos_abonos (id, monto, medio_pago, fecha, numero_voucher)`
       )
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .single(),
-    supabase.from("tenants").select("nombre_comercial, razon_social, rut_empresa, telefono, direccion, logo_url").single(),
+    supabase.from("tenants").select("nombre_comercial, razon_social, rut_empresa, telefono, direccion, logo_url").eq("id", tenantId).single(),
   ]);
 
   const venta = ventaRes.data;
@@ -48,7 +49,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   // edad no hay reembolso, así que el botón ni aparece para no hacer
   // perder el viaje.
   const edadPaciente = paciente?.fecha_nacimiento
-    ? edadEnAnios(paciente.fecha_nacimiento, hoyEnChile())
+    ? edadEnAnios(paciente.fecha_nacimiento, diaEnChile(venta.fecha))
     : null;
   const puedeFonasa = edadPaciente !== null && edadPaciente >= 55;
   const items = venta.venta_items ?? [];
@@ -116,7 +117,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       <details className="rounded-xl border border-tinta-suave/20 p-3 text-sm print:hidden">
         <summary className="cursor-pointer font-semibold">Documentos para reembolso</summary>
         <p className="mt-2 text-tinta-suave">Adjunta la receta y la boleta o voucher válido correspondiente. Este comprobante detalla la compra y los abonos; la cobertura depende de la entidad y del plan.</p>
-        <Link href="/seguros" className="mt-2 inline-block font-semibold text-brand-dark underline">Buscar documentos</Link>
+        <Link href={`/ventas/${venta.id}/reembolso`} className="mt-2 inline-block font-semibold text-brand-dark underline">Preparar reembolso y cotejar RUT</Link>
       </details>
 
       {sinVoucher.length > 0 && !venta.anulada && (

@@ -5,17 +5,46 @@ const { requerirPerfil, from, query } = vi.hoisted(() => {
   const query: Record<string, ReturnType<typeof vi.fn>> = {};
   for (const metodo of ["select", "eq", "ilike", "order"]) query[metodo] = vi.fn(() => query);
   query.limit = vi.fn(async () => ({ data: [], error: null }));
+  query.maybeSingle = vi.fn();
   const from = vi.fn(() => query);
   return { requerirPerfil: vi.fn(), from, query };
 });
 vi.mock("@/lib/autorizacion", () => ({ requerirPerfil, SinPermiso: class SinPermiso extends Error {} }));
-import { buscarDocumentosSeguro } from "../src/lib/actions/seguros";
+import { buscarDocumentosSeguro, cargarCompraReembolso } from "../src/lib/actions/seguros";
 import { SinPermiso } from "../src/lib/autorizacion";
 
 beforeEach(() => {
   vi.clearAllMocks();
   requerirPerfil.mockResolvedValue({ supabase: { from }, tenantId: "optica-prueba" });
   query.limit.mockResolvedValue({ data: [], error: null });
+});
+
+describe("carga del expediente de una compra", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  it("comprueba el rol antes de consultar documentos", async () => {
+    requerirPerfil.mockRejectedValueOnce(new SinPermiso("Sin acceso"));
+    await expect(cargarCompraReembolso(id)).rejects.toThrow("Sin acceso");
+    expect(from).not.toHaveBeenCalled();
+  });
+  it("descarta identificadores ajenos al formato esperado", async () => {
+    expect(await cargarCompraReembolso("texto,id.eq.otro")).toBeNull();
+    expect(from).not.toHaveBeenCalled();
+  });
+  it("limita venta y óptica al negocio de la sesión y normaliza los pagos", async () => {
+    query.maybeSingle.mockResolvedValueOnce({ data: { id, fecha: "2026-10-01", total: 100, anulada: false, pacientes: [{ nombre: "Prueba", rut: null }], venta_items: [], pagos_abonos: [{ id: "b", fecha: "2026-10-09" }, { id: "a", fecha: "2026-10-01" }] }, error: null });
+    query.maybeSingle.mockResolvedValueOnce({ data: { nombre_comercial: "Prueba", razon_social: null, rut_empresa: null }, error: null });
+    const compra = await cargarCompraReembolso(id);
+    expect(query.eq).toHaveBeenCalledWith("tenant_id", "optica-prueba");
+    expect(query.eq).toHaveBeenCalledWith("id", "optica-prueba");
+    expect(query.eq).toHaveBeenCalledWith("id", id);
+    expect(compra?.paciente?.nombre).toBe("Prueba");
+    expect(compra?.pagos.map(p => p.id)).toEqual(["a", "b"]);
+  });
+  it("no mezcla documentos si falla una de las consultas", async () => {
+    query.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    query.maybeSingle.mockResolvedValueOnce({ data: null, error: { message: "detalle privado" } });
+    await expect(cargarCompraReembolso(id)).rejects.toThrow("No pudimos cargar");
+  });
 });
 
 describe("búsqueda de documentos", () => {
