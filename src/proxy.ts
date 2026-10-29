@@ -6,6 +6,11 @@ import { CLAVE_PUBLICA, URL_SUPABASE } from "@/lib/supabase/config";
 // (~15 min de vida, spec 8.1) y protege todas las rutas de la app:
 // sin sesión → /login.
 export async function proxy(request: NextRequest) {
+  // Tarjeta pública de marca: solo logo y eslogan, sin datos de pacientes.
+  const rutaMarca = request.nextUrl.pathname;
+  if (rutaMarca === "/optica-global" || rutaMarca === "/optica-global/opengraph-image") {
+    return NextResponse.next();
+  }
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

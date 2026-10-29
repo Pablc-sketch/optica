@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MARCA_GLOBAL, esOpticaGlobal, agregarTarjetaGlobal } from "@/lib/marca-optica";
 import { clp } from "@/lib/clp";
 import { linkWhatsapp, normalizarParaWhatsapp, type ModoEnvio } from "@/lib/whatsapp";
 
@@ -76,6 +77,7 @@ export default function EnviarWhatsapp({
   abierto = false,
   arriba,
   bloqueo = null,
+  marcaOptica,
 }: {
   titulo: string;
   descripcion: string;
@@ -88,8 +90,23 @@ export default function EnviarWhatsapp({
   arriba?: React.ReactNode;
   // Si hay un motivo, no se abre ningún chat (ej. cambios sin guardar).
   bloqueo?: string | null;
+  marcaOptica?: string;
 }) {
   const [modo, setModo] = useModoEnvio();
+  const conMarca = esOpticaGlobal(marcaOptica ?? "");
+  const [incluirTarjeta, setIncluirTarjeta] = useState(true);
+  const [imagenMarca, setImagenMarca] = useState<File | null>(null);
+  const [estadoMarca, setEstadoMarca] = useState("");
+  useEffect(() => {
+    if (!conMarca) return;
+    const control = new AbortController();
+    fetch(MARCA_GLOBAL.imagen, { signal: control.signal }).then(async r => {
+      if (!r.ok || !r.headers.get("content-type")?.includes("image/png")) throw new Error("Imagen no disponible");
+      const blob = await r.blob();
+      setImagenMarca(new File([blob], "Optica-Global.png", { type: "image/png" }));
+    }).catch(() => { if (!control.signal.aborted) setEstadoMarca("No se pudo cargar la imagen. Recarga la página para volver a intentarlo."); });
+    return () => control.abort();
+  }, [conMarca]);
   const [plantilla, setPlantilla] = useState(plantillaInicial);
   // Quiénes ya se mandaron en esta sesión. No se guarda en la base: es
   // solo para no perder la cuenta cuando son quince y se van abriendo de
@@ -97,6 +114,24 @@ export default function EnviarWhatsapp({
   const [enviados, setEnviados] = useState<Set<string>>(new Set());
   const [verPrevia, setVerPrevia] = useState<string | null>(null);
 
+  function textoConMarca(d: DestinatarioWsp) {
+    const texto = aplicar(plantilla, d);
+    return conMarca && incluirTarjeta ? agregarTarjetaGlobal(texto) : texto;
+  }
+  async function compartirImagen(d: DestinatarioWsp) {
+    if (!imagenMarca || bloqueo) return;
+    if (!navigator.share || !navigator.canShare?.({ files: [imagenMarca] })) {
+      setEstadoMarca("Este navegador no permite compartir imágenes directamente. Descarga la imagen y adjúntala al chat.");
+      return;
+    }
+    try {
+      await navigator.share({ files: [imagenMarca], title: MARCA_GLOBAL.nombre, text: aplicar(plantilla, d) });
+      setEstadoMarca("Se cerró el menú de compartir. Revisa en WhatsApp Business que elegiste el contacto correcto y enviaste el aviso.");
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
+      setEstadoMarca("No se pudo compartir. Puedes descargar la imagen y abrir el chat con el texto.");
+    }
+  }
   const conTelefono = destinatarios.filter((d) => d.telefonoWsp);
   const sinTelefono = destinatarios.filter((d) => !d.telefonoWsp);
   // Los que faltan por mandar, en el mismo orden en que aparecen en la
@@ -143,6 +178,15 @@ export default function EnviarWhatsapp({
         ))}
       </div>
 
+      {conMarca && <div className="mt-3 rounded-xl border border-green-200 bg-white p-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={MARCA_GLOBAL.imagen} alt={`${MARCA_GLOBAL.nombre}. ${MARCA_GLOBAL.eslogan}`} className="mx-auto w-full max-w-lg rounded-lg"/>
+        <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirTarjeta} onChange={e => setIncluirTarjeta(e.target.checked)}/>Incluir tarjeta del logo al abrir el chat</label>
+        <p className="mt-2 text-xs text-tinta-suave">La vista previa del enlace depende de WhatsApp. Para adjuntar la imagen como foto con el aviso, toca “Imagen + mensaje”, elige WhatsApp Business y el contacto indicado. Revisa el destinatario y la leyenda antes de enviar.</p>
+        <a href={MARCA_GLOBAL.imagen} download="Optica-Global.png" className="mt-2 inline-block text-sm font-semibold underline">Descargar imagen</a>
+        {estadoMarca && <p role="status" className="mt-2 text-sm">{estadoMarca}</p>}
+      </div>}
+
       {bloqueo && conTelefono.length > 0 && (
         <p className="mt-3 rounded-lg bg-amber-100 px-3 py-2.5 text-sm font-semibold text-amber-900">{bloqueo}</p>
       )}
@@ -163,7 +207,7 @@ export default function EnviarWhatsapp({
                 // "Lucila". Con window.open acá adentro no hay esa carrera:
                 // se abre a quien de verdad se capturó en este clic.
                 const destinatario = siguiente;
-                const texto = aplicar(plantilla, destinatario);
+                const texto = textoConMarca(destinatario);
                 const url = linkWhatsapp(modo, destinatario.telefonoWsp!, texto);
                 // El link de Android (intent://) solo funciona en la misma
                 // pestaña; los demás se abren aparte para no salir de la app.
@@ -209,7 +253,7 @@ export default function EnviarWhatsapp({
 
       <ul className="mt-3 flex flex-col gap-1.5">
         {conTelefono.map((d) => {
-          const texto = aplicar(plantilla, d);
+          const texto = textoConMarca(d);
           const enviado = enviados.has(d.id);
           return (
             <li key={d.id} className="rounded-lg bg-white px-3 py-2">
@@ -226,6 +270,7 @@ export default function EnviarWhatsapp({
                 >
                   {verPrevia === d.id ? "Ocultar" : "Ver"}
                 </button>
+                {!bloqueo && conMarca && <button type="button" disabled={!imagenMarca} onClick={() => compartirImagen(d)} className="rounded-lg border border-green-700 px-3 py-1.5 text-xs font-semibold text-green-900 disabled:opacity-50">Imagen + mensaje</button>}
                 {!bloqueo && <a
                   href={linkWhatsapp(modo, d.telefonoWsp!, texto)}
                   target={modo === "business" ? undefined : "_blank"}

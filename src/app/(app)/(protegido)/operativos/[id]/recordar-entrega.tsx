@@ -149,6 +149,7 @@ export default function RecordarEntrega({
     <EnviarWhatsapp
       key={domicilio ? "domicilio" : "retiro"}
       bloqueo={bloqueo}
+      marcaOptica={destinatarios[0]?.valores.optica}
       titulo="Avisar la entrega"
       descripcion="Solo a quienes tienen al menos un par LISTO para retirar. Ajusta la fecha y el horario, guarda, y ábrelos uno por uno."
       abierto={abierto}
