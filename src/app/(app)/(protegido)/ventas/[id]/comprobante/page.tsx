@@ -139,7 +139,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       )}
 
       {sinVoucher.length > 0 && !venta.anulada && <p className="hidden print:block">Comprobante pendiente: completa los números de voucher de los pagos con tarjeta antes de imprimir.</p>}
-      <div className={`relative rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none ${sinVoucher.length > 0 && !venta.anulada ? "print:hidden" : ""}`}>
+      <div data-pdf-page="comprobante" data-pdf-ready={sinVoucher.length === 0 && !venta.anulada ? "si" : "no"} className={`relative rounded-2xl bg-white p-6 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none ${sinVoucher.length > 0 && !venta.anulada ? "print:hidden" : ""}`}>
         {venta.anulada && (
           <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-6xl font-black text-neutral-300/60 select-none">
             ANULADA

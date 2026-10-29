@@ -233,7 +233,7 @@ export default async function CertificadoFonasaPage({
       {/* Hoja del certificado: mismo orden y mismas palabras del formulario
           impreso de Fonasa, para que se pueda cotejar campo por campo. */}
       {!listo && <p className="hidden print:block">Certificado pendiente: completa los datos de la compra antes de imprimir.</p>}
-      <div className={`rounded-2xl bg-white p-8 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none ${!listo ? "print:hidden" : ""}`}>
+      <div data-pdf-page="certificado" data-pdf-ready={listo ? "si" : "no"} className={`rounded-2xl bg-white p-8 text-neutral-900 shadow-sm print:rounded-none print:p-0 print:shadow-none ${!listo ? "print:hidden" : ""}`}>
         <h2 className="mb-6 text-center text-lg font-bold tracking-wide">CERTIFICADO DE COMPRA</h2>
 
         <div className="flex flex-col gap-1">
@@ -278,7 +278,8 @@ export default async function CertificadoFonasaPage({
           Se extiende el presente certificado, dejando constancia de dicha compra.
         </p>
 
-        <div className="mt-16 text-center">
+        <div className="mt-10 text-center">
+          <p className="mx-auto mb-4 w-fit -rotate-3 rounded-sm border-[3px] border-black px-5 py-1 text-4xl font-black tracking-widest text-black">ENTREGADO</p>
           <p className="mx-auto w-72 border-t border-neutral-500 pt-2 text-[15px] font-semibold">
             {nombreTienda}
           </p>
