@@ -42,7 +42,6 @@ const PRESTACIONES = [
   "Cerca",
   "Lejos",
   "Bifocales",
-  "Multifocales",
   "Intraocular",
   "Contacto",
 ] as const;
@@ -128,18 +127,22 @@ export default async function CertificadoFonasaPage({
     const tipo = item.cristal_slot === 2 ? ot.tipo_lente_2 : ot.tipo_lente;
     const posicion = item.cristal_slot === 2 ? ot.posicion_2 : ot.posicion;
     if (tipo === "Bifocal") marcadas.add("Bifocales");
-    else if (tipo === "Multifocal") marcadas.add("Multifocales");
+    else if (tipo === "Multifocal") { marcadas.add("Lejos"); marcadas.add("Cerca"); }
     else if (posicion === "cerca") marcadas.add("Cerca");
     else if (posicion === "lejos") marcadas.add("Lejos");
   }
 
   // Si se compraron pares de cerca y de lejos, el detalle debe decirlo.
   const tiposVendidos = [...marcadas].filter((m) => m === "Lejos" || m === "Cerca");
-  const dosParesDistintos = pares >= 2 && tiposVendidos.length >= 2;
+  const tieneMultifocal = itemsCristal.some(i => {
+    const ot = uno(i.ordenes_trabajo as unknown as OtRel);
+    return (i.cristal_slot === 2 ? ot?.tipo_lente_2 : ot?.tipo_lente) === "Multifocal";
+  });
+  const dosParesDistintos = !tieneMultifocal && pares >= 2 && tiposVendidos.length >= 2;
   const articuloEspecifico =
     dosParesDistintos && !marcarAMano
       ? "Lentes ópticos según receta médica (lejos y cerca, por separado)"
-      : "Lentes ópticos según receta médica";
+      : tieneMultifocal ? "Lentes ópticos según receta médica (lejos y cerca)" : "Lentes ópticos según receta médica";
 
   const fechaCompra = fechaLegible(fechaCertificadoFonasa(venta.fecha, pagos));
   const listo = Boolean(paciente?.nombre && rutReembolso(paciente?.rut) && optica?.razon_social && rutReembolso(optica?.rut_empresa) && pares > 0 && !sinVoucher && !venta.anulada && (marcarAMano || marcadas.size > 0));

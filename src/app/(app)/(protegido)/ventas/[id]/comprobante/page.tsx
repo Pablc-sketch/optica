@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirRolPagina } from "@/lib/autorizacion";
+import { descripcionLenteDocumento } from "@/lib/descripcion-lente-documento";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
@@ -198,8 +199,8 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
                 : "";
               return (
               <tr key={i} className="border-b border-neutral-100">
-                <td className="py-1.5 pr-2">{item.descripcion}
-                  {detalleCristal && <span className="block text-xs text-neutral-600">{detalleCristal}</span>}
+                <td className="py-1.5 pr-2">{descripcionLenteDocumento(item.descripcion)}
+                  {detalleCristal && <span className="block text-xs text-neutral-600">{descripcionLenteDocumento(detalleCristal)}</span>}
                   {item.descuento > 0 && <span className="block text-xs text-neutral-600">Descuento: {clp(item.descuento)}</span>}
                 </td>
                 <td className="py-1.5 text-center">{item.cantidad}</td>
