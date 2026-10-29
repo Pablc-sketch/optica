@@ -1,6 +1,6 @@
 export const MARCA_GLOBAL = {
  nombre: "Óptica Global",
- eslogan: "Cerca para que veas lejos",
+ eslogan: "Visión sin fronteras",
  url: "https://lentiaapp.cl/optica-global",
  imagen: "/optica-global/opengraph-image",
 };

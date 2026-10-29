@@ -3,7 +3,7 @@ import Image from "next/image";
 import { MARCA_GLOBAL } from "@/lib/marca-optica";
 export const metadata: Metadata = {
  metadataBase: new URL("https://lentiaapp.cl"),
- title: "Óptica Global | Cerca para que veas lejos",
+ title: "Óptica Global | Visión sin fronteras",
  description: MARCA_GLOBAL.eslogan,
  alternates: { canonical: MARCA_GLOBAL.url },
  robots: { index: false, follow: false },
