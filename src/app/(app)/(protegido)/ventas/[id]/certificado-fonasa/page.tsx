@@ -5,6 +5,7 @@ import { formatearRut } from "@/lib/rut";
 import { diaEnChile, edadEnAnios, fechaLegible } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 import { validarVoucher, requiereVoucher } from "@/lib/voucher";
+import { fechaCertificadoFonasa } from "@/lib/fecha-certificado-fonasa";
 import { rutReembolso } from "@/lib/reembolso";
 
 // Certificado de compra para el reembolso de Fonasa.
@@ -83,7 +84,7 @@ export default async function CertificadoFonasaPage({
          venta_items (
            cristal_slot, cantidad,
            ordenes_trabajo:ot_id (tipo_lente, posicion, tipo_lente_2, posicion_2)
-         ), pagos_abonos (monto, medio_pago, numero_voucher)`
+         ), pagos_abonos (monto, medio_pago, numero_voucher, fecha)`
       )
       .eq("id", id)
       .eq("tenant_id", tenantId)
@@ -140,7 +141,7 @@ export default async function CertificadoFonasaPage({
       ? "Lentes ópticos según receta médica (lejos y cerca, por separado)"
       : "Lentes ópticos según receta médica";
 
-  const fechaCompra = fechaLegible(diaEnChile(venta.fecha));
+  const fechaCompra = fechaLegible(fechaCertificadoFonasa(venta.fecha, pagos));
   const listo = Boolean(paciente?.nombre && rutReembolso(paciente?.rut) && optica?.razon_social && rutReembolso(optica?.rut_empresa) && pares > 0 && !sinVoucher && !venta.anulada && (marcarAMano || marcadas.size > 0));
 
   return (
@@ -161,6 +162,7 @@ export default async function CertificadoFonasaPage({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-crema-claro p-3 text-sm print:hidden">
+        <Link href={`/ventas/${venta.id}`} className="font-semibold underline">Editar fechas: el certificado toma el último abono</Link>
         <span className="font-medium">Prestación:</span>
         <Link
           href={`/ventas/${venta.id}/certificado-fonasa`}
@@ -236,7 +238,7 @@ export default async function CertificadoFonasaPage({
           <Linea etiqueta="Rut:" valor={formatearRut(paciente?.rut)} />
           <Linea etiqueta="Nombre de la tienda:" valor={nombreTienda} />
           <Linea etiqueta="Rut de la tienda:" valor={formatearRut(optica?.rut_empresa)} />
-          <Linea etiqueta="Fecha de compra:" valor={fechaCompra} />
+          <Linea etiqueta={pagos.some(p => p.monto > 0) ? "Fecha del último abono:" : "Fecha de compra:"} valor={fechaCompra} />
           <Linea
             etiqueta="Cantidad de artículos:"
             valor={cantidadArticulos > 0 ? `${cantidadArticulos} lentes ópticos` : ""}
