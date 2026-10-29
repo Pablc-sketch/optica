@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
 import { fechaLegible, diaEnChile } from "@/lib/fechas";
+import EditarDocumentosVenta from "@/components/editar-documentos-venta";
 import AnularVenta from "../anular-venta";
 import EditarItemsVenta from "../editar-items-venta";
 
@@ -18,7 +19,7 @@ export default async function EditarVenta({ params }: { params: Promise<{ id: st
   const { data: venta } = await supabase
     .from("ventas")
     .select(
-      `id, fecha, total, estado_pago, anulada, anulada_motivo,
+      `id, fecha, total, estado_pago, anulada, anulada_motivo, boleta_folio, boleta_fecha, ocultar_voucher, pagos_abonos (id, fecha, monto, medio_pago, numero_voucher),
        pacientes:paciente_id (nombre, rut),
        venta_items (id, descripcion, cantidad, precio_unitario, descuento, producto_id, ot_id, cristal_slot, ordenes_trabajo:ot_id (folio))`
     )
@@ -75,7 +76,7 @@ export default async function EditarVenta({ params }: { params: Promise<{ id: st
           Esta venta está anulada{venta.anulada_motivo ? ` — ${venta.anulada_motivo}` : ""}. No se puede editar.
         </p>
       ) : (
-        <EditarItemsVenta ventaId={venta.id} items={items} total={venta.total} />
+        <><EditarDocumentosVenta venta={venta} /><Link href={`/ventas/${venta.id}/expediente`} className="rounded-lg bg-brand p-3 text-center font-semibold text-white">Unir documentos en PDF + adjuntar boleta</Link><EditarItemsVenta ventaId={venta.id} items={items} total={venta.total} /></>
       )}
     </div>
   );

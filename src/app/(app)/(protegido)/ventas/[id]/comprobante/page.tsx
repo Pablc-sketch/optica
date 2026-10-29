@@ -24,7 +24,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
     supabase
       .from("ventas")
       .select(
-        `id, fecha, total, estado_pago, anulada, anulada_motivo,
+        `id, fecha, total, estado_pago, anulada, anulada_motivo, boleta_folio, boleta_fecha, ocultar_voucher,
          pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (descripcion, cantidad, precio_unitario, descuento, cristal_slot,
            ordenes_trabajo:ot_id (folio, tipo_lente, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2)),
@@ -56,7 +56,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const pagos = [...(venta.pagos_abonos ?? [])].sort((a, b) => a.fecha.localeCompare(b.fecha));
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
   const saldo = venta.total - abonado;
-  const sinVoucher = pagos.filter((p) => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
+  const sinVoucher = venta.boleta_folio || venta.ocultar_voucher ? [] : pagos.filter((p) => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
   // La relación llega como objeto o arreglo según el shape que infiera
   // supabase-js; normalizamos antes de listar los folios.
   const folios = [
@@ -92,7 +92,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-xl font-bold">Comprobante de compra y pagos</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <CopiarParaSII texto={textoSII} />
+          <CopiarParaSII texto={textoSII} /><Link href={`/ventas/${venta.id}/expediente`} className="rounded-lg border p-2 text-sm">Unir PDF y adjuntar boleta</Link>
           {sinVoucher.length === 0 && <BotonImprimir />}
           {!venta.anulada && puedeFonasa && (
             <Link
@@ -169,6 +169,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
               timeZone: "America/Santiago",
             })}
           </p>
+          {venta.boleta_folio && <p className="text-sm">e-Boleta SII, folio: {venta.boleta_folio}{venta.boleta_fecha ? ` · Emitida: ${fechaLegible(venta.boleta_fecha)}` : ""}</p>}
           {paciente && (
             <p className="text-sm">
               Cliente: {paciente.nombre}
@@ -227,7 +228,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
               <p key={i} className="flex justify-between">
                 <span className="capitalize">
                   {fechaLegible(diaEnChile(p.fecha))} · {p.medio_pago}
-                  {p.numero_voucher && <span className="block text-xs normal-case">Operación / voucher: {p.numero_voucher}</span>}
+                  {!venta.ocultar_voucher && p.numero_voucher && <span className="block text-xs normal-case">Operación / voucher: {p.numero_voucher}</span>}
                 </span>
                 <span>{clp(p.monto)}</span>
               </p>

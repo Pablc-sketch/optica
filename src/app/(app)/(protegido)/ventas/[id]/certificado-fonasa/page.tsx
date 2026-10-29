@@ -78,7 +78,7 @@ export default async function CertificadoFonasaPage({
     supabase
       .from("ventas")
       .select(
-        `id, fecha, anulada,
+        `id, fecha, anulada, boleta_folio, boleta_fecha, ocultar_voucher,
          pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (
            cristal_slot, cantidad,
@@ -116,8 +116,8 @@ export default async function CertificadoFonasaPage({
   const pares = itemsCristal.reduce((s, i) => s + i.cantidad, 0);
   const cantidadArticulos = pares * 2;
   const pagos = venta.pagos_abonos ?? [];
-  const sinVoucher = pagos.some(p => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
-  const referencias = [...new Set(pagos.map(p => p.numero_voucher).filter((n): n is string => Boolean(n)))];
+  const sinVoucher = !venta.boleta_folio && !venta.ocultar_voucher && pagos.some(p => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
+  const referencias = venta.ocultar_voucher ? [] : [...new Set(pagos.map(p => p.numero_voucher).filter((n): n is string => Boolean(n)))];
 
   // Qué casillas marcar, según lo que de verdad se vendió en esta venta.
   const marcadas = new Set<string>();
@@ -242,8 +242,9 @@ export default async function CertificadoFonasaPage({
             valor={cantidadArticulos > 0 ? `${cantidadArticulos} lentes ópticos` : ""}
           />
           <Linea etiqueta="Artículo específico:" valor={articuloEspecifico} />
-          <Linea etiqueta="Número(s) de voucher:" valor={referencias.join(", ")} />
-          <Linea etiqueta="Número de boleta (si corresponde):" valor="" />
+          {!venta.ocultar_voucher && <Linea etiqueta="Número(s) de voucher:" valor={referencias.join(", ")} />}
+          <Linea etiqueta="Número de boleta (si corresponde):" valor={venta.boleta_folio || ""} />
+          {venta.boleta_fecha && <Linea etiqueta="Fecha de emisión de boleta:" valor={fechaLegible(venta.boleta_fecha)} />}
         </div>
 
         <div className="mt-8">
