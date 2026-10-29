@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MARCA_GLOBAL, esOpticaGlobal, agregarTarjetaGlobal } from "@/lib/marca-optica";
+import { MARCA_GLOBAL, esOpticaGlobal } from "@/lib/marca-optica";
 import { clp } from "@/lib/clp";
 import { linkWhatsapp, normalizarParaWhatsapp, type ModoEnvio } from "@/lib/whatsapp";
 
@@ -94,7 +94,6 @@ export default function EnviarWhatsapp({
 }) {
   const [modo, setModo] = useModoEnvio();
   const conMarca = esOpticaGlobal(marcaOptica ?? "");
-  const [incluirTarjeta, setIncluirTarjeta] = useState(true);
   const [imagenMarca, setImagenMarca] = useState<File | null>(null);
   const [estadoMarca, setEstadoMarca] = useState("");
   useEffect(() => {
@@ -114,10 +113,6 @@ export default function EnviarWhatsapp({
   const [enviados, setEnviados] = useState<Set<string>>(new Set());
   const [verPrevia, setVerPrevia] = useState<string | null>(null);
 
-  function textoConMarca(d: DestinatarioWsp) {
-    const texto = aplicar(plantilla, d);
-    return conMarca && incluirTarjeta ? agregarTarjetaGlobal(texto) : texto;
-  }
   async function compartirImagen(d: DestinatarioWsp) {
     if (!imagenMarca || bloqueo) return;
     if (!navigator.share || !navigator.canShare?.({ files: [imagenMarca] })) {
@@ -181,8 +176,7 @@ export default function EnviarWhatsapp({
       {conMarca && <div className="mt-3 rounded-xl border border-green-200 bg-white p-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={MARCA_GLOBAL.imagen} alt={`${MARCA_GLOBAL.nombre}. ${MARCA_GLOBAL.eslogan}`} className="mx-auto w-full max-w-lg rounded-lg"/>
-        <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirTarjeta} onChange={e => setIncluirTarjeta(e.target.checked)}/>Incluir tarjeta del logo al abrir el chat</label>
-        <p className="mt-2 text-xs text-tinta-suave">La vista previa del enlace depende de WhatsApp. Para adjuntar la imagen como foto con el aviso, toca “Imagen + mensaje”, elige WhatsApp Business y el contacto indicado. Revisa el destinatario y la leyenda antes de enviar.</p>
+        <p className="mt-2 text-xs text-tinta-suave">Para enviar el logo como una foto sobre el mensaje, toca “Imagen + mensaje”, elige WhatsApp Business y el contacto indicado. Revisa el destinatario y la leyenda antes de enviar.</p>
         <a href={MARCA_GLOBAL.imagen} download="Optica-Global.png" className="mt-2 inline-block text-sm font-semibold underline">Descargar imagen</a>
         {estadoMarca && <p role="status" className="mt-2 text-sm">{estadoMarca}</p>}
       </div>}
@@ -207,7 +201,7 @@ export default function EnviarWhatsapp({
                 // "Lucila". Con window.open acá adentro no hay esa carrera:
                 // se abre a quien de verdad se capturó en este clic.
                 const destinatario = siguiente;
-                const texto = textoConMarca(destinatario);
+                const texto = aplicar(plantilla, destinatario);
                 const url = linkWhatsapp(modo, destinatario.telefonoWsp!, texto);
                 // El link de Android (intent://) solo funciona en la misma
                 // pestaña; los demás se abren aparte para no salir de la app.
@@ -253,7 +247,7 @@ export default function EnviarWhatsapp({
 
       <ul className="mt-3 flex flex-col gap-1.5">
         {conTelefono.map((d) => {
-          const texto = textoConMarca(d);
+          const texto = aplicar(plantilla, d);
           const enviado = enviados.has(d.id);
           return (
             <li key={d.id} className="rounded-lg bg-white px-3 py-2">

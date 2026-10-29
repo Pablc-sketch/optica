@@ -146,3 +146,12 @@ export function destinatariosDeAvisos(
     },
   }));
 }
+
+// Todas las entradas de aviso de una orden llevan al editor de entrega del
+// operativo correspondiente. Sin operativo no se elige uno arbitrario.
+export function rutaAvisoEntrega(operativoId: string | null | undefined, pacienteId?: string | null): string | null {
+ if (!operativoId) return null;
+ const params = new URLSearchParams({ op: operativoId });
+ if (pacienteId) params.set("paciente", pacienteId);
+ return `/avisos?${params.toString()}`;
+}

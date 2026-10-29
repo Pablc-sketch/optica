@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { avanzarOT, retrocederOT } from "@/lib/actions/ot";
 import EliminarOT from "./eliminar-ot";
+import { rutaAvisoEntrega } from "@/lib/avisos";
 import { clp } from "@/lib/clp";
 import { diaEnChile, fechaLegible } from "@/lib/fechas";
 import AbonoForm from "@/components/abono-form";
@@ -17,37 +18,33 @@ const COLUMNAS = [
 export default async function TableroOT() {
   const supabase = await createClient();
 
-  const [otsRes, tenantRes] = await Promise.all([
-    supabase
+  const otsRes = await supabase
       .from("ordenes_trabajo")
       .select(
-        "id, folio, estado, tipo_lente, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2, fecha_ingreso, fecha_entrega_estimada, pacientes:paciente_id (nombre, telefono)"
+        "id, paciente_id, folio, estado, tipo_lente, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2, fecha_ingreso, fecha_entrega_estimada, pacientes:paciente_id (nombre, telefono)"
       )
       // Una venta anulada cancela su OT — que no siga sumando en "en curso",
       // "atrasadas" ni "por cobrar" del tablero.
       .not("estado", "in", "(entregado,cancelado)")
-      .order("fecha_ingreso", { ascending: true }),
-    supabase.from("tenants").select("nombre_comercial").single(),
-  ]);
+      .order("fecha_ingreso", { ascending: true });
   const ots = otsRes.data;
-  const nombreOptica = tenantRes.data?.nombre_comercial ?? "la óptica";
 
   // La OT no sabe de plata; la venta que la creó sí. Buscamos, para cada OT
   // de este tablero, la venta enlazada y cuánto le falta pagar, así al
   // entregar los lentes se ve altiro si queda saldo pendiente por cobrar.
   const otIds = (ots ?? []).map((o) => o.id);
-  const ventaPorOT = new Map<string, { ventaId: string; saldo: number }>();
+  const ventaPorOT = new Map<string, { ventaId: string; saldo: number; operativoId: string | null }>();
   if (otIds.length > 0) {
     const { data: itemsConVenta } = await supabase
       .from("venta_items")
-      .select("ot_id, ventas:venta_id (id, total, pagos_abonos (monto))")
+      .select("ot_id, ventas:venta_id (id, total, operativo_id, pagos_abonos (monto))")
       .in("ot_id", otIds);
 
     for (const item of itemsConVenta ?? []) {
-      const venta = item.ventas as unknown as { id: string; total: number; pagos_abonos: { monto: number }[] } | null;
+      const venta = item.ventas as unknown as { id: string; total: number; operativo_id: string | null; pagos_abonos: { monto: number }[] } | null;
       if (!venta || !item.ot_id) continue;
       const abonado = (venta.pagos_abonos ?? []).reduce((s, p) => s + p.monto, 0);
-      ventaPorOT.set(item.ot_id, { ventaId: venta.id, saldo: venta.total - abonado });
+      ventaPorOT.set(item.ot_id, { ventaId: venta.id, saldo: venta.total - abonado, operativoId: venta.operativo_id });
     }
   }
 
@@ -102,15 +99,9 @@ export default async function TableroOT() {
                     ot.fecha_entrega_estimada &&
                     new Date(ot.fecha_entrega_estimada + "T23:59:59") < new Date();
                   const paciente = ot.pacientes as unknown as { nombre: string; telefono: string | null } | null;
-                  const telefonoWsp = paciente?.telefono?.replace(/\D/g, "");
                   const venta = ventaPorOT.get(ot.id);
                   const saldo = venta?.saldo ?? 0;
-                  const linkWsp =
-                    col.estado === "listo" && telefonoWsp
-                      ? `https://wa.me/${telefonoWsp.length === 9 ? "56" + telefonoWsp : telefonoWsp}?text=${encodeURIComponent(
-                          `Hola ${paciente!.nombre.split(" ")[0]}! 👓 Le escribimos de ${nombreOptica}: sus lentes ya están listos para retirar (orden #${ot.folio}). ¡Los esperamos!`
-                        )}`
-                      : null;
+                  const rutaAviso = rutaAvisoEntrega(venta?.operativoId, ot.paciente_id);
                   return (
                     <article
                       key={ot.id}
@@ -164,16 +155,15 @@ export default async function TableroOT() {
                           🖨 Pagado — ver comprobante
                         </Link>
                       )}
-                      {linkWsp && (
-                        <a
-                          href={linkWsp}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {col.estado === "listo" && rutaAviso && (
+                        <Link
+                          href={rutaAviso}
                           className="mt-2 block w-full rounded-lg bg-green-600/10 px-2 py-1.5 text-center text-xs font-semibold text-green-700 transition hover:bg-green-600 hover:text-white"
                         >
-                          💬 Avisar por WhatsApp
-                        </a>
+                          💬 Preparar aviso de entrega
+                        </Link>
                       )}
+                      {col.estado === "listo" && !rutaAviso && <p className="mt-2 text-xs text-amber-800">Esta orden no tiene operativo asociado. Revisa la venta para coordinar su entrega.</p>}
                       <div className="mt-2 flex gap-1.5">
                         {col.estado !== "recepcion" && (
                           <form action={retrocederOT}>

@@ -9,8 +9,8 @@ import { cargarVentasParaAviso, clasificarAvisos, destinatariosDeAvisos } from "
 // operativo, ajustar fecha y horario, y mandar. La ficha completa del
 // operativo carga mucho más (costos, metas, reportes) y para avisar no hace
 // falta nada de eso.
-export default async function Avisos({ searchParams }: { searchParams: Promise<{ op?: string }> }) {
-  const { op } = await searchParams;
+export default async function Avisos({ searchParams }: { searchParams: Promise<{ op?: string; paciente?: string }> }) {
+  const { op, paciente } = await searchParams;
   const supabase = await createClient();
 
   const [operativosRes, tenantRes] = await Promise.all([
@@ -38,6 +38,7 @@ export default async function Avisos({ searchParams }: { searchParams: Promise<{
     : { ventas: [], error: null };
   const { listos, enProceso } = clasificarAvisos(ventas);
   const destinatarios = destinatariosDeAvisos(listos, telefonoParaWhatsapp, clp, nombreOptica);
+  const destinatariosVisibles = paciente ? destinatarios.filter(d => d.id === paciente) : destinatarios;
   const errorLectura = operativosRes.error?.message ?? operativoRes.error?.message ?? errorVentas;
 
   return (
@@ -67,12 +68,13 @@ export default async function Avisos({ searchParams }: { searchParams: Promise<{
         )}
       </div>
 
+      {paciente && operativo && <p className="rounded-xl bg-crema-claro p-3 text-sm">Mostrando el aviso de la persona seleccionada en Órdenes. <Link href={`/avisos?op=${operativo.id}`} className="font-semibold underline">Ver todos los avisos de este operativo</Link></p>}
       {operativo && (
         <RecordarEntrega
           key={operativo.id}
           abierto
           operativo={operativo}
-          destinatarios={destinatarios}
+          destinatarios={destinatariosVisibles}
           enProceso={enProceso.map((p) => p.nombre)}
           error={errorLectura}
         />
