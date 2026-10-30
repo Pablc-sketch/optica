@@ -5,6 +5,7 @@ import { clp } from "@/lib/clp";
 import { fechaLegible, hoyEnChile, inicioDelDia } from "@/lib/fechas";
 import { resumirCaja } from "@/lib/caja";
 import { cargarPendientes } from "@/lib/resumen-pendientes";
+import CajaMovimientos from "@/components/caja-movimientos";
 import { leerTodas } from "@/lib/leer-todas";
 
 
@@ -125,21 +126,37 @@ export default async function Dashboard() {
         </div>
       )}
 
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <details className="rounded-2xl bg-white p-4 shadow-sm">
+        <summary className="cursor-pointer rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4">
+        <span className="mb-2 block text-lg font-bold">Caja <span className="float-right text-sm font-medium text-sky-800">Ver detalle ▾</span></span>
         {cajaRes.error || !lecturaOk ? (
-          <p className="text-sm font-semibold text-red-700">No se pudo leer la caja. Recarga la página.</p>
+          <span className="block text-sm font-semibold text-red-700">No se pudo leer la caja. Recarga la página.</span>
         ) : (
           <>
-            <p className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">Disponible tras pagos y ahorro</p>
-            <p className={`text-4xl font-bold tabular-nums ${queda < 0 ? "text-red-700" : "text-emerald-800"}`}>{clp(queda)}</p>
-            <p className="mt-1 text-sm tabular-nums text-tinta-suave">
+            <span className="block text-xs font-semibold uppercase tracking-wider text-tinta-suave">Disponible tras pagos y ahorro</span>
+            <span className={`block text-4xl font-bold tabular-nums ${queda < 0 ? "text-red-700" : "text-emerald-800"}`}>{clp(queda)}</span>
+            <span className="block mt-1 text-sm tabular-nums text-tinta-suave">
               Caja registrada {clp(caja.total)} · Cuenta {clp(caja.hayDigital)} · Efectivo {clp(caja.hayEfectivo)}
               {porPagar.total > 0 && <> · Por pagar −{clp(porPagar.total)}</>}
               {porPagar.ahorro > 0 && <> · Ahorro por separar −{clp(porPagar.ahorro)}</>}
-            </p>
+            </span>
           </>
         )}
-      </section>
+        </summary>
+        {!cajaRes.error && lecturaOk && <>
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-tinta/10 pt-3 text-sm">
+            <div><h3 className="font-bold">Efectivo</h3><p>Entradas {clp(caja.entroEfectivo)}</p><p>Salidas {clp(caja.salioEfectivo)}</p><p className="font-bold">Saldo {clp(caja.hayEfectivo)}</p></div>
+            <div><h3 className="font-bold">Cuenta registrada</h3><p>Entradas {clp(caja.entroDigital)}</p><p>Salidas {clp(caja.salioDigital)}</p><p>Comisiones estimadas {clp(caja.comisionTarjeta)}</p><p className="font-bold">Saldo {clp(caja.hayDigital)}</p></div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href="/pagos?ver=costos" className="rounded-xl border px-3 py-2 text-sm">Por pagar {clp(porPagar.total)}</Link>
+            <Link href="/pagos?ver=ahorro" className="rounded-xl border px-3 py-2 text-sm">Ahorro por separar {clp(porPagar.ahorro)}</Link>
+            <Link href="/configuracion/integraciones" className="rounded-xl bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900">Cuentas y boletas →</Link>
+          </div>
+          <p className="mt-3 text-xs text-tinta-suave">Calculado con movimientos de Lentia; no es un saldo bancario sincronizado.</p>
+          <CajaMovimientos />
+        </>}
+      </details>
 
       {pendientesRes.sinAsignar && <Link href="/reportes" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Revisar retiros sin operativo antes de repartir →</Link>}
       <section className="flex flex-col gap-2">
