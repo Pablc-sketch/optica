@@ -4,6 +4,7 @@ export type PagoReembolso = { id: string; fecha: string; monto: number; medio_pa
 export type ItemReembolso = { descripcion: string; cantidad: number; precio_unitario: number; descuento: number };
 export type CompraReembolso = {
   id: string; fecha: string; total: number; anulada: boolean;
+  boleta_folio?: string | null;
   paciente: { nombre: string; rut: string | null } | null;
   optica: { nombre_comercial: string; razon_social: string | null; rut_empresa: string | null } | null;
   items: ItemReembolso[]; pagos: PagoReembolso[];
@@ -41,7 +42,7 @@ export function pendientesCompra(compra: CompraReembolso): string[] {
   const pagado = compra.pagos.reduce((s, p) => s + p.monto, 0);
   if (pagado < compra.total) pendientes.push("Hay saldo pendiente: el comprobante debe mostrar lo pagado y el saldo, sin declarar un pago total.");
   if (pagado > compra.total) pendientes.push("Los pagos superan el total. Revisa la conciliación antes de presentar los documentos.");
-  if (compra.pagos.some(p => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error)) pendientes.push("Completa el número de cada voucher en el comprobante detallado, copiándolo del original.");
+  if (!compra.boleta_folio && compra.pagos.some(p => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error)) pendientes.push("Completa el número de cada voucher en el comprobante detallado, copiándolo del original.");
   return pendientes;
 }
 

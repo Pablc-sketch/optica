@@ -57,7 +57,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const pagos = [...(venta.pagos_abonos ?? [])].sort((a, b) => a.fecha.localeCompare(b.fecha));
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
   const saldo = venta.total - abonado;
-  const sinVoucher = venta.boleta_folio || venta.ocultar_voucher ? [] : pagos.filter((p) => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
+  const sinVoucher = venta.boleta_folio ? [] : pagos.filter((p) => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
   // La relación llega como objeto o arreglo según el shape que infiera
   // supabase-js; normalizamos antes de listar los folios.
   const folios = [
