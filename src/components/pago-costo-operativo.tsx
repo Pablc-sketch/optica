@@ -7,7 +7,7 @@ import { clp } from "@/lib/clp";
 import { formatearMonto, montoANumero } from "@/lib/formato";
 
 export default function PagoCostoOperativo({ operativoId, clave, titulo, total, pagado, bloqueado = false }: {
-  operativoId: string; clave: ClaveCosto | "fides"; titulo: string; total: number; pagado: number; bloqueado?: boolean;
+  operativoId: string; clave: ClaveCosto | "fides" | "marcos"; titulo: string; total: number; pagado: number; bloqueado?: boolean;
 }) {
   const saldo = Math.max(0, total - pagado);
   const [texto, setTexto] = useState("");

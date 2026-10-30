@@ -63,3 +63,22 @@ describe("por pagar", () => {
    const p = pendienteDeOperativo({ ...base, sueldos: { isadora: 0, madre: 0, pablo: 0 }, ahorro: 0, fides: 0 });
    expect(p.costos).toBe(104000);
  });
+
+describe("marcos por reponer", () => {
+  it("se suman a los costos junto con Fides y gastos, y se ven por separado", () => {
+    const r = resumirPorPagar([
+      { ...base, operativoId: "a", marcos: 80000 },
+      { ...base, operativoId: "b", fecha: "2026-10-25", marcos: 45000, pagado: { ...base.pagado, marcos: 45000 } },
+    ]);
+    expect(r.fides).toBe(400000);
+    expect(r.marcos).toBe(80000);
+    expect(r.gastos).toBe(208000);
+    expect(r.costos).toBe(400000 + 80000 + 208000);
+    expect(r.operativos[0]).toMatchObject({ fides: 200000, marcos: 80000, gastos: 104000 });
+  });
+  it("marcos ya repuestos no aparecen", () => {
+    const p = pendienteDeOperativo({ ...base, marcos: 80000, pagado: { ...base.pagado, marcos: 80000 } });
+    expect(p.marcos).toBe(0);
+    expect(p.costos).toBe(304000);
+  });
+});

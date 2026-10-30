@@ -87,11 +87,6 @@ export default async function Dashboard() {
   const listos = listosRes.count ?? 0;
   const proximo = proximoOperativo.data;
 
-  const caja3 = [
-    { href: "/pagos?ver=sueldos", titulo: "Sueldos", valor: porPagar.sueldos, clase: "bg-white" },
-    { href: "/pagos?ver=ahorro", titulo: "Ahorro", valor: porPagar.ahorro, clase: "bg-emerald-50" },
-    { href: "/pagos?ver=costos", titulo: "Costos", valor: porPagar.costos, clase: "bg-white" },
-  ].filter((c) => c.valor > 0);
 
   return (
     <div className="flex flex-col gap-5">
@@ -161,32 +156,61 @@ export default async function Dashboard() {
       {pendientesRes.sinAsignar && <Link href="/reportes" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Revisar retiros sin operativo antes de repartir →</Link>}
       <section className="flex flex-col gap-2">
         <h2 className="text-lg font-bold">Por pagar</h2>
-        {!lecturaOk ? <p className="text-sm text-red-700">Pendientes no disponibles. Recarga.</p> : caja3.length === 0 ? (
+        {!lecturaOk ? <p className="text-sm text-red-700">Pendientes no disponibles. Recarga.</p> : porPagar.total === 0 && porPagar.ahorro === 0 ? (
           <p className="rounded-2xl bg-emerald-50 p-4 text-center font-semibold text-emerald-800">Todo pagado ✓</p>
         ) : (
           <>
-            <div className={`grid gap-3 ${caja3.length === 1 ? "grid-cols-1" : caja3.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-              {caja3.map((c) => (
-                <Link
-                  key={c.titulo}
-                  href={c.href}
-                  className={`rounded-2xl p-3 shadow-sm ${c.clase}`}
-                >
-                  <p className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">{c.titulo}</p>
-                  <p className="text-xl font-bold tabular-nums">{clp(c.valor)}</p>
+            {porPagar.costos > 0 && (
+              <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+                <table className="w-full text-sm tabular-nums">
+                  <thead>
+                    <tr className="bg-crema text-left text-xs uppercase tracking-wider text-tinta-suave">
+                      <th className="px-3 py-2">Operativo</th>
+                      <th className="px-2 py-2 text-right">Fides</th>
+                      <th className="px-2 py-2 text-right">Marcos</th>
+                      <th className="px-3 py-2 text-right">Gastos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porPagar.operativos.filter((p) => p.costos > 0).map((p) => (
+                      <tr key={p.operativoId} className="border-t border-tinta/10">
+                        <td className="px-3 py-2">
+                          <Link href={`/operativos/${p.operativoId}/cierre#costos`} className="font-semibold underline-offset-2 hover:underline">{p.nombre}</Link>
+                        </td>
+                        <td className="px-2 py-2 text-right">{p.fides ? clp(p.fides) : "—"}</td>
+                        <td className="px-2 py-2 text-right">{p.marcos ? clp(p.marcos) : "—"}</td>
+                        <td className="px-3 py-2 text-right">{p.gastos ? clp(p.gastos) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-tinta/20 font-bold">
+                      <td className="px-3 py-2">Total</td>
+                      <td className="px-2 py-2 text-right">{clp(porPagar.fides)}</td>
+                      <td className="px-2 py-2 text-right">{clp(porPagar.marcos)}</td>
+                      <td className="px-3 py-2 text-right">{clp(porPagar.gastos)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <p className="flex justify-between border-t border-tinta/10 bg-crema px-3 py-2.5 text-base font-bold">
+                  <span>Costos por pagar</span>
+                  <span className="tabular-nums">{clp(porPagar.costos)}</span>
+                </p>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              {porPagar.sueldos > 0 && (
+                <Link href="/pagos?ver=sueldos" className="rounded-2xl bg-white p-3 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">Sueldos</p>
+                  <p className="text-xl font-bold tabular-nums">{clp(porPagar.sueldos)}</p>
                 </Link>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {porPagar.operativos.map((p) => (
-                <Link
-                  key={p.operativoId}
-                  href={`/operativos/${p.operativoId}/cierre`}
-                  className="rounded-full border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema"
-                >
-                  {p.nombre} · {clp(p.total + p.ahorro)}
+              )}
+              {porPagar.ahorro > 0 && (
+                <Link href="/pagos?ver=ahorro" className="rounded-2xl bg-emerald-50 p-3 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">Ahorro</p>
+                  <p className="text-xl font-bold tabular-nums">{clp(porPagar.ahorro)}</p>
                 </Link>
-              ))}
+              )}
             </div>
           </>
         )}

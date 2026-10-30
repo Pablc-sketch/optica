@@ -11,7 +11,13 @@ export const COSTOS = [
 ] as const;
 export type ClaveCosto = (typeof COSTOS)[number]["clave"];
 export const prefijoCosto = (clave: ClaveCosto) => `Costo operativo · ${clave} · `;
+// Fides y marcos no son columnas del operativo: su monto sale de lo vendido.
+export const PREFIJO_FIDES = "Fides · ";
+export const PREFIJO_MARCOS = "Marcos · ";
 export type PagoCosto = { descripcion: string; monto: number };
+export function pagadoCon(pagos: PagoCosto[], prefijo: string) {
+  return pagos.filter((p) => p.descripcion.startsWith(prefijo)).reduce((s, p) => s + p.monto, 0);
+}
 export function pagadoCosto(pagos: PagoCosto[], clave: ClaveCosto) {
   return pagos.filter((p) => p.descripcion.startsWith(prefijoCosto(clave))).reduce((s, p) => s + p.monto, 0);
 }

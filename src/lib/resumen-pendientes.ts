@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "./supabase/server";
 import { leerTodas } from "./leer-todas";
 import { numerosDeOperativo, type VentaParaCierre } from "./cierre-operativo";
-import { pendientesCostos } from "./pagos-operativo";
+import { pagadoCon, pendientesCostos, PREFIJO_FIDES, PREFIJO_MARCOS } from "./pagos-operativo";
 import { resumirPorPagar, type OperativoPorPagar } from "./por-pagar";
 
 // Incluye históricos y adelantos; los gastos no se presumen pagados por fecha.
@@ -28,10 +28,11 @@ export async function cargarPendientes(supabase: Awaited<ReturnType<typeof creat
     lista.push({ operativoId: op.id, nombre: op.nombre, fecha: op.fecha,
       sueldos: { isadora: n.cierre.isadora, madre: n.cierre.madre, pablo: n.cierre.pablo },
       fides: n.desglose.totalCristales,
+      marcos: n.desglose.totalArmazones,
       gastos: costos.reduce((s, c) => s + Math.max(0, c.total - c.pagado), 0),
       ahorro: n.cierre.ahorro,
       pagado: { isadora: pagadoA("isadora"), madre: pagadoA("madre"), pablo: pagadoA("pablo"), ahorro: pagadoA("ahorro"), gastos: 0,
-        fides: pagos.filter((g) => g.descripcion.startsWith("Fides · ")).reduce((s, g) => s + g.monto, 0) },
+        fides: pagadoCon(pagos, PREFIJO_FIDES), marcos: pagadoCon(pagos, PREFIJO_MARCOS) },
     });
   }
   return { resumen: resumirPorPagar(lista), error,

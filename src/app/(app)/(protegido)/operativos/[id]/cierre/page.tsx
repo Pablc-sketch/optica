@@ -6,7 +6,7 @@ import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import FilaPago from "./fila-pago";
 import PagoCostoOperativo from "@/components/pago-costo-operativo";
-import { pendientesCostos } from "@/lib/pagos-operativo";
+import { pagadoCon, pendientesCostos, PREFIJO_FIDES, PREFIJO_MARCOS } from "@/lib/pagos-operativo";
 import { leerTodas } from "@/lib/leer-todas";
 
 // Cerrar el operativo: cuánto se ganó de verdad y a quién hay que pagarle.
@@ -47,7 +47,8 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
 
   const pagadoA = (persona: string) =>
     (retirosRes.data ?? []).filter((r) => r.persona === persona).reduce((s, r) => s + r.monto, 0);
-  const fidesPagado = (fidesRes.data ?? []).filter((p) => p.descripcion.startsWith("Fides · ")).reduce((s, p) => s + p.monto, 0);
+  const fidesPagado = pagadoCon(fidesRes.data ?? [], PREFIJO_FIDES);
+  const marcosPagado = pagadoCon(fidesRes.data ?? [], PREFIJO_MARCOS);
   const costos = pendientesCostos(op, fidesRes.data ?? []);
   const porCobrar = n.porCobrar;
 
@@ -133,6 +134,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
       <h2 id="costos" className="scroll-mt-6 text-lg font-bold">Costos por pagar</h2>
       <ul className="flex flex-col gap-3">
         <PagoCostoOperativo clave="fides" titulo="Fides (cristales)" operativoId={id} total={desglose.totalCristales} pagado={fidesPagado} />
+        <PagoCostoOperativo clave="marcos" titulo={`Reponer marcos (${desglose.marcos})`} operativoId={id} total={desglose.totalArmazones} pagado={marcosPagado} />
         {costos.map((costo) => <PagoCostoOperativo key={costo.clave} operativoId={id} {...costo} />)}
       </ul>
       <h2 id="sueldos" className="scroll-mt-6 text-lg font-bold">Remuneraciones</h2>

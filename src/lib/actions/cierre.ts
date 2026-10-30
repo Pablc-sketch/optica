@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { hoyEnChile } from "@/lib/fechas";
-import { COSTOS, prefijoCosto, type ClaveCosto } from "@/lib/pagos-operativo";
+import { COSTOS, prefijoCosto, PREFIJO_MARCOS, type ClaveCosto } from "@/lib/pagos-operativo";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import { leerTodas } from "@/lib/leer-todas";
 import { idPagoCosto } from "@/lib/id-pago";
@@ -32,7 +32,7 @@ const PREFIJO_FIDES = "Fides · ";
 // Registra únicamente el importe realmente pagado. El costo previsto se
 // consulta en el servidor y no se altera al registrar un abono.
 export async function registrarPagoCosto(input: {
-  operativoId: string; clave: ClaveCosto | "fides"; monto: number;
+  operativoId: string; clave: ClaveCosto | "fides" | "marcos"; monto: number;
   caja: "efectivo" | "digital"; pagadoEsperado: number;
 }): Promise<Resultado> {
   let ctx;
@@ -43,7 +43,7 @@ export async function registrarPagoCosto(input: {
   if (!UUID.test(input.operativoId) || !Number.isSafeInteger(input.pagadoEsperado) || input.pagadoEsperado < 0
     || !Number.isSafeInteger(input.monto) || input.monto <= 0
     || !["digital", "efectivo"].includes(input.caja)
-    || (input.clave !== "fides" && !COSTOS.some((c) => c.clave === input.clave))) {
+    || (input.clave !== "fides" && input.clave !== "marcos" && !COSTOS.some((c) => c.clave === input.clave))) {
     return { ok: false, error: "Pago inválido." };
   }
   // Dos pestañas que pagan sobre el mismo saldo compiten por la misma PK.
@@ -52,15 +52,15 @@ export async function registrarPagoCosto(input: {
   const { data: previo, error: previoError } = await ctx.supabase.from("gastos_globales")
     .select("id, operativo_id, monto, caja, descripcion").eq("id", movimientoId).maybeSingle();
   if (previoError) return { ok: false, error: "No se pudo comprobar el pago anterior." };
-  const prefijo = input.clave === "fides" ? PREFIJO_FIDES : prefijoCosto(input.clave);
+  const prefijo = input.clave === "fides" ? PREFIJO_FIDES : input.clave === "marcos" ? PREFIJO_MARCOS : prefijoCosto(input.clave);
   if (previo) return previo.operativo_id === input.operativoId && previo.monto === input.monto
     && previo.caja === input.caja && previo.descripcion.startsWith(prefijo)
     ? { ok: true } : { ok: false, error: "Identificador de pago ya utilizado." };
   const { data: op, error: opError } = await ctx.supabase.from("operativos").select("*")
     .eq("id", input.operativoId).eq("tenant_id", ctx.tenantId).maybeSingle();
   if (opError || !op) return { ok: false, error: "Operativo no disponible." };
-  let total = input.clave === "fides" ? 0 : Number(op[input.clave] ?? 0);
-  if (input.clave === "fides") {
+  let total = input.clave === "fides" || input.clave === "marcos" ? 0 : Number(op[input.clave] ?? 0);
+  if (input.clave === "fides" || input.clave === "marcos") {
     const [ventas, tenant] = await Promise.all([
       leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
         venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
@@ -69,8 +69,9 @@ export async function registrarPagoCosto(input: {
       ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
     ]);
     if (ventas.error || tenant.error) return { ok: false, error: "No se pudo calcular el costo." };
-    total = numerosDeOperativo(op, ventas.data as unknown as VentaParaCierre[],
-      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0)).desglose.totalCristales;
+    const { desglose } = numerosDeOperativo(op, ventas.data as unknown as VentaParaCierre[],
+      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
+    total = input.clave === "fides" ? desglose.totalCristales : desglose.totalArmazones;
   }
   const pagos = await leerTodas((a, b) => ctx.supabase.from("gastos_globales").select("id, monto, descripcion")
     .eq("operativo_id", op.id).order("id").range(a, b));
