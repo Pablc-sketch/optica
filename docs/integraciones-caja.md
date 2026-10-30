@@ -37,10 +37,28 @@ del contribuyente para operar ante el SII. La certificación y el certificado
 pueden tener costos adicionales. El plan publicado después de la prueba
 parte en 5 UF + IVA anuales para 10.000 peticiones mensuales.
 
-No hay emisión implementada ni activada: falta cuenta y configuración del
-emisor. El enlace en la aplicación lleva a requisitos del proveedor, no
-emite documentos. Antes de desarrollar emisión, confirmar documentación
-REST, folios, reglas para vouchers y no duplicar documentos tributarios.
+La conexión al plan se configura en Vercel, solo en producción:
+
+- SIMPLEAPI_API_KEY: clave privada del proveedor, tipo Secret, sin NEXT_PUBLIC_.
+- SIMPLEAPI_TENANT_ID: identificador de la óptica propietaria de esa cuenta.
+
+Configuración → Cuentas y boletas permite al administrador comprobar la
+conexión y consultar uso y cupo del producto SimpleAPI. Se usa únicamente
+GET https://api.simpleapi.cl/api/v1/Suscripcion/status, con Authorization
+en el encabezado. La consulta es explícita: abrir la pantalla no llama al
+proveedor. No se devuelven claves, respaldos ni el cuerpo completo al cliente.
+La sesión determina óptica, rol y suscripción; otra óptica no puede usar
+esta credencial. No copiar el secreto de producción a vistas previas.
+
+La emisión aún no está implementada ni activada. Faltan certificado .pfx,
+su contraseña, CAF, datos del emisor y verificar habilitación. Antes de
+desarrollarla hay que definir reserva de folios y reintentos para evitar
+duplicados, distinguir certificación de producción y revisar reglas de
+vouchers. La comprobación de conexión no acredita habilitación ante el SII.
+
+REST y esquema de respuesta consultados el 30 de octubre de 2026:
+https://documentacion.simpleapi.cl/
+https://api.simpleapi.cl/swagger/index.html
 
 Fuentes verificadas el 30 de octubre de 2026:
 https://www.simpleapi.cl/Productos/SimpleAPI

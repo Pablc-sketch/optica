@@ -3,6 +3,8 @@ import { exigirRolPagina } from "@/lib/autorizacion";
 import { leerMercadoPago } from "@/lib/mercadopago-lectura";
 import { clp } from "@/lib/clp";
 import { fechaLegible, diaEnChile } from "@/lib/fechas";
+import { simpleApiConfigurada } from "@/lib/simpleapi";
+import ConexionSimpleApi from "@/components/conexion-simpleapi";
 
 export default async function Integraciones() {
   const { tenantId } = await exigirRolPagina(["admin"]);
@@ -19,8 +21,7 @@ export default async function Integraciones() {
     </section>
     <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Cuenta bancaria</h2><p className="mt-1 text-sm">Sin conectar. Falta identificar el banco y la cuenta de la óptica.</p></section>
     <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Boletas electrónicas · SimpleAPI</h2>
-      <p className="mt-1 text-sm">Sin activar. Requiere API Key, certificado digital, folios CAF y habilitación del emisor ante el SII.</p>
-      <p className="mt-2 text-sm text-tinta-suave">Prueba: 500 peticiones al mes durante 12 meses. Una boleta puede consumir varias peticiones.</p>
+      <ConexionSimpleApi configurada={simpleApiConfigurada(tenantId)} />
       <a href="https://www.simpleapi.cl/Productos/SimpleAPI" target="_blank" rel="noopener noreferrer" className="mt-3 inline-block rounded-xl border px-4 py-2 font-semibold">Ver plan y requisitos ↗</a>
     </section>
   </div>;

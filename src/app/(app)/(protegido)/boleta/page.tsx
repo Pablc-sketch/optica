@@ -24,7 +24,7 @@ const PASOS = [
   },
   {
     titulo: "Cuenta en un proveedor con API",
-    detalle: "SimpleAPI es gratis hasta 500 boletas al mes; OpenFactura cobra alrededor de $360.000 al año con documentos ilimitados y varias razones sociales (mejor si la óptica factura mucho).",
+    detalle: "Conecta tu cuenta de SimpleAPI en Configuración → Cuentas y boletas. La prueba incluye 500 peticiones mensuales durante un año; una boleta puede necesitar varias peticiones. También se necesitan certificado digital, folios CAF y habilitación ante el SII.",
   },
 ];
 
