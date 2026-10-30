@@ -1,3 +1,4 @@
+import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import { createClient } from "@/lib/supabase/server";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
@@ -245,7 +246,7 @@ export default async function ReportesPage({
   const operativosTodosQuery = supabase
     .from("operativos")
     .select(
-      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante"
+      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos"
     )
     .order("fecha", { ascending: true });
 
@@ -390,7 +391,7 @@ export default async function ReportesPage({
   const sueldosPorOperativo = operativosDelMes.map((o) => {
     const ventaTotal = ventaPorOperativo.get(o.id) ?? 0;
     const costoProductos = desglosarCostos(itemsPorOperativo.get(o.id) ?? []).total;
-    const costoOperativo = o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + (o.costo_ayudante ?? 0);
+    const costoOperativo = gastosDeOperativo(o);
     const utilidadNeta = ventaTotal - costoProductos - costoOperativo - Math.round(comisionPorOperativo.get(o.id) ?? 0);
     const sueldo = calcularSueldos(ventaTotal, utilidadNeta, {
       comisionVendedoraPct: Number(o.comision_vendedora_pct),
@@ -448,7 +449,7 @@ export default async function ReportesPage({
       const f = o.fecha_fin ?? o.fecha;
       return f >= desde && f <= hasta;
     })
-    .reduce((s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + (o.costo_ayudante ?? 0), 0);
+    .reduce((s, o) => s + gastosDeOperativo(o), 0);
   const cajaPeriodo = calcularCaja({
     entradas: pagos,
     salidas: [...retirosPeriodo, ...gastosGlobalesPeriodo],

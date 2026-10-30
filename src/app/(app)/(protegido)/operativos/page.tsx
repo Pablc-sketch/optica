@@ -2,11 +2,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { crearOperativo, cambiarEstadoOperativo } from "@/lib/actions/operativos";
 import { formatearTelefono } from "@/lib/formato";
-import { fechaLegible, hoyEnChile } from "@/lib/fechas";
+import { fechaLegible } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoTelefono } from "@/components/campos";
 import BotonEnviar from "@/components/boton-enviar";
-import { costoDeItems, type ItemConCosto } from "@/lib/costo-venta";
 
 const TIPOS_VENUE = [
   { valor: "condominio", etiqueta: "Condominio" },
@@ -23,16 +22,6 @@ const ESTADOS: Record<string, string> = {
   realizado: "Realizado",
   cancelado: "Cancelado",
 };
-
-function Tarjeta({ titulo, valor, detalle }: { titulo: string; valor: string; detalle?: string }) {
-  return (
-    <div className="rounded-3xl bg-sky-50 p-4 shadow-[0_2px_10px_-3px_rgba(3,105,161,0.15)] transition hover:shadow-[0_8px_24px_-6px_rgba(3,105,161,0.22)]">
-      <p className="text-sm text-sky-800">{titulo}</p>
-      <p className="mt-1 text-2xl font-bold text-sky-950">{valor}</p>
-      {detalle && <p className="text-xs text-sky-700">{detalle}</p>}
-    </div>
-  );
-}
 
 export default async function OperativosPage() {
   const supabase = await createClient();
@@ -59,15 +48,15 @@ export default async function OperativosPage() {
     supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, direccion, estado, notas, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante"
+        "id, nombre, tipo_venue, fecha, direccion, estado, notas"
       )
       .order("fecha", { ascending: false }),
     supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
     supabase
       .from("ventas")
       .select(
-        `operativo_id, total,
-         venta_items (cantidad, cristal_slot, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2), productos:producto_id (costo, categoria))`
+        `operativo_id, total, pagos_abonos (monto),
+         venta_items (ordenes_trabajo:ot_id (id, estado))`
       )
       .eq("anulada", false)
       .not("operativo_id", "is", null),
@@ -94,155 +83,146 @@ export default async function OperativosPage() {
     if (!contactoPorOperativo.has(c.operativo_id)) contactoPorOperativo.set(c.operativo_id, c);
   }
   const ventasPorOperativo = new Map<string, { cantidad: number; total: number }>();
+  // Lo que sigue pendiente de cada operativo: lentes sin entregar y plata
+  // sin cobrar. Un operativo sin nada pendiente ya está terminado.
+  const pendientePorOperativo = new Map<string, { lentes: Set<string>; saldo: number }>();
   for (const v of ventas ?? []) {
     if (!v.operativo_id) continue;
     const actual = ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0 };
     actual.cantidad += 1;
     actual.total += v.total;
     ventasPorOperativo.set(v.operativo_id, actual);
+
+    const pend = pendientePorOperativo.get(v.operativo_id) ?? { lentes: new Set<string>(), saldo: 0 };
+    pend.saldo += Math.max(0, v.total - (v.pagos_abonos ?? []).reduce((a: number, p: { monto: number }) => a + p.monto, 0));
+    for (const item of v.venta_items ?? []) {
+      const rel = (item as { ordenes_trabajo?: { id: string; estado: string } | { id: string; estado: string }[] | null }).ordenes_trabajo;
+      const ot = Array.isArray(rel) ? rel[0] : rel;
+      if (ot && !["entregado", "cancelado"].includes(ot.estado)) pend.lentes.add(ot.id);
+    }
+    pendientePorOperativo.set(v.operativo_id, pend);
   }
 
   const lista = operativos ?? [];
-  const planificados = lista.filter((o) => o.estado === "planificado").sort((a, b) => a.fecha.localeCompare(b.fecha));
-  const otros = lista.filter((o) => o.estado !== "planificado");
-
-  const hoy = hoyEnChile();
-  const proximo = planificados.find((o) => o.fecha >= hoy) ?? planificados[0];
-  const totalExaminados = [...examenesPorOperativo.values()].reduce((s, n) => s + n, 0);
-  const totalVendido = [...ventasPorOperativo.values()].reduce((s, v) => s + v.total, 0);
-  // Costo real de lo vendido (cristales de laboratorio + marcos + otros
-  // productos), no solo los gastos propios del operativo — si no, "utilidad"
-  // quedaba igual a "vendido".
-  const totalCostoProductos = (ventas ?? []).reduce(
-    (s, v) => s + costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[]),
-    0
-  );
-  const totalCostosOperativos = lista.reduce(
-    (s, o) => s + o.costo_transporte + o.costo_arriendo + o.costo_viaticos + o.costo_otros + (o.costo_ayudante ?? 0),
-    0
-  );
-  const totalCostos = totalCostosOperativos + totalCostoProductos;
-  const utilidadNeta = totalVendido - totalCostos;
+  const pendiente = (id: string) => pendientePorOperativo.get(id) ?? { lentes: new Set<string>(), saldo: 0 };
+  // Activos: los que se están por hacer, y los ya hechos que todavía tienen
+  // lentes por entregar o plata por cobrar. Terminado = nada pendiente.
+  const terminado = (o: (typeof lista)[number]) =>
+    o.estado === "cancelado" || (o.estado === "realizado" && pendiente(o.id).lentes.size === 0 && pendiente(o.id).saldo === 0);
+  const activos = lista
+    .filter((o) => !terminado(o))
+    .sort((a, b) => Number(a.estado !== "planificado") - Number(b.estado !== "planificado") || a.fecha.localeCompare(b.fecha));
+  const terminados = lista.filter(terminado);
 
   const input =
     "rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand";
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-bold">Operativos</h1>
-        <Link
-          href="/operativos/contactos"
-          className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
-        >
-          📇 Dirigentes
-        </Link>
-        <Link
-          href="/operativos/calendario"
-          className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
-        >
-          📅 Calendario
-        </Link>
-        <Link
-          href="/operativos/comparar"
-          className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
-        >
-          📊 Comparar operativos
-        </Link>
-      </div>
+  const botonEstado = (o: (typeof lista)[number]) =>
+    o.estado !== "cancelado" && (
+      <form action={cambiarEstadoOperativo} className="flex items-center gap-1">
+        <input type="hidden" name="id" value={o.id} />
+        <input type="hidden" name="estado" value={o.estado === "planificado" ? "realizado" : "cancelado"} />
+        <button className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-xs font-medium transition hover:bg-white">
+          {o.estado === "planificado" ? "Marcar realizado" : "Cancelar"}
+        </button>
+      </form>
+    );
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tarjeta titulo="Operativos" valor={String(lista.length)} detalle={`${planificados.length} planificado${planificados.length === 1 ? "" : "s"}`} />
-        <Tarjeta
-          titulo="Próximo"
-          valor={proximo ? proximo.nombre : "—"}
-          detalle={proximo ? fechaLegible(proximo.fecha) : "Sin operativos planificados"}
-        />
-        <Tarjeta titulo="Examinados en total" valor={String(totalExaminados)} />
-        <Tarjeta titulo="Vendido en total" valor={clp(totalVendido)} />
-        <Tarjeta
-          titulo="Costos en total"
-          valor={clp(totalCostos)}
-          detalle={`${clp(totalCostoProductos)} de lo vendido + ${clp(totalCostosOperativos)} de operativos`}
-        />
-        <Tarjeta titulo="Utilidad neta" valor={clp(utilidadNeta)} />
+  // Operativo activo: color vivo, con lo que falta (lentes por entregar y
+  // plata por cobrar).
+  const tarjetaActiva = (o: (typeof lista)[number]) => {
+    const examenes = examenesPorOperativo.get(o.id) ?? 0;
+    const venta = ventasPorOperativo.get(o.id);
+    const contacto = contactoPorOperativo.get(o.id);
+    const pend = pendiente(o.id);
+    const planificado = o.estado === "planificado";
+    return (
+      <li
+        key={o.id}
+        className={`rounded-2xl border-2 p-4 shadow-sm ${planificado ? "border-sky-500 bg-sky-50" : "border-emerald-600 bg-emerald-50"}`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link href={`/operativos/${o.id}`} className="flex-1">
+            <p className="text-lg font-bold text-tinta">{o.nombre}</p>
+            <p className="text-sm text-tinta-suave">
+              {[fechaLegible(o.fecha), TIPOS_VENUE.find((t) => t.valor === o.tipo_venue)?.etiqueta, o.direccion].filter(Boolean).join(" · ")}
+            </p>
+            <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs font-bold">
+              <span className={`rounded-full px-2.5 py-1 ${planificado ? "bg-sky-600 text-white" : "bg-emerald-700 text-white"}`}>
+                {ESTADOS[o.estado] ?? o.estado}
+              </span>
+              {pend.lentes.size > 0 && (
+                <span className="rounded-full bg-amber-400 px-2.5 py-1 text-amber-950">
+                  {pend.lentes.size} {pend.lentes.size === 1 ? "orden" : "órdenes"} por entregar
+                </span>
+              )}
+              {pend.saldo > 0 && <span className="rounded-full bg-red-600 px-2.5 py-1 text-white">Falta cobrar {clp(pend.saldo)}</span>}
+              {examenes > 0 && <span className="rounded-full bg-white px-2.5 py-1 text-tinta">{examenes} examinados</span>}
+              {venta && <span className="rounded-full bg-white px-2.5 py-1 text-tinta">{clp(venta.total)} vendido</span>}
+            </p>
+            {contacto && (
+              <p className="mt-1 text-xs text-tinta-suave">
+                📇 {[contacto.nombre, contacto.cargo, formatearTelefono(contacto.telefono)].filter(Boolean).join(" · ")}
+                {(cuantosContactos.get(o.id) ?? 0) > 1 && ` +${(cuantosContactos.get(o.id) ?? 0) - 1} más`}
+              </p>
+            )}
+            {o.notas && <p className="mt-1 text-xs text-tinta-suave">{o.notas}</p>}
+          </Link>
+          {botonEstado(o)}
+        </div>
+      </li>
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">Operativos</h1>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/operativos/calendario" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
+            📅 Calendario
+          </Link>
+          <Link href="/operativos/contactos" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
+            📇 Dirigentes
+          </Link>
+          <Link href="/operativos/comparar" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
+            📊 Comparar
+          </Link>
+        </div>
       </div>
 
       <section className="flex flex-col gap-3">
-        <ul className="flex flex-col gap-2">
-          {[...planificados, ...otros].map((o) => {
-            const examenes = examenesPorOperativo.get(o.id) ?? 0;
-            const venta = ventasPorOperativo.get(o.id);
-            const contacto = contactoPorOperativo.get(o.id);
-            return (
-              <li key={o.id} className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Link href={`/operativos/${o.id}`} className="flex-1">
-                    <p className="font-medium text-sky-950">
-                      {o.nombre}
-                      <span
-                        className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          o.estado === "planificado"
-                            ? "bg-sky-200 text-sky-900"
-                            : o.estado === "realizado"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-neutral-200 text-neutral-600"
-                        }`}
-                      >
-                        {ESTADOS[o.estado] ?? o.estado}
-                      </span>
-                    </p>
-                    <p className="text-sm text-sky-800">
-                      {[
-                        fechaLegible(o.fecha),
-                        TIPOS_VENUE.find((t) => t.valor === o.tipo_venue)?.etiqueta,
-                        o.direccion,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    {contacto && (
-                      <p className="text-xs text-sky-700">
-                        📇 {[contacto.nombre, contacto.cargo, formatearTelefono(contacto.telefono)].filter(Boolean).join(" · ")}
-                        {(cuantosContactos.get(o.id) ?? 0) > 1 &&
-                          ` +${(cuantosContactos.get(o.id) ?? 0) - 1} más`}
-                      </p>
-                    )}
-                    {o.notas && <p className="mt-1 text-xs text-sky-700">{o.notas}</p>}
-                    {(examenes > 0 || venta) && (
-                      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs font-semibold text-sky-800">
-                        <span className="rounded-full bg-white px-2 py-0.5">👥 {examenes} examinado{examenes === 1 ? "" : "s"}</span>
-                        {venta && (
-                          <span className="rounded-full bg-white px-2 py-0.5">
-                            💰 {clp(venta.total)} · {venta.cantidad} venta{venta.cantidad === 1 ? "" : "s"}
-                          </span>
-                        )}
-                      </p>
-                    )}
-                  </Link>
-                  {o.estado !== "cancelado" && (
-                    <form action={cambiarEstadoOperativo} className="flex items-center gap-1">
-                      <input type="hidden" name="id" value={o.id} />
-                      <input
-                        type="hidden"
-                        name="estado"
-                        value={o.estado === "planificado" ? "realizado" : "cancelado"}
-                      />
-                      <button className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-xs font-medium transition hover:bg-white">
-                        {o.estado === "planificado" ? "Marcar realizado" : "Cancelar"}
-                      </button>
-                    </form>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+        <ul className="flex flex-col gap-3">
+          {activos.map(tarjetaActiva)}
           {lista.length === 0 && (
-            <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-800">
-              Todavía no hay operativos creados. Crea el primero abajo.
-            </p>
+            <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-800">Todavía no hay operativos. Crea el primero abajo.</p>
+          )}
+          {lista.length > 0 && activos.length === 0 && (
+            <p className="rounded-2xl bg-emerald-50 p-4 text-center font-semibold text-emerald-800">Nada pendiente ✓</p>
           )}
         </ul>
+
+        {terminados.length > 0 && (
+          <details className="rounded-2xl bg-neutral-100 p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-neutral-500">Terminados ({terminados.length})</summary>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {terminados.map((o) => (
+                <li key={o.id}>
+                  <Link
+                    href={`/operativos/${o.id}`}
+                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-3 py-2 text-neutral-500 hover:bg-neutral-200"
+                  >
+                    <span className="font-medium">{o.nombre}</span>
+                    <span className="text-xs">
+                      {fechaLegible(o.fecha)}
+                      {o.estado === "cancelado" && " · cancelado"}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
 
         <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
           <summary className="cursor-pointer font-semibold text-sky-800">＋ Nuevo operativo</summary>

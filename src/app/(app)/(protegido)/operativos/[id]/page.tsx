@@ -1,3 +1,4 @@
+import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -213,7 +214,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const totalCostoProductos = desglose.total;
 
   const totalCostosOperativo =
-    operativo.costo_transporte + operativo.costo_arriendo + operativo.costo_viaticos + operativo.costo_otros + (operativo.costo_ayudante ?? 0);
+    gastosDeOperativo(operativo);
   const totalCostos = totalCostosOperativo + totalCostoProductos;
   // La comisión de la máquina de tarjetas también es costo (mismo cálculo
   // que "Cerrar operativo"), si no la ganancia se veía más alta que la real.
@@ -632,8 +633,12 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
                 <span className="font-medium">{clp(operativo.costo_transporte)}</span>
               </div>
               <div className="flex items-center justify-between pl-2 text-sky-800">
-                <span>Arriendo</span>
+                <span>Arriendo del salón</span>
                 <span className="font-medium">{clp(operativo.costo_arriendo)}</span>
+              </div>
+              <div className="flex items-center justify-between pl-2 text-sky-800">
+                <span>Equipos y cartilla</span>
+                <span className="font-medium">{clp(operativo.costo_equipos ?? 0)}</span>
               </div>
               <div className="flex items-center justify-between pl-2 text-sky-800">
                 <span>Viáticos</span>
@@ -1049,12 +1054,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             <CampoMonto name="costo_transporte" defaultValue={operativo.costo_transporte} />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
-            Arriendo (espacio o equipos)
+            Arriendo del salón
             <CampoMonto name="costo_arriendo" defaultValue={operativo.costo_arriendo} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">
+            Equipos y cartilla (colega)
+            <CampoMonto name="costo_equipos" defaultValue={operativo.costo_equipos ?? 0} placeholder="52.000" />
             <span className="text-xs font-normal text-sky-700">
-              Si este equipo cubre dos puntos el mismo día (dos sedes, un solo arriendo),
-              repártelo entre los dos operativos en vez de ponerlo completo en cada uno —
-              si no, la utilidad del día queda contada de menos por duplicado.
+              Son $52.000 por día. Si el mismo día hay dos sedes, repártelo entre las dos.
             </span>
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-sky-900">

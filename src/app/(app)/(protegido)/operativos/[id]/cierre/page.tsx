@@ -2,10 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
-import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
-import { totalConsultas } from "@/lib/consulta";
-import { calcularCierre } from "@/lib/cierre";
-import type { BaseComision } from "@/lib/sueldos";
+import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import FilaPago from "./fila-pago";
 
 // Cerrar el operativo: cuánto se ganó de verdad y a quién hay que pagarle.
@@ -36,33 +33,18 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
   const error = ventasRes.error ?? retirosRes.error ?? fidesRes.error;
 
   const ventas = ventasRes.data ?? [];
-  const items = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
-  const desglose = desglosarCostos(items);
-  const pagos = ventas.flatMap((v) => (v.pagos_abonos ?? []) as { monto: number; medio_pago: string | null }[]);
-  const suma = (f: (p: { monto: number; medio_pago: string | null }) => boolean) => pagos.filter(f).reduce((s, p) => s + p.monto, 0);
-  const vendido = ventas.reduce((s, v) => s + v.total, 0);
-  const cobrado = suma(() => true);
-  const gastos = op.costo_transporte + op.costo_arriendo + op.costo_viaticos + op.costo_otros + (op.costo_ayudante ?? 0);
-
-  const c = calcularCierre({
-    vendido,
-    consultas: totalConsultas(items as unknown as Parameters<typeof totalConsultas>[0]),
-    costoCristales: desglose.totalCristales,
-    costoMarcos: desglose.totalArmazones,
-    gastosOperativo: gastos,
-    cobradoDebito: suma((p) => p.medio_pago === "debito"),
-    cobradoCredito: suma((p) => p.medio_pago === "credito"),
-    pctDebito: Number(tenantRes.data?.comision_debito_pct ?? 0),
-    pctCredito: Number(tenantRes.data?.comision_credito_pct ?? 0),
-    comisionVendedoraPct: Number(op.comision_vendedora_pct),
-    comisionVendedoraBase: op.comision_vendedora_base as BaseComision,
-    ahorroPct: Number(op.ahorro_pct),
-  });
+  const n = numerosDeOperativo(
+    op,
+    ventas as unknown as VentaParaCierre[],
+    Number(tenantRes.data?.comision_debito_pct ?? 0),
+    Number(tenantRes.data?.comision_credito_pct ?? 0)
+  );
+  const { vendido, cobrado, gastos, desglose, cierre: c } = n;
 
   const pagadoA = (persona: string) =>
     (retirosRes.data ?? []).filter((r) => r.persona === persona).reduce((s, r) => s + r.monto, 0);
   const fidesPagado = (fidesRes.data ?? []).length > 0;
-  const porCobrar = Math.max(0, vendido - cobrado);
+  const porCobrar = n.porCobrar;
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -71,15 +53,11 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
           ← {op.nombre}
         </Link>
         <h1 className="mt-1 text-2xl font-bold">Reparto y pagos del operativo</h1>
-        <p className="mt-1 text-sm text-tinta-suave">
-          Aquí solo se anota a quién le pagaste. No borra ni cierra deudas: lo que falta cobrar sigue en Cobros y se puede
-          cobrar después.
-        </p>
         <Link
           href={`/cobros?op=${id}&ver=deben`}
           className="mt-2 inline-block rounded-xl border-2 border-tinta/15 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-crema"
         >
-          Ver quién debe →
+          Quién debe →
         </Link>
       </div>
 
@@ -115,21 +93,12 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
               <tr><td className="py-1">Vendido</td><td className="text-right">{clp(vendido)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Cristales (Fides)</td><td className="text-right">−{clp(desglose.totalCristales)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Marcos ({desglose.marcos} × $5.000)</td><td className="text-right">−{clp(desglose.totalArmazones)}</td></tr>
-              <tr className="text-tinta-suave"><td className="py-1">− Gastos del operativo (arriendo, equipos, Diego…)</td><td className="text-right">−{clp(gastos)}</td></tr>
+              <tr className="text-tinta-suave"><td className="py-1">− Gastos (equipos, arriendo, Diego…)</td><td className="text-right">−{clp(gastos)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Comisión de la máquina</td><td className="text-right">−{clp(c.comisionTarjeta)}</td></tr>
               <tr className="border-t font-bold"><td className="py-1.5">{porCobrar > 0 ? "Ganancia estimada" : "Ganancia"}</td><td className="text-right">{clp(c.utilidad)}</td></tr>
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-tinta-suave">
-            Los gastos (arriendo, equipos) se cambian en la ficha del operativo, en &quot;Costos y metas&quot;.
-          </p>
         </details>
-        {porCobrar > 0 && (
-          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Todavía falta cobrar <b>{clp(porCobrar)}</b>. El reparto ya lo cuenta: si pagas todo hoy, ese monto sale de tu bolsillo hasta
-            que lo cobres.
-          </p>
-        )}
       </section>
 
       <h2 className="text-lg font-bold">A pagar</h2>
@@ -144,7 +113,6 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
       <section className="rounded-2xl bg-crema p-4">
         <p className="text-sm font-semibold">Ahorro del negocio ({Number(op.ahorro_pct)}%)</p>
         <p className="text-2xl font-bold tabular-nums">{clp(c.ahorro)}</p>
-        <p className="text-sm text-tinta-suave">Se queda en la cuenta. El porcentaje se cambia en la ficha del operativo.</p>
       </section>
     </div>
   );

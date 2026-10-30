@@ -109,8 +109,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold">Cobros y entregas</h1>
-          <p className="text-sm text-tinta-suave">Elige el operativo: ves quién debe y quién tiene su lente listo.</p>
+          <h1 className="text-2xl font-bold">Cobros</h1>
         </div>
         <Link href="/ventas" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark">
           ＋ Nueva venta
@@ -193,9 +192,6 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
                 <tr className="text-tinta-suave"><td className="py-1">De eso, consultas</td><td className="text-right">{clp(consultas)}</td></tr>
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-tinta-suave">
-              La comisión es aproximada (Mercado Pago redondea cada cobro). Las tasas se cambian en Reportes.
-            </p>
           </details>
 
           {elegido !== "todos" && <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} />}

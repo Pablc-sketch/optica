@@ -181,6 +181,7 @@ export async function actualizarDetallesOperativo(formData: FormData) {
     .update({
       costo_transporte: parsearMonto(formData.get("costo_transporte")),
       costo_arriendo: parsearMonto(formData.get("costo_arriendo")),
+      costo_equipos: parsearMonto(formData.get("costo_equipos")),
       costo_viaticos: parsearMonto(formData.get("costo_viaticos")),
       costo_otros: parsearMonto(formData.get("costo_otros")),
       meta_examenes: parsearMetaOpcional(formData.get("meta_examenes")),
