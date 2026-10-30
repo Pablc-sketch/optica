@@ -597,9 +597,7 @@ export default async function ReportesPage({
       <section>
         <h2 className="mb-1 font-semibold">Caja global · cuánta plata hay ahora</h2>
         <p className="mb-2 text-xs text-tinta-suave">
-          Todo lo cobrado desde el primer día, menos todo lo que ya salió. No depende del filtro de
-          fechas de arriba: es el número con el que se cuadra el sobre del efectivo y el saldo de la
-          cuenta.
+          Todo lo cobrado menos todo lo que salió, desde el primer día.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="relative overflow-hidden rounded-3xl bg-emerald-700 p-4 text-white shadow-[0_2px_10px_-3px_rgba(61,57,41,0.25)]">
@@ -625,14 +623,12 @@ export default async function ReportesPage({
         </div>
         {cajaGlobalFallo && (
           <p className="mt-2 rounded-xl bg-red-100 px-3 py-2 text-sm font-semibold text-red-900">
-            ⚠ No se pudo leer la caja: los números de arriba están en cero porque la consulta falló,
-            no porque no haya plata. Recarga la página; si sigue igual, avísale a Pablo.
+            ⚠ No se pudo leer la caja. Recarga la página.
           </p>
         )}
         {!cajaGlobalFallo && (cajaGlobal.hayEfectivo < 0 || cajaGlobal.hayDigital < 0) && (
           <p className="mt-2 rounded-xl bg-red-100 px-3 py-2 text-sm font-semibold text-red-900">
-            ⚠ Una de las cajas quedó en negativo: salió más plata de la que entró. Casi siempre es un
-            retiro anotado en la caja equivocada — revisa la lista de retiros y gastos de más abajo.
+            ⚠ Una caja quedó en negativo: revisa los retiros y gastos de abajo.
           </p>
         )}
         <details className="mt-2 rounded-2xl bg-crema-claro p-3 text-sm shadow-sm">
@@ -723,8 +719,7 @@ export default async function ReportesPage({
             ✎ Comisión de la máquina POS ({comisionDebitoPct}% débito, {comisionCreditoPct}% crédito)
           </summary>
           <p className="mt-2 text-xs text-tinta-suave">
-            Lo que Mercado Pago descuenta antes de depositar en la cuenta — casi siempre distinto por
-            débito que por crédito. &quot;En cuenta&quot; de arriba ya lo resta solo.
+            Lo que descuenta Mercado Pago. «En cuenta» ya lo resta.
           </p>
           <form action={actualizarComisionMedioPago} className="mt-2 flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1 text-xs font-medium">
@@ -760,8 +755,7 @@ export default async function ReportesPage({
           <Tarjeta icono="🎯" titulo="Margen" valor={`${margen}%`} detalle="sobre lo vendido" />
         </div>
         <p className="mt-2 text-xs text-tinta-suave">
-          No incluye arriendo, sueldos ni otros gastos fijos: es el margen que deja la mercadería
-          vendida en el período.
+          Sin arriendo, sueldos ni gastos fijos.
         </p>
 
         <details className="mt-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
@@ -870,9 +864,7 @@ export default async function ReportesPage({
           </form>
         </div>
         <p className="mb-2 text-xs text-tinta-suave">
-          Se calcula por el mes en que se PAGA cada operativo — el día que se entregan los lentes, no el
-          día del operativo — y el mes que viene se vuelve a partir de cero. Los porcentajes de cada
-          operativo se editan en su propio detalle.
+          Por el mes en que se entregan los lentes.
         </p>
         {operativosDelMes.length === 0 ? (
           <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
@@ -929,9 +921,7 @@ export default async function ReportesPage({
               />
             </div>
             <p className="mt-2 text-xs text-tinta-suave print:hidden">
-              Al marcar un sueldo como pagado, esa plata sale de la caja que elijas y la caja global
-              de arriba baja sola. Si alguien sacó un adelanto antes, anótalo abajo en
-              &quot;Retiros y aportes&quot;: se descuenta de su sueldo antes de pagárselo.
+              Los adelantos se anotan abajo, en «Retiros y aportes».
             </p>
             <div className="mt-3 overflow-x-auto rounded-2xl bg-crema-claro p-3 shadow-sm">
               <table className="w-full min-w-150 text-sm">
@@ -988,9 +978,7 @@ export default async function ReportesPage({
       <section className="print:hidden">
         <h2 className="mb-1 font-semibold">Gastos globales del mes</h2>
         <p className="mb-2 text-xs text-tinta-suave">
-          Costos que no nacen de un operativo puntual — reponer marcos/bandejas, arriendos fijos, etc.
-          Se restan de la plata del negocio, pero no de la utilidad de ningún operativo en particular
-          (usa el mismo mes de arriba).
+          Gastos que no son de un operativo (reponer marcos, arriendos fijos).
         </p>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Tarjeta icono="📦" titulo="Total del mes" valor={clp(totalGastosGlobales)} acento />

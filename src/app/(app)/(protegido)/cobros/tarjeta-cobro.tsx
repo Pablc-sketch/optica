@@ -137,11 +137,11 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
       </div>
 
       <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold">
-        <Link href={`/ventas/${fila.ventaId}/certificado-fonasa`} className="text-brand-dark underline">
-          📄 Certificado Fonasa
+        <Link href={`/ventas/${fila.ventaId}`} className="text-brand-dark underline">
+          ✏️ Abonos y documentos
         </Link>
-        <Link href={`/ventas/${fila.ventaId}/comprobante`} className="text-tinta-suave underline">
-          🧾 Comprobante
+        <Link href={`/ventas/${fila.ventaId}/reembolso`} className="text-tinta-suave underline">
+          Reembolso
         </Link>
       </div>
 

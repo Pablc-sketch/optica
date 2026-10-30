@@ -74,7 +74,7 @@ export default async function PreciosPage({
       <div>
         <h1 className="text-xl font-bold">Precios de venta</h1>
         <p className="text-sm text-tinta-suave">
-          Lo que cobra tu óptica por armazones y productos. Edita el precio y guarda.
+          Edita el precio y guarda.
         </p>
       </div>
 
@@ -164,9 +164,7 @@ export default async function PreciosPage({
             ))}
           </ul>
           <p className="mt-2 text-xs text-violet-900">
-            Las ventas de estos días ya toman el precio con descuento. Ojo con el día después: el costo
-            vuelve a la lista normal, y si el precio de venta se quedó como está, el margen baja sin que
-            se note. Conviene revisarlo antes de esa fecha.
+            Al terminar la promoción, revisa el precio de venta.
           </p>
         </div>
       )}
@@ -201,8 +199,7 @@ export default async function PreciosPage({
             <div className="mt-3 rounded-xl border border-tinta-suave/20 bg-white p-3">
               <p className="text-sm font-semibold">Cómo se llama en el laboratorio</p>
               <p className="mb-2 text-xs text-tinta-suave">
-                Opcional. Si lo llenas, la planilla que mandas al laboratorio imprime este nombre en vez
-                del interno — así no hay que traducirlo por teléfono al hacer el pedido.
+                Opcional: el nombre que sale en el pedido al laboratorio.
               </p>
               <ul className="flex flex-col gap-1.5">
                 {[...new Set(cristalesReales.filter((c) => c.tipo_lente === tipo).map((c) => c.tratamiento))].map(

@@ -1175,8 +1175,7 @@ export default function PuntoDeVenta({
           <div>
             <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[0].titulo}`}>¿Para quién es la venta?</h2>
             <p className="text-sm text-tinta-suave">
-              Con paciente, la orden se arma sola con su receta. Sin ficha puedes cotizar, pero para guardar una venta de lentes hay
-              que elegir al paciente.
+              Elige al paciente. Sin ficha solo puedes cotizar.
             </p>
           </div>
 
@@ -1204,7 +1203,7 @@ export default function PuntoDeVenta({
           )}
           {operativoSesion && (
             <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900">
-              Operativo fijado para todas las ventas de hoy. Elige &quot;Sin especificar&quot; para venta particular.
+              Queda para todas las ventas de hoy.
             </p>
           )}
           {!operativoSesion && receta?.operativo_id && receta.operativo_id === operativoId && (
@@ -1286,8 +1285,7 @@ export default function PuntoDeVenta({
           <div>
             <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[1].titulo}`}>¿Lleva cristales?</h2>
             <p className="text-sm text-tinta-suave">
-              Cada par es un lente completo (un multifocal es un solo par). Si lleva más de dos,
-              toca &quot;＋ Agregar otro par&quot;.
+              Un multifocal es un solo par.
             </p>
           </div>
 
@@ -1568,7 +1566,7 @@ export default function PuntoDeVenta({
               />
             </div>
             <span className="text-xs font-normal text-tinta-suave">
-              Vacío = paga todo. 0 = no paga nada ahora (queda debiendo todo). Si abona una parte, el saldo queda para la entrega.
+              Vacío = paga todo · 0 = no paga ahora.
             </span>
           </label>
 
@@ -1600,12 +1598,11 @@ export default function PuntoDeVenta({
             )}
           </div>
           <p className="-mt-1 text-xs text-tinta-suave">
-            Abono mínimo = lo que cuesta hacer los lentes (cristal + marco), sumando la comisión si es con tarjeta. Cambia según
-            el medio de pago de abajo.
+            El mínimo cubre cristal + marco (y la comisión si es tarjeta).
           </p>
           {abonoNoCubre && (
             <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">
-              Ojo: el precio de este lente no alcanza a cubrir lo que cuesta hacerlo. Ningún abono lo cubre.
+              Ojo: este precio no cubre el costo del lente.
             </p>
           )}
 

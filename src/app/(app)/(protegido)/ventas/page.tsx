@@ -79,8 +79,7 @@ export default async function VentasPage() {
         <h1 className="mb-4 text-xl font-bold">Punto de venta</h1>
         {(pacientesRes.count ?? 0) > (pacientesRes.data?.length ?? 0) && (
           <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900">
-            Hay más pacientes de los que caben en el buscador del punto de venta. Si no encuentras a alguien,
-            ábrelo desde Pacientes.
+            Si no aparece, búscalo en Pacientes.
           </p>
         )}
         <PuntoDeVenta

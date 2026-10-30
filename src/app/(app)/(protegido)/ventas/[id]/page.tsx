@@ -15,6 +15,11 @@ import EditarItemsVenta from "../editar-items-venta";
 export default async function EditarVenta({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: perfil } = await supabase.from("users").select("rol").eq("id", user?.id ?? "").maybeSingle();
+  const admin = perfil?.rol === "admin";
 
   const { data: venta } = await supabase
     .from("ventas")
@@ -52,31 +57,35 @@ export default async function EditarVenta({ params }: { params: Promise<{ id: st
             {paciente ? `${paciente.nombre}${paciente.rut ? ` · ${formatearRut(paciente.rut)}` : ""}` : "Sin paciente"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/ventas/${venta.id}/comprobante`}
-            className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-sm font-medium text-tinta-suave transition hover:bg-crema"
-          >
-            🖨 Comprobante
-          </Link>
-          {!venta.anulada && (
-            <Link
-              href={`/ventas/${venta.id}/certificado-fonasa`}
-              className="rounded-lg border border-brand/40 px-3 py-1.5 text-sm font-semibold text-brand-dark transition hover:bg-crema"
-            >
-              📄 Certificado Fonasa
-            </Link>
-          )}
-          {!venta.anulada && <AnularVenta ventaId={venta.id} />}
-        </div>
       </div>
+
+      {!venta.anulada && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Link href={`/ventas/${venta.id}/reembolso`} className="rounded-xl bg-brand px-3 py-3 text-center font-semibold text-white">
+            Reembolso
+          </Link>
+          <Link href={`/ventas/${venta.id}/comprobante`} className="rounded-xl bg-white px-3 py-3 text-center font-semibold shadow-sm">
+            Comprobante
+          </Link>
+          <Link href={`/ventas/${venta.id}/certificado-fonasa`} className="rounded-xl bg-white px-3 py-3 text-center font-semibold shadow-sm">
+            Certificado Fonasa
+          </Link>
+          <Link href={`/ventas/${venta.id}/expediente`} className="rounded-xl bg-white px-3 py-3 text-center font-semibold shadow-sm">
+            PDF + boleta
+          </Link>
+        </div>
+      )}
 
       {venta.anulada ? (
         <p className="rounded-2xl bg-neutral-200 p-4 text-sm font-semibold text-neutral-700">
           Esta venta está anulada{venta.anulada_motivo ? ` — ${venta.anulada_motivo}` : ""}. No se puede editar.
         </p>
       ) : (
-        <><EditarDocumentosVenta venta={venta} /><Link href={`/ventas/${venta.id}/expediente`} className="rounded-lg bg-brand p-3 text-center font-semibold text-white">Unir documentos en PDF + adjuntar boleta</Link><EditarItemsVenta ventaId={venta.id} items={items} total={venta.total} /></>
+        <>
+          <EditarDocumentosVenta venta={venta} admin={admin} />
+          <EditarItemsVenta ventaId={venta.id} items={items} total={venta.total} />
+          <div className="flex justify-end"><AnularVenta ventaId={venta.id} /></div>
+        </>
       )}
     </div>
   );

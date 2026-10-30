@@ -72,9 +72,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
       {/* Regla de Pablo (20-10-2026): si compra lentes, la consulta va
           incluida en el paquete; solo paga $5.000 quien no compra. */}
       <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-        <b>Solo para quien no compra lentes.</b> Si compra, la consulta ya va incluida en el precio: no la cobres aparte.
-        Si ya le cobraste la consulta y después decide comprar, no registres nada más acá: avísale a Pablo para descontarla
-        a mano del lente (así no se cobra dos veces).
+        <b>Solo para quien no compra lentes.</b> Si compra lentes, va incluida.
       </p>
       <div className="flex items-center gap-3">
         <span className="text-sm text-tinta-suave">Cantidad</span>
@@ -103,8 +101,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
       </div>
       {requiereVoucher(medio) && <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={pendiente} />}
       <p className="text-xs text-tinta-suave">
-        Si son varias personas, regístralas por separado si pagaron por separado en la máquina: así cada cobro calza con
-        Mercado Pago.
+        Si pagaron por separado, regístralos por separado.
       </p>
       <div className="flex gap-2">
         <button

@@ -10,12 +10,10 @@ type Item = { href: string; label: string; principal?: boolean };
 export default function NavLinks({ nav }: { nav: Item[] }) {
   const pathname = usePathname();
   const [abierto, setAbierto] = useState(false);
-  const [segurosAbierto, setSegurosAbierto] = useState(false);
   // Al cambiar de pantalla se cierra el "Más".
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- cerrar el menú al navegar
     setAbierto(false);
-    setSegurosAbierto(false);
   }, [pathname]);
 
   // El link más largo que calce gana (así "Buscar OT" no marca "Órdenes").
@@ -42,24 +40,16 @@ export default function NavLinks({ nav }: { nav: Item[] }) {
           </Link>
         ))}
         {seguros && (
-          <button type="button" aria-expanded={segurosAbierto} aria-controls="menu-seguros"
-            onClick={() => { setSegurosAbierto((a) => !a); setAbierto(false); }} className={clase(pathname === "/seguros" || segurosAbierto)}>
-            Seguros {segurosAbierto ? "▴" : "▾"}
-          </button>
+          <Link href="/seguros" className={clase(activoHref === "/seguros")}>
+            Reembolsos
+          </Link>
         )}
         {resto.length > 0 && (
-          <button type="button" aria-expanded={abierto} aria-controls="menu-mas" onClick={() => { setAbierto((a) => !a); setSegurosAbierto(false); }} className={clase(restoActivo || abierto)}>
+          <button type="button" aria-expanded={abierto} aria-controls="menu-mas" onClick={() => setAbierto((a) => !a)} className={clase(restoActivo || abierto)}>
             Más {abierto ? "▴" : "▾"}
           </button>
         )}
       </nav>
-      {seguros && segurosAbierto && (
-        <div id="menu-seguros" className="mt-2 flex flex-wrap gap-2 rounded-2xl bg-white/10 p-2">
-          <Link href="/seguros" className="rounded-xl bg-white/5 px-3 py-2.5 text-sm font-semibold text-white hover:bg-white/15">Documentos del paciente</Link>
-          {nav.some((i) => i.href === "/boleta") && <Link href="/boleta" className="rounded-xl bg-white/5 px-3 py-2.5 text-sm font-semibold text-white hover:bg-white/15">Boletas</Link>}
-          {nav.some((i) => i.href === "/ot/buscar") && <Link href="/ot/buscar" className="rounded-xl bg-white/5 px-3 py-2.5 text-sm font-semibold text-white hover:bg-white/15">Buscar OT</Link>}
-        </div>
-      )}
       {abierto && (
         <div id="menu-mas" className="mt-2 grid grid-cols-2 gap-1.5 rounded-2xl bg-white/10 p-2 sm:grid-cols-4">
           {resto.map((item) => (

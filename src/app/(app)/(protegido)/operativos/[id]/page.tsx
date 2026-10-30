@@ -552,8 +552,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
                   Si la mitad de esas {sinComprar} personas hubiera comprado: +{clp(oportunidad)}
                 </p>
                 <p className="mt-0.5 text-xs text-sky-700">
-                  Subir la conversión rinde más que subir los precios: esa gente ya se atendió, ya está
-                  el arriendo pagado y ya sabes qué lente necesita.
+                  Vender a quien ya se atendió rinde más que subir precios.
                 </p>
               </div>
             )}
@@ -615,8 +614,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
                 <span className="font-medium">{clp(desglose.totalArmazones)}</span>
               </div>
               <p className="pl-2 text-xs text-sky-700">
-                No es plata nueva que se vaya a gastar ahora — es para amortizar lo que ya se pagó al comprar
-                el stock de marcos.
+                Recupera lo que costó el stock de marcos.
               </p>
               {desglose.totalOtros > 0 && (
                 <div className="flex items-center justify-between pl-2 text-sky-800">
@@ -720,11 +718,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               <span>{clp(utilidadActual)}</span>
             </div>
             <p className="mt-1 text-xs text-sky-700">
-              A diferencia de &quot;Utilidad neta&quot;, esta cuenta solo la plata que ya está en la mano
-              (no lo vendido a crédito/abono todavía pendiente) y ya descuenta lo que se haya retirado por
-              adelantado — pero &quot;cristales al laboratorio&quot; sigue siendo lo que se le VA A PAGAR a
-              Fides, no necesariamente lo ya pagado. Para la plata física real en la cuenta y en efectivo
-              (con la comisión de tarjeta y los gastos globales incluidos), ver Reportes → Plata disponible.
+              Solo lo ya cobrado, menos los adelantos.
             </p>
           </div>
         </details>
@@ -856,13 +850,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               </div>
               {sueldos.utilidadDisponible < 0 && (
                 <p className="mt-1 rounded-lg bg-red-50 px-2 py-1.5 text-xs font-medium text-red-800">
-                  Este operativo no alcanza a cubrir la comisión de Isadora con lo que dejó de utilidad —
-                  no hay ahorro ni reparto para la mamá o Pablo en este operativo.
+                  La utilidad no alcanza para ahorro ni reparto.
                 </p>
               )}
               <p className="mt-1 text-xs text-sky-700">
-                Este cálculo es solo de este operativo. El total mensual de cada quién (que va sumando con
-                cada operativo y se reinicia el mes siguiente) está en Reportes → Sueldos del mes.
+                Total del mes: Reportes → Sueldos del mes.
               </p>
             </div>
           </div>

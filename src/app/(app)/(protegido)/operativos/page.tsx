@@ -40,8 +40,7 @@ export default async function OperativosPage() {
       <div className="flex flex-col gap-4">
         <h1 className="text-xl font-bold">Operativos</h1>
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
-          Solo el administrador de la óptica maneja los operativos. Al cargar una venta o una
-          receta igual vas a poder elegir a cuál corresponde.
+          Solo el administrador maneja los operativos.
         </p>
       </div>
     );

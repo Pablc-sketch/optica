@@ -20,7 +20,7 @@ const NAV = [
   { href: "/ot", label: "Órdenes", principal: true },
   { href: "/laboratorio", label: "Laboratorio", principal: false },
   { href: "/avisos", label: "Avisos", principal: false },
-  { href: "/seguros", label: "Seguros", principal: false },
+  { href: "/seguros", label: "Reembolsos", principal: false },
   { href: "/ot/buscar", label: "Buscar OT" },
   { href: "/boleta", label: "Boleta" },
   { href: "/inventario", label: "Inventario" },
