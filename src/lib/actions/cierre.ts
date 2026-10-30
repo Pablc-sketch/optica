@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { hoyEnChile } from "@/lib/fechas";
+import { COSTOS, prefijoCosto, type ClaveCosto } from "@/lib/pagos-operativo";
+import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
+import { leerTodas } from "@/lib/leer-todas";
+import { idPagoCosto } from "@/lib/id-pago";
 
 type Resultado = { ok: boolean; error?: string };
 
@@ -15,6 +19,8 @@ function refrescar(operativoId: string) {
   revalidatePath(`/operativos/${operativoId}/cierre`);
   revalidatePath("/reportes");
   revalidatePath("/");
+  revalidatePath("/pagos");
+  revalidatePath("/operativos");
 }
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -23,12 +29,72 @@ const UUID = /^[0-9a-f-]{36}$/i;
 const MOTIVO_CIERRE = "Pago del operativo (cierre)";
 const PREFIJO_FIDES = "Fides · ";
 
+// Registra únicamente el importe realmente pagado. El costo previsto se
+// consulta en el servidor y no se altera al registrar un abono.
+export async function registrarPagoCosto(input: {
+  operativoId: string; clave: ClaveCosto | "fides"; monto: number;
+  caja: "efectivo" | "digital"; pagadoEsperado: number;
+}): Promise<Resultado> {
+  let ctx;
+  try { ctx = await admin(); } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false, error: e.message };
+    throw e;
+  }
+  if (!UUID.test(input.operativoId) || !Number.isSafeInteger(input.pagadoEsperado) || input.pagadoEsperado < 0
+    || !Number.isSafeInteger(input.monto) || input.monto <= 0
+    || !["digital", "efectivo"].includes(input.caja)
+    || (input.clave !== "fides" && !COSTOS.some((c) => c.clave === input.clave))) {
+    return { ok: false, error: "Pago inválido." };
+  }
+  // Dos pestañas que pagan sobre el mismo saldo compiten por la misma PK.
+  // Solo una inserta; un reintento con el mismo importe devuelve éxito.
+  const movimientoId = idPagoCosto(input.operativoId, input.clave, input.pagadoEsperado);
+  const { data: previo, error: previoError } = await ctx.supabase.from("gastos_globales")
+    .select("id, operativo_id, monto, caja, descripcion").eq("id", movimientoId).maybeSingle();
+  if (previoError) return { ok: false, error: "No se pudo comprobar el pago anterior." };
+  const prefijo = input.clave === "fides" ? PREFIJO_FIDES : prefijoCosto(input.clave);
+  if (previo) return previo.operativo_id === input.operativoId && previo.monto === input.monto
+    && previo.caja === input.caja && previo.descripcion.startsWith(prefijo)
+    ? { ok: true } : { ok: false, error: "Identificador de pago ya utilizado." };
+  const { data: op, error: opError } = await ctx.supabase.from("operativos").select("*")
+    .eq("id", input.operativoId).eq("tenant_id", ctx.tenantId).maybeSingle();
+  if (opError || !op) return { ok: false, error: "Operativo no disponible." };
+  let total = input.clave === "fides" ? 0 : Number(op[input.clave] ?? 0);
+  if (input.clave === "fides") {
+    const [ventas, tenant] = await Promise.all([
+      leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
+        venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
+          ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
+          productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
+      ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+    ]);
+    if (ventas.error || tenant.error) return { ok: false, error: "No se pudo calcular el costo." };
+    total = numerosDeOperativo(op, ventas.data as unknown as VentaParaCierre[],
+      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0)).desglose.totalCristales;
+  }
+  const pagos = await leerTodas((a, b) => ctx.supabase.from("gastos_globales").select("id, monto, descripcion")
+    .eq("operativo_id", op.id).order("id").range(a, b));
+  if (pagos.error) return { ok: false, error: "No se pudieron leer los abonos." };
+  const yaPagado = (pagos.data ?? []).filter((p) => p.descripcion.startsWith(prefijo)).reduce((s, p) => s + p.monto, 0);
+  if (yaPagado !== input.pagadoEsperado) return { ok: false, error: "Los abonos cambiaron. Recarga antes de pagar." };
+  const saldo = Math.max(0, total - yaPagado);
+  if (input.monto > saldo) return { ok: false, error: "El saldo cambió. Recarga antes de pagar." };
+  const { error } = await ctx.supabase.from("gastos_globales").insert({
+    id: movimientoId, tenant_id: ctx.tenantId, operativo_id: op.id,
+    fecha: hoyEnChile(), categoria: "otro", descripcion: `${prefijo}${op.nombre}`.slice(0, 120),
+    monto: input.monto, caja: input.caja, medio_pago: input.caja === "efectivo" ? "efectivo" : "transferencia",
+  });
+  if (error) return { ok: false, error: "No se pudo registrar. Recarga y revisa el historial antes de reintentar." };
+  refrescar(op.id);
+  return { ok: true };
+}
+
 // "Le pagué a X": queda anotado como sueldo pagado de ESTE operativo y la
 // plata sale de la cuenta (o del efectivo). Así la caja deja de mostrar
 // plata que ya se repartió.
 export async function marcarSueldoPagado(input: {
   operativoId: string;
-  persona: "isadora" | "madre" | "pablo";
+  persona: "isadora" | "madre" | "pablo" | "ahorro";
   // Lo que le corresponde EN TOTAL en este operativo. Se paga solo lo que
   // falta: tocar dos veces, o en dos pestañas, no paga dos veces.
   objetivo: number;
@@ -42,9 +108,23 @@ export async function marcarSueldoPagado(input: {
     throw e;
   }
   if (!UUID.test(input.operativoId)) return { ok: false, error: "Operativo inválido." };
-  if (!["isadora", "madre", "pablo"].includes(input.persona)) return { ok: false, error: "Persona inválida." };
+  if (!["isadora", "madre", "pablo", "ahorro"].includes(input.persona)) return { ok: false, error: "Persona inválida." };
   if (!Number.isInteger(input.objetivo) || input.objetivo <= 0) return { ok: false, error: "Monto inválido." };
   if (input.caja !== "digital" && input.caja !== "efectivo") return { ok: false, error: "Caja inválida." };
+  const { data: op, error: opError } = await ctx.supabase.from("operativos").select("*")
+    .eq("id", input.operativoId).eq("tenant_id", ctx.tenantId).maybeSingle();
+  if (opError || !op) return { ok: false, error: "Operativo no disponible." };
+  const [ventas, tenant] = await Promise.all([
+    leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
+      venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
+        ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
+        productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
+    ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+  ]);
+  if (ventas.error || tenant.error) return { ok: false, error: "No se pudo comprobar el reparto." };
+  const n = numerosDeOperativo(op, ventas.data as unknown as VentaParaCierre[],
+    Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
+  if (input.objetivo !== n.cierre[input.persona]) return { ok: false, error: "El reparto cambió. Recarga antes de pagar." };
   const { data: previos, error: errPrevios } = await ctx.supabase
     .from("retiros_sueldo")
     .select("monto")
@@ -55,6 +135,7 @@ export async function marcarSueldoPagado(input: {
   const falta = input.objetivo - yaPagado;
   if (falta <= 0) return { ok: true };
   const { error } = await ctx.supabase.from("retiros_sueldo").insert({
+    id: idPagoCosto(input.operativoId, `retiro:${input.persona}`, yaPagado),
     tenant_id: ctx.tenantId,
     persona: input.persona,
     fecha: hoyEnChile(),

@@ -4,6 +4,9 @@ import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import FilaPago from "./fila-pago";
+import PagoCostoOperativo from "@/components/pago-costo-operativo";
+import { pendientesCostos } from "@/lib/pagos-operativo";
+import { leerTodas } from "@/lib/leer-todas";
 
 // Cerrar el operativo: cuánto se ganó de verdad y a quién hay que pagarle.
 // Cada "Marcar pagado" saca esa plata de la caja, así la cuenta de la app
@@ -14,23 +17,23 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
 
   const [opRes, ventasRes, tenantRes, retirosRes, fidesRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).maybeSingle(),
-    supabase
+    leerTodas((a, b) => supabase
       .from("ventas")
       .select(
-        `total, pagos_abonos (monto, medio_pago),
+        `id, total, pagos_abonos (monto, medio_pago),
          venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
            ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
            productos:producto_id (costo, categoria))`
       )
       .eq("operativo_id", id)
-      .eq("anulada", false),
+      .eq("anulada", false).order("id").range(a, b)),
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
-    supabase.from("retiros_sueldo").select("persona, monto").eq("operativo_id", id),
-    supabase.from("gastos_globales").select("monto").eq("operativo_id", id).like("descripcion", "Fides%"),
+    leerTodas((a, b) => supabase.from("retiros_sueldo").select("id, persona, monto").eq("operativo_id", id).order("id").range(a, b)),
+    leerTodas((a, b) => supabase.from("gastos_globales").select("id, descripcion, monto").eq("operativo_id", id).order("id").range(a, b)),
   ]);
   const op = opRes.data;
   if (!op) notFound();
-  const error = ventasRes.error ?? retirosRes.error ?? fidesRes.error;
+  const error = opRes.error ?? tenantRes.error ?? ventasRes.error ?? retirosRes.error ?? fidesRes.error;
 
   const ventas = ventasRes.data ?? [];
   const n = numerosDeOperativo(
@@ -43,7 +46,8 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
 
   const pagadoA = (persona: string) =>
     (retirosRes.data ?? []).filter((r) => r.persona === persona).reduce((s, r) => s + r.monto, 0);
-  const fidesPagado = (fidesRes.data ?? []).length > 0;
+  const fidesPagado = (fidesRes.data ?? []).filter((p) => p.descripcion.startsWith("Fides · ")).reduce((s, p) => s + p.monto, 0);
+  const costos = pendientesCostos(op, fidesRes.data ?? []);
   const porCobrar = n.porCobrar;
 
   return (
@@ -101,19 +105,23 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         </details>
       </section>
 
-      <h2 className="text-lg font-bold">A pagar</h2>
+      {!error && <>
+      <h2 id="costos" className="scroll-mt-6 text-lg font-bold">Costos por pagar</h2>
       <ul className="flex flex-col gap-3">
-        <FilaPago tipo="fides" operativoId={id} nombreOperativo={op.nombre} monto={desglose.totalCristales} pagado={fidesPagado} />
+        <PagoCostoOperativo clave="fides" titulo="Fides (cristales)" operativoId={id} total={desglose.totalCristales} pagado={fidesPagado} />
+        {costos.map((costo) => <PagoCostoOperativo key={costo.clave} operativoId={id} {...costo} />)}
+      </ul>
+      <h2 id="sueldos" className="scroll-mt-6 text-lg font-bold">Remuneraciones</h2>
+      <ul className="flex flex-col gap-3">
         <FilaPago tipo="ayudante" operativoId={id} monto={op.costo_ayudante ?? 0} />
         <FilaPago tipo="sueldo" operativoId={id} persona="isadora" nombre="Isadora" monto={c.isadora} pagado={pagadoA("isadora")} />
         <FilaPago tipo="sueldo" operativoId={id} persona="madre" nombre="Mamá" monto={c.madre} pagado={pagadoA("madre")} />
         <FilaPago tipo="sueldo" operativoId={id} persona="pablo" nombre="Pablo" monto={c.pablo} pagado={pagadoA("pablo")} />
       </ul>
 
-      <section className="rounded-2xl bg-crema p-4">
-        <p className="text-sm font-semibold">Ahorro del negocio ({Number(op.ahorro_pct)}%)</p>
-        <p className="text-2xl font-bold tabular-nums">{clp(c.ahorro)}</p>
-      </section>
+      <h2 id="ahorro" className="scroll-mt-6 text-lg font-bold">Ahorro por separar</h2>
+      <ul><FilaPago tipo="sueldo" operativoId={id} persona="ahorro" nombre="Ahorro del negocio" monto={c.ahorro} pagado={pagadoA("ahorro")} /></ul>
+      </>}
     </div>
   );
 }

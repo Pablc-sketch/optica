@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fechaLegible } from "@/lib/fechas";
+import { leerTodas } from "@/lib/leer-todas";
 import { esConsulta } from "@/lib/consulta";
 import TarjetaCobro, { type FilaCobro } from "../cobros/tarjeta-cobro";
 
@@ -11,7 +12,7 @@ type Grupo = { clave: string; nombre: string; fecha: string | null; filas: FilaC
 
 export default async function Entregas() {
   const supabase = await createClient();
-  const res = await supabase
+  const res = await leerTodas((a, b) => supabase
     .from("ventas")
     .select(
       `id, total, fecha, operativos:operativo_id (id, nombre, fecha), pacientes:paciente_id (nombre, telefono), pagos_abonos (monto),
@@ -19,7 +20,7 @@ export default async function Entregas() {
     )
     .eq("anulada", false)
     .order("fecha", { ascending: false })
-    .limit(3000);
+    .order("id").range(a, b));
 
   const unico = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
   const grupos = new Map<string, Grupo>();
@@ -72,7 +73,7 @@ export default async function Entregas() {
         <div>
           <h1 className="text-2xl font-bold">Entrega</h1>
           <p className="text-sm text-tinta-suave">
-            {totalFaltan === 0 ? "Todo entregado" : `${totalListos} listos · ${totalFaltan - totalListos} en laboratorio`}
+            {res.error ? "Entregas no disponibles" : totalFaltan === 0 ? "Todo entregado" : `${totalListos} listos · ${totalFaltan - totalListos} en laboratorio`}
           </p>
         </div>
         <Link href="/avisos" className="rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900">

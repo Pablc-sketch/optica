@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import { createClient } from "@/lib/supabase/server";
 import { exigirRolPagina } from "@/lib/autorizacion";
@@ -439,21 +440,9 @@ export default async function ReportesPage({
   // cuánto quedaba de verdad.
   const retirosPeriodo = retirosPeriodoRes.data ?? [];
   const gastosGlobalesPeriodo = gastosGlobalesPeriodoRes.data ?? [];
-  // Los gastos propios de cada operativo (arriendo de equipos, transporte,
-  // viáticos, otros) también salen de la cuenta — nunca de efectivo — y se
-  // pagan al terminar el operativo (o el mismo día si dura uno solo). Sin
-  // esto "En cuenta" no bajaba con el arriendo de $108.000 de Pudahuel,
-  // aunque ese dinero ya había salido de la cuenta real.
-  const gastosOperativoPeriodo = (operativosTodosRes.data ?? [])
-    .filter((o) => {
-      const f = o.fecha_fin ?? o.fecha;
-      return f >= desde && f <= hasta;
-    })
-    .reduce((s, o) => s + gastosDeOperativo(o), 0);
   const cajaPeriodo = calcularCaja({
     entradas: pagos,
     salidas: [...retirosPeriodo, ...gastosGlobalesPeriodo],
-    salidaDigitalExtra: gastosOperativoPeriodo,
     comisionDebitoPct,
     comisionCreditoPct,
   });
@@ -475,7 +464,6 @@ export default async function ReportesPage({
     salio_digital: number;
     gastos_operativo: number;
   } | null;
-  const gastosOperativoGlobal = totalesGlobal?.gastos_operativo ?? 0;
   const cajaGlobal = resumirCaja(
     {
       entroEfectivo: totalesGlobal?.entro_efectivo ?? 0,
@@ -483,9 +471,7 @@ export default async function ReportesPage({
       entroDebito: totalesGlobal?.entro_debito ?? 0,
       entroCredito: totalesGlobal?.entro_credito ?? 0,
       salioEfectivo: totalesGlobal?.salio_efectivo ?? 0,
-      // Los gastos propios de cada operativo no son un movimiento
-      // guardado, pero la plata salió igual, y siempre de la cuenta.
-      salioDigital: (totalesGlobal?.salio_digital ?? 0) + gastosOperativoGlobal,
+      salioDigital: totalesGlobal?.salio_digital ?? 0,
     },
     { comisionDebitoPct, comisionCreditoPct }
   );
@@ -690,9 +676,7 @@ export default async function ReportesPage({
             </div>
           </div>
           <p className="mt-2 text-xs text-tinta-suave">
-            Los gastos propios de cada operativo (arriendo de equipos, transporte, viáticos) salen
-            siempre de la cuenta: acá van {clp(gastosOperativoGlobal)} de los operativos ya
-            realizados.
+            Solo se descuentan pagos registrados. <Link href="/pagos" className="underline">Ver costos pendientes y ahorro →</Link>
           </p>
         </details>
       </section>
