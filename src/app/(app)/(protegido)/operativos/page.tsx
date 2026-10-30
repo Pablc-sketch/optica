@@ -5,6 +5,8 @@ import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoTelefono } from "@/components/campos";
+import { cargarPendientes } from "@/lib/resumen-pendientes";
+import { leerTodas } from "@/lib/leer-todas";
 import BotonEnviar from "@/components/boton-enviar";
 
 const TIPOS_VENUE = [
@@ -29,6 +31,7 @@ export default async function OperativosPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  if (!user) return null;
   const perfilRes = await supabase.from("users").select("rol").eq("id", user!.id).single();
   const esAdmin = perfilRes.data?.rol === "admin";
 
@@ -44,28 +47,36 @@ export default async function OperativosPage() {
     );
   }
 
-  const [{ data: operativos }, { data: recetas }, { data: ventas }, { data: contactos }] = await Promise.all([
-    supabase
+  const [opsRes, recetasRes, ventasRes, contactosRes, pendientesRes] = await Promise.all([
+    leerTodas((a, b) => supabase
       .from("operativos")
       .select(
         "id, nombre, tipo_venue, fecha, direccion, estado, notas"
       )
-      .order("fecha", { ascending: false }),
-    supabase.from("recetas").select("operativo_id").not("operativo_id", "is", null),
-    supabase
+      .order("fecha", { ascending: false }).order("id").range(a, b)),
+    leerTodas((a, b) => supabase.from("recetas").select("id, operativo_id").not("operativo_id", "is", null).order("id").range(a, b)),
+    leerTodas((a, b) => supabase
       .from("ventas")
       .select(
-        `operativo_id, total, pagos_abonos (monto),
+        `id, operativo_id, total, pagos_abonos (monto),
          venta_items (ordenes_trabajo:ot_id (id, estado))`
       )
       .eq("anulada", false)
-      .not("operativo_id", "is", null),
-    supabase
+      .not("operativo_id", "is", null).order("id").range(a, b)),
+    leerTodas((a, b) => supabase
       .from("contactos_operativo")
-      .select("operativo_id, nombre, cargo, telefono")
-      .order("created_at", { ascending: true }),
+      .select("id, operativo_id, nombre, cargo, telefono")
+      .order("created_at", { ascending: true }).order("id").range(a, b)),
+    cargarPendientes(supabase),
   ]);
 
+  const errorLectura = opsRes.error ?? recetasRes.error ?? ventasRes.error ?? contactosRes.error ?? pendientesRes.error;
+  if (errorLectura) return <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">No se pudieron leer los operativos. Recarga; los pendientes no están confirmados.</p>;
+  const operativos = opsRes.data;
+  const recetas = recetasRes.data;
+  const ventas = ventasRes.data;
+  const contactos = contactosRes.data;
+  const pagosPorOperativo = new Map(pendientesRes.resumen.operativos.map((o) => [o.operativoId, o]));
   // Un vistazo de cómo le fue a cada operativo sin tener que entrar: cuántos
   // exámenes, cuántas ventas y cuánto se vendió — se arma en memoria en vez
   // de una consulta por operativo.
@@ -108,7 +119,7 @@ export default async function OperativosPage() {
   // Activos: los que se están por hacer, y los ya hechos que todavía tienen
   // lentes por entregar o plata por cobrar. Terminado = nada pendiente.
   const terminado = (o: (typeof lista)[number]) =>
-    o.estado === "cancelado" || (o.estado === "realizado" && pendiente(o.id).lentes.size === 0 && pendiente(o.id).saldo === 0);
+    (o.estado === "cancelado" || o.estado === "realizado") && pendiente(o.id).lentes.size === 0 && pendiente(o.id).saldo === 0 && !pagosPorOperativo.has(o.id);
   const activos = lista
     .filter((o) => !terminado(o))
     .sort((a, b) => Number(a.estado !== "planificado") - Number(b.estado !== "planificado") || a.fecha.localeCompare(b.fecha));
@@ -135,6 +146,7 @@ export default async function OperativosPage() {
     const venta = ventasPorOperativo.get(o.id);
     const contacto = contactoPorOperativo.get(o.id);
     const pend = pendiente(o.id);
+    const pagos = pagosPorOperativo.get(o.id);
     const planificado = o.estado === "planificado";
     return (
       <li
@@ -157,6 +169,8 @@ export default async function OperativosPage() {
                 </span>
               )}
               {pend.saldo > 0 && <span className="rounded-full bg-red-600 px-2.5 py-1 text-white">Falta cobrar {clp(pend.saldo)}</span>}
+              {pagos && pagos.total > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-950">Por pagar {clp(pagos.total)}</span>}
+              {pagos && pagos.ahorro > 0 && <span className="rounded-full bg-white px-2.5 py-1 text-emerald-800">Ahorro por separar</span>}
               {examenes > 0 && <span className="rounded-full bg-white px-2.5 py-1 text-tinta">{examenes} examinados</span>}
               {venta && <span className="rounded-full bg-white px-2.5 py-1 text-tinta">{clp(venta.total)} vendido</span>}
             </p>
