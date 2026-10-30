@@ -76,6 +76,7 @@ export default function EnviarWhatsapp({
   colorBoton = "bg-green-600 hover:bg-green-700",
   abierto = false,
   arriba,
+  asistente,
   bloqueo = null,
   marcaOptica,
 }: {
@@ -88,6 +89,7 @@ export default function EnviarWhatsapp({
   abierto?: boolean;
   // Algo que va arriba del mensaje (por ejemplo, editar fecha y hora).
   arriba?: React.ReactNode;
+  asistente?: (aplicar: (texto: string) => void) => React.ReactNode;
   // Si hay un motivo, no se abre ningún chat (ej. cambios sin guardar).
   bloqueo?: string | null;
   marcaOptica?: string;
@@ -150,6 +152,7 @@ export default function EnviarWhatsapp({
       <p className="mt-2 text-sm text-green-900">{descripcion}</p>
 
       {arriba}
+      {asistente?.(setPlantilla)}
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
         <span className="font-semibold text-green-900">Enviar con:</span>

@@ -1,5 +1,6 @@
 "use client";
 
+import RedactorOpticaIA from "@/components/redactor-optica-ia";
 import { useState, useTransition } from "react";
 import { actualizarEntregaOperativo } from "@/lib/actions/operativos";
 import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
@@ -154,6 +155,8 @@ export default function RecordarEntrega({
       descripcion="Solo a quienes tienen al menos un par LISTO para retirar. Ajusta la fecha y el horario, guarda, y ábrelos uno por uno."
       abierto={abierto}
       arriba={extra}
+      asistente={(aplicar) => <RedactorOpticaIA operativoId={operativo.id} bloqueado={sinGuardar}
+        contexto={{ optica: destinatarios[0]?.valores.optica || "la óptica", operativo: operativo.nombre || "este operativo", lugar: guardado.lugar || operativo.direccion, fecha: guardado.fecha ? fechaConDia(guardado.fecha) : null, horario: guardado.hora }} onUsar={aplicar} />}
       plantillaInicial={(domicilio
         ? [
             "Hola {nombre}, {listos}.",
