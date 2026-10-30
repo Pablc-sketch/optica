@@ -46,6 +46,7 @@ export function numerosDeOperativo(
     consultas: totalConsultas(items as unknown as Parameters<typeof totalConsultas>[0]),
     costoCristales: desglose.totalCristales,
     costoMarcos: desglose.totalArmazones,
+    costoOtrosProductos: desglose.totalOtros,
     gastosOperativo: gastos,
     cobradoDebito: suma((p) => p.medio_pago === "debito"),
     cobradoCredito: suma((p) => p.medio_pago === "credito"),

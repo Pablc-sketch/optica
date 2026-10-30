@@ -20,6 +20,9 @@ describe("calcularCierre", () => {
     expect(c.isadora).toBe(98600);
     expect(c.comisionTarjeta).toBe(24559);
     expect(c.utilidad).toBe(573905);
+    expect(c.gastoTotal).toBe(530695);
+    expect(c.gananciaLiquida).toBe(475305);
+    expect(c.gastoTotal + c.gananciaLiquida).toBe(1006000);
     expect(c.ahorro).toBe(95061);
     expect(c.madre + c.pablo).toBe(573905 - 98600 - 95061);
   });

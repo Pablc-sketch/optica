@@ -15,6 +15,7 @@ export type EntradaCierre = {
   consultas: number;
   costoCristales: number;
   costoMarcos: number;
+  costoOtrosProductos?: number;
   gastosOperativo: number;
   cobradoDebito: number;
   cobradoCredito: number;
@@ -29,6 +30,8 @@ export type Cierre = {
   comisionTarjeta: number;
   costos: number;
   utilidad: number;
+  gastoTotal: number;
+  gananciaLiquida: number;
   isadora: number;
   ahorro: number;
   madre: number;
@@ -37,7 +40,7 @@ export type Cierre = {
 
 export function calcularCierre(e: EntradaCierre): Cierre {
   const comisionTarjeta = Math.round((e.cobradoDebito * e.pctDebito + e.cobradoCredito * e.pctCredito) / 100);
-  const costos = e.costoCristales + e.costoMarcos + e.gastosOperativo + comisionTarjeta;
+  const costos = e.costoCristales + e.costoMarcos + (e.costoOtrosProductos ?? 0) + e.gastosOperativo + comisionTarjeta;
   const utilidad = e.vendido - costos;
   const s = calcularSueldos(e.vendido, utilidad, {
     comisionVendedoraPct: e.comisionVendedoraPct,
@@ -49,6 +52,8 @@ export function calcularCierre(e: EntradaCierre): Cierre {
     comisionTarjeta,
     costos,
     utilidad,
+    gastoTotal: costos + s.comisionIsadora,
+    gananciaLiquida: utilidad - s.comisionIsadora,
     isadora: s.comisionIsadora,
     ahorro: s.ahorro,
     madre: s.parteMadre,

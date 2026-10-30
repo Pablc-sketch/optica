@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
+import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import FilaPago from "./fila-pago";
 import PagoCostoOperativo from "@/components/pago-costo-operativo";
@@ -71,11 +72,30 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         </p>
       )}
 
+      {!error && <>
+      <section aria-label="Costos del operativo" className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold">Marcos</h2>
+          <p className="text-2xl font-bold tabular-nums">{clp(desglose.totalArmazones)}</p>
+          <p className="text-sm text-tinta-suave">{desglose.marcos} marcos · {clp(COSTO_MARCO_POR_PAR)} c/u</p>
+        </div>
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold">Cristales</h2>
+          <p className="text-2xl font-bold tabular-nums">{clp(desglose.totalCristales)}</p>
+          <p className="text-sm text-tinta-suave">{desglose.marcos} pares</p>
+        </div>
+        <div className="col-span-2 rounded-2xl bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold">Gasto total</h2>
+          <p className="text-3xl font-bold tabular-nums">{clp(c.gastoTotal)}</p>
+          <p className="text-sm text-tinta-suave">Marcos, cristales, otros productos, operativo y comisiones.</p>
+        </div>
+      </section>
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">
-          {porCobrar > 0 ? "Ganancia estimada (falta cobrar)" : "Ganancia real"}
+          {porCobrar > 0 ? "Ganancia líquida estimada · falta cobrar" : "Ganancia líquida"}
         </p>
-        <p className="text-4xl font-bold tracking-tight text-emerald-800 tabular-nums">{clp(c.utilidad)}</p>
+        <p className={`text-4xl font-bold tracking-tight tabular-nums ${c.gananciaLiquida < 0 ? "text-red-700" : "text-emerald-800"}`}>{clp(c.gananciaLiquida)}</p>
+        <p className="mt-1 text-sm text-tinta-suave">Después de costos y comisión de venta. Antes de ahorro y reparto.</p>
         <div className="mt-2 grid grid-cols-3 gap-2 text-sm tabular-nums">
           <div>
             <p className="text-xs text-tinta-suave">Vendido</p>
@@ -97,13 +117,17 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
               <tr><td className="py-1">Vendido</td><td className="text-right">{clp(vendido)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Cristales (Fides)</td><td className="text-right">−{clp(desglose.totalCristales)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Marcos ({desglose.marcos} × $5.000)</td><td className="text-right">−{clp(desglose.totalArmazones)}</td></tr>
+              {desglose.totalOtros !== 0 && <tr className="text-tinta-suave"><td className="py-1">− Otros productos</td><td className="text-right">−{clp(desglose.totalOtros)}</td></tr>}
               <tr className="text-tinta-suave"><td className="py-1">− Gastos (equipos, arriendo, Diego…)</td><td className="text-right">−{clp(gastos)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Comisión de la máquina</td><td className="text-right">−{clp(c.comisionTarjeta)}</td></tr>
-              <tr className="border-t font-bold"><td className="py-1.5">{porCobrar > 0 ? "Ganancia estimada" : "Ganancia"}</td><td className="text-right">{clp(c.utilidad)}</td></tr>
+              <tr className="text-tinta-suave"><td className="py-1">− Comisión de venta</td><td className="text-right">−{clp(c.isadora)}</td></tr>
+              <tr className="border-t font-bold"><td className="py-1.5">Gasto total</td><td className="text-right">{clp(c.gastoTotal)}</td></tr>
+              <tr className="font-bold"><td className="py-1.5">Ganancia líquida{porCobrar > 0 ? " estimada" : ""}</td><td className="text-right">{clp(c.gananciaLiquida)}</td></tr>
             </tbody>
           </table>
         </details>
       </section>
+      </>}
 
       {!error && <>
       <h2 id="costos" className="scroll-mt-6 text-lg font-bold">Costos por pagar</h2>
