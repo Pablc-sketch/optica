@@ -8,7 +8,7 @@ export async function cargarCompraReembolso(id: string): Promise<CompraReembolso
   const { supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
   if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) return null;
   const [venta, optica] = await Promise.all([
-    supabase.from("ventas").select("id, fecha, total, anulada, pacientes:paciente_id(nombre, rut), venta_items(descripcion, cantidad, precio_unitario, descuento), pagos_abonos(id, fecha, monto, medio_pago, numero_voucher)").eq("tenant_id", tenantId).eq("id", id).maybeSingle(),
+    supabase.from("ventas").select("id, fecha, total, anulada, boleta_folio, pacientes:paciente_id(nombre, rut), venta_items(descripcion, cantidad, precio_unitario, descuento), pagos_abonos(id, fecha, monto, medio_pago, numero_voucher)").eq("tenant_id", tenantId).eq("id", id).maybeSingle(),
     supabase.from("tenants").select("nombre_comercial, razon_social, rut_empresa").eq("id", tenantId).maybeSingle(),
   ]);
   if (venta.error || optica.error) throw new Error("No pudimos cargar los documentos. Recarga la página.");
@@ -16,6 +16,7 @@ export async function cargarCompraReembolso(id: string): Promise<CompraReembolso
   const paciente = Array.isArray(venta.data.pacientes) ? venta.data.pacientes[0] : venta.data.pacientes;
   return {
     id: venta.data.id, fecha: venta.data.fecha, total: venta.data.total, anulada: venta.data.anulada,
+    boleta_folio: venta.data.boleta_folio ?? null,
     paciente: paciente ?? null, optica: optica.data,
     items: venta.data.venta_items ?? [],
     pagos: [...(venta.data.pagos_abonos ?? [])].sort((a, b) => a.fecha.localeCompare(b.fecha)),

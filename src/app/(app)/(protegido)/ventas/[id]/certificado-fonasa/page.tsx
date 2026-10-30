@@ -26,6 +26,7 @@ import { rutReembolso } from "@/lib/reembolso";
 // Fonasa rechace el reembolso.
 
 type OtRel = {
+  estado: string | null;
   tipo_lente: string | null;
   posicion: string | null;
   tipo_lente_2: string | null;
@@ -82,7 +83,7 @@ export default async function CertificadoFonasaPage({
          pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (
            cristal_slot, cantidad,
-           ordenes_trabajo:ot_id (tipo_lente, posicion, tipo_lente_2, posicion_2)
+           ordenes_trabajo:ot_id (estado, tipo_lente, posicion, tipo_lente_2, posicion_2)
          ), pagos_abonos (monto, medio_pago, numero_voucher, fecha)`
       )
       .eq("id", id)
@@ -116,21 +117,25 @@ export default async function CertificadoFonasaPage({
   const pares = itemsCristal.reduce((s, i) => s + i.cantidad, 0);
   const cantidadArticulos = pares * 2;
   const pagos = venta.pagos_abonos ?? [];
-  const sinVoucher = !venta.boleta_folio && !venta.ocultar_voucher && pagos.some(p => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
+  const sinVoucher = !venta.boleta_folio && pagos.some(p => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
   const referencias = venta.ocultar_voucher ? [] : [...new Set(pagos.map(p => p.numero_voucher).filter((n): n is string => Boolean(n)))];
 
   // Qué casillas marcar, según lo que de verdad se vendió en esta venta.
   const marcadas = new Set<string>();
+  let detalleIncompleto = false;
   for (const item of itemsCristal) {
     const ot = uno(item.ordenes_trabajo as unknown as OtRel);
-    if (!ot) continue;
+    if (!ot) { detalleIncompleto = true; continue; }
     const tipo = item.cristal_slot === 2 ? ot.tipo_lente_2 : ot.tipo_lente;
     const posicion = item.cristal_slot === 2 ? ot.posicion_2 : ot.posicion;
     if (tipo === "Bifocal") marcadas.add("Bifocales");
     else if (tipo === "Multifocal") { marcadas.add("Lejos"); marcadas.add("Cerca"); }
     else if (posicion === "cerca") marcadas.add("Cerca");
     else if (posicion === "lejos") marcadas.add("Lejos");
+    else detalleIncompleto = true;
   }
+  const entregado = itemsCristal.length > 0 && itemsCristal.every(item =>
+    uno(item.ordenes_trabajo as unknown as OtRel)?.estado === "entregado");
 
   // Si se compraron pares de cerca y de lejos, el detalle debe decirlo.
   const tiposVendidos = [...marcadas].filter((m) => m === "Lejos" || m === "Cerca");
@@ -145,7 +150,7 @@ export default async function CertificadoFonasaPage({
       : tieneMultifocal ? "Lentes ópticos según receta médica (lejos y cerca)" : "Lentes ópticos según receta médica";
 
   const fechaCompra = fechaLegible(fechaCertificadoFonasa(venta.fecha, pagos));
-  const listo = Boolean(paciente?.nombre && rutReembolso(paciente?.rut) && optica?.razon_social && rutReembolso(optica?.rut_empresa) && pares > 0 && !sinVoucher && !venta.anulada && (marcarAMano || marcadas.size > 0));
+  const listo = Boolean(paciente?.nombre && rutReembolso(paciente?.rut) && optica?.razon_social && rutReembolso(optica?.rut_empresa) && pares > 0 && !sinVoucher && !venta.anulada && (marcarAMano || (!detalleIncompleto && marcadas.size > 0)));
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -209,7 +214,7 @@ export default async function CertificadoFonasaPage({
             pares === 0 && "esta venta no tiene cristales",
             sinVoucher && "los números de voucher de los pagos con tarjeta",
             venta.anulada && "la venta está anulada",
-            !marcarAMano && marcadas.size === 0 && "la prestación en la orden (o elige marcar a mano después de cotejar la receta)",
+            !marcarAMano && (detalleIncompleto || marcadas.size === 0) && "la prestación de cada par en sus órdenes (o elige marcar a mano después de cotejar la receta)",
           ]
             .filter(Boolean)
             .join(", ")}
@@ -279,7 +284,7 @@ export default async function CertificadoFonasaPage({
         </p>
 
         <div className="mt-10 text-center">
-          <p className="mx-auto mb-4 w-fit -rotate-3 rounded-sm border-[3px] border-black px-5 py-1 text-4xl font-black tracking-widest text-black">ENTREGADO</p>
+          {entregado && <p className="mx-auto mb-4 w-fit -rotate-3 rounded-sm border-[3px] border-black px-5 py-1 text-4xl font-black tracking-widest text-black">ENTREGADO</p>}
           <p className="mx-auto w-72 border-t border-neutral-500 pt-2 text-[15px] font-semibold">
             {nombreTienda}
           </p>

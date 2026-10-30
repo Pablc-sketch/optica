@@ -40,6 +40,15 @@ describe("revisión de compra para reembolso", () => {
     expect(pendientesCompra(conMarco).join(" ")).toContain("sin inventar valores");
     expect(conMarco.items[1].precio_unitario).toBe(0);
   });
+  it("usa el folio de boleta como respaldo alternativo sin omitir los demás pendientes", () => {
+    const sinVoucher = { ...compra, pagos: [{ ...compra.pagos[0], numero_voucher: null }] };
+    expect(pendientesCompra(sinVoucher).join(" ")).toContain("cada voucher");
+    expect(pendientesCompra({ ...sinVoucher, boleta_folio: "123" })).toEqual([]);
+    const pendientes = pendientesCompra({ ...sinVoucher, boleta_folio: "123", total: 200 }).join(" ");
+    expect(pendientes).toContain("no coincide");
+    expect(pendientes).toContain("saldo pendiente");
+    expect(pendientes).not.toContain("cada voucher");
+  });
   it("detecta total incoherente, saldo y exceso de pagos", () => {
     expect(pendientesCompra({ ...compra, total: 200 }).join(" ")).toContain("no coincide");
     expect(pendientesCompra({ ...compra, pagos: [] }).join(" ")).toContain("saldo pendiente");

@@ -45,6 +45,13 @@ describe("carga del expediente de una compra", () => {
     query.maybeSingle.mockResolvedValueOnce({ data: null, error: { message: "detalle privado" } });
     await expect(cargarCompraReembolso(id)).rejects.toThrow("No pudimos cargar");
   });
+  it("conserva el folio guardado para revisar el respaldo de la compra", async () => {
+    query.maybeSingle.mockResolvedValueOnce({ data: { id, fecha: "2026-10-01", total: 100, anulada: false, boleta_folio: "000123", pacientes: null, venta_items: [], pagos_abonos: [] }, error: null });
+    query.maybeSingle.mockResolvedValueOnce({ data: { nombre_comercial: "Prueba", razon_social: null, rut_empresa: null }, error: null });
+    const compra = await cargarCompraReembolso(id);
+    expect(query.select).toHaveBeenCalledWith(expect.stringContaining("boleta_folio"));
+    expect(compra?.boleta_folio).toBe("000123");
+  });
 });
 
 describe("búsqueda de documentos", () => {
