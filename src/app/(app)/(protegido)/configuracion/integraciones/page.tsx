@@ -5,6 +5,8 @@ import { clp } from "@/lib/clp";
 import { fechaLegible, diaEnChile } from "@/lib/fechas";
 import { simpleApiConfigurada } from "@/lib/simpleapi";
 import ConexionSimpleApi from "@/components/conexion-simpleapi";
+import { mercadoPagoConfigurado } from '@/lib/mercadopago-sync';
+import ActualizarMercadoPago from '@/components/actualizar-mercadopago';
 
 export default async function Integraciones() {
   const { tenantId } = await exigirRolPagina(["admin"]);
@@ -18,6 +20,12 @@ export default async function Integraciones() {
       {mp.estado === "conectado" && <><p className="mt-2 text-xs text-tinta-suave">Pagos recientes de Mercado Pago. No se suman nuevamente a caja ni representan el saldo de tu cuenta.</p>
         {mp.pagos.length === 0 ? <p className="mt-2 text-sm">Sin pagos recientes en pesos chilenos.</p> : <ul className="mt-2 divide-y">{mp.pagos.map((p) => <li key={p.id} className="flex justify-between gap-2 py-3 text-sm"><span>#{p.id} · {fechaLegible(diaEnChile(p.fecha))}<span className="block text-xs">{estados[p.estado] ?? p.estado}</span></span><b>{clp(p.monto)}</b></li>)}</ul>}</>}
       {mp.estado === "pendiente" && <a href="https://www.mercadopago.cl/developers/panel/app" target="_blank" rel="noopener noreferrer" className="mt-3 inline-block rounded-xl border px-4 py-2 font-semibold">Abrir Mercado Pago ↗</a>}
+      {mercadoPagoConfigurado(tenantId) && <details className="mt-4 border-t pt-3 text-sm">
+        <summary className="cursor-pointer text-tinta-suave">Archivo interno de vouchers</summary>
+        <p className="mt-2">Las operaciones se guardan automáticamente cada cinco minutos. Se vinculan al abono cuando coinciden operación, monto y medio de pago.</p>
+        <Link href="/configuracion/integraciones/mercadopago" className="mt-2 inline-block underline">Consultar archivo y pendientes</Link>
+        <ActualizarMercadoPago />
+      </details>}
     </section>
     <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Cuenta bancaria</h2><p className="mt-1 text-sm">Sin conectar. Falta identificar el banco y la cuenta de la óptica.</p></section>
     <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Boletas electrónicas · SimpleAPI</h2>

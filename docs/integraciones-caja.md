@@ -1,21 +1,39 @@
 # Cuentas y boletas
 
-## Mercado Pago: lectura de pagos
+## Mercado Pago: archivo y conciliación de pagos
 
-El adaptador consulta GET /v1/payments/search sin guardar abonos, iniciar
-cobros ni transferir fondos. Se muestra en /configuracion/integraciones,
-solo para administradores de la organización asociada al token.
+La consulta de pagos se complementa con un archivo persistente y privado,
+sin crear cobros ni transferir fondos. Se accede desde el detalle plegado
+«Archivo interno de vouchers» en /configuracion/integraciones. Solo el
+administrador de la óptica configurada puede abrir el archivo.
 
 Para activar, el titular debe configurar en Vercel, para el entorno deseado:
 
 - MERCADOPAGO_ACCESS_TOKEN: secreto privado de la aplicación de la cuenta empresa.
 - MERCADOPAGO_TENANT_ID: identificador de la óptica en Lentia.
+- MERCADOPAGO_SYNC_SECRET: secreto independiente para la consulta programada.
 
 No enviar tokens por chat, no usar NEXT_PUBLIC_, no copiar la credencial
 de producción al entorno de prueba. El adaptador distingue pendientes,
 errores y conexión válida. Los pagos externos no equivalen al saldo bancario
-ni se suman a la caja; falta conciliación con referencias únicas antes de
-automatizar abonos. Puede mostrar pagos de otros canales de la misma cuenta.
+ni se suman otra vez a la caja. Cada operación se relaciona con un único
+abono existente cuyo numero_voucher sea exactamente el ID del pago y coincidan
+monto y medio de tarjeta. La compra determina el paciente. Las coincidencias
+validadas se muestran en el comprobante de compra y pagos, junto al abono.
+Puede haber pagos de otros canales de la misma cuenta: sin referencia exacta
+quedan sin asociar. Nunca se adivina un paciente por importe o nombre.
+
+La sincronización se ejecuta cada cinco minutos mediante Supabase Cron,
+pg_net y Vault, incluso sin navegadores abiertos. La primera carga consulta
+hasta 364 días; la API de búsqueda solo ofrece los últimos doce meses.
+Los registros ya importados permanecen en Lentia. Se guardan los identificadores,
+fechas, montos, estado y medio, sin correo, RUT ni datos de tarjeta del pagador.
+Es un respaldo digital de la operación, no una imagen del ticket de la máquina.
+
+Duplicados, diferencias, devoluciones, contracargos y ventas anuladas quedan
+para revisión; no se modifican saldos de caja silenciosamente. Cambiar un
+voucher invalida su asociación inmediatamente. Detalles y operación:
+[mercadopago-archivo.md](mercadopago-archivo.md).
 
 Documentación: https://www.mercadopago.cl/developers/es/reference
 

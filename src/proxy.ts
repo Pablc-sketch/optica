@@ -9,6 +9,8 @@ import { COOKIE_ACTIVIDAD, hayQueRefrescar, HORAS_INACTIVIDAD, leerActividad, se
 export async function proxy(request: NextRequest) {
   // Tarjeta pública de marca: solo logo y eslogan, sin datos de pacientes.
   const rutaMarca = request.nextUrl.pathname;
+  // Este único endpoint valida su propio secreto de servicio, sin cookies.
+  if (rutaMarca === '/api/integraciones/mercadopago/sync') return NextResponse.next();
   if (rutaMarca === "/optica-global" || rutaMarca === "/optica-global/opengraph-image") {
     return NextResponse.next();
   }

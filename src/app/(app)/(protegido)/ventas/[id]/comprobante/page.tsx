@@ -21,7 +21,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const { id } = await params;
   const { supabase, tenantId } = await exigirRolPagina(["admin", "ventas"]);
 
-  const [ventaRes, tenantRes] = await Promise.all([
+  const [ventaRes, tenantRes, respaldoRes] = await Promise.all([
     supabase
       .from("ventas")
       .select(
@@ -35,6 +35,8 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       .eq("tenant_id", tenantId)
       .single(),
     supabase.from("tenants").select("nombre_comercial, razon_social, rut_empresa, telefono, direccion, logo_url").eq("id", tenantId).single(),
+    supabase.from('mercadopago_conciliacion').select('abono_id,pago_id,fecha,conciliacion')
+      .eq('tenant_id', tenantId).eq('venta_id', id).eq('conciliacion', 'vinculado'),
   ]);
 
   const venta = ventaRes.data;
@@ -55,6 +57,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const puedeFonasa = edadPaciente !== null && edadPaciente >= 55;
   const items = venta.venta_items ?? [];
   const pagos = [...(venta.pagos_abonos ?? [])].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const respaldos = new Map((respaldoRes.data ?? []).map(p => [p.abono_id, p]));
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
   const saldo = venta.total - abonado;
   const sinVoucher = venta.boleta_folio ? [] : pagos.filter((p) => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
@@ -225,11 +228,12 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         {pagos.length > 0 && (
           <div className="mt-3 border-t border-neutral-200 pt-3 text-sm">
             <p className="mb-1 text-xs font-semibold text-neutral-500">Pagos</p>
-            {pagos.map((p: { monto: number; medio_pago: string; fecha: string; numero_voucher: string | null }, i: number) => (
+            {pagos.map((p: { id: string; monto: number; medio_pago: string; fecha: string; numero_voucher: string | null }, i: number) => (
               <p key={i} className="flex justify-between">
                 <span className="capitalize">
                   {fechaLegible(diaEnChile(p.fecha))} · {p.medio_pago}
                   {!venta.ocultar_voucher && p.numero_voucher && <span className="block text-xs normal-case">Operación / voucher: {p.numero_voucher}</span>}
+                  {!venta.ocultar_voucher && respaldos.has(p.id) && <span className="block text-xs normal-case">Mercado Pago · pago verificado · {fechaLegible(diaEnChile(respaldos.get(p.id)!.fecha))}</span>}
                 </span>
                 <span>{clp(p.monto)}</span>
               </p>
