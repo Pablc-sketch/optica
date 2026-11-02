@@ -1,3 +1,5 @@
+import { requiereVoucher } from "@/lib/voucher";
+import BotonEnviar from "@/components/boton-enviar";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
@@ -42,7 +44,7 @@ function uno<T>(rel: T | T[] | null): T | null {
 export default async function BoletaPage() {
   const supabase = await createClient();
 
-  const { data: ventas } = await supabase
+  const { data: ventas, error } = await supabase
     .from("ventas")
     .select(
       `id, fecha, total,
@@ -59,13 +61,12 @@ export default async function BoletaPage() {
       <div>
         <h1 className="text-xl font-bold">Boleta</h1>
         <p className="text-sm text-tinta-suave">
-          Comprobante detallado de cada venta — cristal, marco, abonos con fecha y el número de
-          voucher de la máquina, para cuando alguien pida boleta detallada para su reembolso.
+          Ventas, abonos y vouchers para preparar boletas y reembolsos.
         </p>
       </div>
 
       <section>
-        {!ventas || ventas.length === 0 ? (
+        {error ? <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">No se pudieron cargar las ventas. Vuelve a intentar.</p> : !ventas || ventas.length === 0 ? (
           <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">Sin ventas registradas.</p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -138,19 +139,20 @@ export default async function BoletaPage() {
                                   {MEDIOS_PAGO[pa.medio_pago] ?? pa.medio_pago}
                                 </span>
                                 <span className="font-semibold">{clp(pa.monto)}</span>
-                                <form action={actualizarVoucherAbono} className="ml-auto flex items-center gap-1.5">
+                                {requiereVoucher(pa.medio_pago,pa.monto) && <form action={actualizarVoucherAbono} className="ml-auto flex items-center gap-1.5">
                                   <input type="hidden" name="abono_id" value={pa.id} />
-                                  <label className="text-xs text-tinta-suave">N° voucher</label>
+                                  <span className="text-xs text-tinta-suave">Voucher</span>
                                   <input
                                     name="numero_voucher"
+                                    aria-label="Número de voucher de este abono"
+                                    required
+                                    maxLength={80}
                                     defaultValue={pa.numero_voucher ?? ""}
                                     placeholder="—"
                                     className="w-28 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand"
                                   />
-                                  <button className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium transition hover:bg-crema">
-                                    ✓
-                                  </button>
-                                </form>
+                                  <BotonEnviar className="rounded-lg border border-tinta-suave/30 px-3 py-2 text-sm font-medium hover:bg-crema">Guardar</BotonEnviar>
+                                </form>}
                               </li>
                             ))}
                           </ul>

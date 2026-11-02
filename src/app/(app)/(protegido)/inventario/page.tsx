@@ -1,3 +1,6 @@
+import BotonEnviar from "@/components/boton-enviar";
+import Link from "next/link";
+import { leerTodas } from "@/lib/leer-todas";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarStockMinimo, registrarMovimiento } from "@/lib/actions/inventario";
 import { clp } from "@/lib/clp";
@@ -33,17 +36,23 @@ export default async function InventarioPage({
   const { sucursal } = await searchParams;
   const supabase = await createClient();
 
-  const { data: sucursales } = await supabase.from("sucursales").select("id, nombre").order("nombre");
+  const { data: sucursales, error: sucursalesError } = await supabase.from("sucursales").select("id, nombre").order("nombre");
+  if (sucursalesError) throw new Error("No se pudieron cargar las sucursales");
+  if (!sucursales?.length) return <div className="rounded-2xl bg-white p-5 shadow-sm">
+    <h1 className="text-xl font-bold">Inventario</h1>
+    <p className="mt-2 text-sm text-tinta-suave">Agrega una sucursal para registrar stock.</p>
+    <Link href="/configuracion" className="mt-3 inline-block rounded-xl bg-brand px-4 py-2.5 font-semibold text-white">Configurar sucursal</Link>
+  </div>;
   const sucursalActiva = sucursal || sucursales?.[0]?.id;
 
   const [stockRes, movimientosRes, proveedoresRes] = await Promise.all([
-    supabase
+    leerTodas((a,b) => supabase
       .from("inventario")
       .select(
         "id, stock_actual, stock_minimo, producto_id, sucursal_id, productos:producto_id (nombre, marca, color, sku, precio_venta, categoria, imagen_url)"
       )
       .eq("sucursal_id", sucursalActiva ?? "")
-      .order("stock_actual"),
+      .order("stock_actual").order("id").range(a,b)),
     supabase
       .from("movimientos_inventario")
       .select("id, tipo, cantidad, referencia, fecha, productos:producto_id (nombre, marca)")
@@ -52,6 +61,7 @@ export default async function InventarioPage({
       .limit(15),
     supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
   ]);
+  if (stockRes.error || movimientosRes.error || proveedoresRes.error) throw new Error("No se pudo cargar el inventario");
   const proveedores = proveedoresRes.data ?? [];
 
   const stock = stockRes.data ?? [];
@@ -70,6 +80,7 @@ export default async function InventarioPage({
           <form action="/inventario" className="flex items-center gap-2">
             <select
               name="sucursal"
+              aria-label="Sucursal"
               defaultValue={sucursalActiva}
               className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
             >
@@ -104,8 +115,8 @@ export default async function InventarioPage({
       <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} />
       <NuevoProductoMasivo />
 
-      <section>
-        <h2 className="mb-2 font-semibold">Proveedores</h2>
+      <details className="rounded-2xl bg-white p-4 shadow-sm">
+        <summary className="cursor-pointer font-semibold">Proveedores</summary>
         <div className="flex flex-col gap-2">
           <NuevoProveedor />
           {proveedores.length > 0 && (
@@ -119,7 +130,7 @@ export default async function InventarioPage({
             </ul>
           )}
         </div>
-      </section>
+      </details>
 
       <section>
         <h2 className="mb-2 font-semibold">Stock</h2>
@@ -155,44 +166,45 @@ export default async function InventarioPage({
                     <span className={`text-sm font-bold ${critico ? "text-brand-dark" : ""}`}>
                       {s.stock_actual} {critico && "⚠"}
                     </span>
+                    <details className="basis-full rounded-xl border border-tinta/10 p-3"><summary className="cursor-pointer text-sm font-semibold">Ajustar stock</summary>
                     <form action={actualizarStockMinimo} className="flex items-center gap-1">
                       <input type="hidden" name="inventario_id" value={s.id} />
-                      <label className="text-xs text-tinta-suave">mín</label>
+                      <span className="text-xs text-tinta-suave">Mínimo</span>
                       <input
                         name="stock_minimo"
+                        aria-label="Stock mínimo"
                         inputMode="numeric"
                         defaultValue={s.stock_minimo}
                         className="w-14 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-right text-sm outline-none focus:border-brand"
                       />
-                      <button className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium transition hover:bg-crema">
-                        ✓
-                      </button>
+                      <BotonEnviar className="rounded-lg border border-tinta-suave/30 px-3 py-2 text-sm font-medium transition hover:bg-crema">Guardar mínimo</BotonEnviar>
                     </form>
-                  </div>
 
                   <form action={registrarMovimiento} className="mt-2 flex flex-wrap items-center gap-1.5">
                     <input type="hidden" name="producto_id" value={s.producto_id} />
                     <input type="hidden" name="sucursal_id" value={s.sucursal_id} />
-                    <select name="tipo" className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand">
+                    <select name="tipo" aria-label="Tipo de movimiento" className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand">
                       <option value="entrada">Entrada</option>
                       <option value="salida">Salida</option>
                       <option value="ajuste">Ajuste</option>
                     </select>
                     <input
                       name="cantidad"
+                      aria-label="Cantidad del movimiento"
+                      required
                       inputMode="numeric"
                       placeholder="Cant."
                       className="w-16 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-right text-xs outline-none focus:border-brand"
                     />
                     <input
                       name="referencia"
+                      aria-label="Motivo del movimiento"
                       placeholder="Motivo (opcional)"
                       className="w-40 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand"
                     />
-                    <button className="rounded-lg bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white">
-                      Registrar
-                    </button>
+                    <BotonEnviar className="rounded-lg bg-brand/10 px-3 py-2 text-sm font-semibold text-brand-dark transition hover:bg-brand hover:text-white">Registrar</BotonEnviar>
                   </form>
+                  </details></div>
                 </li>
               );
             })}
@@ -212,7 +224,7 @@ export default async function InventarioPage({
               return (
                 <li key={m.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
                   <span className="text-xs text-tinta-suave">
-                    {new Date(m.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
+                    {new Date(m.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "short", timeZone: "America/Santiago" })}
                   </span>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${tipo.clase}`}>
                     {tipo.etiqueta}

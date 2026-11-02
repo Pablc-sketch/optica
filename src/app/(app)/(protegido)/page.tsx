@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
-import { fechaLegible, hoyEnChile, inicioDelDia } from "@/lib/fechas";
+import { fechaLegible, hoyEnChile, inicioDelDia, finDelDia } from "@/lib/fechas";
 import { resumirCaja } from "@/lib/caja";
 import { cargarPendientes } from "@/lib/resumen-pendientes";
 import CajaMovimientos from "@/components/caja-movimientos";
@@ -36,7 +36,7 @@ export default async function Dashboard() {
 
   const hoy = hoyEnChile();
   const [ventasHoy, proximoOperativo, pendientesRes, tenantRes, cajaRes, ventasSaldoRes, listosRes] = await Promise.all([
-    leerTodas((a, b) => supabase.from("ventas").select("id, total").eq("anulada", false).gte("fecha", inicioDelDia(hoy)).order("id").range(a, b)),
+    leerTodas((a, b) => supabase.from("ventas").select("id, total").eq("anulada", false).gte("fecha", inicioDelDia(hoy)).lte("fecha", finDelDia(hoy)).order("id").range(a, b)),
     supabase
       .from("operativos")
       .select("id, nombre, fecha")
@@ -151,7 +151,7 @@ export default async function Dashboard() {
             <Link href="/pagos?ver=ahorro" className="rounded-xl border px-3 py-2 text-sm">Ahorro por separar {clp(porPagar.ahorro)}</Link>
             <Link href="/configuracion/integraciones" className="rounded-xl bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900">Cuentas y boletas →</Link>
           </div>
-          <p className="mt-3 text-xs text-tinta-suave">Movimientos de Lentia · el saldo bancario se consulta en Caja MP.</p>
+          <p className="mt-3 text-xs text-tinta-suave">Calculado con movimientos de Lentia.</p>
           <CajaMovimientos />
         </>}
       </details>

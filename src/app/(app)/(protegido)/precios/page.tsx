@@ -99,6 +99,7 @@ export default async function PreciosPage({
           <input
             type="search"
             name="q"
+            aria-label="Buscar código, modelo o color"
             defaultValue={q ?? ""}
             placeholder="Buscar código, modelo, color…"
             className="w-52 rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
@@ -134,6 +135,7 @@ export default async function PreciosPage({
                   <input type="hidden" name="id" value={p.id} />
                   <CampoMonto
                     name="precio"
+                    ariaLabel="Precio de venta en pesos"
                     defaultValue={p.precio_venta}
                     className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
                   />

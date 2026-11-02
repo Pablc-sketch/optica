@@ -4,6 +4,7 @@ import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import { createClient } from "@/lib/supabase/server";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
+import BotonEnviar from "@/components/boton-enviar";
 import BotonImprimir from "@/components/boton-imprimir";
 import Tarjeta from "@/components/tarjeta";
 import {
@@ -142,9 +143,7 @@ function TarjetaSueldo({
             <option value="efectivo">💵 del efectivo</option>
             <option value="digital">🏦 de la caja digital</option>
           </select>
-          <button className="rounded-lg bg-brand px-2.5 py-1 text-xs font-bold text-white transition hover:bg-brand-dark">
-            {verbo} · marcar realizado
-          </button>
+          <BotonEnviar className="rounded-lg bg-brand px-2.5 py-1 text-xs font-bold text-white transition hover:bg-brand-dark">{verbo} · marcar realizado</BotonEnviar>
         </form>
       )}
     </div>
@@ -597,9 +596,9 @@ export default async function ReportesPage({
       </div>
 
       <section>
-        <h2 className="mb-1 font-semibold">Caja global · cuánta plata hay ahora</h2>
+        <h2 className="mb-1 font-semibold">Caja registrada</h2>
         <p className="mb-2 text-xs text-tinta-suave">
-          Todo lo cobrado menos todo lo que salió, desde el primer día.
+          Movimientos de Lentia desde el inicio. El saldo de la cuenta se consulta en Caja MP.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="relative overflow-hidden rounded-3xl bg-emerald-700 p-4 text-white shadow-[0_2px_10px_-3px_rgba(61,57,41,0.25)]">
@@ -680,7 +679,7 @@ export default async function ReportesPage({
       </section>
 
       <section>
-        <h2 className="mb-1 font-semibold">Plata disponible en el período</h2>
+        <h2 className="mb-1 font-semibold">Flujo del período</h2>
         <p className="mb-2 text-xs text-tinta-suave">
           Solo lo que entró y salió entre {fechaLegible(desde)} y {fechaLegible(hasta)}. Para saber
           cuánta plata hay <strong>ahora mismo</strong>, mira la caja global de aquí arriba.
@@ -992,12 +991,12 @@ export default async function ReportesPage({
                 required
                 defaultValue={hoyEnChile()}
                 className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              />
+              aria-label="Fecha del movimiento" />
               <select
                 name="categoria"
                 defaultValue="compra_inventario"
                 className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              >
+               aria-label="Categoría del gasto">
                 <option value="compra_inventario">Compra de inventario</option>
                 <option value="arriendo">Arriendo</option>
                 <option value="otro">Otro</option>
@@ -1007,14 +1006,14 @@ export default async function ReportesPage({
                 placeholder="Ej. 24 marcos nuevos"
                 required
                 className="col-span-2 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand sm:col-span-2"
-              />
+              aria-label="Descripción del gasto" />
               <input
                 name="monto"
                 inputMode="numeric"
                 placeholder="78.000"
                 required
                 className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              />
+              aria-label="Monto en pesos" />
               <select
                 name="caja"
                 defaultValue="digital"
@@ -1028,7 +1027,7 @@ export default async function ReportesPage({
                 name="medio_pago"
                 defaultValue=""
                 className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              >
+               aria-label="Medio de pago">
                 <option value="">Medio de pago…</option>
                 {Object.entries(MEDIOS_PAGO_LABEL).map(([v, l]) => (
                   <option key={v} value={v}>
@@ -1036,9 +1035,7 @@ export default async function ReportesPage({
                   </option>
                 ))}
               </select>
-              <button className="col-span-2 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark sm:col-span-1">
-                Agregar
-              </button>
+              <BotonEnviar className="col-span-2 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark sm:col-span-1">Agregar</BotonEnviar>
             </form>
           </div>
         </div>
@@ -1055,7 +1052,7 @@ export default async function ReportesPage({
                 <span className="font-semibold">{clp(g.monto)}</span>
                 <form action={eliminarGastoGlobal}>
                   <input type="hidden" name="id" value={g.id} />
-                  <button className="text-xs font-medium text-red-700 hover:underline">Quitar</button>
+                  <BotonEnviar className="text-xs font-medium text-red-700 hover:underline">Quitar</BotonEnviar>
                 </form>
               </li>
             ))}
@@ -1066,13 +1063,7 @@ export default async function ReportesPage({
       <section className="print:hidden">
         <h2 className="mb-1 font-semibold">Retiros y aportes del mes</h2>
         <p className="mb-2 text-xs text-tinta-suave">
-          <strong>Retiro:</strong> Isadora, Pamela o Pablo sacan plata por adelantado contra lo que les
-          corresponde de sueldo (o se aparta el ahorro del negocio) — se descuenta del sueldo de
-          arriba antes de pagárselo, y baja la caja de la que salió.{" "}
-          <strong>Aporte:</strong> esa persona pone plata propia al negocio (ej. cubrir una diferencia al
-          pagar al laboratorio) — se SUMA a lo que se le debe y sube la caja, en vez de restarse.
-          Siempre hay que decir <strong>de qué caja sale</strong>: del efectivo que está en la mano o de
-          la cuenta.
+          Retiro: descuenta sueldo y caja. Aporte: aumenta lo que se debe y la caja.
         </p>
         <div className="rounded-2xl bg-crema-claro p-3 shadow-sm">
           <form action={crearRetiro} className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
@@ -1080,7 +1071,7 @@ export default async function ReportesPage({
               name="persona"
               defaultValue="isadora"
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            >
+             aria-label="Persona del movimiento">
               {Object.entries(PERSONAS).map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
@@ -1091,7 +1082,7 @@ export default async function ReportesPage({
               name="tipo"
               defaultValue="retiro"
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            >
+             aria-label="Retiro o aporte">
               <option value="retiro">Retiro (saca)</option>
               <option value="aporte">Aporte (pone)</option>
             </select>
@@ -1101,14 +1092,14 @@ export default async function ReportesPage({
               required
               defaultValue={hoyEnChile()}
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            />
+            aria-label="Fecha del movimiento" />
             <input
               name="monto"
               inputMode="numeric"
               placeholder="20.000"
               required
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            />
+            aria-label="Monto en pesos" />
             <select
               name="caja"
               defaultValue="efectivo"
@@ -1122,7 +1113,7 @@ export default async function ReportesPage({
               name="medio_pago"
               defaultValue=""
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            >
+             aria-label="Medio de pago">
               <option value="">Medio…</option>
               {Object.entries(MEDIOS_PAGO_LABEL).map(([v, l]) => (
                 <option key={v} value={v}>
@@ -1134,10 +1125,8 @@ export default async function ReportesPage({
               name="motivo"
               placeholder="Motivo (opcional)"
               className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            />
-            <button className="rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark">
-              Agregar
-            </button>
+            aria-label="Motivo del movimiento" />
+            <BotonEnviar className="rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark">Agregar</BotonEnviar>
           </form>
         </div>
         {retiros.length > 0 && (
@@ -1171,7 +1160,7 @@ export default async function ReportesPage({
                   <span className="font-semibold">{clp(Math.abs(r.monto))}</span>
                   <form action={eliminarRetiro}>
                     <input type="hidden" name="id" value={r.id} />
-                    <button className="text-xs font-medium text-red-700 hover:underline">Quitar</button>
+                    <BotonEnviar className="text-xs font-medium text-red-700 hover:underline">Quitar</BotonEnviar>
                   </form>
                 </li>
               );

@@ -225,7 +225,7 @@ export default async function ConfiguracionPage() {
 
                 <form action={cambiarRol} className="flex items-center gap-1">
                   <input type="hidden" name="user_id" value={u.id} />
-                  <select name="rol" defaultValue={u.rol} className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand">
+                  <select name="rol" aria-label={`Rol de ${u.nombre}`} defaultValue={u.rol} className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand">
                     {ROLES.map((r) => (
                       <option key={r.valor} value={r.valor}>{r.etiqueta}</option>
                     ))}
