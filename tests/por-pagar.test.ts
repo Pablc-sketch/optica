@@ -26,6 +26,7 @@ describe("por pagar", () => {
       pagado: { ...base.pagado, isadora: 90000, madre: 40000, pablo: 0, fides: 200000 },
     });
     expect(p.sueldos).toBe(60000 + 100000);
+    expect(p.personas).toEqual({ isadora:0,madre:60000,pablo:100000 });
     expect(p.costos).toBe(104000);
   });
   it("un pago de más no da negativo", () => {

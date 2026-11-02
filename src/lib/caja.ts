@@ -106,7 +106,7 @@ export function calcularCaja({
       entroDebito: sumar(entradas.filter((e) => e.medio_pago === "debito")),
       entroCredito: sumar(entradas.filter((e) => e.medio_pago === "credito")),
       salioEfectivo: sumar(salidas.filter((s) => s.caja === "efectivo")),
-      salioDigital: sumar(salidas.filter((s) => s.caja !== "efectivo")) + salidaDigitalExtra,
+      salioDigital: sumar(salidas.filter((s) => s.caja === "digital")) + salidaDigitalExtra,
     },
     { comisionDebitoPct, comisionCreditoPct }
   );

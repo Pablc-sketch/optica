@@ -8,6 +8,7 @@ import FilaPago from "./fila-pago";
 import PagoCostoOperativo from "@/components/pago-costo-operativo";
 import { pagadoCon, pendientesCostos, PREFIJO_FIDES, PREFIJO_MARCOS } from "@/lib/pagos-operativo";
 import { leerTodas } from "@/lib/leer-todas";
+import CostoFidesEditor from "@/components/costo-fides-editor";
 
 // Cerrar el operativo: cuánto se ganó de verdad y a quién hay que pagarle.
 // Cada "Marcar pagado" saca esa plata de la caja, así la cuenta de la app
@@ -132,6 +133,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
 
       {!error && <>
       <h2 id="costos" className="scroll-mt-6 text-lg font-bold">Costos por pagar</h2>
+      <CostoFidesEditor operativoId={id} actual={op.costo_fides_real ?? null} nota={op.costo_fides_nota ?? null} />
       <ul className="flex flex-col gap-3">
         <PagoCostoOperativo clave="fides" titulo="Fides (cristales)" operativoId={id} total={desglose.totalCristales} pagado={fidesPagado} />
         <PagoCostoOperativo clave="marcos" titulo={`Reponer marcos (${desglose.marcos})`} operativoId={id} total={desglose.totalArmazones} pagado={marcosPagado} />

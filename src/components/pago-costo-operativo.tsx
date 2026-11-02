@@ -11,7 +11,7 @@ export default function PagoCostoOperativo({ operativoId, clave, titulo, total, 
 }) {
   const saldo = Math.max(0, total - pagado);
   const [texto, setTexto] = useState("");
-  const [caja, setCaja] = useState<"digital" | "efectivo">("digital");
+  const [caja, setCaja] = useState<"digital" | "efectivo" | "personal">("digital");
   const [error, setError] = useState<string | null>(null);
   const [pendiente, iniciar] = useTransition();
   const router = useRouter();
@@ -24,7 +24,7 @@ export default function PagoCostoOperativo({ operativoId, clave, titulo, total, 
       <input aria-label={`Monto a pagar: ${titulo}`} inputMode="numeric" value={texto} placeholder={formatearMonto(saldo)}
         disabled={pendiente} onChange={(e) => setTexto(formatearMonto(e.target.value))} className="min-w-0 flex-1 rounded-xl border p-3" />
       <select disabled={pendiente} aria-label={`Caja: ${titulo}`} value={caja} onChange={(e) => setCaja(e.target.value as typeof caja)} className="rounded-xl border bg-white p-3">
-        <option value="digital">Cuenta</option><option value="efectivo">Efectivo</option>
+        <option value="digital">Cuenta bancaria (Mercado Pago)</option><option value="efectivo">Efectivo</option><option value="personal">Dinero personal de Pablo</option>
       </select>
       <button disabled={bloqueado || pendiente || monto <= 0 || monto > saldo} className="rounded-xl bg-emerald-800 px-4 py-3 font-semibold text-white disabled:opacity-40"
         onClick={() => {

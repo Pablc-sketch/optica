@@ -19,6 +19,9 @@ import {
 import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
 import { calcularCaja, resumirCaja } from "@/lib/caja";
+import { salidasDeMovimiento } from "@/lib/caja-fuentes";
+import { leerTodas } from "@/lib/leer-todas";
+import { conCostoFidesReal } from "@/lib/costo-fides-real";
 import {
   actualizarComisionMedioPago,
   crearGastoGlobal,
@@ -36,7 +39,7 @@ const PERSONAS: Record<string, string> = {
   pablo: "Pablo",
   ahorro: "Ahorro (negocio)",
 };
-const CAJAS_LABEL: Record<string, string> = { efectivo: "Efectivo", digital: "Caja digital" };
+const CAJAS_LABEL: Record<string, string> = { efectivo: "Efectivo", digital: "Cuenta bancaria (Mercado Pago)", personal: "Dinero personal de Pablo" };
 const MEDIOS_PAGO_LABEL: Record<string, string> = {
   efectivo: "Efectivo",
   debito: "Débito",
@@ -248,7 +251,7 @@ export default async function ReportesPage({
   const operativosTodosQuery = supabase
     .from("operativos")
     .select(
-      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos"
+      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_fides_real"
     )
     .order("fecha", { ascending: true });
 
@@ -282,6 +285,7 @@ export default async function ReportesPage({
     gastosGlobalesPeriodoRes,
     tenantRes,
     cajaGlobalRes,
+    movimientosCajaRes,
   ] = await Promise.all([
     ventasQuery,
     itemsQuery,
@@ -294,6 +298,7 @@ export default async function ReportesPage({
     gastosGlobalesPeriodoQuery,
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
     cajaGlobalQuery,
+    leerTodas((a,b) => supabase.from("caja_movimientos").select("tipo,monto,caja,id").gte("fecha",desde).lte("fecha",hasta).order("id").range(a,b)),
   ]);
   const operativos = operativosRes.data ?? [];
 
@@ -392,7 +397,7 @@ export default async function ReportesPage({
 
   const sueldosPorOperativo = operativosDelMes.map((o) => {
     const ventaTotal = ventaPorOperativo.get(o.id) ?? 0;
-    const costoProductos = desglosarCostos(itemsPorOperativo.get(o.id) ?? []).total;
+    const costoProductos = conCostoFidesReal(desglosarCostos(itemsPorOperativo.get(o.id) ?? []),o.costo_fides_real).total;
     const costoOperativo = gastosDeOperativo(o);
     const utilidadNeta = ventaTotal - costoProductos - costoOperativo - Math.round(comisionPorOperativo.get(o.id) ?? 0);
     const sueldo = calcularSueldos(ventaTotal, utilidadNeta, {
@@ -443,7 +448,10 @@ export default async function ReportesPage({
   const gastosGlobalesPeriodo = gastosGlobalesPeriodoRes.data ?? [];
   const cajaPeriodo = calcularCaja({
     entradas: pagos,
-    salidas: [...retirosPeriodo, ...gastosGlobalesPeriodo],
+    salidas: [...retirosPeriodo, ...gastosGlobalesPeriodo, ...(movimientosCajaRes.data ?? []).flatMap(m => {
+      const s = salidasDeMovimiento(m);
+      return [{ monto:s.efectivo,caja:"efectivo" },{ monto:s.digital,caja:"digital" }];
+    })],
     comisionDebitoPct,
     comisionCreditoPct,
   });
@@ -609,7 +617,7 @@ export default async function ReportesPage({
             </p>
           </div>
           <div className="relative overflow-hidden rounded-3xl bg-sky-800 p-4 text-white shadow-[0_2px_10px_-3px_rgba(61,57,41,0.25)]">
-            <p className="text-sm font-medium text-sky-50">🏦 Caja digital</p>
+            <p className="text-sm font-medium text-sky-50">🏦 Cuenta estimada por Lentia</p>
             <p className="mt-1 text-3xl font-black">{clp(cajaGlobal.hayDigital)}</p>
             <p className="mt-0.5 text-xs text-sky-100">
               {clp(cajaGlobal.entroDigital)} cobrado −{" "}
@@ -682,7 +690,7 @@ export default async function ReportesPage({
         <h2 className="mb-1 font-semibold">Flujo del período</h2>
         <p className="mb-2 text-xs text-tinta-suave">
           Solo lo que entró y salió entre {fechaLegible(desde)} y {fechaLegible(hasta)}. Para saber
-          cuánta plata hay <strong>ahora mismo</strong>, mira la caja global de aquí arriba.
+          el saldo bancario, abre <Link href="/caja" className="underline">Cuenta bancaria (Mercado Pago)</Link>.
         </p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <Tarjeta icono="💰" titulo="Total cobrado" valor={clp(totalAbonado)} acento />
@@ -757,6 +765,7 @@ export default async function ReportesPage({
         </div>
         <p className="mt-2 text-xs text-tinta-suave">
           Sin arriendo, sueldos ni gastos fijos.
+          {(operativosTodosRes.data ?? []).some(o => o.costo_fides_real != null) && <> Este desglose usa costos por cristal. Los totales corregidos de Fides se aplican al reparto de cada operativo y a las remuneraciones.</>}
         </p>
 
         <details className="mt-3 rounded-2xl bg-crema-claro p-4 shadow-sm">
@@ -1021,7 +1030,8 @@ export default async function ReportesPage({
                 className="col-span-1 rounded-lg border-2 border-brand/40 bg-white px-2 py-1.5 text-sm font-medium outline-none focus:border-brand"
               >
                 <option value="efectivo">💵 Salió del efectivo</option>
-                <option value="digital">🏦 Salió de la caja digital</option>
+                <option value="digital">🏦 Cuenta bancaria (Mercado Pago)</option>
+                <option value="personal">Dinero personal de Pablo</option>
               </select>
               <select
                 name="medio_pago"

@@ -18,7 +18,7 @@ export default async function CajaMovimientos() {
   const instante = (f: string) => Date.parse(f.length === 10 ? inicioDelDia(f) : f);
   const movimientos = [
     ...(cobros.data ?? []).map((p) => ({ id: `c-${p.id}`, fecha: diaEnChile(p.fecha), orden: instante(p.fecha), monto: p.monto, titulo: "Cobro de venta", caja: !p.medio_pago || p.medio_pago === "efectivo" ? "Efectivo" : "Cuenta", href: `/ventas/${p.venta_id}` })),
-    ...(gastos.data ?? []).map((p) => ({ id: `g-${p.id}`, fecha: p.fecha, orden: instante(p.fecha), monto: -p.monto, titulo: p.descripcion, caja: p.caja === "efectivo" ? "Efectivo" : "Cuenta", href: p.operativo_id ? `/operativos/${p.operativo_id}/cierre` : "/reportes" })),
+    ...(gastos.data ?? []).map((p) => ({ id: `g-${p.id}`, fecha: p.fecha, orden: instante(p.fecha), monto: -p.monto, titulo: p.descripcion, caja: p.caja === "personal" ? "Pablo · personal (sin salida de caja)" : p.caja === "efectivo" ? "Efectivo" : "Cuenta", href: p.operativo_id ? `/operativos/${p.operativo_id}/cierre` : "/caja" })),
     ...(retiros.data ?? []).map((p) => ({ id: `r-${p.id}`, fecha: p.fecha, orden: instante(p.fecha), monto: -p.monto, titulo: `${p.monto < 0 ? "Aporte" : "Retiro"} · ${nombres[p.persona] ?? p.persona}`, caja: p.caja === "efectivo" ? "Efectivo" : "Cuenta", href: p.operativo_id ? `/operativos/${p.operativo_id}/cierre` : "/reportes" })),
   ].sort((a, b) => b.orden - a.orden || a.id.localeCompare(b.id)).slice(0, 15);
   return <section className="mt-4 border-t border-tinta/10 pt-3">
@@ -29,6 +29,6 @@ export default async function CajaMovimientos() {
         <span className={`shrink-0 font-bold tabular-nums ${m.monto < 0 ? "text-red-700" : "text-emerald-800"}`}>{m.monto > 0 ? "+" : ""}{clp(m.monto)}</span>
       </Link></li>)}
     </ul>}
-    <Link href="/reportes" className="mt-2 inline-block rounded-xl border px-4 py-2 font-semibold">Todos los movimientos →</Link>
+    <Link href="/caja" className="mt-2 inline-block rounded-xl border px-4 py-2 font-semibold">Gastos, devoluciones y traslados →</Link>
   </section>;
 }

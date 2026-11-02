@@ -7,6 +7,7 @@ import { COSTOS, prefijoCosto, PREFIJO_MARCOS, type ClaveCosto } from "@/lib/pag
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import { leerTodas } from "@/lib/leer-todas";
 import { idPagoCosto } from "@/lib/id-pago";
+import { montoCaja } from "@/lib/caja-fuentes";
 
 type Resultado = { ok: boolean; error?: string };
 
@@ -18,6 +19,7 @@ function refrescar(operativoId: string) {
   revalidatePath(`/operativos/${operativoId}`);
   revalidatePath(`/operativos/${operativoId}/cierre`);
   revalidatePath("/reportes");
+  revalidatePath("/caja");
   revalidatePath("/");
   revalidatePath("/pagos");
   revalidatePath("/operativos");
@@ -29,11 +31,29 @@ const UUID = /^[0-9a-f-]{36}$/i;
 const MOTIVO_CIERRE = "Pago del operativo (cierre)";
 const PREFIJO_FIDES = "Fides · ";
 
+export async function actualizarCostoFides(_: { error?: string; guardado?: boolean }, f: FormData): Promise<{ error?: string; guardado?: boolean }> {
+  const ctx = await admin();
+  const id = String(f.get('operativo_id') ?? '');
+  const monto = montoCaja(f.get('monto'),true);
+  const nota = String(f.get('nota') ?? '').trim();
+  if (!UUID.test(id) || monto === null || !nota || nota.length > 250) return { error:'Indica el total real de Fides y el motivo.' };
+  const anterior = String(f.get('anterior') ?? '');
+  const { data: op, error } = await ctx.supabase.from('operativos').select('id,costo_fides_real').eq('id',id).eq('tenant_id',ctx.tenantId).maybeSingle();
+  if (error || !op) return { error:'Operativo no disponible.' };
+  if (String(op.costo_fides_real ?? '') !== anterior) return { error:'El costo cambió en otra sesión. Recarga antes de guardar.' };
+  let cambio = ctx.supabase.from('operativos').update({ costo_fides_real:monto,costo_fides_nota:nota }).eq('id',id).eq('tenant_id',ctx.tenantId);
+  cambio = op.costo_fides_real === null ? cambio.is('costo_fides_real',null) : cambio.eq('costo_fides_real',op.costo_fides_real);
+  const guardado = await cambio.select('id').maybeSingle();
+  if (guardado.error || !guardado.data) return { error:'No se pudo guardar. Recarga y revisa el costo.' };
+  refrescar(id);
+  return { guardado:true };
+}
+
 // Registra únicamente el importe realmente pagado. El costo previsto se
 // consulta en el servidor y no se altera al registrar un abono.
 export async function registrarPagoCosto(input: {
   operativoId: string; clave: ClaveCosto | "fides" | "marcos"; monto: number;
-  caja: "efectivo" | "digital"; pagadoEsperado: number;
+  caja: "efectivo" | "digital" | "personal"; pagadoEsperado: number;
 }): Promise<Resultado> {
   let ctx;
   try { ctx = await admin(); } catch (e) {
@@ -42,7 +62,7 @@ export async function registrarPagoCosto(input: {
   }
   if (!UUID.test(input.operativoId) || !Number.isSafeInteger(input.pagadoEsperado) || input.pagadoEsperado < 0
     || !Number.isSafeInteger(input.monto) || input.monto <= 0
-    || !["digital", "efectivo"].includes(input.caja)
+    || !["digital", "efectivo", "personal"].includes(input.caja)
     || (input.clave !== "fides" && input.clave !== "marcos" && !COSTOS.some((c) => c.clave === input.clave))) {
     return { ok: false, error: "Pago inválido." };
   }
@@ -83,7 +103,7 @@ export async function registrarPagoCosto(input: {
   const { error } = await ctx.supabase.from("gastos_globales").insert({
     id: movimientoId, tenant_id: ctx.tenantId, operativo_id: op.id,
     fecha: hoyEnChile(), categoria: "otro", descripcion: `${prefijo}${op.nombre}`.slice(0, 120),
-    monto: input.monto, caja: input.caja, medio_pago: input.caja === "efectivo" ? "efectivo" : "transferencia",
+    monto: input.monto, caja: input.caja, medio_pago: input.caja === "personal" ? null : input.caja === "efectivo" ? "efectivo" : "transferencia",
   });
   if (error) return { ok: false, error: "No se pudo registrar. Recarga y revisa el historial antes de reintentar." };
   refrescar(op.id);

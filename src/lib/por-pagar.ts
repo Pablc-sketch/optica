@@ -9,12 +9,14 @@ export type OperativoPorPagar = {
   pagado: { isadora: number; madre: number; pablo: number; fides: number; marcos?: number; gastos: number; ahorro: number };
 };
 export type PendienteOperativo = {
+  personas: { pablo: number; madre: number; isadora: number };
   operativoId: string; nombre: string; fecha: string;
   fides: number; marcos: number; gastos: number;
   sueldos: number; costos: number; ahorro: number; total: number;
 };
 export const faltaPagar = (total: number, pagado: number) => Math.max(0, total - pagado);
 export function pendienteDeOperativo(o: OperativoPorPagar): PendienteOperativo {
+  const personas = { pablo: faltaPagar(o.sueldos.pablo, o.pagado.pablo), madre: faltaPagar(o.sueldos.madre, o.pagado.madre), isadora: faltaPagar(o.sueldos.isadora, o.pagado.isadora) };
   const sueldos = faltaPagar(o.sueldos.isadora, o.pagado.isadora)
     + faltaPagar(o.sueldos.madre, o.pagado.madre) + faltaPagar(o.sueldos.pablo, o.pagado.pablo);
   const fides = faltaPagar(o.fides, o.pagado.fides);
@@ -22,9 +24,10 @@ export function pendienteDeOperativo(o: OperativoPorPagar): PendienteOperativo {
   const gastos = faltaPagar(o.gastos, o.pagado.gastos);
   const costos = fides + marcos + gastos;
   const ahorro = faltaPagar(o.ahorro, o.pagado.ahorro);
-  return { operativoId: o.operativoId, nombre: o.nombre, fecha: o.fecha, fides, marcos, gastos, sueldos, costos, ahorro, total: sueldos + costos };
+  return { personas, operativoId: o.operativoId, nombre: o.nombre, fecha: o.fecha, fides, marcos, gastos, sueldos, costos, ahorro, total: sueldos + costos };
 }
 export type ResumenPorPagar = {
+  personas: { pablo: number; madre: number; isadora: number };
   fides: number; marcos: number; gastos: number;
   sueldos: number; costos: number; ahorro: number; total: number;
   operativos: PendienteOperativo[];
@@ -36,6 +39,7 @@ export function resumirPorPagar(lista: OperativoPorPagar[]): ResumenPorPagar {
   const sueldos = suma((p) => p.sueldos);
   const costos = suma((p) => p.costos);
   return {
+    personas: { pablo: suma(p => p.personas.pablo), madre: suma(p => p.personas.madre), isadora: suma(p => p.personas.isadora) },
     fides: suma((p) => p.fides), marcos: suma((p) => p.marcos), gastos: suma((p) => p.gastos),
     sueldos, costos, ahorro: suma((p) => p.ahorro), total: sueldos + costos, operativos,
   };
