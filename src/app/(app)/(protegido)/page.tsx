@@ -6,7 +6,7 @@ import { fechaLegible, hoyEnChile, inicioDelDia, finDelDia } from "@/lib/fechas"
 import { resumirCaja } from "@/lib/caja";
 import { cargarPendientes } from "@/lib/resumen-pendientes";
 import CajaMovimientos from "@/components/caja-movimientos";
-import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
+import CuentaBancaria from "@/components/cuenta-bancaria";
 import { leerTodas } from "@/lib/leer-todas";
 
 
@@ -122,16 +122,17 @@ export default async function Dashboard() {
         </div>
       )}
 
-      {mercadoPagoConfigurado(perfil.tenant_id) && <Link href="/caja/mercadopago" className="flex items-center justify-between gap-3 rounded-2xl bg-tinta p-4 text-white shadow-sm"><span><b className="block">Mercado Pago</b><span className="text-sm text-white/75">Cuenta, cobros y vouchers</span></span><span className="text-sm font-semibold">Abrir caja →</span></Link>}
+      <CuentaBancaria tenantId={perfil.tenant_id} />
+      <Link href="/caja" className="rounded-xl bg-white p-4 font-semibold shadow-sm">Efectivo, gastos y adelantos personales →</Link>
 
       <details className="rounded-2xl bg-white p-4 shadow-sm">
         <summary className="cursor-pointer rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4">
-        <span className="mb-2 block text-lg font-bold">Caja registrada <span className="float-right text-sm font-medium text-sky-800">Ver detalle ▾</span></span>
+        <span className="mb-2 block text-lg font-bold">Caja estimada de Lentia <span className="float-right text-sm font-medium text-sky-800">Ver detalle ▾</span></span>
         {cajaRes.error || !lecturaOk ? (
           <span className="block text-sm font-semibold text-red-700">No se pudo leer la caja. Recarga la página.</span>
         ) : (
           <>
-            <span className="block text-xs font-semibold uppercase tracking-wider text-tinta-suave">Tras pendientes y ahorro</span>
+            <span className="block text-xs font-semibold uppercase tracking-wider text-tinta-suave">Tras pendientes de operativos y ahorro</span>
             <span className={`block text-4xl font-bold tabular-nums ${queda < 0 ? "text-red-700" : "text-emerald-800"}`}>{clp(queda)}</span>
             <span className="block mt-1 text-sm tabular-nums text-tinta-suave">
               Caja registrada {clp(caja.total)} · Digital {clp(caja.hayDigital)} · Efectivo {clp(caja.hayEfectivo)}
@@ -151,7 +152,7 @@ export default async function Dashboard() {
             <Link href="/pagos?ver=ahorro" className="rounded-xl border px-3 py-2 text-sm">Ahorro por separar {clp(porPagar.ahorro)}</Link>
             <Link href="/configuracion/integraciones" className="rounded-xl bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900">Cuentas y boletas →</Link>
           </div>
-          <p className="mt-3 text-xs text-tinta-suave">Calculado con movimientos de Lentia.</p>
+          <p className="mt-3 text-xs text-tinta-suave">Estimación con movimientos de Lentia. Los adelantos personales pendientes se revisan en Caja.</p>
           <CajaMovimientos />
         </>}
       </details>
@@ -159,6 +160,7 @@ export default async function Dashboard() {
       {pendientesRes.sinAsignar && <Link href="/reportes" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Revisar retiros sin operativo antes de repartir →</Link>}
       <section className="flex flex-col gap-2">
         <h2 className="text-lg font-bold">Por pagar</h2>
+        {lecturaOk && <div className="grid grid-cols-3 gap-2">{([['Pablo',porPagar.personas.pablo],['Pamela',porPagar.personas.madre],['Isadora',porPagar.personas.isadora]] as const).map(([nombre,monto]) => <Link key={nombre} href="/pagos?ver=sueldos" className="rounded-xl bg-white p-3 shadow-sm"><p className="text-sm">{nombre}</p><p className="font-bold tabular-nums">{clp(monto)}</p></Link>)}</div>}
         {!lecturaOk ? <p className="text-sm text-red-700">Pendientes no disponibles. Recarga.</p> : porPagar.total === 0 && porPagar.ahorro === 0 ? (
           <p className="rounded-2xl bg-emerald-50 p-4 text-center font-semibold text-emerald-800">Todo pagado ✓</p>
         ) : (

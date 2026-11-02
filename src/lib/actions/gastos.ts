@@ -2,20 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requerirPerfil } from "@/lib/autorizacion";
+import { montoCaja } from "@/lib/caja-fuentes";
+import { fechaValidaDocumento } from "@/lib/fecha-documentos";
+import { hoyEnChile } from "@/lib/fechas";
 
 // Mismo patrón que el resto de actions administrativas: el tenant sale de
 // la base, nunca del formulario.
 async function requerirTenant() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
-  if (!perfil) throw new Error("Perfil no encontrado");
-  return { supabase, tenantId: perfil.tenant_id as string };
+  return requerirPerfil({ roles: ["admin"], suscripcion: true });
 }
 
 function parsearMonto(valor: FormDataEntryValue | null): number | null {
@@ -55,22 +50,30 @@ export async function crearGastoGlobal(formData: FormData) {
 
   const fecha = String(formData.get("fecha") ?? "").trim();
   const descripcion = String(formData.get("descripcion") ?? "").trim();
-  const monto = parsearMonto(formData.get("monto"));
+  const monto = montoCaja(formData.get("monto"));
   const categoria = String(formData.get("categoria") ?? "");
-  if (!fecha || !descripcion || monto === null) return;
+  if (!fechaValidaDocumento(fecha) || fecha > hoyEnChile() || !descripcion || descripcion.length > 250 || monto === null) throw new Error("Revisa la fecha, descripción y monto del gasto.");
+  const fuente = String(formData.get("caja") ?? "");
+  if (!["digital", "efectivo", "personal"].includes(fuente)) throw new Error("Elige de dónde salió el dinero.");
+  const id = String(formData.get("id") ?? "");
+  if (id && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id)) throw new Error("Identificador no válido.");
 
   const { error } = await supabase.from("gastos_globales").insert({
+    ...(id ? { id } : {}),
     tenant_id: tenantId,
     fecha,
     descripcion,
     monto,
     categoria: (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
     medio_pago: parsearMedioPago(formData.get("medio_pago")),
-    caja: parsearCaja(formData.get("caja")),
+    caja: fuente,
   });
-  if (error) throw error;
+  if (error && !(id && error.code === "23505")) throw error;
 
   revalidatePath("/reportes");
+  revalidatePath("/");
+  revalidatePath("/caja");
+  if (formData.get("volver_caja") === "1") redirect("/caja?guardado=1");
 }
 
 export async function eliminarGastoGlobal(formData: FormData) {

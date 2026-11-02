@@ -13,6 +13,7 @@ import { fechaConDia, fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
 import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { conCostoFidesReal } from "@/lib/costo-fides-real";
 import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
 import { type CatalogoLaboratorio } from "@/lib/costo-fides";
 import EliminarOperativo from "./eliminar-operativo";
@@ -210,7 +211,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // que costó producir lo que se vendió. El desglose (no solo el total) es
   // para que la tarjeta de costos se pueda abrir y mostrar de qué se compone.
   const todosLosItems = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
-  const desglose = desglosarCostos(todosLosItems);
+  const desglose = conCostoFidesReal(desglosarCostos(todosLosItems), operativo.costo_fides_real);
   const totalCostoProductos = desglose.total;
 
   const totalCostosOperativo =
@@ -602,9 +603,10 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
                 </div>
               ))}
               <div className="flex items-center justify-between font-semibold text-sky-900">
-                <span>Subtotal cristales</span>
+                <span>{operativo.costo_fides_real != null ? 'Total real Fides' : 'Subtotal cristales'}</span>
                 <span>{clp(desglose.totalCristales)}</span>
               </div>
+              {operativo.costo_fides_real != null && <p className="pl-2 text-xs text-sky-800">{operativo.costo_fides_nota}</p>}
             </div>
 
             <div className="flex flex-col gap-1.5">
