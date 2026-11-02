@@ -6,6 +6,7 @@ import { ESTADOS_CONCILIACION } from '@/lib/mercadopago-datos';
 import { clp } from '@/lib/clp';
 import { diaEnChile, fechaLegible } from '@/lib/fechas';
 import ActualizarMercadoPago from '@/components/actualizar-mercadopago';
+import ConfirmarPacienteMercadoPago from '@/components/confirmar-paciente-mercadopago';
 
 export default async function ArchivoMercadoPago({ searchParams }: { searchParams: Promise<{ pagina?: string; operacion?: string }> }) {
   const { supabase, tenantId } = await exigirRolPagina(['admin']);
@@ -14,7 +15,7 @@ export default async function ArchivoMercadoPago({ searchParams }: { searchParam
   const pagina = Math.min(10000, Math.max(1, Number.parseInt(params.pagina ?? '1', 10) || 1));
   const operacion = /^[0-9]{1,30}$/.test(params.operacion ?? '') ? params.operacion! : '';
   let consulta = supabase.from('mercadopago_conciliacion')
-    .select('pago_id,fecha,monto,monto_devuelto,estado,conciliacion,venta_id,paciente_nombre', { count: 'exact' })
+    .select('pago_id,fecha,monto,monto_devuelto,estado,conciliacion,abono_id,venta_id,paciente_id,paciente_nombre,paciente_rut,fecha_abono,medio_abono,confirmado_en,paciente_nombre_confirmado', { count: 'exact' })
     .eq('tenant_id', tenantId).order('fecha', { ascending: false }).order('pago_id', { ascending: false });
   if (operacion) consulta = consulta.eq('pago_id', operacion);
   const [archivo, sync] = await Promise.all([
@@ -26,7 +27,7 @@ export default async function ArchivoMercadoPago({ searchParams }: { searchParam
   return <div className="mx-auto flex max-w-3xl flex-col gap-4">
     <Link href="/configuracion/integraciones" className="text-sm underline">← Cuentas y boletas</Link>
     <h1 className="text-xl font-bold">Archivo interno · Mercado Pago</h1>
-    <p className="text-sm text-tinta-suave">Respaldo digital de operaciones. El abono es el que cuenta en caja; este archivo lo verifica y relaciona con la compra y el paciente. No es una copia del ticket impreso por la máquina.</p>
+    <p className="text-sm text-tinta-suave">Respaldo digital de operaciones. Una coincidencia de voucher propone el abono; la identidad se confirma cotejando el original. El vínculo confirmado queda protegido y el dinero se cuenta una sola vez en caja.</p>
     <section className="rounded-2xl bg-white p-4 shadow-sm text-sm">
       <p>Actualización automática cada cinco minutos, incluso con Lentia cerrada.</p>
       <p>Última actualización correcta: {sync.data?.ultima_correcta ? fecha(sync.data.ultima_correcta) : 'Pendiente de la primera consulta'}</p>
@@ -50,6 +51,10 @@ export default async function ArchivoMercadoPago({ searchParams }: { searchParam
           <p className={p.conciliacion === 'vinculado' ? 'text-emerald-800' : 'text-amber-800'}>{ESTADOS_CONCILIACION[p.conciliacion] ?? 'Pendiente de revisión'}</p>
           {p.monto_devuelto > 0 && <p>Devuelto: {clp(p.monto_devuelto)}. Revisar el abono de caja.</p>}
           {p.venta_id && <Link href={`/ventas/${p.venta_id}/comprobante`} className="mt-1 inline-block underline">{p.paciente_nombre ?? 'Compra sin paciente'} · Ver compra y abonos</Link>}
+          {p.confirmado_en && <p className="mt-1 text-xs">Cotejado el {fecha(p.confirmado_en)} para {p.paciente_nombre_confirmado}.</p>}
+          {p.conciliacion === 'confirmar_paciente' && p.abono_id && p.venta_id && p.paciente_id && p.paciente_nombre && p.paciente_rut && p.fecha_abono && p.medio_abono && <ConfirmarPacienteMercadoPago
+            pagoId={p.pago_id} abonoId={p.abono_id} identidad={{ venta_id: p.venta_id, paciente_id: p.paciente_id, paciente_nombre: p.paciente_nombre,
+              paciente_rut: p.paciente_rut, monto: p.monto, medio_pago: p.medio_abono, fecha_abono: p.fecha_abono }} />}
           {p.conciliacion === 'sin_abono' && <p className="mt-1 text-xs text-tinta-suave">Anota esta operación completa en el abono de la compra correcta. No se asigna un paciente por el importe.</p>}
         </li>)}
       </ul>

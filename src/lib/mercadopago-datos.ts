@@ -32,7 +32,15 @@ export function normalizarPagoMercadoPago(valor: unknown, collector: string): Pa
 }
 
 export const ESTADOS_CONCILIACION: Record<string, string> = {
-  vinculado: 'Vinculado al abono', sin_abono: 'Sin abono con esta operación',
+  vinculado: 'Paciente confirmado · abono protegido', sin_abono: 'Sin abono con esta operación',
   voucher_repetido: 'Voucher repetido · revisar', venta_anulada: 'Venta anulada · revisar',
   revisar_pago: 'Pago devuelto o no aprobado · revisar caja', diferencia: 'Monto o medio distinto · revisar',
+  confirmar_paciente: 'Coincidencia de voucher · falta cotejar paciente',
+  identidad_incompleta: 'Completar identidad del paciente antes de asociar',
+  identidad_modificada: 'La identidad cambió · asociación en revisión',
+};
+
+export type IdentidadAbonoMercadoPago = {
+  venta_id: string; paciente_id: string; paciente_nombre: string; paciente_rut: string;
+  monto: number; medio_pago: string; fecha_abono: string;
 };

@@ -8,23 +8,40 @@ páginas y abrir la compra relacionada. Solo aparece en la óptica configurada.
 La comprobación de pagos también queda en el comprobante de compra y pagos,
 por abono. Se respeta la opción existente de ocultar vouchers.
 
-Registrar o corregir `numero_voucher` en un abono enlaza inmediatamente una
-operación ya importada, siempre que haya exactamente un abono con ese número,
-el mismo importe y medio de tarjeta y una venta vigente. No se vuelve a
-sumar dinero a caja. Si el pago aún no llegó de la API, se vincula al importar.
+Registrar o corregir `numero_voucher` en un abono propone una operación ya
+importada, si hay exactamente un abono con ese número, importe, medio de
+tarjeta y día en Chile, y una venta vigente. Una coincidencia no confirma al
+paciente. El administrador debe cotejar el original, nombre y RUT, y escribir
+la operación completa en «Cotejar y confirmar paciente». No se vuelve a sumar
+dinero a caja. Los pagos sin referencia de compra generada desde Lentia no
+pueden demostrar automáticamente qué paciente fue beneficiario del pago.
 Los números cortos de ticket no equivalen al ID de operación de Mercado Pago.
 Sin ID completo, no se asocia automáticamente. No se buscan pacientes por
 datos del pagador: una persona puede pagar los lentes de otra.
 
-Las devoluciones o contracargos dejan de figurar como pago verificado. Se
+Un voucher completo no puede usarse en dos abonos, también si llegan dos
+escrituras simultáneas: una referencia privada única lo reserva. Un vínculo
+confirmado queda registrado con óptica, operación, abono, compra, paciente,
+nombre y RUT cotejados, importe, medio, fecha y administrador que confirmó.
+No se puede trasladar, borrar ni editar el abono confirmado ni cambiar el
+paciente de la compra. Cualquier corrección de una confirmación requiere una
+revisión específica del original; no hay reasignación automática ni un botón
+para sobreescribir el historial. Si cambia el nombre o RUT de la ficha,
+se suspende la marca del comprobante y se pide revisar la identidad.
+
+Las devoluciones o contracargos dejan de figurar como pago cotejado. Se
 muestra el pendiente en el archivo para revisar el abono y la caja; no se
 destruye el respaldo ni se devuelve dinero automáticamente.
 
 ## Datos y permisos
 
 - `mercadopago_pagos`: una fila por `(tenant_id, pago_id)`, con datos mínimos.
-- `mercadopago_conciliacion`: vista `security_invoker` con relación viva a
-  abono, venta y paciente. No hay enlaces obsoletos al editar un abono.
+- `mercadopago_conciliacion`: vista `security_invoker` de candidatos, estados
+  y asociaciones confirmadas; distingue pago acreditado de paciente cotejado.
+- `mercadopago_vinculos`: registro de confirmación con identidad y actor.
+  Los clientes no pueden insertar, modificar ni borrar confirmaciones.
+- `mercadopago_privado.referencias`: reserva única de voucher por abono en
+  las ópticas conectadas, fuera del esquema expuesto por la API.
 - `mercadopago_sync`: titular verificado en `/users/me`, checkpoint y lease.
 - Los clientes autenticados solo tienen SELECT sujeto a RLS comercial; no
   pueden insertar operaciones falsas ni ejecutar las funciones de sincronía.
@@ -75,11 +92,13 @@ encabezados de autenticación ni el cuerpo completo de respuestas del proveedor.
 
 ## Validación
 
-Pruebas unitarias: `mercadopago-archivo.test.ts`, `mercadopago-sync.test.ts`.
+Pruebas unitarias: `mercadopago-archivo.test.ts`, `mercadopago-sync.test.ts`,
+`mercadopago-confirmacion.test.ts`.
 Pruebas transaccionales: ejecutar `tests/mercadopago-database.sql` dentro de
 BEGIN/ROLLBACK. Usa filas existentes solo como referencia y no deja cambios.
-Comprueba coincidencias, diferencias, devolución parcial, duplicados, edición,
-RLS y denegación de escrituras/funciones a usuarios autenticados.
+Comprueba cotejo previo, fecha del pago, pantallas obsoletas, actor, duplicados,
+protección de importe/voucher/paciente/borrado, cambios de identidad, devolución,
+respuestas antiguas, leases, RLS y denegación de escrituras/funciones al cliente.
 
 Fuentes consultadas el 1 de noviembre de 2026:
 - https://www.mercadopago.cl/developers/es/reference/online-payments/checkout-api-payments/search-payments/get

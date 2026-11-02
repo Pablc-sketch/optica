@@ -233,7 +233,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
                 <span className="capitalize">
                   {fechaLegible(diaEnChile(p.fecha))} · {p.medio_pago}
                   {!venta.ocultar_voucher && p.numero_voucher && <span className="block text-xs normal-case">Operación / voucher: {p.numero_voucher}</span>}
-                  {!venta.ocultar_voucher && respaldos.has(p.id) && <span className="block text-xs normal-case">Mercado Pago · pago verificado · {fechaLegible(diaEnChile(respaldos.get(p.id)!.fecha))}</span>}
+                  {!venta.ocultar_voucher && respaldos.has(p.id) && <span className="block text-xs normal-case">Mercado Pago · voucher cotejado con este abono · {fechaLegible(diaEnChile(respaldos.get(p.id)!.fecha))}</span>}
                 </span>
                 <span>{clp(p.monto)}</span>
               </p>

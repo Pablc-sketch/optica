@@ -22,7 +22,7 @@ export default async function Integraciones() {
       {mp.estado === "pendiente" && <a href="https://www.mercadopago.cl/developers/panel/app" target="_blank" rel="noopener noreferrer" className="mt-3 inline-block rounded-xl border px-4 py-2 font-semibold">Abrir Mercado Pago ↗</a>}
       {mercadoPagoConfigurado(tenantId) && <details className="mt-4 border-t pt-3 text-sm">
         <summary className="cursor-pointer text-tinta-suave">Archivo interno de vouchers</summary>
-        <p className="mt-2">Las operaciones se guardan automáticamente cada cinco minutos. Se vinculan al abono cuando coinciden operación, monto y medio de pago.</p>
+        <p className="mt-2">Las operaciones se guardan automáticamente cada cinco minutos. Las coincidencias exactas proponen el abono; coteja el original para confirmar al paciente y proteger el vínculo.</p>
         <Link href="/configuracion/integraciones/mercadopago" className="mt-2 inline-block underline">Consultar archivo y pendientes</Link>
         <ActualizarMercadoPago />
       </details>}

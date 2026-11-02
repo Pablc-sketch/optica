@@ -16,10 +16,11 @@ Para activar, el titular debe configurar en Vercel, para el entorno deseado:
 No enviar tokens por chat, no usar NEXT_PUBLIC_, no copiar la credencial
 de producción al entorno de prueba. El adaptador distingue pendientes,
 errores y conexión válida. Los pagos externos no equivalen al saldo bancario
-ni se suman otra vez a la caja. Cada operación se relaciona con un único
-abono existente cuyo numero_voucher sea exactamente el ID del pago y coincidan
-monto y medio de tarjeta. La compra determina el paciente. Las coincidencias
-validadas se muestran en el comprobante de compra y pagos, junto al abono.
+ni se suman otra vez a la caja. La operación propone un único abono existente
+cuyo numero_voucher sea exactamente el ID del pago y coincidan monto, medio
+de tarjeta y día del pago en Chile. Esto no demuestra la identidad del paciente.
+El administrador coteja el original con la compra y confirma nombre y RUT.
+Solo esa asociación confirmada se muestra como cotejada en el comprobante.
 Puede haber pagos de otros canales de la misma cuenta: sin referencia exacta
 quedan sin asociar. Nunca se adivina un paciente por importe o nombre.
 
@@ -31,8 +32,10 @@ fechas, montos, estado y medio, sin correo, RUT ni datos de tarjeta del pagador.
 Es un respaldo digital de la operación, no una imagen del ticket de la máquina.
 
 Duplicados, diferencias, devoluciones, contracargos y ventas anuladas quedan
-para revisión; no se modifican saldos de caja silenciosamente. Cambiar un
-voucher invalida su asociación inmediatamente. Detalles y operación:
+para revisión; no se modifican saldos de caja silenciosamente. Un voucher
+completo no puede reutilizarse; una confirmación conserva su abono y paciente
+y bloquea el traslado o la edición de ese abono. Las identidades históricas
+no se confirman automáticamente. Detalles y operación:
 [mercadopago-archivo.md](mercadopago-archivo.md).
 
 Documentación: https://www.mercadopago.cl/developers/es/reference

@@ -32,7 +32,7 @@ export async function corregirDocumento(form: FormData) {
    const voucher = validarVoucher(medio, monto, form.get("numero_voucher"));
    if (voucher.error) throw new Error(voucher.error);
    const { data, error } = await supabase.from("pagos_abonos").update({ fecha: instanteChile(String(form.get("fecha"))), numero_voucher: voucher.numero, monto, medio_pago: medio }).eq("id", abono).eq("venta_id", id).eq("tenant_id", tenantId).select("id").single();
-   if (error || !data) throw new Error("No se pudo guardar el abono.");
+   if (error || !data) throw new Error(error?.code === '23514' || error?.code === '23505' ? error.message : "No se pudo guardar el abono.");
    if (monto !== pago.monto || medio !== pago.medio_pago) {
     const pagado = (pagos ?? []).reduce((s, p) => s + (p.id === abono ? monto : p.monto), 0);
     await supabase.from("ventas").update({ estado_pago: estadoPago(venta.total, pagado) }).eq("id", id).eq("tenant_id", tenantId);
