@@ -19,9 +19,9 @@ export default function NavLinks({ nav }: { nav: EnlaceMenu[] }) {
   const activo = enlaceActivo(nav, pathname);
   const principales = nav.filter(n => n.principal);
   const resto = nav.filter(n => !n.principal || !n.movil);
-  const clase = (marcado: boolean) => `rounded-full px-3 py-2 text-sm font-semibold ${marcado ? 'bg-white text-tinta shadow-sm' : 'text-white/85 hover:bg-white/10 hover:text-white'}`;
+  const clase = (marcado: boolean) => `rounded-full px-2.5 py-2 text-sm font-semibold ${marcado ? 'bg-white text-tinta shadow-sm' : 'text-white/85 hover:bg-white/10 hover:text-white'}`;
   return <div ref={contenedor} className="mx-auto max-w-5xl px-4 pb-2.5">
-    <nav aria-label="Menú principal" className="flex flex-wrap items-center gap-1">
+    <nav aria-label="Menú principal" className="flex flex-wrap items-center gap-0.5">
       {principales.map(n => <Link key={n.href} href={n.href} onClick={() => setAbierto(false)} aria-current={activo === n.href ? 'page' : undefined}
         className={`${n.movil ? '' : 'hidden sm:inline-block'} ${clase(activo === n.href)}`}>{n.label}</Link>)}
       {resto.length > 0 && <button ref={boton} type="button" aria-expanded={abierto} aria-controls="menu-mas"

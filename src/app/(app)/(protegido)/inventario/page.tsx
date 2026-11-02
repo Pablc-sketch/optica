@@ -1,7 +1,7 @@
 import BotonEnviar from "@/components/boton-enviar";
 import Link from "next/link";
 import { leerTodas } from "@/lib/leer-todas";
-import { createClient } from "@/lib/supabase/server";
+import { exigirRolPagina } from "@/lib/autorizacion";
 import { actualizarStockMinimo, registrarMovimiento } from "@/lib/actions/inventario";
 import { clp } from "@/lib/clp";
 import NuevoProducto from "./nuevo-producto";
@@ -34,7 +34,8 @@ export default async function InventarioPage({
   searchParams: Promise<{ sucursal?: string }>;
 }) {
   const { sucursal } = await searchParams;
-  const supabase = await createClient();
+  const { supabase, rol } = await exigirRolPagina(["admin", "ventas", "bodega", "clinico"]);
+  const puedeEditar = rol !== "clinico";
 
   const { data: sucursales, error: sucursalesError } = await supabase.from("sucursales").select("id, nombre").order("nombre");
   if (sucursalesError) throw new Error("No se pudieron cargar las sucursales");
@@ -112,13 +113,13 @@ export default async function InventarioPage({
         </div>
       </div>
 
-      <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} />
-      <NuevoProductoMasivo />
+      {puedeEditar && <NuevoProducto sucursales={sucursales ?? []} sucursalActiva={sucursalActiva} proveedores={proveedores} />}
+      {puedeEditar && <NuevoProductoMasivo />}
 
       <details className="rounded-2xl bg-white p-4 shadow-sm">
         <summary className="cursor-pointer font-semibold">Proveedores</summary>
         <div className="flex flex-col gap-2">
-          <NuevoProveedor />
+          {puedeEditar && <NuevoProveedor />}
           {proveedores.length > 0 && (
             <ul className="flex flex-col gap-1.5 rounded-2xl bg-crema-claro p-3 shadow-sm">
               {proveedores.map((p) => (
@@ -166,7 +167,7 @@ export default async function InventarioPage({
                     <span className={`text-sm font-bold ${critico ? "text-brand-dark" : ""}`}>
                       {s.stock_actual} {critico && "⚠"}
                     </span>
-                    <details className="basis-full rounded-xl border border-tinta/10 p-3"><summary className="cursor-pointer text-sm font-semibold">Ajustar stock</summary>
+                    {puedeEditar && <details className="basis-full rounded-xl border border-tinta/10 p-3"><summary className="cursor-pointer text-sm font-semibold">Ajustar stock</summary>
                     <form action={actualizarStockMinimo} className="flex items-center gap-1">
                       <input type="hidden" name="inventario_id" value={s.id} />
                       <span className="text-xs text-tinta-suave">Mínimo</span>
@@ -204,7 +205,7 @@ export default async function InventarioPage({
                     />
                     <BotonEnviar className="rounded-lg bg-brand/10 px-3 py-2 text-sm font-semibold text-brand-dark transition hover:bg-brand hover:text-white">Registrar</BotonEnviar>
                   </form>
-                  </details></div>
+                  </details>}</div>
                 </li>
               );
             })}
