@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { fechaValidaDocumento } from "@/lib/fecha-documentos";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import { createClient } from "@/lib/supabase/server";
 import { exigirRolPagina } from "@/lib/autorizacion";
@@ -163,14 +164,15 @@ export default async function ReportesPage({
   searchParams: Promise<{ desde?: string; hasta?: string; operativo_id?: string; mes?: string }>;
 }) {
   const params = await searchParams;
-  const desde = params.desde || inicioDeMes();
-  const hasta = params.hasta || hoyEnChile();
+  const hasta = fechaValidaDocumento(params.hasta) ? params.hasta : hoyEnChile();
+  const desdeElegido = fechaValidaDocumento(params.desde) ? params.desde : inicioDeMes();
+  const desde = desdeElegido <= hasta ? desdeElegido : hasta;
   const operativoId = params.operativo_id || "";
   // Los sueldos se calculan por mes calendario, no por el rango desde/hasta
   // de arriba (que es libre): un mes con más operativos deja más plata, y
   // el mes siguiente vuelve a partir de cero, así que necesita su propio
   // selector.
-  const mes = params.mes || mesEnChile();
+  const mes = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.mes ?? "") ? params.mes! : mesEnChile();
 
   // Costos y utilidades: solo administración (A09).
   await exigirRolPagina(["admin"]);

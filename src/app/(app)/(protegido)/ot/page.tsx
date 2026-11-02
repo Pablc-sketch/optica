@@ -4,7 +4,9 @@ import { avanzarOT, retrocederOT } from "@/lib/actions/ot";
 import EliminarOT from "./eliminar-ot";
 import { rutaAvisoEntrega } from "@/lib/avisos";
 import { clp } from "@/lib/clp";
-import { diaEnChile, fechaLegible } from "@/lib/fechas";
+import { leerTodas } from "@/lib/leer-todas";
+import { saldoUnicoPorVenta } from "@/lib/saldo-ordenes";
+import { hoyEnChile, diaEnChile, fechaLegible } from "@/lib/fechas";
 import AbonoForm from "@/components/abono-form";
 import Tarjeta from "@/components/tarjeta";
 
@@ -18,7 +20,7 @@ const COLUMNAS = [
 export default async function TableroOT() {
   const supabase = await createClient();
 
-  const otsRes = await supabase
+  const otsRes = await leerTodas((a,b) => supabase
       .from("ordenes_trabajo")
       .select(
         "id, paciente_id, folio, estado, tipo_lente, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2, fecha_ingreso, fecha_entrega_estimada, pacientes:paciente_id (nombre, telefono)"
@@ -26,7 +28,8 @@ export default async function TableroOT() {
       // Una venta anulada cancela su OT — que no siga sumando en "en curso",
       // "atrasadas" ni "por cobrar" del tablero.
       .not("estado", "in", "(entregado,cancelado)")
-      .order("fecha_ingreso", { ascending: true });
+      .order("fecha_ingreso", { ascending: true }).order("id").range(a,b));
+  if (otsRes.error) throw new Error("No se pudieron cargar las órdenes");
   const ots = otsRes.data;
 
   // La OT no sabe de plata; la venta que la creó sí. Buscamos, para cada OT
@@ -34,11 +37,12 @@ export default async function TableroOT() {
   // entregar los lentes se ve altiro si queda saldo pendiente por cobrar.
   const otIds = (ots ?? []).map((o) => o.id);
   const ventaPorOT = new Map<string, { ventaId: string; saldo: number; operativoId: string | null }>();
-  if (otIds.length > 0) {
-    const { data: itemsConVenta } = await supabase
+  for (let inicio=0; inicio<otIds.length; inicio+=200) {
+    const { data: itemsConVenta, error } = await supabase
       .from("venta_items")
       .select("ot_id, ventas:venta_id (id, total, operativo_id, pagos_abonos (monto))")
-      .in("ot_id", otIds);
+      .in("ot_id", otIds.slice(inicio,inicio+200));
+    if (error) throw new Error("No se pudo verificar el saldo de las órdenes");
 
     for (const item of itemsConVenta ?? []) {
       const venta = item.ventas as unknown as { id: string; total: number; operativo_id: string | null; pagos_abonos: { monto: number }[] } | null;
@@ -54,16 +58,16 @@ export default async function TableroOT() {
   // por cobrar en total, sin tener que sumar tarjeta por tarjeta.
   const totalEnCurso = ots?.length ?? 0;
   const atrasadas = (ots ?? []).filter(
-    (ot) => ot.fecha_entrega_estimada && new Date(ot.fecha_entrega_estimada + "T23:59:59") < new Date()
+    (ot) => ot.fecha_entrega_estimada && ot.fecha_entrega_estimada < hoyEnChile()
   ).length;
-  const totalPorCobrar = [...ventaPorOT.values()].reduce((s, v) => s + Math.max(0, v.saldo), 0);
+  const totalPorCobrar = saldoUnicoPorVenta([...ventaPorOT.values()]);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Órdenes de trabajo</h1>
         <Link href="/ot/buscar" className="text-sm font-medium text-brand-dark hover:underline">
-          🔍 Buscar historial (incluye entregadas)
+          Buscar historial
         </Link>
       </div>
 

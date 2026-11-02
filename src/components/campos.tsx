@@ -26,6 +26,7 @@ type Props = {
   required?: boolean;
   placeholder?: string;
   className?: string;
+  ariaLabel?: string;
 };
 
 export function CampoRut({ name, defaultValue, required, placeholder, className }: Props) {
@@ -180,7 +181,7 @@ export function CampoFechaNacimiento({ name, defaultValue }: Pick<Props, "name" 
   );
 }
 
-export function CampoMonto({ name, defaultValue, required, placeholder, className }: Props) {
+export function CampoMonto({ name, defaultValue, required, placeholder, className, ariaLabel }: Props) {
   const [valor, setValor] = useState(formatearMonto(defaultValue));
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza con el valor del servidor, no estado derivado de un evento
@@ -193,6 +194,7 @@ export function CampoMonto({ name, defaultValue, required, placeholder, classNam
       </span>
       <input
         name={name}
+        aria-label={ariaLabel}
         value={valor}
         onChange={(e) => setValor(formatearMonto(e.target.value))}
         required={required}

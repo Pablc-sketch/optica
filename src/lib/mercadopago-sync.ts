@@ -57,7 +57,7 @@ export async function sincronizarMercadoPago(tenant: string) {
         guardados += filas.length;
       }
       if (offset + json.results.length >= (paging!.total as number)) { completo = true; break; }
-      if (json.results.length === 0) throw new Error('Página de pagos incompleta');
+      if (json.results.length !== 100) throw new Error('Página de pagos incompleta');
     }
     if (!completo) throw new Error('Quedan páginas de pagos por consultar');
     const { data: fin, error: errorFin } = await db.rpc('mercadopago_finalizar_sync', {

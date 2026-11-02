@@ -8,9 +8,10 @@ import EliminarPaciente from "./eliminar-paciente";
 export default async function PacientesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; pagina?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, pagina: entradaPagina } = await searchParams;
+  const pagina = Math.max(1,Math.min(10000,Number.parseInt(entradaPagina ?? "1",10) || 1));
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,13 +22,19 @@ export default async function PacientesPage({
     .from("pacientes")
     .select("id, nombre, rut, telefono", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(LIMITE);
+    .order("id").range((pagina-1)*LIMITE,pagina*LIMITE-1);
   // Comas y paréntesis tienen significado dentro del filtro .or() de
   // PostgREST: se sacan del texto buscado para que no cambien la consulta.
-  const texto = (q ?? "").replace(/[,()*%\\]/g, " ").trim();
-  if (texto) query = query.or(`nombre.ilike.%${texto}%,rut.ilike.%${texto}%`);
+  const texto = (q ?? "").slice(0,80).replace(/[,()*%\\]/g, " ").trim();
+  if (/^[0-9.kK\s-]{7,20}$/.test(texto)) {
+    const limpio = texto.replace(/[^0-9kK]/g, '').toUpperCase();
+    if (limpio.length >= 7) {
+      const variantes = [...new Set([limpio, formatearRut(limpio), `${limpio.slice(0,-1)}-${limpio.slice(-1)}`])];
+      query = query.or(variantes.map(r => `rut.eq.${r}`).join(','));
+    } else query = query.ilike('rut', `%${texto}%`);
+  } else if (texto) query = query.or(`nombre.ilike.%${texto}%,rut.ilike.%${texto}%`);
 
-  const [{ data: pacientes, count: totalPacientes }, perfilRes] = await Promise.all([
+  const [{ data: pacientes, count: totalPacientes, error: errorPacientes }, perfilRes] = await Promise.all([
     query,
     supabase.from("users").select("rol").eq("id", user!.id).single(),
   ]);
@@ -48,7 +55,9 @@ export default async function PacientesPage({
               type="search"
               name="q"
               defaultValue={q ?? ""}
-              placeholder="Buscar por nombre o RUT…"
+              aria-label="Nombre o RUT del paciente"
+              maxLength={80}
+              placeholder="Nombre o RUT"
               className="w-48 rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-brand sm:w-64"
             />
             <button className="rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-dark">
@@ -58,17 +67,15 @@ export default async function PacientesPage({
         </div>
       </div>
 
-      {puedeVerFichas ? (
+      {["admin", "clinico"].includes(rol) ? (
         <NuevoPaciente />
-      ) : (
+      ) : !puedeVerFichas && (
         <p className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
-          Tu rol es <b>{rol}</b>, que no tiene acceso a las fichas clínicas de los pacientes (es
-          una restricción de la base de datos, por tratarse de datos de salud). Para ver y cargar
-          pacientes necesitas rol Administrador, Clínico o Ventas.
+          Tu rol no tiene acceso a las fichas de pacientes. Consulta al administrador.
         </p>
       )}
 
-      {!pacientes || pacientes.length === 0 ? (
+      {errorPacientes ? <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">No se pudieron cargar los pacientes. Vuelve a intentar.</p> : !pacientes || pacientes.length === 0 ? (
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
           {q ? `Sin resultados para “${q}”.` : "Todavía no hay pacientes registrados."}
         </p>
@@ -76,8 +83,7 @@ export default async function PacientesPage({
         <>
         {(totalPacientes ?? 0) > pacientes.length && (
           <p className="text-xs text-tinta-suave">
-            Mostrando los {pacientes.length} más recientes de {totalPacientes}. Para encontrar a otro, búscalo por nombre o
-            RUT.
+            {totalPacientes} pacientes · página {pagina}
           </p>
         )}
         <ul className="flex flex-col gap-2">
@@ -90,7 +96,7 @@ export default async function PacientesPage({
                   {formatearTelefono(p.telefono)}
                 </span>
               </Link>
-              {puedeVerFichas && (
+              {["admin", "clinico"].includes(rol) && (
                 <div className="pr-2">
                   <EliminarPaciente pacienteId={p.id} nombre={p.nombre} compacto />
                 </div>
@@ -98,6 +104,10 @@ export default async function PacientesPage({
             </li>
           ))}
         </ul>
+        <nav aria-label="Páginas de pacientes" className="flex justify-between gap-3 text-sm">
+          {pagina > 1 ? <Link href={`/pacientes?${new URLSearchParams({q:q ?? "",pagina:String(pagina-1)})}`} className="rounded-xl border bg-white px-4 py-2">Anterior</Link> : <span />}
+          {(totalPacientes ?? 0) > pagina*LIMITE && <Link href={`/pacientes?${new URLSearchParams({q:q ?? "",pagina:String(pagina+1)})}`} className="rounded-xl border bg-white px-4 py-2">Siguiente</Link>}
+        </nav>
         </>
       )}
     </div>

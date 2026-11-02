@@ -60,7 +60,7 @@ export default async function HistorialVentas() {
       )}
       <section>
         <h2 className="mb-3 font-semibold">Últimas 60 ventas</h2>
-        {ventas.length === 0 ? (
+        {ventas.length === 0 && !ventasRes.error ? (
           <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">Sin ventas registradas.</p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -90,7 +90,7 @@ export default async function HistorialVentas() {
                       {(v.pacientes as unknown as { nombre: string } | null)?.nombre ?? "Sin paciente"}
                     </span>
                     <span className="shrink-0 text-xs text-tinta-suave">
-                      {new Date(v.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
+                      {new Date(v.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "short", timeZone: "America/Santiago" })}
                     </span>
                   </div>
                   {!v.anulada && (

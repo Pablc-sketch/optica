@@ -52,6 +52,7 @@ export default function AbonoForm({
       }}
       className="flex flex-wrap items-center gap-1.5"
     >
+      <fieldset disabled={guardando} className="contents">
       <input type="hidden" name="venta_id" value={ventaId} />
       {!compacto && (
         <span className="text-xs text-tinta-suave">
@@ -60,9 +61,11 @@ export default function AbonoForm({
       )}
       <CampoMonto
         name="monto"
+        required
+        ariaLabel="Monto del abono en pesos"
         defaultValue={montoInicial}
         placeholder={compacto ? `Cobrar hasta ${clp(saldo)}` : "Monto"}
-        className="w-24 flex-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand"
+        className="w-24 flex-1 rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand"
       />
       <button
         type="button"
@@ -78,7 +81,7 @@ export default function AbonoForm({
         disabled={guardando}
         required
         aria-label="Medio de pago del abono"
-        className="rounded-lg border border-tinta-suave/30 bg-white px-1.5 py-1 text-xs outline-none focus:border-brand"
+        className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand"
       >
         <option value="" disabled>Cómo paga</option>
         <option value="efectivo">Efectivo</option>
@@ -89,8 +92,9 @@ export default function AbonoForm({
       {requiereVoucher(medio) && <CampoVoucher disabled={guardando} />}
       {error && <p role="alert" className="w-full text-xs text-red-800">{error}</p>}
       <button disabled={guardando} className="rounded-lg bg-brand/10 px-2 py-1 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white disabled:opacity-50">
-        {compacto ? "Cobrar" : "Abonar"}
+        {guardando ? "Guardando…" : compacto ? "Cobrar" : "Abonar"}
       </button>
+      </fieldset>
     </form>
   );
 }

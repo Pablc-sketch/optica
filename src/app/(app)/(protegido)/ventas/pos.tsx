@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
+import { coincidePaciente } from "@/lib/buscar-paciente";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 import { encolarVenta } from "@/lib/offline/outbox";
@@ -806,9 +807,9 @@ export default function PuntoDeVenta({
 
   const pacientesFiltrados = useMemo(() => {
     const t = buscaPaciente.trim().toLowerCase();
-    if (!t) return pacientes.slice(0, 30);
+    if (!t) return pacientes.slice(0, 6);
     return pacientes
-      .filter((p) => `${p.nombre} ${p.rut ?? ""}`.toLowerCase().includes(t))
+      .filter((p) => coincidePaciente(p,t))
       .slice(0, 30);
   }, [pacientes, buscaPaciente]);
 
@@ -1138,9 +1139,6 @@ export default function PuntoDeVenta({
           );
         })}
       </ol>
-      <p className="-mt-2 text-xs text-tinta-suave">
-        Toca un paso ya hecho (‹) para volver a él.
-      </p>
 
       {mensaje && (
         <p
@@ -1173,15 +1171,15 @@ export default function PuntoDeVenta({
       {paso === 0 && (
         <section className={`flex flex-col gap-3 rounded-2xl border ${COLOR_PASO[0].seccion} p-5 shadow-[0_1px_3px_rgba(23,21,15,0.08)]`}>
           <div>
-            <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[0].titulo}`}>¿Para quién es la venta?</h2>
+            <h2 className={`text-xl font-bold tracking-tight ${COLOR_PASO[0].titulo}`}>Paciente</h2>
             <p className="text-sm text-tinta-suave">
-              Elige al paciente. Sin ficha solo puedes cotizar.
+              Busca al paciente para cargar su receta.
             </p>
           </div>
 
           {operativos.length > 0 && (
             <label className="flex flex-col gap-1 text-sm font-medium">
-              Operativo de hoy (si es en terreno)
+              Operativo
               <select
                 value={operativoId}
                 onChange={(e) => {
@@ -1203,12 +1201,12 @@ export default function PuntoDeVenta({
           )}
           {operativoSesion && (
             <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900">
-              Queda para todas las ventas de hoy.
+              Aplicado a esta jornada.
             </p>
           )}
           {!operativoSesion && receta?.operativo_id && receta.operativo_id === operativoId && (
             <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900">
-              Operativo tomado de la receta de este paciente.
+              Operativo de su receta.
             </p>
           )}
           {avisoContexto && (
@@ -1224,13 +1222,11 @@ export default function PuntoDeVenta({
             value={buscaPaciente}
             onChange={(e) => {
               const v = e.target.value;
-              // Si empieza con un número se asume que está escribiendo el
-              // RUT y se le pone el punto al tiro (así calza con cómo
-              // queda guardado); si empieza con letra, sigue siendo
-              // búsqueda libre por nombre.
-              setBuscaPaciente(/^\d/.test(v.trim()) ? formatearRut(v) : v);
+              setBuscaPaciente(v);
             }}
-            placeholder="Buscar por nombre o RUT…"
+            aria-label="Nombre o RUT del paciente"
+            maxLength={80}
+            placeholder="Nombre o RUT"
             className={select}
           />
 
@@ -1258,13 +1254,14 @@ export default function PuntoDeVenta({
             )}
           </ul>
 
+          {paciente && <p role="status" className="rounded-xl bg-white px-3 py-2 text-sm"><b>{paciente.nombre}</b> · {formatearRut(paciente.rut)}</p>}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setPaso(1)}
               className={`${boton} flex-1 bg-blue-800 text-white hover:bg-blue-900`}
             >
-              {paciente ? `Continuar con ${paciente.nombre.split(" ")[0]}` : "Continuar"}
+              {paciente ? `Continuar con ${paciente.nombre}` : "Continuar sin paciente"}
             </button>
             {pacienteId && (
               <button

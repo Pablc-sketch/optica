@@ -31,8 +31,10 @@ export async function requerirPerfil(opciones?: { roles?: Rol[]; suscripcion?: b
     throw new SinPermiso("Tu rol no tiene permiso para hacer esto.");
   }
   if (opciones?.suscripcion) {
-    const { data: vigente } = await supabase.rpc("suscripcion_vigente");
-    if (vigente === false) throw new SinPermiso("La suscripción de la óptica venció.");
+    const { data: vigente, error } = await supabase.rpc("suscripcion_vigente");
+    if (error || vigente !== true) throw new SinPermiso(error || vigente == null
+      ? "No se pudo verificar la suscripción. Vuelve a intentar."
+      : "La suscripción de la óptica venció.");
   }
   return { supabase, user, tenantId: perfil.tenant_id as string, rol };
 }

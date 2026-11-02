@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import TarjetaCobro, { type FilaCobro } from "./tarjeta-cobro";
 import RegistrarConsulta from "./registrar-consulta";
+import { leerTodas } from "@/lib/leer-todas";
 import { esConsulta } from "@/lib/consulta";
 
 // Cobros y entregas, separado de la pantalla de vender: se elige el
@@ -32,13 +33,12 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
        venta_items (descripcion, ot_id, ordenes_trabajo:ot_id (id, estado, tipo_lente, tipo_lente_2))`
     )
     .eq("anulada", false)
-    .order("fecha", { ascending: false })
-    .limit(3000);
+    .order("fecha", { ascending: false }).order("id");
   // "todos" = sin filtrar por operativo (lo usan los indicadores globales
   // del Inicio, para que una deuda de otro operativo no quede escondida).
   if (elegido === "sin") consulta = consulta.is("operativo_id", null);
   else if (elegido !== "todos") consulta = consulta.eq("operativo_id", elegido);
-  const ventasRes = await consulta;
+  const ventasRes = await leerTodas((a,b) => consulta.range(a,b));
 
   type Ot = { id: string; estado: string; tipo_lente: string | null; tipo_lente_2: string | null };
   const todas = ventasRes.data ?? [];
@@ -148,7 +148,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
 
       {ventasRes.error ? (
         <p className="rounded-xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
-          No se pudieron leer las ventas ({ventasRes.error.message}). Recarga la página; no es que no haya nadie.
+          No se pudieron cargar los cobros. Vuelve a intentar.
         </p>
       ) : (
         <>
@@ -172,7 +172,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
               <span className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">
                 {elegido === "todos" ? "Caja de todos los operativos · " : elegido === "sin" ? "Caja sin operativo · " : "Caja del operativo · "}
               </span>
-              <span className="font-semibold">llega a la cuenta {clp(debito + credito + transferencia - comision)}</span>
+              <span className="font-semibold">neto estimado {clp(debito + credito + transferencia - comision)}</span>
               <span className="text-sm text-tinta-suave"> · efectivo {clp(efectivo)}</span>
             </summary>
             <table className="mt-3 w-full text-sm tabular-nums">
@@ -185,7 +185,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
                   <td className="text-right">−{clp(comision)}</td>
                 </tr>
                 <tr className="border-t font-bold">
-                  <td className="py-1.5">Llega a la cuenta (Mercado Pago)</td>
+                  <td className="py-1.5">Neto estimado en cuenta</td>
                   <td className="text-right">{clp(debito + credito + transferencia - comision)}</td>
                 </tr>
                 <tr><td className="py-1">Efectivo (en la mano)</td><td className="text-right">{clp(efectivo)}</td></tr>
@@ -227,7 +227,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
 
           {visibles.length === 0 ? (
             <p className="rounded-2xl bg-white p-6 text-center text-sm text-tinta-suave shadow-sm">
-              Nadie en esta lista. 🎉
+              Sin pendientes para este filtro.
             </p>
           ) : (
             <ul className="flex flex-col gap-3">

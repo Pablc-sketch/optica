@@ -6,34 +6,9 @@ import { cerrarSesion } from "@/lib/actions/auth";
 import EstadoSync from "@/components/estado-sync";
 import NavLinks from "@/components/nav-links";
 import BarraCarga from "@/components/barra-carga";
+import { menuParaRol } from "@/lib/navegacion";
+import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
 import { diasRestantes, estaVigente, type Suscripcion } from "@/lib/suscripcion";
-
-// Arriba, solo lo de todos los días. El resto va en "Más" (menú de
-// administración), para que el menú no sea una lista de 15 botones.
-const NAV = [
-  { href: "/", label: "Inicio", principal: true },
-  { href: "/pacientes", label: "Pacientes", principal: true },
-  { href: "/ventas", label: "Vender", principal: true },
-  { href: "/cobros", label: "Cobros", principal: true },
-  { href: "/entregas", label: "Entrega", principal: true },
-  { href: "/operativos", label: "Operativos", principal: true },
-  { href: "/ot", label: "Órdenes", principal: true },
-  { href: "/laboratorio", label: "Laboratorio", principal: false },
-  { href: "/avisos", label: "Avisos", principal: false },
-  { href: "/seguros", label: "Reembolsos", principal: false },
-  { href: "/ot/buscar", label: "Buscar OT" },
-  { href: "/boleta", label: "Boleta" },
-  { href: "/inventario", label: "Inventario" },
-  { href: "/reportes", label: "Reportes" },
-  { href: "/precios", label: "Precios" },
-  { href: "/configuracion", label: "Configuración" },
-  { href: "/suscripcion", label: "Suscripción" },
-];
-
-// El rol "ventas" (vendedoras de mesón) solo necesita esto para atender:
-// buscar/avanzar órdenes y vender. Nada de precios de costo, reportes
-// financieros ni configuración.
-const NAV_VENTAS = ["/ot", "/ot/buscar", "/ventas", "/cobros", "/entregas", "/avisos", "/seguros"];
 
 // Cabecera y menú: siempre visibles para cualquier pantalla dentro de
 // (app), incluida /suscripcion. El bloqueo por suscripción vencida vive
@@ -50,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const [perfilRes, suscripcionRes, rolTokenRes, logoRes] = await Promise.all([
     supabase
       .from("users")
-      .select("nombre, rol, estado, es_superadmin, tenants:tenant_id (nombre_comercial)")
+      .select("tenant_id, nombre, rol, estado, es_superadmin, tenants:tenant_id (nombre_comercial)")
       .eq("id", user.id)
       .single(),
     supabase
@@ -107,15 +82,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const dias = suscripcion ? diasRestantes(suscripcion.fecha_renovacion) : null;
   const porVencer = vigente && dias !== null && dias <= 7;
 
-  const nav = perfil.es_superadmin
-    ? [...NAV, { href: "/superadmin", label: "Ópticas", principal: false }]
-    : perfil.rol === "ventas"
-      ? NAV.filter((n) => NAV_VENTAS.includes(n.href))
-      : NAV.filter((n) => n.href !== "/seguros" || perfil.rol === "admin");
+  const nav = menuParaRol(perfil.rol, mercadoPagoConfigurado(perfil.tenant_id), perfil.es_superadmin);
 
   return (
     <div className="flex min-h-dvh flex-col">
       <BarraCarga />
+      <a href="#contenido" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-white focus:px-4 focus:py-3 focus:text-tinta">Ir al contenido</a>
       <header className="sticky top-0 z-10 bg-tinta text-white shadow-[0_6px_20px_-12px_rgba(0,0,0,0.6)] print:hidden">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <Link href="/" className="flex items-center gap-2.5">
@@ -169,7 +141,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
+      <main id="contenido" tabIndex={-1} className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
     </div>
   );
 }

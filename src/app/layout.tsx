@@ -9,6 +9,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://lentiaapp.cl'),
   title: "Lentia — Gestión de ópticas",
   description: "Lentia: gestión de ópticas — pacientes, recetas, órdenes de trabajo y ventas",
   icons: { icon: "/logo.svg" },

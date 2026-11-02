@@ -19,7 +19,7 @@ describe('archivo seguro de operaciones Mercado Pago', () => {
   });
   it('no inventa números ni acepta importes o fechas dañados', () => {
     for (const cambio of [{ id: Number.MAX_SAFE_INTEGER + 1 }, { transaction_amount: 0 }, { transaction_amount: 1.5 },
-      { date_last_updated: 'incorrecta' }, { transaction_amount_refunded: -1 }]) {
+      { date_last_updated: 'incorrecta' }, { transaction_amount_refunded: -1 }, { transaction_amount_refunded: 19001 }]) {
       expect(() => normalizarPagoMercadoPago({ ...pago, ...cambio }, '123')).toThrow();
     }
     expect(idMercadoPago('11/12')).toBeNull();

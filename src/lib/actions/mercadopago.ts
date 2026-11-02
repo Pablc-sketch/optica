@@ -11,6 +11,8 @@ export async function actualizarArchivoMercadoPago(): Promise<{ ok: boolean; men
   try {
     const r = await sincronizarMercadoPago(tenantId);
     revalidatePath('/configuracion/integraciones');
+    revalidatePath('/configuracion/integraciones/mercadopago');
+    revalidatePath('/caja/mercadopago');
     return { ok: r.estado !== 'no_configurado', mensaje: r.estado === 'correcto' ? 'Archivo actualizado.' : r.estado === 'en_curso' ? 'La actualización ya está en curso.' : 'Esta óptica no tiene Mercado Pago vinculado.' };
   } catch {
     return { ok: false, mensaje: 'No se pudo actualizar. Se conservan los datos guardados y se reintentará automáticamente.' };
@@ -34,6 +36,7 @@ export async function confirmarPacienteMercadoPago(input: {
   });
   if (error || data !== true) return { ok: false, mensaje: error?.code === '23514' ? error.message : 'No se pudo confirmar. Recarga y revisa que la operación no esté usada en otro abono.' };
   revalidatePath('/configuracion/integraciones/mercadopago');
+  revalidatePath('/caja/mercadopago');
   revalidatePath(`/ventas/${input.identidad.venta_id}/comprobante`);
   return { ok: true, mensaje: 'Paciente confirmado. El voucher quedó protegido para este abono.' };
 }

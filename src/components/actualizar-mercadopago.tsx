@@ -11,7 +11,7 @@ export default function ActualizarMercadoPago() {
     <button disabled={pendiente} onClick={() => iniciar(async () => {
       try { const r = await actualizarArchivoMercadoPago(); cambiarMensaje(r.mensaje); router.refresh(); }
       catch { cambiarMensaje('No se pudo actualizar. Vuelve a intentar.'); }
-    })} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{pendiente ? 'Actualizando…' : 'Actualizar archivo'}</button>
+    })} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{pendiente ? 'Actualizando…' : 'Actualizar ahora'}</button>
     <p aria-live="polite" className="mt-1 text-sm">{mensaje}</p>
   </div>;
 }

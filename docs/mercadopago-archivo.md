@@ -105,3 +105,22 @@ Fuentes consultadas el 1 de noviembre de 2026:
 - https://supabase.com/docs/guides/functions/schedule-functions
 - https://supabase.com/docs/guides/database/postgres/row-level-security
 - https://vercel.com/docs/cron-jobs/usage-and-pricing
+
+## Caja de Mercado Pago
+
+Acceso directo **Caja MP** para el administrador de la óptica vinculada, en
+`/caja/mercadopago`. Incluye rango de fechas, búsqueda de operación, pendientes,
+paginación y acceso al archivo. El resumen se calcula en la base, con los mismos
+permisos de la sesión; no se limita a los 25 resultados visibles.
+
+**Actualizar ahora** sincroniza los pagos y vuelve a consultar la cuenta.
+**Autoactualizar** refresca la pantalla cada 60 segundos mientras está visible
+con conexión. El archivo continúa sincronizándose cada cinco minutos con Lentia
+cerrada. No es una transmisión instantánea de eventos ni una conexión bancaria
+que autorice transferencias.
+
+El saldo solo se muestra si Mercado Pago devuelve una respuesta válida para el
+collector fijado y moneda CLP. Si su API no habilita la consulta de saldo, se
+muestra esa limitación y un acceso a la cuenta original. Nunca se sustituye un
+saldo inaccesible por cero, por una suma de abonos o por una estimación. Los cobros
+del período se presentan por separado, antes de comisiones.

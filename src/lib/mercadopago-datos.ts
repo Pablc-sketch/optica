@@ -18,6 +18,7 @@ export function normalizarPagoMercadoPago(valor: unknown, collector: string): Pa
   if (!id || idMercadoPago(p.collector_id) !== collector || p.live_mode !== true || p.currency_id !== 'CLP'
     || !Number.isSafeInteger(p.transaction_amount) || (p.transaction_amount as number) <= 0
     || !Number.isSafeInteger(p.transaction_amount_refunded ?? 0) || (p.transaction_amount_refunded as number) < 0
+    || (p.transaction_amount_refunded as number) > (p.transaction_amount as number)
     || typeof p.status !== 'string' || !/^[a-z_]{1,40}$/.test(p.status)
     || typeof p.date_created !== 'string' || !Number.isFinite(Date.parse(p.date_created))
     || typeof p.date_last_updated !== 'string' || !Number.isFinite(Date.parse(p.date_last_updated))) {

@@ -6,6 +6,7 @@ import { fechaLegible, hoyEnChile, inicioDelDia } from "@/lib/fechas";
 import { resumirCaja } from "@/lib/caja";
 import { cargarPendientes } from "@/lib/resumen-pendientes";
 import CajaMovimientos from "@/components/caja-movimientos";
+import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
 import { leerTodas } from "@/lib/leer-todas";
 
 
@@ -27,7 +28,7 @@ export default async function Dashboard() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: perfil } = await supabase.from("users").select("rol").eq("id", user!.id).single();
+  const { data: perfil } = await supabase.from("users").select("rol,tenant_id").eq("id", user!.id).single();
   if (perfil?.rol === "ventas") redirect("/ventas");
   if (perfil?.rol === "clinico") redirect("/pacientes");
   if (perfil?.rol === "bodega") redirect("/ot");
@@ -91,7 +92,7 @@ export default async function Dashboard() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-baseline justify-between gap-2">
-        <h1 className="text-2xl font-bold">Hola</h1>
+        <h1 className="text-2xl font-bold">Inicio</h1>
         <p className="text-sm text-tinta-suave">
           Hoy <b className="text-tinta">{ventasHoy.error ? "No disponible" : clp(totalHoy)}</b>
         </p>
@@ -121,17 +122,19 @@ export default async function Dashboard() {
         </div>
       )}
 
+      {mercadoPagoConfigurado(perfil.tenant_id) && <Link href="/caja/mercadopago" className="flex items-center justify-between gap-3 rounded-2xl bg-tinta p-4 text-white shadow-sm"><span><b className="block">Mercado Pago</b><span className="text-sm text-white/75">Cuenta, cobros y vouchers</span></span><span className="text-sm font-semibold">Abrir caja →</span></Link>}
+
       <details className="rounded-2xl bg-white p-4 shadow-sm">
         <summary className="cursor-pointer rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4">
-        <span className="mb-2 block text-lg font-bold">Caja <span className="float-right text-sm font-medium text-sky-800">Ver detalle ▾</span></span>
+        <span className="mb-2 block text-lg font-bold">Caja registrada <span className="float-right text-sm font-medium text-sky-800">Ver detalle ▾</span></span>
         {cajaRes.error || !lecturaOk ? (
           <span className="block text-sm font-semibold text-red-700">No se pudo leer la caja. Recarga la página.</span>
         ) : (
           <>
-            <span className="block text-xs font-semibold uppercase tracking-wider text-tinta-suave">Disponible tras pagos y ahorro</span>
+            <span className="block text-xs font-semibold uppercase tracking-wider text-tinta-suave">Tras pendientes y ahorro</span>
             <span className={`block text-4xl font-bold tabular-nums ${queda < 0 ? "text-red-700" : "text-emerald-800"}`}>{clp(queda)}</span>
             <span className="block mt-1 text-sm tabular-nums text-tinta-suave">
-              Caja registrada {clp(caja.total)} · Cuenta {clp(caja.hayDigital)} · Efectivo {clp(caja.hayEfectivo)}
+              Caja registrada {clp(caja.total)} · Digital {clp(caja.hayDigital)} · Efectivo {clp(caja.hayEfectivo)}
               {porPagar.total > 0 && <> · Por pagar −{clp(porPagar.total)}</>}
               {porPagar.ahorro > 0 && <> · Ahorro por separar −{clp(porPagar.ahorro)}</>}
             </span>
@@ -148,7 +151,7 @@ export default async function Dashboard() {
             <Link href="/pagos?ver=ahorro" className="rounded-xl border px-3 py-2 text-sm">Ahorro por separar {clp(porPagar.ahorro)}</Link>
             <Link href="/configuracion/integraciones" className="rounded-xl bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900">Cuentas y boletas →</Link>
           </div>
-          <p className="mt-3 text-xs text-tinta-suave">Calculado con movimientos de Lentia; no es un saldo bancario sincronizado.</p>
+          <p className="mt-3 text-xs text-tinta-suave">Movimientos de Lentia · el saldo bancario se consulta en Caja MP.</p>
           <CajaMovimientos />
         </>}
       </details>

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { exigirRolPagina } from '@/lib/autorizacion';
 import { mercadoPagoConfigurado } from '@/lib/mercadopago-sync';
+import { estadoPagoMercadoPago } from '@/lib/mercadopago-caja';
 import { ESTADOS_CONCILIACION } from '@/lib/mercadopago-datos';
 import { clp } from '@/lib/clp';
 import { diaEnChile, fechaLegible } from '@/lib/fechas';
@@ -25,12 +26,12 @@ export default async function ArchivoMercadoPago({ searchParams }: { searchParam
   const fecha = (valor: string) => new Date(valor).toLocaleString('es-CL', { timeZone: 'America/Santiago' });
   const enlacePagina = (n: number) => `?pagina=${n}${operacion ? `&operacion=${operacion}` : ''}`;
   return <div className="mx-auto flex max-w-3xl flex-col gap-4">
-    <Link href="/configuracion/integraciones" className="text-sm underline">← Cuentas y boletas</Link>
-    <h1 className="text-xl font-bold">Archivo interno · Mercado Pago</h1>
-    <p className="text-sm text-tinta-suave">Respaldo digital de operaciones. Una coincidencia de voucher propone el abono; la identidad se confirma cotejando el original. El vínculo confirmado queda protegido y el dinero se cuenta una sola vez en caja.</p>
+    <Link href="/caja/mercadopago" className="text-sm underline">← Caja Mercado Pago</Link>
+    <h1 className="text-xl font-bold">Vouchers · Mercado Pago</h1>
+    <p className="text-sm text-tinta-suave">Busca la operación y coteja el original para confirmar al paciente.</p>
     <section className="rounded-2xl bg-white p-4 shadow-sm text-sm">
-      <p>Actualización automática cada cinco minutos, incluso con Lentia cerrada.</p>
-      <p>Última actualización correcta: {sync.data?.ultima_correcta ? fecha(sync.data.ultima_correcta) : 'Pendiente de la primera consulta'}</p>
+      <p>Pagos guardados automáticamente cada 5 min.</p>
+      <p>Última actualización: {sync.data?.ultima_correcta ? fecha(sync.data.ultima_correcta) : 'Pendiente de la primera consulta'}</p>
       {sync.data?.estado === 'error' && <p className="mt-1 text-amber-800">La última consulta falló. Se conservan los respaldos anteriores y se reintentará automáticamente.</p>}
       {sync.data?.estado === 'sincronizando' && <p>Actualización en curso…</p>}
       <ActualizarMercadoPago />
@@ -47,7 +48,7 @@ export default async function ArchivoMercadoPago({ searchParams }: { searchParam
       <ul className="divide-y rounded-2xl bg-white px-4 shadow-sm">
         {(archivo.data ?? []).map(p => <li key={p.pago_id} className="py-4 text-sm">
           <div className="flex justify-between gap-2"><b>Operación {p.pago_id}</b><b>{clp(p.monto)}</b></div>
-          <p>{fechaLegible(diaEnChile(p.fecha))} · {p.estado === 'approved' ? 'Aprobado' : p.estado === 'refunded' ? 'Devuelto' : p.estado === 'charged_back' ? 'Contracargo' : 'No aprobado'}</p>
+          <p>{fechaLegible(diaEnChile(p.fecha))} · {estadoPagoMercadoPago(p.estado)}</p>
           <p className={p.conciliacion === 'vinculado' ? 'text-emerald-800' : 'text-amber-800'}>{ESTADOS_CONCILIACION[p.conciliacion] ?? 'Pendiente de revisión'}</p>
           {p.monto_devuelto > 0 && <p>Devuelto: {clp(p.monto_devuelto)}. Revisar el abono de caja.</p>}
           {p.venta_id && <Link href={`/ventas/${p.venta_id}/comprobante`} className="mt-1 inline-block underline">{p.paciente_nombre ?? 'Compra sin paciente'} · Ver compra y abonos</Link>}

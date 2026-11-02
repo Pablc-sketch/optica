@@ -83,7 +83,7 @@ export default async function Entregas() {
 
       {res.error && (
         <p className="rounded-xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
-          No se pudieron leer las entregas. Recarga la página; no es que no haya nadie.
+          No se pudieron cargar las entregas. Vuelve a intentar.
         </p>
       )}
 

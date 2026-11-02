@@ -1,70 +1,37 @@
-"use client";
-
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-
-type Item = { href: string; label: string; principal?: boolean };
-
-// Menú: lo de todos los días a la vista; lo de administración en "Más".
-export default function NavLinks({ nav }: { nav: Item[] }) {
+'use client';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { enlaceActivo, type EnlaceMenu } from '@/lib/navegacion';
+export default function NavLinks({ nav }: { nav: EnlaceMenu[] }) {
   const pathname = usePathname();
   const [abierto, setAbierto] = useState(false);
-  // Al cambiar de pantalla se cierra el "Más".
+  const contenedor = useRef<HTMLDivElement>(null);
+  const boton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- cerrar el menú al navegar
-    setAbierto(false);
-  }, [pathname]);
-
-  // El link más largo que calce gana (así "Buscar OT" no marca "Órdenes").
-  const activoHref = nav
-    .filter((i) => (i.href === "/" ? pathname === "/" : pathname === i.href || pathname.startsWith(i.href + "/")))
-    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
-
-  const seguros = nav.find((i) => i.href === "/seguros");
-  const principales = nav.filter((i) => i.href !== "/seguros" && i.principal !== false && (i.principal || nav.length <= 8));
-  const resto = nav.filter((i) => i.href !== "/seguros" && !principales.includes(i));
-  const restoActivo = resto.some((i) => i.href === activoHref);
-
-  const clase = (activo: boolean) =>
-    `whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-semibold transition ${
-      activo ? "bg-white text-tinta shadow-sm" : "text-white/80 hover:bg-white/10 hover:text-white"
-    }`;
-
-  return (
-    <div className="mx-auto max-w-5xl px-4 pb-2.5">
-      <nav aria-label="Menú principal" className="flex gap-1 overflow-x-auto">
-        {principales.map((item) => (
-          <Link key={item.href} href={item.href} className={clase(item.href === activoHref)}>
-            {item.label}
-          </Link>
-        ))}
-        {seguros && (
-          <Link href="/seguros" className={clase(activoHref === "/seguros")}>
-            Reembolsos
-          </Link>
-        )}
-        {resto.length > 0 && (
-          <button type="button" aria-expanded={abierto} aria-controls="menu-mas" onClick={() => setAbierto((a) => !a)} className={clase(restoActivo || abierto)}>
-            Más {abierto ? "▴" : "▾"}
-          </button>
-        )}
-      </nav>
-      {abierto && (
-        <div id="menu-mas" className="mt-2 grid grid-cols-2 gap-1.5 rounded-2xl bg-white/10 p-2 sm:grid-cols-4">
-          {resto.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`rounded-xl px-3 py-2.5 text-sm font-semibold ${
-                item.href === activoHref ? "bg-white text-tinta" : "bg-white/5 text-white hover:bg-white/15"
-              }`}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+    if (!abierto) return;
+    const cerrarFuera = (e: PointerEvent) => { if (!contenedor.current?.contains(e.target as Node)) setAbierto(false); };
+    const cerrarEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') { setAbierto(false); boton.current?.focus(); } };
+    document.addEventListener('pointerdown', cerrarFuera);
+    document.addEventListener('keydown', cerrarEscape);
+    return () => { document.removeEventListener('pointerdown', cerrarFuera); document.removeEventListener('keydown', cerrarEscape); };
+  }, [abierto]);
+  const activo = enlaceActivo(nav, pathname);
+  const principales = nav.filter(n => n.principal);
+  const resto = nav.filter(n => !n.principal || !n.movil);
+  const clase = (marcado: boolean) => `rounded-full px-3 py-2 text-sm font-semibold ${marcado ? 'bg-white text-tinta shadow-sm' : 'text-white/85 hover:bg-white/10 hover:text-white'}`;
+  return <div ref={contenedor} className="mx-auto max-w-5xl px-4 pb-2.5">
+    <nav aria-label="Menú principal" className="flex flex-wrap items-center gap-1">
+      {principales.map(n => <Link key={n.href} href={n.href} onClick={() => setAbierto(false)} aria-current={activo === n.href ? 'page' : undefined}
+        className={`${n.movil ? '' : 'hidden sm:inline-block'} ${clase(activo === n.href)}`}>{n.label}</Link>)}
+      {resto.length > 0 && <button ref={boton} type="button" aria-expanded={abierto} aria-controls="menu-mas"
+        onClick={() => setAbierto(a => !a)} className={clase(abierto || (activo !== undefined && !principales.some(n => n.href === activo)))}>
+        Más <span aria-hidden>{abierto ? '▴' : '▾'}</span>
+      </button>}
+    </nav>
+    {abierto && <nav id="menu-mas" aria-label="Más opciones" className="mt-2 grid grid-cols-2 gap-1.5 rounded-2xl bg-white/10 p-2 sm:grid-cols-3">
+      {resto.map(n => <Link key={n.href} href={n.href} onClick={() => setAbierto(false)} aria-current={activo === n.href ? 'page' : undefined}
+        className={`${n.principal ? 'sm:hidden' : ''} rounded-xl px-3 py-2.5 text-sm font-semibold ${activo === n.href ? 'bg-white text-tinta' : 'bg-white/5 text-white hover:bg-white/15'}`}>{n.label}</Link>)}
+    </nav>}
+  </div>;
 }

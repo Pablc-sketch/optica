@@ -40,11 +40,23 @@ export function desfaseChile(fechaISO: string): string {
 // Límites de un rango de días completos en hora chilena, listos para
 // comparar contra una columna timestamptz.
 export function inicioDelDia(fechaISO: string): string {
-  return `${fechaISO}T00:00:00${desfaseChile(fechaISO)}`;
+  // Santiago cambia la hora a medianoche. El desfase del mediodía no
+  // siempre sirve para el inicio del día: una hora se repite o no existe.
+  const centro = Date.parse(`${fechaISO}T12:00:00Z`);
+  if (!Number.isFinite(centro)) throw new Error('Fecha inválida');
+  let desde = centro - 86400000, hasta = centro + 86400000;
+  while (desde < hasta) {
+    const medio = Math.floor((desde + hasta) / 2);
+    if (diaEnChile(new Date(medio)) < fechaISO) desde = medio + 1;
+    else hasta = medio;
+  }
+  return new Date(desde).toISOString();
 }
 
 export function finDelDia(fechaISO: string): string {
-  return `${fechaISO}T23:59:59${desfaseChile(fechaISO)}`;
+  const fin = new Date(Date.parse(inicioDelDia(sumarDias(fechaISO, 1))) - 1).toISOString();
+  // PostgreSQL conserva microsegundos: incluir también el último segundo.
+  return fin.replace('.999Z', '.999999Z');
 }
 
 // Se opera al mediodía UTC para que sumar o restar días nunca cruce por

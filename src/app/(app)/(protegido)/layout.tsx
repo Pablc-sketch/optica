@@ -9,12 +9,18 @@ import { estaVigente, type Suscripcion } from "@/lib/suscripcion";
 // detrás de este mismo aviso.
 export default async function ProtegidoLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const { data: suscripcion } = await supabase
+  const { data: suscripcion, error } = await supabase
     .from("suscripciones")
     .select("plan, estado, fecha_inicio, fecha_renovacion, medio_pago")
     .maybeSingle();
 
-  const vigente = estaVigente(suscripcion as Suscripcion | null);
+  if (error) throw new Error("No se pudo verificar la suscripción");
+  if (!suscripcion) return <div className="mx-auto max-w-md rounded-2xl bg-white p-6 text-center shadow-sm">
+    <h1 className="text-xl font-bold">Activa tu suscripción</h1>
+    <p className="mt-2 text-sm text-tinta-suave">Elige un plan para continuar.</p>
+    <Link href="/suscripcion" className="mt-4 inline-block rounded-xl bg-brand px-4 py-2.5 font-semibold text-white">Ver planes</Link>
+  </div>;
+  const vigente = estaVigente(suscripcion as Suscripcion);
   if (vigente) return <>{children}</>;
 
   return <SuscripcionVencida suscripcion={suscripcion as Suscripcion} />;

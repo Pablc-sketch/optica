@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
@@ -220,7 +221,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   revalidatePath("/ot");
   revalidatePath("/laboratorio");
   revalidatePath("/reportes");
-  revalidatePath("/");
+  revalidarOperacionVenta();
   const res = data as { ot_folio: number | null; ot_folios?: number[] | null };
   return { ok: true, ventaId: input.ventaId, otFolio: res.ot_folio ?? null, otFolios: res.ot_folios ?? [] };
 }
@@ -287,7 +288,7 @@ export async function anularVenta(formData: FormData) {
   revalidatePath("/reportes");
   revalidatePath("/laboratorio");
   revalidatePath("/operativos");
-  revalidatePath("/");
+  revalidarOperacionVenta();
   return { ok: true as const };
 }
 
@@ -343,7 +344,7 @@ export async function actualizarVenta(formData: FormData) {
   revalidatePath("/ventas");
   revalidatePath(`/ventas/${ventaId}`);
   revalidatePath("/reportes");
-  revalidatePath("/");
+  revalidarOperacionVenta();
   return { ok: true as const };
 }
 
@@ -373,7 +374,7 @@ export async function entregarVenta(ventaId: string): Promise<{ ok: boolean; ent
   revalidatePath("/cobros");
   revalidatePath("/ot");
   revalidatePath("/avisos");
-  revalidatePath("/");
+  revalidarOperacionVenta();
   return { ok: true, entregadas: data.length };
 }
 
@@ -410,7 +411,7 @@ export async function cobrarSaldo(input: {
   revalidatePath("/ot");
   revalidatePath("/ventas");
   revalidatePath("/reportes");
-  revalidatePath("/");
+  revalidarOperacionVenta();
   return { ok: true, aplicado: (data as { aplicado: number } | null)?.aplicado ?? input.monto };
 }
 
@@ -465,7 +466,7 @@ export async function registrarConsulta(input: {
   if (error) return { ok: false, error: error.message };
   revalidatePath("/cobros");
   revalidatePath("/reportes");
-  revalidatePath("/");
+  revalidarOperacionVenta();
   if (input.operativoId) revalidatePath(`/operativos/${input.operativoId}`);
   return { ok: true };
 }
