@@ -11,6 +11,7 @@ import CopiarParaSII from "@/components/copiar-para-sii";
 import AnularVenta from "../../anular-venta";
 import CompletarVoucher from "@/components/completar-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
+import { fechaDocumentos } from '@/lib/fecha-documentos';
 
 // Comprobante de venta imprimible (uso interno / respaldo para el cliente).
 // NOTA: no es boleta electrónica del SII — esa se emite vía un proveedor
@@ -25,7 +26,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
     supabase
       .from("ventas")
       .select(
-        `id, fecha, total, estado_pago, anulada, anulada_motivo, boleta_folio, boleta_fecha, ocultar_voucher,
+        `id, fecha, fecha_documentos, total, estado_pago, anulada, anulada_motivo, boleta_folio, boleta_fecha, ocultar_voucher,
          pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (descripcion, cantidad, precio_unitario, descuento, cristal_slot,
            ordenes_trabajo:ot_id (folio, tipo_lente, tratamiento, posicion, tipo_lente_2, tratamiento_2, posicion_2)),
@@ -96,7 +97,8 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-xl font-bold">Comprobante de compra y pagos</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <CopiarParaSII texto={textoSII} /><Link href={`/ventas/${venta.id}/expediente`} className="rounded-lg border p-2 text-sm">Unir PDF y adjuntar boleta</Link>
+          <Link href={`/ventas/${venta.id}/reembolso`} className="rounded-lg border p-2 text-sm">Reembolso · cambiar fecha</Link>
+          <CopiarParaSII texto={textoSII} /><Link href={`/ventas/${venta.id}/expediente`} className="rounded-lg border p-2 text-sm">Preparar PDF</Link>
           {sinVoucher.length === 0 && <BotonImprimir />}
           {!venta.anulada && puedeFonasa && (
             <Link
@@ -166,12 +168,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         </div>
         <div className="mb-4 border-b border-neutral-300 pb-3">
           <p className="text-sm">
-            Comprobante de compra y pagos · {fechaLegible(diaEnChile(venta.fecha))}{" "}
-            {new Date(venta.fecha).toLocaleTimeString("es-CL", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "America/Santiago",
-            })}
+            Comprobante de compra y pagos · {fechaLegible(fechaDocumentos(venta.fecha,pagos,venta.fecha_documentos))}
           </p>
           {venta.boleta_folio && <p className="text-sm">e-Boleta SII, folio: {venta.boleta_folio}{venta.boleta_fecha ? ` · Emitida: ${fechaLegible(venta.boleta_fecha)}` : ""}</p>}
           {paciente && (

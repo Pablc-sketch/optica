@@ -5,6 +5,8 @@ export type ItemReembolso = { descripcion: string; cantidad: number; precio_unit
 export type CompraReembolso = {
   id: string; fecha: string; total: number; anulada: boolean;
   boleta_folio?: string | null;
+  fecha_documentos?: string | null;
+  reembolso_entidad?: keyof typeof GUIAS_REEMBOLSO;
   paciente: { nombre: string; rut: string | null } | null;
   optica: { nombre_comercial: string; razon_social: string | null; rut_empresa: string | null } | null;
   items: ItemReembolso[]; pagos: PagoReembolso[];

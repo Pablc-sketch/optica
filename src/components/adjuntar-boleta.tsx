@@ -37,9 +37,9 @@ export default function AdjuntarBoleta() {
   } catch (err) { setError(err instanceof Error ? err.message : "No se pudo generar el PDF. Intenta nuevamente."); setEstado(""); }
   finally { bloqueo.current = false; setOcupado(false); }
  }
- return <section className="space-y-3 rounded-xl border p-4 print:hidden"><h2 className="font-bold">Adjuntar boleta y otros respaldos</h2>
- <p className="text-sm">Acepta PNG, JPG y PDF. Se unirán el certificado, comprobante, receta vinculada y todas las páginas de los archivos adjuntos. Los adjuntos duran esta sesión: descarga el PDF antes de cerrar.</p>
- <label className="block font-semibold">Seleccionar boleta o respaldos
+ return <section className="space-y-3 rounded-xl border bg-white p-4 print:hidden"><h2 className="font-bold">Boleta y respaldos</h2>
+ <p className="text-xs text-tinta-suave">PNG, JPG o PDF. Adjunta y descarga antes de cerrar esta pantalla.</p>
+ <label className="block text-sm font-semibold">Adjuntar archivos
  <input className="mt-2 block w-full" type="file" accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf" multiple disabled={ocupado} onChange={async e => {
   const input = e.currentTarget; const files = Array.from(input.files || []);
   if (!files.length || bloqueo.current) return;
@@ -66,6 +66,6 @@ export default function AdjuntarBoleta() {
  }}/></label>
  {adjuntos.map((a,i) => <div key={i} className="flex items-center justify-between gap-2 rounded-lg bg-crema-claro p-2 text-sm"><span>{a.nombre} · {a.paginas} {a.paginas === 1 ? "página" : "páginas"}</span><button disabled={ocupado} className="underline" onClick={() => setAdjuntos(prev => prev.filter((_,n) => n !== i))}>Quitar</button></div>)}
  {error && <p role="alert" className="text-sm text-red-800">{error}</p>}<p role="status" className="text-sm">{estado}</p>
- <button disabled={ocupado} onClick={descargar} className="rounded-lg bg-brand px-4 py-3 font-semibold text-white disabled:opacity-50">{ocupado ? "Preparando…" : "Descargar todo unido en PDF"}</button>
+ <button disabled={ocupado} onClick={descargar} className="rounded-lg bg-brand px-4 py-3 font-semibold text-white disabled:opacity-50">{ocupado ? "Preparando…" : "Descargar PDF completo"}</button>
  </section>;
 }

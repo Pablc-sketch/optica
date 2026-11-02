@@ -5,7 +5,7 @@ import { formatearRut } from "@/lib/rut";
 import { diaEnChile, edadEnAnios, fechaLegible } from "@/lib/fechas";
 import BotonImprimir from "@/components/boton-imprimir";
 import { validarVoucher, requiereVoucher } from "@/lib/voucher";
-import { fechaCertificadoFonasa } from "@/lib/fecha-certificado-fonasa";
+import { fechaDocumentos } from "@/lib/fecha-documentos";
 import { rutReembolso } from "@/lib/reembolso";
 
 // Certificado de compra para el reembolso de Fonasa.
@@ -79,7 +79,7 @@ export default async function CertificadoFonasaPage({
     supabase
       .from("ventas")
       .select(
-        `id, fecha, anulada, boleta_folio, boleta_fecha, ocultar_voucher,
+        `id, fecha, fecha_documentos, anulada, boleta_folio, boleta_fecha, ocultar_voucher,
          pacientes:paciente_id (nombre, rut, fecha_nacimiento),
          venta_items (
            cristal_slot, cantidad,
@@ -149,7 +149,7 @@ export default async function CertificadoFonasaPage({
       ? "Lentes ópticos según receta médica (lejos y cerca, por separado)"
       : tieneMultifocal ? "Lentes ópticos según receta médica (lejos y cerca)" : "Lentes ópticos según receta médica";
 
-  const fechaCompra = fechaLegible(fechaCertificadoFonasa(venta.fecha, pagos));
+  const fechaCompra = fechaLegible(fechaDocumentos(venta.fecha, pagos, venta.fecha_documentos));
   const listo = Boolean(paciente?.nombre && rutReembolso(paciente?.rut) && optica?.razon_social && rutReembolso(optica?.rut_empresa) && pares > 0 && !sinVoucher && !venta.anulada && (marcarAMano || (!detalleIncompleto && marcadas.size > 0)));
 
   return (
@@ -164,13 +164,13 @@ export default async function CertificadoFonasaPage({
         <div className="text-right">
           {listo && <BotonImprimir />}
           <p className="mt-1 text-xs text-tinta-suave">
-            Para mandarlo por WhatsApp, elige <strong>Guardar como PDF</strong> en el destino.
+            Imprimir → Guardar como PDF
           </p>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-crema-claro p-3 text-sm print:hidden">
-        <Link href={`/ventas/${venta.id}`} className="font-semibold underline">Editar fechas: el certificado toma el último abono</Link>
+        <Link href={`/ventas/${venta.id}/reembolso`} className="font-semibold underline">Cambiar fecha</Link>
         <span className="font-medium">Prestación:</span>
         <Link
           href={`/ventas/${venta.id}/certificado-fonasa`}
@@ -229,10 +229,8 @@ export default async function CertificadoFonasaPage({
       )}
 
       <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-900 print:hidden">
-        Fonasa lo pide cuando la boleta no detalla qué se compró. Lo presenta el paciente junto a su
-        receta y los demás antecedentes exigidos. Confirma edad a la fecha de compra, tramo, vigencia de la receta y cobertura con Fonasa.
-        <strong> Coteja los vouchers y el RUT del comercio con los originales; firma y timbra al entregar.</strong>{" "}
-        <Link href={`/ventas/${venta.id}/reembolso`} className="font-semibold underline">Preparar y revisar documentos</Link>
+        Firma y timbra antes de entregar.{" "}
+        <Link href={`/ventas/${venta.id}/reembolso`} className="font-semibold underline">Volver al reembolso</Link>
       </p>
 
       {/* Hoja del certificado: mismo orden y mismas palabras del formulario
@@ -246,7 +244,7 @@ export default async function CertificadoFonasaPage({
           <Linea etiqueta="Rut:" valor={formatearRut(paciente?.rut)} />
           <Linea etiqueta="Nombre de la tienda:" valor={nombreTienda} />
           <Linea etiqueta="Rut de la tienda:" valor={formatearRut(optica?.rut_empresa)} />
-          <Linea etiqueta={pagos.some(p => p.monto > 0) ? "Fecha del último abono:" : "Fecha de compra:"} valor={fechaCompra} />
+          <Linea etiqueta="Fecha del certificado:" valor={fechaCompra} />
           <Linea
             etiqueta="Cantidad de artículos:"
             valor={cantidadArticulos > 0 ? `${cantidadArticulos} lentes ópticos` : ""}

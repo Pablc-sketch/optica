@@ -3,12 +3,14 @@
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { prepararBusquedaSeguro } from "@/lib/seguros-busqueda";
 import type { CompraReembolso } from "@/lib/reembolso";
+import { fechaValidaDocumento } from '@/lib/fecha-documentos';
+import { revalidatePath } from 'next/cache';
 
 export async function cargarCompraReembolso(id: string): Promise<CompraReembolso | null> {
   const { supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
   if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) return null;
   const [venta, optica] = await Promise.all([
-    supabase.from("ventas").select("id, fecha, total, anulada, boleta_folio, pacientes:paciente_id(nombre, rut), venta_items(descripcion, cantidad, precio_unitario, descuento), pagos_abonos(id, fecha, monto, medio_pago, numero_voucher)").eq("tenant_id", tenantId).eq("id", id).maybeSingle(),
+    supabase.from("ventas").select("id, fecha, fecha_documentos, reembolso_entidad, total, anulada, boleta_folio, pacientes:paciente_id(nombre, rut), venta_items(descripcion, cantidad, precio_unitario, descuento), pagos_abonos(id, fecha, monto, medio_pago, numero_voucher)").eq("tenant_id", tenantId).eq("id", id).maybeSingle(),
     supabase.from("tenants").select("nombre_comercial, razon_social, rut_empresa").eq("id", tenantId).maybeSingle(),
   ]);
   if (venta.error || optica.error) throw new Error("No pudimos cargar los documentos. Recarga la página.");
@@ -17,10 +19,22 @@ export async function cargarCompraReembolso(id: string): Promise<CompraReembolso
   return {
     id: venta.data.id, fecha: venta.data.fecha, total: venta.data.total, anulada: venta.data.anulada,
     boleta_folio: venta.data.boleta_folio ?? null,
+    fecha_documentos: venta.data.fecha_documentos,
+    reembolso_entidad: venta.data.reembolso_entidad as CompraReembolso['reembolso_entidad'],
     paciente: paciente ?? null, optica: optica.data,
     items: venta.data.venta_items ?? [],
     pagos: [...(venta.data.pagos_abonos ?? [])].sort((a, b) => a.fecha.localeCompare(b.fecha)),
   };
+}
+
+export async function guardarReembolso(id: string, fecha: string, entidad: string): Promise<{ ok: boolean; error?: string }> {
+  const { supabase } = await requerirPerfil({ roles: ['admin','ventas'], suscripcion: true });
+  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id) || !fechaValidaDocumento(fecha)
+    || !['fonasa','banmedica','complementario'].includes(entidad)) return { ok: false, error: 'Revisa la fecha y el destino.' };
+  const { data, error } = await supabase.rpc('guardar_reembolso',{ p_venta: id,p_fecha: fecha,p_entidad: entidad });
+  if (error || data !== true) return { ok: false, error: 'No se pudo guardar. Recarga e intenta nuevamente.' };
+  revalidatePath(`/ventas/${id}`,'layout');
+  return { ok: true };
 }
 
 export type CompraSeguro = {
