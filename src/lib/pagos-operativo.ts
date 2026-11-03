@@ -24,3 +24,12 @@ export function pagadoCosto(pagos: PagoCosto[], clave: ClaveCosto) {
 export function pendientesCostos(op: GastosOperativo, pagos: PagoCosto[]) {
   return COSTOS.map((c) => ({ ...c, total: op[c.clave] ?? 0, pagado: pagadoCosto(pagos, c.clave) }));
 }
+
+// Un abono extra de laboratorio implica un nuevo costo total, incluyendo
+// lo que ya se pagó. Se confirma el costo antes de registrar la salida.
+export function costoFidesParaPago(clave: string, total: number, pagado: number, monto: number): number | null {
+  if (clave !== 'fides' || !Number.isSafeInteger(monto) || monto <= 0
+    || !Number.isSafeInteger(pagado) || pagado < 0 || !Number.isSafeInteger(pagado + monto)
+    || pagado + monto <= total) return null;
+  return pagado + monto;
+}

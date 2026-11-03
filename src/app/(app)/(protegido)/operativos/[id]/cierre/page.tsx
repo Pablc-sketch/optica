@@ -135,7 +135,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
       <h2 id="costos" className="scroll-mt-6 text-lg font-bold">Costos por pagar</h2>
       <CostoFidesEditor operativoId={id} actual={op.costo_fides_real ?? null} nota={op.costo_fides_nota ?? null} />
       <ul className="flex flex-col gap-3">
-        <PagoCostoOperativo clave="fides" titulo="Fides (cristales)" operativoId={id} total={desglose.totalCristales} pagado={fidesPagado} />
+        <PagoCostoOperativo clave="fides" costoFidesActual={op.costo_fides_real ?? null} titulo="Fides (cristales)" operativoId={id} total={desglose.totalCristales} pagado={fidesPagado} />
         <PagoCostoOperativo clave="marcos" titulo={`Reponer marcos (${desglose.marcos})`} operativoId={id} total={desglose.totalArmazones} pagado={marcosPagado} />
         {costos.map((costo) => <PagoCostoOperativo key={costo.clave} operativoId={id} {...costo} />)}
       </ul>
