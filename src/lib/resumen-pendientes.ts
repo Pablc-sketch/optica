@@ -19,9 +19,11 @@ export async function cargarPendientes(supabase: Awaited<ReturnType<typeof creat
   ]);
   const error = ops.error ?? ventas.error ?? retiros.error ?? gastos.error ?? tenant.error;
   const lista: OperativoPorPagar[] = [];
+  let utilidadOperativos = 0;
   if (!error) for (const op of ops.data ?? []) {
     const n = numerosDeOperativo(op, (ventas.data ?? []).filter((v) => v.operativo_id === op.id) as unknown as VentaParaCierre[],
       Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
+    utilidadOperativos += n.cierre.gananciaLiquida;
     const pagos = (gastos.data ?? []).filter((g) => g.operativo_id === op.id);
     const costos = pendientesCostos(op, pagos);
     const pagadoA = (persona: string) => (retiros.data ?? []).filter((r) => r.operativo_id === op.id && r.persona === persona).reduce((s, r) => s + r.monto, 0);
@@ -35,6 +37,6 @@ export async function cargarPendientes(supabase: Awaited<ReturnType<typeof creat
         fides: pagadoCon(pagos, PREFIJO_FIDES), marcos: pagadoCon(pagos, PREFIJO_MARCOS) },
     });
   }
-  return { resumen: resumirPorPagar(lista), detalle: lista, error,
+  return { resumen: resumirPorPagar(lista), detalle: lista, utilidadOperativos, error,
     sinAsignar: (retiros.data ?? []).some((r) => !r.operativo_id && r.monto !== 0) };
 }

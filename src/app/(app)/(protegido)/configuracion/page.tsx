@@ -142,7 +142,7 @@ export default async function ConfiguracionPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-bold">Configuración</h1>
-
+      <div className="flex flex-wrap gap-2"><Link href="/precios" className="rounded-xl border px-4 py-3">Precios</Link><Link href="/configuracion/integraciones" className="rounded-xl border px-4 py-3">Integraciones</Link><Link href="/suscripcion" className="rounded-xl border px-4 py-3">Suscripción</Link></div>
       {perfilProfesional}
 
       <section className="flex flex-col gap-3">

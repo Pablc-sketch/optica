@@ -5,10 +5,14 @@ import { saldoUnicoPorVenta } from '../src/lib/saldo-ordenes';
 import { inicioDelDia,finDelDia,diaEnChile } from '../src/lib/fechas';
 afterEach(()=>vi.useRealTimers());
 describe('auditoría de caja y navegación',()=>{
-  it('muestra Caja MP únicamente al administrador de la óptica conectada',()=>{
-    expect(menuParaRol('admin',true).some(n=>n.href==='/caja/mercadopago')).toBe(true);
-    for(const rol of ['ventas','clinico','bodega','desconocido']) expect(menuParaRol(rol,true).some(n=>n.href==='/caja/mercadopago')).toBe(false);
-    expect(menuParaRol('admin',false).some(n=>n.href==='/caja/mercadopago')).toBe(false);
+  it('reúne las finanzas en Caja y mantiene su acceso aunque Mercado Pago no esté conectado',()=>{
+    for(const conectado of [true,false]) {
+      const menu=menuParaRol('admin',conectado);
+      expect(menu.filter(n=>n.href==='/caja')).toHaveLength(1);
+      expect(menu.some(n=>['/caja/mercadopago','/reportes','/pagos','/boleta','/avisos','/ot/buscar'].includes(n.href))).toBe(false);
+      expect(new Set(menu.map(n=>n.href)).size).toBe(menu.length);
+    }
+    for(const rol of ['ventas','clinico','bodega','desconocido']) expect(menuParaRol(rol,true).some(n=>n.href==='/caja')).toBe(false);
   });
   it('evita opciones financieras para bodega y clínico, pero deja su pantalla principal accesible en móvil',()=>{
     for(const rol of ['clinico','bodega']) {
@@ -19,8 +23,10 @@ describe('auditoría de caja y navegación',()=>{
   });
   it('marca el destino más específico y no sus vecinos',()=>{
     const menu=menuParaRol('admin',true);
-    expect(enlaceActivo(menu,'/ventas/historial')).toBe('/ventas/historial');
-    expect(enlaceActivo(menu,'/ot/buscar')).toBe('/ot/buscar');
+    expect(enlaceActivo(menu,'/ventas/historial')).toBe('/ventas');
+    expect(enlaceActivo(menu,'/ot/buscar')).toBe('/ot');
+    expect(enlaceActivo(menu,'/pagos/revisar')).toBe('/caja');
+    expect(enlaceActivo(menu,'/caja/mercadopago')).toBe('/caja');
     expect(enlaceActivo(menu,'/ventas-no')).toBeUndefined();
   });
   it('normaliza filtros dañados y limita la paginación sin llevar sintaxis de consulta al servidor',()=>{
