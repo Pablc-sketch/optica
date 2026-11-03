@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pendientesCostos, prefijoCosto } from "../src/lib/pagos-operativo";
 import { leerTodas } from "../src/lib/leer-todas";
-import { idPagoCosto } from "../src/lib/id-pago";
+import { idPagoCosto, claveConRevisiones } from "../src/lib/id-pago";
 import { resumirCaja } from "../src/lib/caja";
 import { pendienteDeOperativo, type OperativoPorPagar } from "../src/lib/por-pagar";
 
@@ -24,6 +24,12 @@ describe("pagos de costos", () => {
     expect(disponible(0, 0, 0)).toBe(86000);
     expect(disponible(40000, 40000, 0)).toBe(86000);
     expect(disponible(114000, 104000, 10000)).toBe(86000);
+  });
+  it("una revisión de sueldo distingue el saldo corregido del pago original", () => {
+    expect(claveConRevisiones("retiro:isadora",[])).toBe("retiro:isadora");
+    expect(claveConRevisiones("retiro:isadora",[{id:"pago",revision_version:2}])).not.toBe("retiro:isadora");
+    const filas = [{id:"b",revision_version:2},{id:"a",revision_version:1}];
+    expect(claveConRevisiones("retiro:isadora",filas)).toBe(claveConRevisiones("retiro:isadora",[...filas].reverse()));
   });
   it("dos pestañas con el mismo saldo compiten por la misma clave", () => {
     expect(idPagoCosto("op", "costo_equipos", 0)).toBe(idPagoCosto("op", "costo_equipos", 0));

@@ -33,6 +33,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
   return <div className="flex flex-col gap-5">
     <div className="flex items-center justify-between"><h1 className="text-2xl font-bold">Caja</h1><Link href="/" className="text-sm underline">Inicio</Link></div>
     {params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>}
+    <Link href="/pagos/revisar" className="rounded-xl bg-tinta px-4 py-3 text-center font-semibold text-white">Revisar pagos y gastos →</Link>
     <CuentaBancaria tenantId={tenantId} obligaciones={error ? undefined : p.total+deudaPersonal+p.ahorro} />
     {error ? <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">No se pudo leer toda la caja. Recarga antes de registrar movimientos.</p> : <>
       <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Por pagar</h2>

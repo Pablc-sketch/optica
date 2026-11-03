@@ -13,6 +13,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const filas = resumen.operativos.filter((o) => o[vista.clave] > 0);
   return <div className="mx-auto flex max-w-2xl flex-col gap-4">
     <h1 className="text-2xl font-bold">Pagos y ahorro</h1>
+    <Link href="/pagos/revisar" className="rounded-xl bg-tinta px-4 py-3 text-center font-semibold text-white">Revisar pagos y gastos →</Link>
     <nav className="flex gap-2" aria-label="Tipo de pendiente">
       {VISTAS.map((v) => <Link key={v.clave} href={`/pagos?ver=${v.clave}`} aria-current={vista.clave === v.clave ? "page" : undefined}
         className={`rounded-xl px-4 py-3 font-semibold ${vista.clave === v.clave ? "bg-tinta text-white" : "bg-white"}`}>{v.titulo}</Link>)}

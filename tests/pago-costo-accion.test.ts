@@ -33,6 +33,16 @@ describe("registro de un pago", () => {
     expect(escritura.insertar).toHaveBeenCalledWith(expect.objectContaining({ monto: 40000, operativo_id: operativoId, tenant_id: "tenant", caja: "digital" }));
     expect(escritura.insertar.mock.calls[0][0].id).toBe(idPagoCosto(operativoId, "costo_equipos", 0));
   });
+  it("permite pagar de nuevo después de corregir a cero sin perder el registro anterior", async () => {
+    const escritura = respuesta(null);
+    mock.from.mockReturnValueOnce(respuesta({ id:"corregido",operativo_id:operativoId,monto:0,caja:"digital",descripcion:"Costo operativo · costo_equipos · Colegio",revision_version:2 }).builder)
+      .mockReturnValueOnce(respuesta(null).builder)
+      .mockReturnValueOnce(respuesta({id:operativoId,nombre:"Colegio",costo_equipos:104000}).builder)
+      .mockReturnValueOnce(respuesta([{id:"corregido",monto:0,descripcion:"Costo operativo · costo_equipos · Colegio"}]).builder)
+      .mockReturnValueOnce(escritura.builder);
+    expect(await registrarPagoCosto(input)).toEqual({ok:true});
+    expect(escritura.insertar.mock.calls[0][0].id).not.toBe(idPagoCosto(operativoId,"costo_equipos",0));
+  });
   it("un reintento del mismo pago no inserta otra salida", async () => {
     mock.from.mockReturnValueOnce(respuesta({ id: "previo", operativo_id: operativoId, monto: 40000, caja: "digital", descripcion: "Costo operativo · costo_equipos · Colegio" }).builder);
     expect(await registrarPagoCosto(input)).toEqual({ ok: true });

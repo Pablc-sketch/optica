@@ -6,7 +6,7 @@ import { hoyEnChile } from "@/lib/fechas";
 import { COSTOS, prefijoCosto, PREFIJO_MARCOS, type ClaveCosto } from "@/lib/pagos-operativo";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import { leerTodas } from "@/lib/leer-todas";
-import { idPagoCosto } from "@/lib/id-pago";
+import { idPagoCosto, claveConRevisiones } from "@/lib/id-pago";
 import { montoCaja } from "@/lib/caja-fuentes";
 
 type Resultado = { ok: boolean; error?: string };
@@ -68,14 +68,20 @@ export async function registrarPagoCosto(input: {
   }
   // Dos pestañas que pagan sobre el mismo saldo compiten por la misma PK.
   // Solo una inserta; un reintento con el mismo importe devuelve éxito.
-  const movimientoId = idPagoCosto(input.operativoId, input.clave, input.pagadoEsperado);
-  const { data: previo, error: previoError } = await ctx.supabase.from("gastos_globales")
-    .select("id, operativo_id, monto, caja, descripcion").eq("id", movimientoId).maybeSingle();
-  if (previoError) return { ok: false, error: "No se pudo comprobar el pago anterior." };
+  let movimientoId = idPagoCosto(input.operativoId, input.clave, input.pagadoEsperado);
   const prefijo = input.clave === "fides" ? PREFIJO_FIDES : input.clave === "marcos" ? PREFIJO_MARCOS : prefijoCosto(input.clave);
-  if (previo) return previo.operativo_id === input.operativoId && previo.monto === input.monto
-    && previo.caja === input.caja && previo.descripcion.startsWith(prefijo)
-    ? { ok: true } : { ok: false, error: "Identificador de pago ya utilizado." };
+  // Si un pago se corrigió a cero, su ID se conserva en el historial.
+  // Reservar otra clave evita que ese registro bloquee un pago real posterior.
+  for (let intento = 0; ; intento++) {
+    const { data: previo, error: previoError } = await ctx.supabase.from("gastos_globales")
+      .select("id, operativo_id, monto, caja, descripcion, revision_version").eq("id", movimientoId).maybeSingle();
+    if (previoError) return { ok: false, error: "No se pudo comprobar el pago anterior." };
+    if (!previo) break;
+    if (previo.operativo_id === input.operativoId && previo.monto === input.monto
+      && previo.caja === input.caja && previo.descripcion.startsWith(prefijo)) return { ok: true };
+    if (!previo.revision_version || intento >= 20) return { ok: false, error: "Identificador de pago ya utilizado. Revisa los movimientos." };
+    movimientoId = idPagoCosto(input.operativoId, `${input.clave}:revisado:${previo.id}:${previo.revision_version}`, input.pagadoEsperado);
+  }
   const { data: op, error: opError } = await ctx.supabase.from("operativos").select("*")
     .eq("id", input.operativoId).eq("tenant_id", ctx.tenantId).maybeSingle();
   if (opError || !op) return { ok: false, error: "Operativo no disponible." };
@@ -148,7 +154,7 @@ export async function marcarSueldoPagado(input: {
   if (input.objetivo !== n.cierre[input.persona]) return { ok: false, error: "El reparto cambió. Recarga antes de pagar." };
   const { data: previos, error: errPrevios } = await ctx.supabase
     .from("retiros_sueldo")
-    .select("monto")
+    .select("id, monto, revision_version")
     .eq("operativo_id", input.operativoId)
     .eq("persona", input.persona);
   if (errPrevios) return { ok: false, error: errPrevios.message };
@@ -156,7 +162,7 @@ export async function marcarSueldoPagado(input: {
   const falta = input.objetivo - yaPagado;
   if (falta <= 0) return { ok: true };
   const { error } = await ctx.supabase.from("retiros_sueldo").insert({
-    id: idPagoCosto(input.operativoId, `retiro:${input.persona}`, yaPagado),
+    id: idPagoCosto(input.operativoId, claveConRevisiones(`retiro:${input.persona}`, previos ?? []), yaPagado),
     tenant_id: ctx.tenantId,
     persona: input.persona,
     fecha: hoyEnChile(),

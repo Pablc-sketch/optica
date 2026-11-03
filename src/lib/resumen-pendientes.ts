@@ -35,6 +35,6 @@ export async function cargarPendientes(supabase: Awaited<ReturnType<typeof creat
         fides: pagadoCon(pagos, PREFIJO_FIDES), marcos: pagadoCon(pagos, PREFIJO_MARCOS) },
     });
   }
-  return { resumen: resumirPorPagar(lista), error,
+  return { resumen: resumirPorPagar(lista), detalle: lista, error,
     sinAsignar: (retiros.data ?? []).some((r) => !r.operativo_id && r.monto !== 0) };
 }
