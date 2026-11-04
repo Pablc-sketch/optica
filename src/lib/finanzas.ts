@@ -94,8 +94,8 @@ export function prepararRegistroFinanzas(f: FormData, hoy: string): { error: str
   if (tipo !== 'gasto' && (!Object.hasOwn(PERSONAS_REVISION, persona) || (tipo !== 'ahorro' && persona === 'ahorro')))
     return { error: 'Elige a quién corresponde el movimiento.' };
   // Un retiro sin operativo no rebaja sueldos de un operativo específico.
-  if ((tipo === 'sueldo' || tipo === 'retiro' || tipo === 'ahorro') && !operativoId)
-    return { error: 'Elige el operativo para descontar este pago del pendiente correcto.' };
+  if (tipo !== 'gasto' && !operativoId)
+    return { error: 'Elige el operativo para que este movimiento se refleje en el pendiente correcto.' };
   if (tipo === 'gasto' && /^(Costo operativo · |Fides · |Marcos · )/.test(descripcion))
     return { error: 'Registra Fides, marcos y costos de operativos desde Por pagar para evitar duplicarlos.' };
   const categoria = String(f.get('categoria') ?? 'otro');

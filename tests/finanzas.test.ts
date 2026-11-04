@@ -45,10 +45,10 @@ describe('Finanzas · registro seguro',()=>{
     expect(r).toMatchObject({movimiento:{monto:25000,caja:'personal',tabla:'gastos_globales',operativo_id:null}});
   });
   it('un aporte se ingresa en positivo en pantalla y se guarda con su signo contable',()=>{
-    expect(prepararRegistroFinanzas(form({tipo:'aporte',persona:'pablo'}),'2026-11-03')).toMatchObject({movimiento:{monto:-25000,es_sueldo:false,persona:'pablo'}});
+    expect(prepararRegistroFinanzas(form({tipo:'aporte',persona:'pablo',operativo_id:operativo}),'2026-11-03')).toMatchObject({movimiento:{monto:-25000,es_sueldo:false,persona:'pablo',operativo_id:operativo}});
   });
   it('exige operativo para un sueldo, adelanto o ahorro y rechaza personas u orígenes inventados',()=>{
-    for(const tipo of ['sueldo','retiro','ahorro']) expect(prepararRegistroFinanzas(form({tipo,persona:'pablo'}),'2026-11-03')).toHaveProperty('error');
+    for(const tipo of ['sueldo','retiro','aporte','ahorro']) expect(prepararRegistroFinanzas(form({tipo,persona:'pablo'}),'2026-11-03')).toHaveProperty('error');
     expect(prepararRegistroFinanzas(form({tipo:'sueldo',persona:'madre',operativo_id:operativo}),'2026-11-03')).toMatchObject({movimiento:{es_sueldo:true,operativo_id:operativo}});
     for(const datos of [{tipo:'sueldo',persona:'pablo',operativo_id:operativo,caja:'personal'},{tipo:'aporte',persona:'ahorro'},{tipo:'aporte',persona:'otra'},{caja:'desconocida'}] as Record<string,string>[])expect(prepararRegistroFinanzas(form(datos),'2026-11-03')).toHaveProperty('error');
   });

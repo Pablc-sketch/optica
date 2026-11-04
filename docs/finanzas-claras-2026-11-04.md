@@ -3,7 +3,7 @@
 ## Problema y resultado
 Caja, Por pagar, Revisión y Reportes tenían entradas de registro distintas. Un sueldo creado desde Reportes quedaba sin operativo, mientras los pendientes se calculaban por operativo: podía verse pagado en un lugar y pendiente en otro. El historial también presentaba cada traslado como dos filas, aumentando artificialmente entradas y salidas al mirar ambas cuentas.
 
-Finanzas reúne Resumen, Movimientos, Por pagar y Revisar y corregir, con un acceso visible en el menú. Un formulario guiado registra gastos, sueldos, adelantos, aportes, ahorro, traslados, devoluciones personales y conteos. El origen es explícito, la vista previa explica su efecto y los pagos requieren operativo. Reportes conserva el análisis y conduce al registro central.
+Finanzas reúne Resumen, Movimientos, Por pagar y Revisar y corregir, con un acceso visible en el menú. Un formulario guiado registra gastos, sueldos, adelantos, aportes, ahorro, traslados, devoluciones personales y conteos. El origen es explícito, la vista previa explica su efecto y los pagos y aportes requieren operativo. Reportes conserva el análisis y conduce al registro central.
 
 ## Referencias consultadas
 - Holded: tesorería, cuentas y conciliación separadas de documentos y pendientes: https://help.holded.com/es/articles/6926601-que-puedes-hacer-en-la-seccion-de-tesoreria
@@ -27,3 +27,5 @@ Pruebas de lógica y acciones con proveedores simulados: conservación del diner
 
 ## Límites
 Las correcciones históricas requieren comprobar extractos, efectivo y respaldos. Una nueva interfaz no concilia por sí sola lo que no se registró. Las comisiones de la estimación continúan siendo estimadas. La disponibilidad de saldo real depende del permiso de Mercado Pago. No se alteran las reglas de reparto, precios ni costos históricos.
+
+Verificación local: 401 pruebas aprobadas (396 de la suite general y 5 adicionales de autorización/reintento); tipos sin errores; lint conserva solo un aviso previo de imagen en la página pública. La compilación local de Turbopack en Windows falló al iniciar un proceso; la compilación de vista previa de Vercel sí terminó READY.

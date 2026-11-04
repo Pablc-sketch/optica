@@ -14,7 +14,7 @@ const consejos: Record<TipoRegistro,string> = {
   gasto:'Algo que ya pagaste para la óptica: arriendo, bandejas, insumos u otra compra.',
   sueldo:'Un pago ya realizado a Pablo, Pamela o Isadora. Se descuenta del pendiente del operativo.',
   retiro:'Un adelanto ya entregado. También se descuenta de lo que corresponde en el operativo.',
-  aporte:'Dinero propio que una persona ingresó a la cuenta o al efectivo de la óptica.',
+  aporte:'Dinero propio que una persona ingresó a la cuenta o al efectivo para un operativo. Aumenta lo que se le debe.',
   ahorro:'Dinero que efectivamente retiraste de esta caja para reservarlo como ahorro.',
   traslado:'Dinero que ya moviste entre Mercado Pago y el efectivo. El total del negocio no cambia.',
   devolucion:'La óptica devuelve a Pablo un gasto que él ya pagó. No registra el gasto por segunda vez.',
@@ -76,9 +76,9 @@ export default function FinanzasRegistro({ id, hoy, operativos, personales, inic
             {Object.entries(PERSONAS_REVISION).filter(([k])=>k!=='ahorro').map(([k,v])=><option key={k} value={k}>{v}</option>)}
           </select>
         </label>}
-        {tieneOperativo && <label className="text-sm font-semibold text-slate-700">Operativo {tipo==='aporte'?'(opcional)':''}
-          <select key={tipo} name="operativo_id" defaultValue={operativoInicial} required={tipo!=='aporte'} className={campo}>
-            <option value="">{tipo==='aporte'?'Aporte general al negocio':'Elige el operativo'}</option>
+        {tieneOperativo && <label className="text-sm font-semibold text-slate-700">Operativo
+          <select key={tipo} name="operativo_id" defaultValue={operativoInicial} required className={campo}>
+            <option value="">Elige el operativo</option>
             {operativos.map(o=><option key={o.id} value={o.id}>{o.nombre} · {fechaLegible(o.fecha)}</option>)}
           </select>
         </label>}
@@ -86,6 +86,7 @@ export default function FinanzasRegistro({ id, hoy, operativos, personales, inic
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-semibold text-slate-700">{tipo==='conteo'?'Efectivo contado':'Monto en pesos'}
             <input name="monto" inputMode="numeric" autoComplete="off" required value={monto} onChange={e=>setMonto(e.target.value)} placeholder="Ej. 25.000" className={campo} />
+            {monto && n===null && <span className="mt-1 block text-xs font-normal text-red-800">Escribe pesos sin decimales: 25000 o 25.000.</span>}
             {gasto && tipo==='devolucion' && <span className="mt-1 block text-xs font-normal text-slate-500">Hasta {clp(gasto.pendiente)}</span>}
           </label>
           {tipo!=='conteo' && <label className="text-sm font-semibold text-slate-700">Fecha real<input type="date" name="fecha" required defaultValue={hoy} min={tipo==='devolucion'?gasto?.fecha:undefined} max={hoy} className={campo} /></label>}
