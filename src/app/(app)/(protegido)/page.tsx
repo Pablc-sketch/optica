@@ -10,7 +10,7 @@ const BOTONES=[
   {href:'/entregas',titulo:'Entrega',icono:'📦',clase:'bg-sky-800 text-white'},
   {href:'/pacientes',titulo:'Paciente / receta',icono:'👁️',clase:'bg-tinta text-white'},
   {href:'/operativos',titulo:'Operativos',icono:'📍',clase:'bg-white text-tinta'},
-  {href:'/caja',titulo:'Caja',icono:'💰',clase:'bg-white text-tinta'},
+  {href:'/caja',titulo:'Finanzas',icono:'💰',clase:'bg-white text-tinta'},
 ];
 export default async function Dashboard(){
   const supabase=await createClient();

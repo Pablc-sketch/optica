@@ -4,7 +4,6 @@ import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import { createClient } from "@/lib/supabase/server";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
-import BotonEnviar from "@/components/boton-enviar";
 import BotonImprimir from "@/components/boton-imprimir";
 import Tarjeta from "@/components/tarjeta";
 import {
@@ -24,28 +23,9 @@ import { leerTodas } from "@/lib/leer-todas";
 import { conCostoFidesReal } from "@/lib/costo-fides-real";
 import {
   actualizarComisionMedioPago,
-  crearGastoGlobal,
-  crearRetiro,
-  eliminarGastoGlobal,
-  eliminarRetiro,
-  pagarSueldo,
 } from "@/lib/actions/gastos";
 import { esVentaDeConsulta, totalConsultas } from "@/lib/consulta";
 import FiltroPagos from "./filtro-pagos";
-
-const PERSONAS: Record<string, string> = {
-  isadora: "Isadora",
-  madre: "Pamela (mamá)",
-  pablo: "Pablo",
-  ahorro: "Ahorro (negocio)",
-};
-const CAJAS_LABEL: Record<string, string> = { efectivo: "Efectivo", digital: "Cuenta bancaria (Mercado Pago)", personal: "Dinero personal de Pablo" };
-const MEDIOS_PAGO_LABEL: Record<string, string> = {
-  efectivo: "Efectivo",
-  debito: "Débito",
-  credito: "Crédito",
-  transferencia: "Transferencia",
-};
 
 // Reportes (spec pantalla 10). Acá recién sirven los costos que quedaron
 // guardados sin mostrarse en la interfaz: el costo del armazón y el costo
@@ -93,8 +73,6 @@ function TarjetaSueldo({
   adelantos,
   pagado,
   pendiente,
-  mes,
-  hoy,
   verbo = "Pagar",
   acento,
 }: {
@@ -132,22 +110,7 @@ function TarjetaSueldo({
       )}
 
       {pendiente > 0 && (
-        <form action={pagarSueldo} className="mt-2 flex flex-wrap items-center gap-1.5 print:hidden">
-          <input type="hidden" name="persona" value={persona} />
-          <input type="hidden" name="monto" value={pendiente} />
-          <input type="hidden" name="fecha" value={hoy} />
-          <input type="hidden" name="mes" value={mes} />
-          <select
-            name="caja"
-            defaultValue="efectivo"
-            aria-label="¿De qué caja sale?"
-            className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand"
-          >
-            <option value="efectivo">💵 del efectivo</option>
-            <option value="digital">🏦 de la caja digital</option>
-          </select>
-          <BotonEnviar className="rounded-lg bg-brand px-2.5 py-1 text-xs font-bold text-white transition hover:bg-brand-dark">{verbo} · marcar realizado</BotonEnviar>
-        </form>
+        <Link href={persona==='ahorro'?'/pagos?ver=ahorro':'/pagos?ver=sueldos'} className="mt-3 inline-block rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 print:hidden">{verbo==='Apartar'?'Ver ahorro por operativo':'Ver y registrar por operativo'} →</Link>
       )}
     </div>
   );
@@ -985,198 +948,9 @@ export default async function ReportesPage({
         )}
       </section>
 
-      <section className="print:hidden">
-        <h2 className="mb-1 font-semibold">Gastos globales del mes</h2>
-        <p className="mb-2 text-xs text-tinta-suave">
-          Gastos que no son de un operativo (reponer marcos, arriendos fijos).
-        </p>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          <Tarjeta icono="📦" titulo="Total del mes" valor={clp(totalGastosGlobales)} acento />
-          <div className="rounded-2xl bg-crema-claro p-3 shadow-sm lg:col-span-2">
-            <form action={crearGastoGlobal} className="grid grid-cols-2 gap-2 sm:grid-cols-6">
-              <input
-                type="date"
-                name="fecha"
-                required
-                defaultValue={hoyEnChile()}
-                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              aria-label="Fecha del movimiento" />
-              <select
-                name="categoria"
-                defaultValue="compra_inventario"
-                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-               aria-label="Categoría del gasto">
-                <option value="compra_inventario">Compra de inventario</option>
-                <option value="arriendo">Arriendo</option>
-                <option value="otro">Otro</option>
-              </select>
-              <input
-                name="descripcion"
-                placeholder="Ej. 24 marcos nuevos"
-                required
-                className="col-span-2 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand sm:col-span-2"
-              aria-label="Descripción del gasto" />
-              <input
-                name="monto"
-                inputMode="numeric"
-                placeholder="78.000"
-                required
-                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              aria-label="Monto en pesos" />
-              <select
-                name="caja"
-                defaultValue="digital"
-                aria-label="¿De qué caja salió?"
-                className="col-span-1 rounded-lg border-2 border-brand/40 bg-white px-2 py-1.5 text-sm font-medium outline-none focus:border-brand"
-              >
-                <option value="efectivo">💵 Salió del efectivo</option>
-                <option value="digital">🏦 Cuenta bancaria (Mercado Pago)</option>
-                <option value="personal">Dinero personal de Pablo</option>
-              </select>
-              <select
-                name="medio_pago"
-                defaultValue=""
-                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-               aria-label="Medio de pago">
-                <option value="">Medio de pago…</option>
-                {Object.entries(MEDIOS_PAGO_LABEL).map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <BotonEnviar className="col-span-2 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark sm:col-span-1">Agregar</BotonEnviar>
-            </form>
-          </div>
-        </div>
-        {gastosGlobales.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-1.5 rounded-2xl bg-crema-claro p-3 shadow-sm">
-            {gastosGlobales.map((g) => (
-              <li key={g.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
-                <span className="text-xs text-tinta-suave">{fechaLegible(g.fecha)}</span>
-                <span className="flex-1">{g.descripcion}</span>
-                <span className="rounded-md bg-crema-claro px-1.5 py-0.5 text-xs font-medium text-tinta-suave">
-                  {g.caja === "efectivo" ? "💵" : "🏦"} {CAJAS_LABEL[g.caja] ?? g.caja}
-                  {g.medio_pago ? ` · ${MEDIOS_PAGO_LABEL[g.medio_pago]}` : ""}
-                </span>
-                <span className="font-semibold">{clp(g.monto)}</span>
-                <form action={eliminarGastoGlobal}>
-                  <input type="hidden" name="id" value={g.id} />
-                  <BotonEnviar className="text-xs font-medium text-red-700 hover:underline">Quitar</BotonEnviar>
-                </form>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="print:hidden">
-        <h2 className="mb-1 font-semibold">Retiros y aportes del mes</h2>
-        <p className="mb-2 text-xs text-tinta-suave">
-          Retiro: descuenta sueldo y caja. Aporte: aumenta lo que se debe y la caja.
-        </p>
-        <div className="rounded-2xl bg-crema-claro p-3 shadow-sm">
-          <form action={crearRetiro} className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-            <select
-              name="persona"
-              defaultValue="isadora"
-              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-             aria-label="Persona del movimiento">
-              {Object.entries(PERSONAS).map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-            <select
-              name="tipo"
-              defaultValue="retiro"
-              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-             aria-label="Retiro o aporte">
-              <option value="retiro">Retiro (saca)</option>
-              <option value="aporte">Aporte (pone)</option>
-            </select>
-            <input
-              type="date"
-              name="fecha"
-              required
-              defaultValue={hoyEnChile()}
-              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            aria-label="Fecha del movimiento" />
-            <input
-              name="monto"
-              inputMode="numeric"
-              placeholder="20.000"
-              required
-              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            aria-label="Monto en pesos" />
-            <select
-              name="caja"
-              defaultValue="efectivo"
-              aria-label="¿De qué caja salió?"
-              className="rounded-lg border-2 border-brand/40 bg-white px-2 py-1.5 text-sm font-medium outline-none focus:border-brand"
-            >
-              <option value="efectivo">💵 Del efectivo</option>
-              <option value="digital">🏦 De la caja digital</option>
-            </select>
-            <select
-              name="medio_pago"
-              defaultValue=""
-              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-             aria-label="Medio de pago">
-              <option value="">Medio…</option>
-              {Object.entries(MEDIOS_PAGO_LABEL).map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-            <input
-              name="motivo"
-              placeholder="Motivo (opcional)"
-              className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            aria-label="Motivo del movimiento" />
-            <BotonEnviar className="rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark">Agregar</BotonEnviar>
-          </form>
-        </div>
-        {retiros.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-1.5 rounded-2xl bg-crema-claro p-3 shadow-sm">
-            {retiros.map((r) => {
-              const operativoNombre = uno(
-                r.operativos as unknown as { nombre: string } | { nombre: string }[] | null
-              )?.nombre;
-              const esAporte = r.monto < 0;
-              const etiqueta = esAporte ? "Aporte" : r.es_sueldo ? "Sueldo pagado" : "Retiro";
-              const colorEtiqueta = esAporte
-                ? "bg-green-100 text-green-900"
-                : r.es_sueldo
-                  ? "bg-brand text-white"
-                  : "bg-amber-100 text-amber-900";
-              return (
-                <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
-                  <span className="text-xs text-tinta-suave">{fechaLegible(r.fecha)}</span>
-                  <span className="font-medium">{PERSONAS[r.persona] ?? r.persona}</span>
-                  <span className={`rounded-md px-1.5 py-0.5 text-xs font-bold ${colorEtiqueta}`}>
-                    {etiqueta}
-                  </span>
-                  <span className="rounded-md bg-crema-claro px-1.5 py-0.5 text-xs font-medium text-tinta-suave">
-                    {r.caja === "efectivo" ? "💵" : "🏦"} {CAJAS_LABEL[r.caja] ?? r.caja}
-                  </span>
-                  <span className="flex-1 text-xs text-tinta-suave">
-                    {[r.motivo, operativoNombre ? `contra ${operativoNombre}` : null, r.medio_pago ? MEDIOS_PAGO_LABEL[r.medio_pago] : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                  <span className="font-semibold">{clp(Math.abs(r.monto))}</span>
-                  <form action={eliminarRetiro}>
-                    <input type="hidden" name="id" value={r.id} />
-                    <BotonEnviar className="text-xs font-medium text-red-700 hover:underline">Quitar</BotonEnviar>
-                  </form>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+      <section className="grid gap-4 print:hidden sm:grid-cols-2">
+        <Link href="/caja?vista=movimientos" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="font-semibold text-slate-900">Gastos y movimientos</h2><p className="mt-2 text-sm text-slate-600">Los gastos de este mes suman {clp(totalGastosGlobales)}. Revisa el detalle, filtra por cuenta o descarga el historial en Finanzas.</p><span className="mt-3 block text-sm font-semibold text-teal-900">Ver movimientos →</span></Link>
+        <Link href="/pagos/revisar" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="font-semibold text-slate-900">Pagos, retiros y aportes</h2><p className="mt-2 text-sm text-slate-600">Revisa o corrige cada registro con su fecha, origen y operativo. Cada corrección conserva su historial.</p><span className="mt-3 block text-sm font-semibold text-teal-900">Revisar registros →</span></Link>
       </section>
     </div>
   );
