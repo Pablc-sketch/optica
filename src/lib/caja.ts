@@ -60,6 +60,17 @@ export type TotalesCaja = {
 
 export type Comisiones = { comisionDebitoPct?: number; comisionCreditoPct?: number };
 
+// Los saldos ya descuentan salidas registradas. Aquí solo se reservan
+// obligaciones pendientes; no se vuelven a restar los pagos realizados.
+export function disponibleTrasPendientes(
+  caja: Pick<ResumenCaja, 'hayEfectivo' | 'hayDigital'>,
+  pendientes: { pagos: number; devoluciones: number; ahorro: number }
+) {
+  const total = caja.hayEfectivo + caja.hayDigital;
+  const porPagar = pendientes.pagos + pendientes.devoluciones;
+  return { total, porPagar, ahorro: pendientes.ahorro, restante: total - porPagar - pendientes.ahorro };
+}
+
 export function resumirCaja(
   t: TotalesCaja,
   { comisionDebitoPct = 0, comisionCreditoPct = 0 }: Comisiones = {}
