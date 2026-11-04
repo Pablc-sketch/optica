@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { cajaDelPago, calcularCaja, resumirCaja } from "../src/lib/caja";
+import { cajaDelPago, calcularCaja, resumirCaja, disponibleTrasPendientes } from "../src/lib/caja";
+
+describe('disponible después de obligaciones', () => {
+  it('combina ambas cajas y reserva pendientes, devoluciones y ahorro una sola vez', () => {
+    const caja = calcularCaja({ entradas: [{ monto: 100000, medio_pago: 'efectivo' }, { monto: 200000, medio_pago: 'debito' }], salidas: [{ monto: 40000, caja: 'digital' }], comisionDebitoPct: 1 });
+    expect(disponibleTrasPendientes(caja, { pagos: 80000, devoluciones: 10000, ahorro: 20000 })).toEqual({ total: 258000, porPagar: 90000, ahorro: 20000, restante: 148000 });
+  });
+  it('conserva faltantes y no agrega ventas por cobrar ni conteos históricos', () => {
+    expect(disponibleTrasPendientes({ hayEfectivo: -10000, hayDigital: 20000 }, { pagos: 30000, devoluciones: 5000, ahorro: 5000 }).restante).toBe(-30000);
+  });
+});
 
 describe("de qué caja es cada movimiento", () => {
   it("solo el efectivo queda en la mano", () => {
