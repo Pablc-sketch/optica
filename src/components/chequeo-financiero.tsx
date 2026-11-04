@@ -19,8 +19,8 @@ const conceptos = [
   ...COSTOS.map(c => ({ valor: prefijoCosto(c.clave), nombre: c.titulo })),
 ];
 
-export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, historial }: {
-  movimientos: MovimientoRevision[]; operativos: OperativoPorPagar[]; hoy: string; inicial: string; historial: Evento[];
+export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, historial, registroInicial = '' }: {
+  movimientos: MovimientoRevision[]; operativos: OperativoPorPagar[]; hoy: string; inicial: string; historial: Evento[]; registroInicial?: string;
 }) {
   const router = useRouter();
   const [operativo, setOperativo] = useState(inicial);
@@ -28,7 +28,7 @@ export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, histo
   const [estado, setEstado] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
   const [pagina, setPagina] = useState(0);
-  const [editor, setEditor] = useState<{ movimiento: MovimientoRevision; nuevo: boolean } | null>(null);
+  const [editor, setEditor] = useState<{ movimiento: MovimientoRevision; nuevo: boolean } | null>(() => { const m = movimientos.find(m=>m.id===registroInicial); return m?{movimiento:m,nuevo:false}:null; });
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
   const [pendiente, iniciar] = useTransition();
@@ -79,13 +79,13 @@ export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, histo
         const d = diferenciaRevision(calculado,real);
         return <tr key={persona} className="border-t border-tinta/10"><th className="py-3 pr-3">{nombre}</th><td className="pr-3">{clp(calculado)}</td><td className="pr-3">{clp(real)}</td><td className={d.extra ? 'text-amber-800' : ''}>{d.extra ? `${clp(d.extra)} extra` : d.pendiente ? `${clp(d.pendiente)} ${persona === 'ahorro' ? 'sin separar' : 'pendiente'}` : 'Cuadra'}</td></tr>;
       })}
-    </tbody></table></div><p className="mt-2 text-xs text-tinta-suave">Registrado incluye movimientos por confirmar. El cálculo del reparto no cambia al corregir un pago.</p><Link href={`/operativos/${op.operativoId}/cierre`} className="mt-3 inline-block underline">Ver costos y reparto del operativo →</Link></section>}
-    <div className="flex flex-wrap gap-2"><button disabled={pendiente} onClick={() => nuevo()} className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Agregar pago o gasto omitido</button><button disabled={pendiente} onClick={() => nuevo(true)} className="rounded-xl border px-4 py-3 font-semibold">No aparté ahorro</button></div>
+    </tbody></table></div><p className="mt-2 text-xs text-slate-500">Registrado incluye movimientos por confirmar. El cálculo del reparto no cambia al corregir un pago.</p><Link href={`/operativos/${op.operativoId}/cierre`} className="mt-3 inline-block underline">Ver costos y reparto del operativo →</Link></section>}
+    <div className="flex flex-wrap gap-2"><Link href="/caja/nuevo" className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Registrar movimiento</Link><button disabled={pendiente} onClick={() => nuevo(true)} className="rounded-xl border px-4 py-3 font-semibold">No aparté ahorro</button></div>
     {editor && <EditorMovimiento key={editor.movimiento.id} {...editor} operativos={operativos} hoy={hoy} onCerrar={() => setEditor(null)} onGuardado={() => { setEditor(null); setAviso('Guardado y confirmado. Caja y pendientes actualizados.'); router.refresh(); }} />}
     {aviso && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">{aviso}</p>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-900">{error}</p>}
-    <div className="flex flex-col gap-3">{filas.slice(paginaActual*25,paginaActual*25+25).map(m => <article key={m.id} className="rounded-2xl bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold">{titulo(m)}{m.tabla === 'retiros_sueldo' && m.monto < 0 ? ' · aporte al negocio' : ''}</h2><p className="text-sm text-tinta-suave">{nombreOp(m.operativo_id)} · {fechaLegible(m.fecha)} · {origen(m.caja)}</p></div><b className="shrink-0 tabular-nums">{clp(m.monto)}</b></div>
+    <div className="flex flex-col gap-3">{filas.slice(paginaActual*25,paginaActual*25+25).map(m => <article key={m.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold">{titulo(m)}{m.tabla === 'retiros_sueldo' && m.monto < 0 ? ' · aporte al negocio' : ''}</h2><p className="text-sm text-slate-500">{nombreOp(m.operativo_id)} · {fechaLegible(m.fecha)} · {origen(m.caja)}</p></div><b className="shrink-0 tabular-nums">{clp(m.monto)}</b></div>
       {m.motivo && <p className="mt-1 text-sm">{m.motivo}</p>}
       <p className={`mt-2 text-sm ${m.confirmado_en ? 'text-emerald-800' : 'text-amber-800'}`}>{m.confirmado_en ? `Confirmado · ${new Date(m.confirmado_en).toLocaleString('es-CL',{ timeZone:'America/Santiago',dateStyle:'short',timeStyle:'short' })}` : 'Por confirmar'}{m.monto === 0 ? ' · sin salida de dinero' : ''}</p>
       <div className="mt-3 flex gap-2">{!m.confirmado_en && <button disabled={pendiente || !!editor} onClick={() => confirmar(m)} className="rounded-xl bg-emerald-50 px-4 py-2 font-semibold text-emerald-900">Confirmar</button>}<button disabled={pendiente || !!editor} onClick={() => { setAviso(''); setEditor({movimiento:m,nuevo:false}); }} className="rounded-xl border px-4 py-2 font-semibold">Corregir</button></div>
@@ -108,7 +108,7 @@ function EditorMovimiento({ movimiento, nuevo, operativos, hoy, onCerrar, onGuar
   const [pendiente,iniciar] = useTransition();
   const protegido = !nuevo && conceptoProtegido(movimiento);
   const patch = (v: Partial<MovimientoRevision>) => setM(a => ({...a,...v}));
-  return <form className="grid gap-3 rounded-2xl border-2 border-brand bg-white p-4" onSubmit={e => {
+  return <form className="grid gap-3 rounded-2xl border border-teal-400 bg-white p-4" onSubmit={e => {
     e.preventDefault(); setError('');
     iniciar(async () => { try {
       const r = await revisarMovimiento({movimiento:m,accion:nuevo?'crear':'guardar',motivo});
@@ -128,11 +128,11 @@ function EditorMovimiento({ movimiento, nuevo, operativos, hoy, onCerrar, onGuar
       <label className="text-sm">Categoría<select className={campo} value={m.categoria ?? 'otro'} onChange={e => patch({categoria:e.target.value})}><option value="otro">Otro</option><option value="arriendo">Arriendo</option><option value="compra_inventario">Inventario</option></select></label>
     </>}
     <div className="grid grid-cols-2 gap-3"><label className="text-sm">Fecha real<input className={campo} type="date" max={hoy} required value={m.fecha} onChange={e => patch({fecha:e.target.value})} /></label><label className="text-sm">Monto real (pesos)<input className={campo} type="number" min={m.tabla==='retiros_sueldo' && m.persona!=='ahorro'?undefined:0} step="1" required value={Number.isNaN(m.monto)?'':m.monto} onChange={e => patch({monto:e.target.value===''?NaN:Number(e.target.value)})} /></label></div>
-    <p className="text-xs text-tinta-suave">Si no ocurrió, deja $0. Un aporte al negocio se anota con monto negativo.</p>
+    <p className="text-xs text-slate-500">Si no ocurrió, deja $0. Un aporte al negocio se anota con monto negativo.</p>
     <label className="text-sm">De dónde salió<select className={campo} value={m.caja} onChange={e => patch({caja:e.target.value})}><option value="digital">Cuenta bancaria</option><option value="efectivo">Efectivo de la óptica</option>{m.tabla==='gastos_globales' && <option value="personal">Dinero personal de Pablo</option>}</select></label>
     <label className="text-sm">Motivo de la corrección<input className={campo} required maxLength={250} placeholder="Se pagaron $20.000 más / no se apartó ahorro…" value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
     <p className="text-sm">Guardar reemplaza este monto, confirma el registro y recalcula la caja. No transfiere dinero.</p>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-900">{error}</p>}
-    <div className="flex gap-2"><button disabled={pendiente} className="rounded-xl bg-brand px-4 py-3 font-semibold text-white">{pendiente?'Guardando…':'Guardar y confirmar'}</button><button type="button" disabled={pendiente} onClick={onCerrar} className="rounded-xl border px-4 py-3">Cancelar</button></div>
+    <div className="flex gap-2"><button disabled={pendiente} className="rounded-xl bg-teal-800 px-4 py-3 font-semibold text-white">{pendiente?'Guardando…':'Guardar y confirmar'}</button><button type="button" disabled={pendiente} onClick={onCerrar} className="rounded-xl border px-4 py-3">Cancelar</button></div>
   </form>;
 }
