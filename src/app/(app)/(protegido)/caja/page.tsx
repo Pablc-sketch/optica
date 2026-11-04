@@ -9,7 +9,7 @@ import { pendientePersonal } from '@/lib/caja-fuentes';
 import { crearGastoGlobal } from '@/lib/actions/gastos';
 import CuentaBancaria from '@/components/cuenta-bancaria';
 import CajaFormulario from '@/components/caja-formulario';
-import { resumirCaja } from '@/lib/caja';
+import { resumirCaja, disponibleTrasPendientes } from '@/lib/caja';
 import CajaHistorial from '@/components/caja-historial';
 import BotonEnviar from '@/components/boton-enviar';
 export const dynamic = 'force-dynamic';
@@ -37,12 +37,25 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
     pendiente: pendientePersonal(g.monto,(movimientos.data ?? []).filter(m => m.gasto_id === g.id)) })).filter(g => g.pendiente > 0).sort((a,b) => a.fecha.localeCompare(b.fecha));
   const deudaPersonal = personales.reduce((s,g) => s+g.pendiente,0);
   const p = pendientes.resumen;
+  const disponible = disponibleTrasPendientes(saldo, { pagos: p.total, devoluciones: deudaPersonal, ahorro: p.ahorro });
   const fecha = hoyEnChile();
   const filas = [['Pablo',p.personas.pablo],['Pamela',p.personas.madre],['Isadora',p.personas.isadora],['Fides',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos]] as const;
   return <div className="flex flex-col gap-5">
     <div className="flex items-center justify-between"><h1 className="text-2xl font-bold">Caja</h1><Link href="/" className="text-sm underline">Inicio</Link></div>
     {params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>}
     {error ? <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">No se pudo leer toda la caja. Recarga antes de registrar movimientos.</p> : <>
+      <section className="rounded-2xl bg-white p-5 shadow-sm" aria-labelledby="resumen-caja">
+        <h2 id="resumen-caja" className="text-lg font-bold">Después de pendientes y ahorro</h2>
+        <p className={`mt-2 text-3xl font-bold tabular-nums ${disponible.restante < 0 ? 'text-red-700' : 'text-emerald-800'}`}>{clp(disponible.restante)}</p>
+        <dl className="mt-3 grid gap-2 text-sm">
+          <div className="flex justify-between gap-3"><dt>Efectivo + cuenta según Lentia</dt><dd className="tabular-nums">{clp(disponible.total)}</dd></div>
+          <div className="flex justify-between gap-3 text-red-700"><dt>Por pagar y devolver</dt><dd className="tabular-nums">−{clp(disponible.porPagar)}</dd></div>
+          <div className="flex justify-between gap-3"><dt>Ahorro por separar</dt><dd className="tabular-nums">−{clp(disponible.ahorro)}</dd></div>
+        </dl>
+        <p className="mt-3 text-xs text-tinta-suave">Estimación con movimientos registrados y comisiones estimadas. No incluye ventas por cobrar. Comprueba el efectivo contado y el saldo de Mercado Pago abajo.</p>
+        {disponible.restante < 0 && <p className="mt-2 text-sm text-red-700">Faltan {clp(-disponible.restante)} para cubrir lo pendiente y separar el ahorro.</p>}
+        {pendientes.sinAsignar && <Link href="/pagos/revisar" className="mt-3 block text-sm font-semibold text-amber-900 underline">Hay pagos o aportes sin operativo: revísalos antes de dar el saldo por cuadrado.</Link>}
+      </section>
       <div className="grid items-start gap-4 lg:grid-cols-2">
       <CuentaBancaria tenantId={tenantId} obligaciones={p.total+deudaPersonal+p.ahorro} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito ?? 0)+(t?.entro_credito ?? 0),transferencias:(t?.entro_digital ?? 0)-(t?.entro_debito ?? 0)-(t?.entro_credito ?? 0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}} />
       <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-lg font-bold">Efectivo</h2><p className={`mt-2 text-4xl font-bold tabular-nums ${efectivo<0?'text-red-700':'text-emerald-800'}`}>{clp(efectivo)}</p><p className="text-xs text-tinta-suave">Saldo esperado según movimientos</p>
