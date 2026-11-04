@@ -9,3 +9,15 @@ Efectivo muestra entradas menos salidas según caja_global, junto al último con
 El historial reúne cobros no anulados, gastos, retiros/aportes/ahorro y las dos caras de un traslado entre efectivo y cuenta. Permite filtrar origen y entradas/salidas, y cargar más filas. Gastos personales se distinguen y no se confunden con salidas del negocio. Entradas en verde, salidas en rojo. La utilidad de operativos se identifica como calculada, incluyendo ventas por cobrar, distinta del saldo disponible.
 
 Sin cambios de esquema ni modificación automática de movimientos reales. Verificación: TypeScript, ESLint, pruebas de navegación, caja y demás lógica; compilación de producción. Falta una revisión visual dentro de una sesión autenticada del usuario.
+
+## Panel financiero por tareas (04/11/2026)
+
+Caja se organiza en Resumen, Movimientos, Pendientes y Cuadrar. Resumen mantiene saldos globales de efectivo y cuenta, cobros pendientes por venta (sin compensar sobrepagos entre clientes), ahorro registrado y restante tras obligaciones. Movimientos y Pendientes admiten filtro por operativo; los traslados entre cuentas permanecen globales. El total de la óptica se etiqueta explícitamente para no confundirlo con el operativo seleccionado. Cuadrar reúne conteo físico y saldo externo, sin ajustar movimientos automáticamente.
+
+Referencias funcionales públicas: Chipax (separación entre flujo de caja y resultado operacional), Quipu (realizado frente a pendiente), Usekora (arqueo y obligaciones con proveedores ópticos). Se adapta la organización al modelo de operativos, sin copiar código ni afirmar integraciones nuevas.
+
+- https://ayuda.chipax.com/es/articles/2869349-que-es-el-flujo-de-caja-como-se-construye-y-para-que-me-sirve
+- https://getquipu.com/es/gestion-tesoreria
+- https://www.usekora.cl/optica
+
+Pruebas de pantalla con datos ficticios: aislamiento de vistas y filtros, faltantes, ahorro, sobrepagos y manejo de error. No se modifican datos de negocio ni el esquema de la base.
