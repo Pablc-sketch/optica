@@ -57,28 +57,26 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
     {params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>}
     {error ? <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">No se pudo leer toda la caja. Recarga antes de registrar movimientos.</p> : <>
       {vista==='resumen' && <>
-      <div className="grid grid-cols-2 gap-3"><Link href="/caja?ver=pendientes" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Me deben · clientes</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b></Link><div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Ahorro registrado</p><b className="text-2xl text-emerald-800 tabular-nums">{clp(ahorroSeparado)}</b></div></div>
-      <section className="rounded-2xl bg-white p-5 shadow-sm" aria-labelledby="resumen-caja">
-        <h2 id="resumen-caja" className="text-lg font-bold">Después de pendientes y ahorro</h2>
-        <p className={`mt-2 text-3xl font-bold tabular-nums ${disponible.restante < 0 ? 'text-red-700' : 'text-emerald-800'}`}>{clp(disponible.restante)}</p>
-        <dl className="mt-3 grid gap-2 text-sm">
-          <div className="flex justify-between gap-3"><dt>Efectivo + cuenta según Lentia</dt><dd className="tabular-nums">{clp(disponible.total)}</dd></div>
-          <div className="flex justify-between gap-3 text-red-700"><dt>Por pagar y devolver</dt><dd className="tabular-nums">−{clp(disponible.porPagar)}</dd></div>
-          <div className="flex justify-between gap-3"><dt>Ahorro por separar</dt><dd className="tabular-nums">−{clp(disponible.ahorro)}</dd></div>
-        </dl>
-        <p className="mt-3 text-xs text-tinta-suave">Estimación con movimientos registrados y comisiones estimadas. No incluye ventas por cobrar. Comprueba el efectivo contado y el saldo de Mercado Pago abajo.</p>
-        {disponible.restante < 0 && <p className="mt-2 text-sm text-red-700">Faltan {clp(-disponible.restante)} para cubrir lo pendiente y separar el ahorro.</p>}
-        {pendientes.sinAsignar && <Link href="/pagos/revisar" className="mt-3 block text-sm font-semibold text-amber-900 underline">Hay pagos o aportes sin operativo: revísalos antes de dar el saldo por cuadrado.</Link>}
-      </section>
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-      <CuentaBancaria tenantId={tenantId} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito ?? 0)+(t?.entro_credito ?? 0),transferencias:(t?.entro_digital ?? 0)-(t?.entro_debito ?? 0)-(t?.entro_credito ?? 0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}} />
-      <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-lg font-bold">Efectivo</h2><p className={`mt-2 text-4xl font-bold tabular-nums ${efectivo<0?'text-red-700':'text-emerald-800'}`}>{clp(efectivo)}</p><p className="text-xs text-tinta-suave">Saldo esperado según movimientos</p>
-        <div className="mt-3 flex justify-between gap-3 text-sm"><span className="text-emerald-800">Cobros +{clp(saldo.entroEfectivo)}</span><span className="text-red-700">Salidas netas {clp(saldo.salioEfectivo)}</span></div>
-        {ultimoConteo ? <div className="mt-4 rounded-xl bg-crema p-3"><p>Último efectivo contado: <b>{clp(ultimoConteo.contado)}</b></p><p className={ultimoConteo.contado===ultimoConteo.esperado?'text-emerald-800':'text-red-700'}>Diferencia al contar: <b>{clp(ultimoConteo.contado-ultimoConteo.esperado)}</b></p><p className="text-xs text-tinta-suave">{new Date(ultimoConteo.created_at).toLocaleString('es-CL',{timeZone:'America/Santiago',dateStyle:'short',timeStyle:'short'})} · esperado entonces {clp(ultimoConteo.esperado)}</p></div> : <p className="mt-3 text-sm text-amber-900">Falta contar el efectivo para comprobar el saldo.</p>}
-        <Link href="/caja?ver=cuadrar" className="mt-4 block rounded-xl border px-3 py-3 text-center font-semibold">Contar y cuadrar efectivo →</Link>
-      </section></div>
-      {(cobros.data ?? []).some(c=>!c.medio_pago) && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Hay cobros antiguos sin medio de pago, incluidos como efectivo. Revísalos en el historial si hay diferencias.</p>}
-      <div className="grid grid-cols-2 gap-3"><div className="rounded-2xl bg-emerald-50 p-4"><p className="text-sm">Utilidad calculada · operativos</p><b className={pendientes.utilidadOperativos<0?'text-2xl text-red-700':'text-2xl text-emerald-800'}>{clp(pendientes.utilidadOperativos)}</b><p className="mt-1 text-xs text-tinta-suave">Ventas menos costos del operativo. Incluye ventas por cobrar; no es saldo de caja.</p></div><Link href="/pagos/revisar" className="flex items-center justify-center rounded-2xl bg-tinta p-4 text-center font-semibold text-white">Revisar pagos y gastos →</Link></div>
+      <div className="grid items-start gap-4 xl:grid-cols-3">
+        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-sm font-semibold text-tinta-suave">Efectivo registrado</h2><p className={`mt-3 text-3xl font-bold tabular-nums ${efectivo<0?'text-red-700':'text-tinta'}`}>{clp(efectivo)}</p><p className="mt-2 text-xs text-tinta-suave">Esperado según movimientos</p>{ultimoConteo ? <p className="mt-3 text-sm">Último conteo: <b>{clp(ultimoConteo.contado)}</b><span className={`block ${ultimoConteo.contado===ultimoConteo.esperado?'text-emerald-800':'text-red-700'}`}>Diferencia entonces: {clp(ultimoConteo.contado-ultimoConteo.esperado)}</span></p> : <p className="mt-3 text-sm text-amber-900">Por contar</p>}</section>
+        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-sm font-semibold text-tinta-suave">Cuenta bancaria · registrada</h2><p className={`mt-3 text-3xl font-bold tabular-nums ${saldo.hayDigital<0?'text-red-700':'text-tinta'}`}>{clp(saldo.hayDigital)}</p><p className="mt-2 text-xs text-tinta-suave">Mercado Pago + transferencias · comisiones estimadas</p><Link href="/caja?ver=cuadrar" className="mt-3 inline-block text-sm font-semibold underline">Comprobar saldo bancario →</Link></section>
+        <section className={`rounded-2xl p-5 shadow-sm ${disponible.restante<0?'bg-red-50':'bg-emerald-50'}`} aria-labelledby="resumen-caja"><h2 id="resumen-caja" className="text-sm font-semibold">Disponible tras pendientes</h2><p className={`mt-3 text-3xl font-bold tabular-nums ${disponible.restante<0?'text-red-700':'text-emerald-800'}`}>{clp(disponible.restante)}</p><p className="mt-2 text-xs">{clp(disponible.total)} − {clp(disponible.porPagar)} por pagar − {clp(disponible.ahorro)} ahorro</p><p className="mt-3 text-xs text-tinta-suave">Estimación registrada, sin ventas por cobrar.</p></section>
+      </div>
+      <nav aria-label="Acciones de caja" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Link href="/cobros" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">+ Cobrar venta</Link>
+        <Link href="/caja?ver=movimientos#nuevo-gasto" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">− Gasto</Link>
+        <Link href="/pagos" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">Registrar pago</Link>
+        <Link href="/caja?ver=movimientos#traspasos" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">Transferir entre cuentas</Link>
+      </nav>
+      <Link href="/caja?ver=cuadrar" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-50 p-4 text-amber-900"><span><b className="block">Conciliar caja</b><span className="text-sm">Confirma el efectivo contado y el saldo bancario.</span></span><span className="text-sm font-semibold">Revisar saldos →</span></Link>
+      {pendientes.sinAsignar && <Link href="/pagos/revisar" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 underline">Hay pagos o aportes sin operativo. Revisar →</Link>}
+      {(cobros.data ?? []).some(c=>!c.medio_pago) && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Hay cobros sin medio de pago, incluidos como efectivo. Revísalos si hay diferencias.</p>}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <CajaHistorial operativos={operativos.data ?? []} cobros={(cobros.data ?? []).map(c=>({...c,operativo_id:operativoPorVenta.get(c.venta_id) ?? null}))} gastos={gastos.data ?? []} retiros={retiros.data ?? []} traslados={movimientos.data ?? []} />
+        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Por pagar</h2><p className="mt-2 text-sm text-red-700">Compromisos pendientes · {clp(p.total+deudaPersonal)}</p><dl className="mt-4 divide-y divide-tinta/10">{filas.filter(([,monto])=>monto>0).map(([nombre,monto])=><div key={nombre} className="flex justify-between gap-3 py-3 text-sm"><dt>{nombre}</dt><dd className="font-semibold tabular-nums text-red-700">{clp(monto)}</dd></div>)}{deudaPersonal>0 && <div className="flex justify-between gap-3 py-3 text-sm"><dt>Devolver a Pablo</dt><dd className="font-semibold text-red-700">{clp(deudaPersonal)}</dd></div>}</dl><Link href="/caja?ver=pendientes" className="mt-3 block text-sm font-semibold underline">Ver por operativo →</Link><div className="mt-5 border-t border-tinta/10 pt-4"><h3 className="text-sm">Utilidad calculada · operativos</h3><p className={`mt-2 text-3xl font-bold ${pendientes.utilidadOperativos<0?'text-red-700':'text-emerald-800'}`}>{clp(pendientes.utilidadOperativos)}</p><p className="mt-2 text-xs text-tinta-suave">Ventas menos costos. Incluye ventas por cobrar; no es saldo disponible.</p><Link href="/pagos/revisar" className="mt-4 block rounded-xl border px-3 py-3 text-center font-semibold">Ahorro, pagos y retiros →</Link></div></section>
+      </div>
+      <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b></Link><Link href="/pagos/revisar" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Ahorro registrado</p><b className="text-2xl text-emerald-800 tabular-nums">{clp(ahorroSeparado)}</b></Link></div>
+      <p className="text-xs text-tinta-suave">Los traspasos no son ingresos. Los pagos realizados reducen el saldo.</p>
       </>}
       {vista==='pendientes' && <>
       <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b><p className="mt-2 text-sm underline">Gestionar cobros →</p></Link><Link href="/pagos/revisar" className="rounded-2xl bg-tinta p-4 font-semibold text-white">Confirmar o corregir pagos, gastos y ahorro →</Link></div>
@@ -98,7 +96,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       </details>
       </>}
       {vista==='movimientos' && <>
-      <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold text-red-700">Gastos</h2>
+      <section id="nuevo-gasto" className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold text-red-700">Gastos</h2>
         <details className="mt-2"><summary className="cursor-pointer py-2 font-semibold">Agregar gasto general ya pagado</summary>
           <form action={crearGastoGlobal} className="mt-3 grid gap-3"><input type="hidden" name="volver_caja" value="1" /><input type="hidden" name="id" value={randomUUID()} />
             <label className="text-sm">Qué se pagó<input name="descripcion" placeholder="Arriendo del equipo, bandejas…" maxLength={250} required className={campo} /></label>
@@ -110,7 +108,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
           </form>
         </details>
       </section>
-      <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Trasladar entre efectivo y cuenta</summary><p className="my-3 text-sm text-tinta-suave">Registra un depósito o retiro que ya hiciste. Lentia no mueve dinero.</p>
+      <details id="traspasos" open className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Trasladar entre efectivo y cuenta</summary><p className="my-3 text-sm text-tinta-suave">Registra un depósito o retiro que ya hiciste. Lentia no mueve dinero.</p>
         <CajaFormulario><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="caja" value="digital" />
           <label className="text-sm">Movimiento<select name="tipo" className={campo}><option value="deposito">Depositaste efectivo en Mercado Pago</option><option value="retiro">Retiraste efectivo de Mercado Pago</option></select></label>
           <label className="text-sm">Monto<input type="number" name="monto" min="1" step="1" required className={campo} /></label>
