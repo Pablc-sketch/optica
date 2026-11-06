@@ -192,7 +192,7 @@ export default async function OperativosPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Operativos</h1>
         <div className="flex flex-wrap gap-2">
-          <Link href="/operativos/calendario" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
+          <Link href="/operativos/agenda" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
             📅 Calendario
           </Link>
           <Link href="/operativos/contactos" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">

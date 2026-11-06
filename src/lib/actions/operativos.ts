@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearTelefono } from "@/lib/formato";
 import { requerirPerfil } from "@/lib/autorizacion";
+import { RUTA_AGENDA, urlAgenda } from "@/lib/agenda";
 
 const TIPOS_VENUE = [
   "condominio",
@@ -82,6 +83,7 @@ export async function crearOperativo(formData: FormData) {
     })
     .select("id")
     .single();
+  if (error?.code === "23P01") redirect(urlAgenda(fecha, { error: "cruce" }));
   if (error) throw error;
 
   // Quien consiguió el lugar es el primer dirigente de su agenda. Se anota
@@ -101,6 +103,8 @@ export async function crearOperativo(formData: FormData) {
 
   revalidatePath("/operativos");
   revalidatePath("/operativos/calendario");
+  revalidatePath(RUTA_AGENDA);
+  revalidatePath("/");
   revalidatePath("/operativos/contactos");
 }
 
@@ -132,11 +136,14 @@ export async function actualizarOperativo(formData: FormData) {
       notas: String(formData.get("notas") ?? "").trim() || null,
     })
     .eq("id", id);
+  if (error?.code === "23P01") redirect(urlAgenda(fecha, { error: "cruce" }));
   if (error) throw error;
 
   revalidatePath(`/operativos/${id}`);
   revalidatePath("/operativos");
   revalidatePath("/operativos/calendario");
+  revalidatePath(RUTA_AGENDA);
+  revalidatePath("/");
   revalidatePath("/ventas");
 }
 
@@ -147,10 +154,13 @@ export async function cambiarEstadoOperativo(formData: FormData) {
   if (!id || !["planificado", "realizado", "cancelado"].includes(estado)) return;
 
   const { error } = await supabase.from("operativos").update({ estado }).eq("id", id);
+  if (error?.code === "23P01") redirect(RUTA_AGENDA + "?error=cruce");
   if (error) throw error;
 
   revalidatePath("/operativos");
   revalidatePath("/operativos/calendario");
+  revalidatePath(RUTA_AGENDA);
+  revalidatePath("/");
 }
 
 function parsearMonto(valor: FormDataEntryValue | null): number {
