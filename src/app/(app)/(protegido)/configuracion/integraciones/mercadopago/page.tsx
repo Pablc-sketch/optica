@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { exigirRolPagina } from '@/lib/autorizacion';
@@ -27,7 +28,7 @@ export default async function ArchivoMercadoPago({ searchParams }: { searchParam
   const enlacePagina = (n: number) => `?pagina=${n}${operacion ? `&operacion=${operacion}` : ''}`;
   return <div className="mx-auto flex max-w-3xl flex-col gap-4">
     <Link href="/caja/mercadopago" className="text-sm underline">← Caja Mercado Pago</Link>
-    <h1 className="text-xl font-bold">Vouchers · Mercado Pago</h1>
+    <CabeceraPagina seccion="Integraciones" titulo="Vouchers de Mercado Pago" />
     <p className="text-sm text-tinta-suave">Busca la operación y coteja el original para confirmar al paciente.</p>
     <section className="rounded-2xl bg-white p-4 shadow-sm text-sm">
       <p>Pagos guardados automáticamente cada 5 min.</p>

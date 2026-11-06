@@ -1114,18 +1114,19 @@ export default function PuntoDeVenta({
           pueden tocar para volver directo a cualquiera de ellos (no solo
           al anterior) sin perder lo ya cargado — el "‹" y el borde marcado
           avisan que se puede tocar. */}
-      <ol className="flex items-center gap-1 overflow-x-auto">
+      <ol aria-label="Pasos de la venta" className="grid grid-cols-2 gap-1.5 min-[440px]:grid-cols-4">
         {PASOS.map((titulo, i) => {
           const actual = i === paso;
           const hecho = i < paso;
           const color = COLOR_PASO[i];
           return (
-            <li key={titulo} className="flex flex-1 items-center gap-1">
+            <li key={titulo} className="min-w-0">
               <button
                 type="button"
                 onClick={() => i <= paso && setPaso(i)}
                 disabled={i > paso}
-                className={`flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2.5 text-sm font-semibold transition ${
+                aria-current={actual ? "step" : undefined}
+                className={`flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold transition sm:text-sm ${
                   actual
                     ? color.pill
                     : hecho

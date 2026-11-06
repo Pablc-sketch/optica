@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -119,7 +120,7 @@ export default async function ConfiguracionPage() {
   if (!esAdmin) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-bold">Configuración</h1>
+        <CabeceraPagina seccion="Administración" titulo="Configuración" />
         {perfilProfesional}
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
           Solo el administrador de la óptica puede cambiar el resto de la configuración. Si
@@ -141,7 +142,7 @@ export default async function ConfiguracionPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-bold">Configuración</h1>
+      <CabeceraPagina seccion="Administración" titulo="Configuración" />
       <div className="flex flex-wrap gap-2"><Link href="/precios" className="rounded-xl border px-4 py-3">Precios</Link><Link href="/configuracion/integraciones" className="rounded-xl border px-4 py-3">Integraciones</Link><Link href="/suscripcion" className="rounded-xl border px-4 py-3">Suscripción</Link></div>
       {perfilProfesional}
 

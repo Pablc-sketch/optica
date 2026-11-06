@@ -1,7 +1,4 @@
-// Tarjeta de número/resumen reutilizable — antes cada pantalla (Inicio,
-// Operativos, Reportes) definía su propia versión casi idéntica en texto
-// plano. Una sola versión, con más vida: barra superior en degradado y
-// sombra suave que se levanta un poco al pasar el mouse.
+// Tarjeta de resumen compartida por las vistas de operación y reportes.
 export default function Tarjeta({
   titulo,
   valor,
@@ -16,8 +13,8 @@ export default function Tarjeta({
   icono?: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-tinta/10 bg-white p-4 shadow-[0_1px_2px_rgba(23,21,15,0.06)] transition hover:shadow-[0_10px_28px_-12px_rgba(23,21,15,0.25)]">
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-tinta-suave">
+    <div className="min-w-0 rounded-2xl bg-white p-4 shadow-sm sm:p-5">
+      <p className="flex items-center gap-1.5 text-sm font-semibold text-tinta-suave">
         {icono && <span className="text-base">{icono}</span>}
         {titulo}
       </p>

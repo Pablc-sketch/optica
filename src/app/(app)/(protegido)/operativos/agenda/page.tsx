@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -61,10 +62,9 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
   const tipo = editar?.tipo ?? (editarBloque || modo === "disponible" ? "disponible" : "propio");
   const registro = editar ?? editarBloque;
 
-  return <div className="mx-auto flex max-w-2xl flex-col gap-4">
+  return <div className={`mx-auto flex flex-col gap-4 ${mostrarFormulario ? "max-w-3xl" : ""}`}>
     <div>
-      <Link href="/" className="text-sm font-semibold text-brand-dark">← Inicio</Link>
-      <h1 className="mt-2 text-3xl font-bold">Calendario</h1>
+      <CabeceraPagina seccion="En terreno" titulo="Calendario" />
       <p className="text-sm text-tinta-suave">Disponibilidad · {nombreOptica}</p>
     </div>
     {error ? <p role="alert" className="rounded-xl bg-amber-100 p-4 text-sm">No se pudo cargar la agenda. Vuelve a intentar.</p> : mostrarFormulario ? (
@@ -84,10 +84,12 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
         {Object.entries({ propio: nombreOptica, externo: "Otras ópticas", disponible: "Disponible", pendiente: "Por confirmar" })
           .map(([tipo, texto]) => <span key={tipo} className={`rounded-full px-2.5 py-1 ${MARCAS[tipo as keyof typeof MARCAS]}`}>{texto}</span>)}
       </div>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <section aria-label="Mes de la agenda" className="rounded-2xl bg-white p-3 shadow-sm sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h2 className="font-bold capitalize">{nombreMes(mes)}</h2>
           <div className="flex gap-1.5">
+            <Link href={urlAgenda(hoy)} className="grid min-h-10 place-items-center rounded-lg bg-crema px-3 text-sm font-semibold">Hoy</Link>
             <Link aria-label="Mes anterior" href={`${RUTA_AGENDA}?mes=${mesDesplazado(mes, -1)}`} className="grid min-h-10 min-w-10 place-items-center rounded-lg bg-crema">‹</Link>
             <Link aria-label="Mes siguiente" href={`${RUTA_AGENDA}?mes=${mesDesplazado(mes, 1)}`} className="grid min-h-10 min-w-10 place-items-center rounded-lg bg-crema">›</Link>
           </div>
@@ -103,15 +105,15 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
             const etiquetas = marcas.map(m => ({ propio: nombreOptica, externo: "Otras ópticas", disponible: "Disponible", pendiente: "Por confirmar" }[m]));
             return <Link key={d} href={urlAgenda(d)} aria-current={d === dia ? "date" : undefined}
               aria-label={[`${fechaLegible(d)}${d === hoy ? ", hoy" : ""}`, ...etiquetas].join(", ")}
-              className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-sm font-semibold ${d === dia ? "bg-sky-800 text-white" : primero ? MARCAS[primero] : "hover:bg-crema"} ${d === hoy ? "ring-1 ring-inset ring-brand" : ""}`}>
+              className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-sm font-semibold xl:min-h-14 ${d === dia ? "bg-sky-800 text-white" : primero ? MARCAS[primero] : "hover:bg-crema"} ${d === hoy ? "ring-1 ring-inset ring-brand" : ""}`}>
               {Number(d.slice(8))}
               <span className="flex gap-0.5" aria-hidden>{marcas.map(m =>
                 <span key={m} className={`size-1.5 rounded-full ${{ propio: "bg-orange-500", externo: "bg-teal-500", disponible: "bg-green-500", pendiente: "bg-amber-500" }[m]}`} />)}</span>
             </Link>;
           })}
         </div>
+        <p className="mt-3 text-xs text-tinta-suave">Sin marca verde, la disponibilidad no está confirmada.</p>
       </section>
-      <p className="text-xs text-tinta-suave">Sin marca verde, la disponibilidad no está confirmada.</p>
       <section className="rounded-2xl bg-white p-4 shadow-sm">
         <h2 className="font-bold">{fechaConDia(dia)}</h2>
         {delDia.length === 0 && <p className="mt-2 text-sm text-tinta-suave">Sin operativos agendados para este día.</p>}
@@ -134,6 +136,7 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
           </div>)}
         </details>}
       </section>
+      </div>
       {libres.length > 0 && <details id="disponibilidad" open={param("ver") === "disponibilidad"} className="scroll-mt-32 rounded-xl bg-green-50 p-3 text-green-950">
         <summary className="cursor-pointer text-sm font-bold">Disponibilidad del mes</summary>
         <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">

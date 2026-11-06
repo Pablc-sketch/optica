@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
@@ -48,7 +49,7 @@ export default async function HistorialVentas() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <h1 className="text-2xl font-bold">Historial de ventas</h1>
+        <CabeceraPagina seccion="Operación" titulo="Historial de ventas" />
         <Link href="/ventas" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark">
           ＋ Nueva venta
         </Link>

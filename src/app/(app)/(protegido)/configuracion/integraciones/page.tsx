@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from 'next/link';
 import { exigirRolPagina } from '@/lib/autorizacion';
 import { simpleApiConfigurada } from '@/lib/simpleapi';
@@ -8,7 +9,7 @@ export default async function Integraciones() {
   const conectada = mercadoPagoConfigurado(tenantId);
   return <div className="mx-auto flex max-w-2xl flex-col gap-4">
     <Link href="/configuracion" className="text-sm underline">← Configuración</Link>
-    <h1 className="text-2xl font-bold">Cuentas y boletas</h1>
+    <CabeceraPagina seccion="Administración" titulo="Cuentas y boletas" />
     <section className="rounded-2xl bg-white p-5 shadow-sm">
       <h2 className="text-lg font-bold">Mercado Pago</h2>
       <p className="mt-1 text-sm text-tinta-suave">{conectada ? 'Cuenta de la óptica conectada · pagos cada 5 min' : 'Pendiente de vincular la cuenta de la óptica'}</p>

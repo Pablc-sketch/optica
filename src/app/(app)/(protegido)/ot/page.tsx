@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { avanzarOT, retrocederOT } from "@/lib/actions/ot";
@@ -65,7 +66,7 @@ export default async function TableroOT() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Órdenes de trabajo</h1>
+        <CabeceraPagina seccion="Atención" titulo="Órdenes de trabajo" />
         <Link href="/ot/buscar" className="text-sm font-medium text-brand-dark hover:underline">
           Buscar historial
         </Link>

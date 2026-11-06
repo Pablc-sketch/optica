@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { exigirRolPagina } from '@/lib/autorizacion';
@@ -34,7 +35,7 @@ export default async function CajaMercadoPago({ searchParams }: { searchParams: 
   const enlace = (cambio: Partial<typeof f>) => '/caja/mercadopago?' + new URLSearchParams({ ...f, pagina:'1',...cambio, ...('pagina' in cambio ? {pagina:String(cambio.pagina)} : {}) } as Record<string,string>).toString();
   return <div className="flex flex-col gap-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h1 className="text-2xl font-bold">Cuenta bancaria (Mercado Pago)</h1><Link href="/caja" className="mt-1 inline-block text-sm underline">Efectivo, gastos y pagos pendientes →</Link></div>
+      <div><CabeceraPagina seccion="Cuenta bancaria" titulo="Mercado Pago" /><Link href="/caja" className="mt-1 inline-block text-sm underline">Efectivo, gastos y pagos pendientes →</Link></div>
       <ActualizarCajaMercadoPago />
     </div>
     <section className="rounded-2xl bg-tinta p-5 text-white shadow-sm" aria-label="Saldo de la cuenta">

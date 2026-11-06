@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import PuntoDeVenta from "./pos";
 import { leerSugerenciasExtra } from "@/lib/sugerencias";
+import CabeceraPagina from "@/components/cabecera-pagina";
 
 export default async function VentasPage({ searchParams }: { searchParams: Promise<{ op?: string }> }) {
   const { op } = await searchParams;
@@ -76,21 +77,27 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   }
 
   const contexto = operativosRes.data?.find(o=>o.id===op);
-  if (op && !contexto) return <div className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-xl font-bold">Operativo no disponible</h1><p className="mt-1 text-sm">Revisa la agenda antes de registrar esta venta.</p><Link href="/operativos" className="mt-3 inline-block underline">Volver a operativos</Link></div>;
+  const piloto = esPilotoTerreno(perfilRes.data?.tenant_id);
+  if (op && !contexto) return <div className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-xl font-bold">Operativo no disponible</h1><p className="mt-1 text-sm">Revisa la agenda antes de registrar esta venta.</p><Link href={piloto ? "/agenda/equipos" : "/operativos"} className="mt-3 inline-block underline">Volver a operativos</Link></div>;
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="mb-4 text-xl font-bold">Punto de venta</h1>
+    <div className="flex flex-col gap-4">
+      <CabeceraPagina seccion={contexto ? "En terreno" : "Operación"} titulo="Punto de venta" acciones={
+        <>
+          <Link href="/cobros" className="rounded-xl bg-white px-3 py-2.5 text-sm font-semibold shadow-sm hover:bg-sky-50">Cobros</Link>
+          <Link href="/ventas/historial" className="rounded-xl bg-white px-3 py-2.5 text-sm font-semibold shadow-sm hover:bg-sky-50">Historial de ventas</Link>
+        </>
+      } />
+      <div className="space-y-3">
         {(pacientesRes.count ?? 0) > (pacientesRes.data?.length ?? 0) && (
           <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900">
             Si no aparece, búscalo en Pacientes.
           </p>
         )}
-        {contexto && <p className="mb-3 rounded-xl bg-sky-50 p-3 text-sm"><b>Venta en terreno:</b> {contexto.nombre}</p>}
+        {contexto && <p className="rounded-xl bg-sky-100 p-3 text-sm text-sky-950"><b>Operativo</b> · {contexto.nombre}</p>}
         <PuntoDeVenta
           key={contexto?.id ?? "sucursal"}
           operativoInicial={contexto?.id}
-          sugerirOperativoPorReceta={!esPilotoTerreno(perfilRes.data?.tenant_id)}
+          sugerirOperativoPorReceta={!piloto}
           pacientes={pacientesRes.data ?? []}
           productos={productosRes.data ?? []}
           costos={costosRes.data ?? []}
@@ -112,15 +119,6 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
           comisionDebitoPct={Number(tenantRes.data?.comision_debito_pct ?? 0)}
           comisionCreditoPct={Number(tenantRes.data?.comision_credito_pct ?? 0)}
         />
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Link href="/cobros" className="rounded-xl bg-white px-4 py-3 text-sm font-semibold shadow-sm hover:bg-crema">
-          💵 Cobros y entregas →
-        </Link>
-        <Link href="/ventas/historial" className="rounded-xl bg-white px-4 py-3 text-sm font-semibold shadow-sm hover:bg-crema">
-          Historial de ventas (editar, anular) →
-        </Link>
       </div>
     </div>
   );

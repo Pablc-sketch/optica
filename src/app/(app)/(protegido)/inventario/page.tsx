@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import BotonEnviar from "@/components/boton-enviar";
 import Link from "next/link";
 import { leerTodas } from "@/lib/leer-todas";
@@ -40,7 +41,7 @@ export default async function InventarioPage({
   const { data: sucursales, error: sucursalesError } = await supabase.from("sucursales").select("id, nombre").order("nombre");
   if (sucursalesError) throw new Error("No se pudieron cargar las sucursales");
   if (!sucursales?.length) return <div className="rounded-2xl bg-white p-5 shadow-sm">
-    <h1 className="text-xl font-bold">Inventario</h1>
+    <CabeceraPagina seccion="Administración" titulo="Inventario" />
     <p className="mt-2 text-sm text-tinta-suave">Agrega una sucursal para registrar stock.</p>
     <Link href="/configuracion" className="mt-3 inline-block rounded-xl bg-brand px-4 py-2.5 font-semibold text-white">Configurar sucursal</Link>
   </div>;
@@ -76,7 +77,7 @@ export default async function InventarioPage({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Inventario</h1>
+        <CabeceraPagina seccion="Administración" titulo="Inventario" />
         {sucursales && sucursales.length > 1 && (
           <form action="/inventario" className="flex items-center gap-2">
             <select

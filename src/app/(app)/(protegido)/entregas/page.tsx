@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fechaLegible } from "@/lib/fechas";
@@ -71,7 +72,7 @@ export default async function Entregas() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold">Entrega</h1>
+          <CabeceraPagina seccion="Operación" titulo="Entregas" />
           <p className="text-sm text-tinta-suave">
             {res.error ? "Entregas no disponibles" : totalFaltan === 0 ? "Todo entregado" : `${totalListos} listos · ${totalFaltan - totalListos} en laboratorio`}
           </p>

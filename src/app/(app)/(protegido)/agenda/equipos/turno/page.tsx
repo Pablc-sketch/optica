@@ -8,6 +8,7 @@ import { ROLES_AGENDA,GASTOS_AGENDA,uuidAgenda,type Presupuesto,type RecursoAgen
 import { fechaValidaDocumento } from '@/lib/fecha-documentos';
 import { hoyEnChile } from '@/lib/fechas';
 import FormularioAgenda from '@/components/formulario-agenda';
+import CabeceraPagina from '@/components/cabecera-pagina';
 import { leerTodas } from '@/lib/leer-todas';
 
 const campo = 'w-full rounded-xl border bg-white px-3 py-2.5 text-base';
@@ -31,7 +32,7 @@ export default async function EditarTurno({ searchParams }: {searchParams:Promis
   const fecha = op?.fecha ?? (fechaValidaDocumento(p.dia) ? p.dia : hoyEnChile());
   return <div className="mx-auto max-w-3xl space-y-4">
     <Link href={'/agenda/equipos?mes='+fecha.slice(0,7)+'&dia='+fecha} className="text-sm underline">← Agenda de equipos</Link>
-    <h1 className="text-2xl font-bold">{op ? 'Editar operativo' : 'Agendar operativo'}</h1>
+    <CabeceraPagina seccion="En terreno" titulo={op ? 'Editar operativo' : 'Agendar operativo'} />
     {faltan.length>0 ? <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Agrega al menos una persona de cada rol y un kit.</p><Link href="/agenda/equipos/recursos" className="mt-3 inline-block rounded-xl bg-brand px-4 py-2 font-semibold text-white">Configurar personal y kits</Link></div>
     : <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-5"><FormularioAgenda accion={guardarTurno} etiqueta="Guardar operativo">
       <input name="id" type="hidden" value={op?.id ?? randomUUID()} />
@@ -46,7 +47,7 @@ export default async function EditarTurno({ searchParams }: {searchParams:Promis
         <label className="min-w-0 text-sm font-medium">Término<input type="time" name="fin" defaultValue={op?.hora_fin?.slice(0,5) ?? '13:00'} required className={campo} /></label>
         <label className="min-w-0 text-sm font-medium">Último día (opcional)<input type="date" name="fecha_fin" defaultValue={op?.fecha_fin ?? ''} className={campo} /></label>
       </div>
-      <h2 className="pt-2 font-bold">Equipo asignado</h2>
+      <h2 className="border-t border-tinta/10 pt-3 font-bold">Personal y kit</h2>
       <div className="grid grid-cols-2 gap-3">
         {Object.entries(ROLES_AGENDA).map(([k,v])=><label key={k} className="min-w-0 text-sm font-medium">{v}
           <select className={campo} required name={k} defaultValue={turno?.[(k+'_id') as Exclude<keyof Turno,'presupuesto'>] ?? ''}>

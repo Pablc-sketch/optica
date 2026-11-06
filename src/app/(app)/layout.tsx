@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { cerrarSesion } from "@/lib/actions/auth";
 import EstadoSync from "@/components/estado-sync";
+import Icono from "@/components/icono";
 import NavLinks from "@/components/nav-links";
 import BarraCarga from "@/components/barra-carga";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
@@ -90,40 +91,40 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="app-marco min-h-dvh lg:grid lg:grid-cols-[13.25rem_minmax(0,1fr)]">
       <BarraCarga />
       <a href="#contenido" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-white focus:px-4 focus:py-3 focus:text-tinta">Ir al contenido</a>
-      <header className="sticky top-0 z-10 bg-tinta text-white shadow-[0_6px_20px_-12px_rgba(0,0,0,0.6)] print:hidden">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <Link href="/" className="flex items-center gap-2.5">
+      <header className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 bg-sidebar px-3 pb-1.5 pt-2 text-white sm:px-4 lg:flex lg:h-dvh lg:flex-col lg:items-stretch lg:gap-5 lg:overflow-y-auto lg:overscroll-contain lg:pb-4 lg:pt-5 print:hidden">
+          <Link href="/" className="flex min-w-0 items-center gap-2.5 rounded-lg py-1 lg:px-1">
             {logoOptica ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoOptica} alt="" width={36} height={36} className="h-9 w-9 rounded-xl bg-white object-contain p-0.5" />
             ) : (
               <Image src="/logo.svg" alt="" width={36} height={36} className="rounded-xl bg-white p-0.5" />
             )}
-            <span className="leading-tight">
-              <span className="block font-bold">{nombreOptica}</span>
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-light">
-                Lentia
-              </span>
+            <span className="min-w-0 leading-tight">
+              <span className="block text-base font-bold tracking-tight">Lentia</span>
+              <span className="block truncate text-xs font-medium text-sidebar-text" title={nombreOptica}>{nombreOptica}</span>
             </span>
           </Link>
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <EstadoSync usuarioId={user.id} />
-            <span className="hidden text-white/75 sm:inline">
-              {perfil.nombre} · {perfil.rol}
-            </span>
+          <div className="flex min-w-0 items-center gap-2 lg:order-last lg:mt-auto lg:justify-between lg:border-t lg:border-white/15 lg:pt-4">
+            <div className="hidden min-w-0 lg:block">
+              <p className="truncate text-xs font-semibold" title={perfil.nombre}>{perfil.nombre}</p>
+              <p className="text-xs capitalize text-sidebar-text">{perfil.rol}</p>
+            </div>
             <form action={cerrarSesion}>
-              <button className="rounded-lg border border-white/30 px-3 py-1.5 font-medium transition hover:bg-white/10">
-                Salir
+              <button aria-label="Cerrar sesión" title="Cerrar sesión" className="flex items-center gap-1.5 rounded-lg border border-white/20 px-2.5 py-2 text-xs font-medium hover:bg-white/10">
+                <Icono nombre="salir" className="size-4" /> <span className="lg:sr-only">Salir</span>
               </button>
             </form>
           </div>
-        </div>
-        <NavLinks nav={nav} />
+        <div className="col-span-2 lg:shrink-0"><NavLinks nav={nav} /></div>
       </header>
 
+      <div className="min-w-0">
+      <div className="relative z-[9] mx-auto flex max-w-7xl justify-end px-3 pt-2 empty:hidden sm:px-6 lg:px-8 print:hidden">
+        <EstadoSync usuarioId={user.id} />
+      </div>
       {sesionDesactualizada && (
         <div className="border-b border-amber-300 bg-amber-100 px-4 py-3 text-center text-sm text-amber-900 print:hidden">
           Tu rol cambió a <b>{perfil.rol}</b>, pero esta sesión sigue con los permisos de{" "}
@@ -146,7 +147,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      <main id="contenido" tabIndex={-1} className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
+      <main id="contenido" tabIndex={-1} className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8 print:max-w-none print:p-0">
+        {children}
+      </main>
+      </div>
     </div>
   );
 }

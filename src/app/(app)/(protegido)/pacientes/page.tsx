@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
@@ -48,7 +49,7 @@ export default async function PacientesPage({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Pacientes</h1>
+        <CabeceraPagina seccion="Atención" titulo="Pacientes" />
         <div className="flex flex-wrap items-center gap-2">
           <form className="flex gap-2" action="/pacientes">
             <input

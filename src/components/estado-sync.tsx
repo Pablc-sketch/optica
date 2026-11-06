@@ -95,7 +95,7 @@ export default function EstadoSync({ usuarioId }: { usuarioId: string }) {
         </button>
       )}
       {abierto && listaFallidas.length > 0 && (
-        <div className="absolute right-0 top-9 z-20 w-80 rounded-xl border border-red-200 bg-white p-3 text-left font-normal shadow-lg">
+        <div className="absolute right-0 top-9 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-red-200 bg-white p-3 text-left font-normal shadow-lg">
           <p className="mb-2 text-sm font-bold text-red-900">Ventas offline que el servidor no aceptó</p>
           <ul className="flex flex-col gap-2">
             {listaFallidas.map((f) => {

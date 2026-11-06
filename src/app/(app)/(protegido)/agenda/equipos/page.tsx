@@ -7,6 +7,7 @@ import { fechaLegible, hoyEnChile, mesDesplazado, nombreMes, primerDiaDelMes, ul
 import { clp } from '@/lib/clp';
 import { gastosDeOperativo } from '@/lib/gastos-operativo';
 import { leerTodas } from '@/lib/leer-todas';
+import CabeceraPagina from '@/components/cabecera-pagina';
 
 const ruta = '/agenda/equipos';
 const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -50,19 +51,19 @@ export default async function AgendaEquipos({ searchParams }: { searchParams: Pr
   const url = (m: string,d = '') => ruta + '?' + new URLSearchParams({mes:m,...(d ? {dia:d} : {}),...(recurso ? {recurso} : {})});
   const btn = 'rounded-xl border border-tinta/15 bg-white px-3 py-2 text-sm font-semibold';
   return <div className="space-y-5">
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div><p className="text-sm font-semibold text-accent-dark">Trabajo en terreno</p><h1 className="text-2xl font-bold">Agenda de equipos</h1></div>
-      <div className="flex flex-wrap gap-2">
+    <CabeceraPagina seccion="En terreno" titulo="Agenda de equipos" acciones={
+      <>
         <Link href={ruta+'/recursos'} className={btn}>Personal y kits</Link>
-        <Link href={ruta+'/turno?dia='+(dia || (hoy.startsWith(mes) ? hoy : primero))} className="rounded-xl bg-brand px-4 py-2 font-semibold text-white">＋ Agendar operativo</Link>
-      </div>
-    </header>
+        <Link href={ruta+'/turno?dia='+(dia || (hoy.startsWith(mes) ? hoy : primero))} className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark">＋ Agendar operativo</Link>
+      </>
+    } />
     <section aria-label="Calendario mensual" className="rounded-2xl bg-white p-3 shadow-sm sm:p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Link href={url(mesDesplazado(mes,-1))} aria-label="Mes anterior" className={btn}>←</Link>
           <h2 className="text-base font-bold capitalize sm:text-lg">{nombreMes(mes)}</h2>
           <Link href={url(mesDesplazado(mes,1))} aria-label="Mes siguiente" className={btn}>→</Link>
+          <Link href={url(hoy.slice(0,7),hoy)} className={btn}>Hoy</Link>
         </div>
         <form action={ruta} className="flex flex-wrap gap-2">
           <input name="mes" type="hidden" value={mes} />
@@ -83,7 +84,7 @@ export default async function AgendaEquipos({ searchParams }: { searchParams: Pr
           const lista = actividades.filter(o=>o.fecha<=d && (o.fecha_fin ?? o.fecha)>=d && o.estado!=='cancelado');
           return <Link key={d} href={url(mes,d===dia ? '' : d)} aria-current={dia===d ? 'date' : undefined}
             aria-label={fechaLegible(d)+': '+lista.length+' operativos'}
-            className={`min-h-12 min-w-0 rounded-lg border p-1 text-xs sm:min-h-24 sm:text-left ${d===dia ? 'border-brand bg-orange-50' : d===hoy ? 'border-accent bg-sky-50' : 'border-tinta/10 hover:bg-crema'}`}>
+            className={`min-h-12 min-w-0 rounded-lg border p-1 text-xs sm:min-h-24 sm:p-2 sm:text-left ${d===dia ? 'border-brand bg-orange-50 text-brand-dark' : d===hoy ? 'border-accent bg-sky-50' : 'border-tinta/10 hover:bg-crema'}`}>
             <b>{Number(d.slice(8))}</b>
             {lista.length>0 && <span className="block font-semibold text-accent-dark sm:hidden">{lista.length}</span>}
             {lista.slice(0,3).map(o=><span key={o.id} className="mt-1 hidden truncate rounded-md bg-sky-100 px-1 py-1 text-sky-950 sm:block">

@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
@@ -109,7 +110,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold">Cobros</h1>
+          <CabeceraPagina seccion="Operación" titulo="Cobros" />
         </div>
         <Link href="/ventas" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark">
           ＋ Nueva venta

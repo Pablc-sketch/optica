@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
@@ -193,7 +194,7 @@ export default async function OperativosPage() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Operativos</h1>
+        <CabeceraPagina seccion="En terreno" titulo="Operativos" />
         <div className="flex flex-wrap gap-2">
           <Link href="/operativos/agenda" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
             Calendario

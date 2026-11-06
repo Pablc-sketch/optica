@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
@@ -143,7 +144,7 @@ export default async function LaboratorioPage({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <h1 className="text-xl font-bold">Pedido de cristales</h1>
+        <CabeceraPagina seccion="Administración" titulo="Pedido de cristales" />
         <BotonImprimir />
       </div>
 

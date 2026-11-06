@@ -1,3 +1,4 @@
+import CabeceraPagina from "@/components/cabecera-pagina";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { notFound } from "next/navigation";
 import Link from 'next/link';
@@ -16,7 +17,7 @@ export default async function RecursosAgenda() {
   const equipo = (r.data ?? []) as RecursoAgenda[];
   return <div className="space-y-5">
     <Link href="/agenda/equipos" className="text-sm underline">← Agenda de equipos</Link>
-    <h1 className="text-2xl font-bold">Personal y kits</h1>
+    <CabeceraPagina seccion="En terreno" titulo="Personal y kits" />
     <details className="rounded-2xl bg-white p-4 shadow-sm">
       <summary className="cursor-pointer font-semibold">＋ Agregar persona o kit</summary>
       <div className="mt-3"><FormularioAgenda accion={guardarRecurso} limpiar etiqueta="Agregar">

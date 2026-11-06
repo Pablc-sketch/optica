@@ -36,17 +36,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex flex-1 items-center justify-center p-6">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-4">
-          <Image src="/logo.svg" alt="Logo" width={88} height={88} className="rounded-3xl shadow-sm" priority />
-          <div className="text-center">
-            <h1 className="text-2xl font-bold">Lentia</h1>
-            <p className="text-sm text-tinta-suave">Ingresa con tu cuenta</p>
+    <main className="flex flex-1 items-center justify-center p-4 sm:p-8">
+      <div className="grid w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-md md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="flex items-center gap-4 bg-sidebar px-6 py-5 text-white sm:px-8 md:flex-col md:items-start md:justify-between md:py-9">
+          <Image src="/logo.svg" alt="" width={60} height={60} className="size-12 rounded-xl md:size-15" priority />
+          <div>
+            <p className="text-2xl font-bold tracking-tight sm:text-3xl">Lentia</p>
+            <p className="text-sm text-sidebar-text">Gestión de ópticas</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-2xl bg-crema-claro p-6 shadow-sm">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-6 sm:p-8">
+          <h1 className="mb-1 text-2xl font-bold tracking-tight">Inicia sesión</h1>
           <label className="flex flex-col gap-1 text-sm font-medium">
             Correo o usuario
             <input
