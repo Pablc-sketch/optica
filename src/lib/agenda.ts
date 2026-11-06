@@ -1,10 +1,10 @@
-import { diaDeLaSemana, horaCorta, ZONA_CHILE } from "@/lib/fechas";
+import { diaDeLaSemana, fechaLegible, horaCorta, sumarDias } from "@/lib/fechas";
 
 export const RUTA_AGENDA = "/operativos/agenda";
 
-export type HorarioAgenda = {
-  fecha: string;
-  fecha_fin: string | null;
+export type RangoFechasAgenda = { fecha: string; fecha_fin: string | null };
+
+export type HorarioAgenda = RangoFechasAgenda & {
   hora_inicio: string | null;
   hora_fin: string | null;
 };
@@ -19,12 +19,7 @@ export type EventoAgenda = HorarioAgenda & {
   optica: string | null;
 };
 
-export type BloqueLibre = {
-  id: string;
-  fecha: string;
-  hora_inicio: string;
-  hora_fin: string;
-};
+export type BloqueLibre = RangoFechasAgenda & { id: string };
 
 export function fechaAgendaValida(s: string) {
   if (!/^[1-9]\d{3}-\d{2}-\d{2}$/.test(s)) return false;
@@ -32,15 +27,27 @@ export function fechaAgendaValida(s: string) {
   return Number.isFinite(d.valueOf()) && d.toISOString().slice(0, 10) === s;
 }
 
-export function rangoAgendaValido(desde: string, hasta: string, inicio: string, fin: string) {
-  const horaValida = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+export function fechasAgendaValidas(desde: string, hasta: string) {
   return fechaAgendaValida(desde) && fechaAgendaValida(hasta) && desde <= hasta
-    && Date.parse(hasta) - Date.parse(desde) <= 365 * 86_400_000
-    && horaValida.test(inicio) && horaValida.test(fin) && inicio < fin;
+    && Date.parse(hasta) - Date.parse(desde) <= 365 * 86_400_000;
 }
 
-export function cubreDia(h: HorarioAgenda, dia: string) {
-  return h.fecha <= dia && (!h.fecha_fin || h.fecha_fin < h.fecha ? h.fecha : h.fecha_fin) >= dia;
+export function horarioAgendaValido(inicio: string, fin: string) {
+  const horaValida = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  return horaValida.test(inicio) && horaValida.test(fin) && inicio < fin;
+}
+
+function fechaTermino(rango: RangoFechasAgenda) {
+  return rango.fecha_fin && rango.fecha_fin >= rango.fecha ? rango.fecha_fin : rango.fecha;
+}
+
+export function cubreDia(rango: RangoFechasAgenda, dia: string) {
+  return rango.fecha <= dia && fechaTermino(rango) >= dia;
+}
+
+export function mostrarFechas(rango: RangoFechasAgenda) {
+  const fin = fechaTermino(rango);
+  return fin === rango.fecha ? fechaLegible(rango.fecha) : `${fechaLegible(rango.fecha)} al ${fechaLegible(fin)}`;
 }
 
 function horas(h: Pick<HorarioAgenda, "hora_inicio" | "hora_fin">): [string, string] {
@@ -54,33 +61,31 @@ export function buscarCruce(h: HorarioAgenda, eventos: EventoAgenda[], excluir?:
   const [inicio, fin] = horas(h);
   return eventos.find(e => {
     if (e.id === excluir || e.estado === "cancelado") return false;
-    if (e.fecha > (h.fecha_fin ?? h.fecha) || (e.fecha_fin ?? e.fecha) < h.fecha) return false;
+    if (e.fecha > fechaTermino(h) || fechaTermino(e) < h.fecha) return false;
+    if (e.tipo === "externo") return true;
     const [a, b] = horas(e);
     return a < fin && b > inicio;
   });
 }
 
-export function horaActualEnChile() {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: ZONA_CHILE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
-}
-
-export function horariosLibres(bloques: BloqueLibre[], eventos: EventoAgenda[], desde: string, horaDesde?: string): BloqueLibre[] {
-  return bloques.filter(b => b.fecha >= desde).flatMap(b => {
-    let libres: [string, string][] = [horas(b)];
-    for (const evento of eventos) {
-      if (evento.estado === "cancelado" || !cubreDia(evento, b.fecha)) continue;
-      const [a, z] = horas(evento);
-      libres = libres.flatMap(([inicio, fin]): [string, string][] => {
-        if (a >= fin || z <= inicio) return [[inicio, fin]];
-        const partes: [string, string][] = [];
-        if (inicio < a) partes.push([inicio, a]);
-        if (z < fin) partes.push([z, fin]);
-        return partes;
-      });
+export function rangosDisponibles(
+  bloques: BloqueLibre[], eventos: EventoAgenda[], desde: string, hasta: string,
+): RangoFechasAgenda[] {
+  const ocupados = eventos.filter(e => e.estado !== "cancelado");
+  const rangos: RangoFechasAgenda[] = [];
+  let actual: RangoFechasAgenda | undefined;
+  for (let dia = desde; dia <= hasta; dia = sumarDias(dia, 1)) {
+    if (!bloques.some(b => cubreDia(b, dia)) || ocupados.some(e => cubreDia(e, dia))) {
+      actual = undefined;
+    } else if (actual) {
+      actual.fecha_fin = dia;
+    } else {
+      actual = { fecha: dia, fecha_fin: null };
+      rangos.push(actual);
     }
-    return libres.filter(([, fin]) => b.fecha !== desde || !horaDesde || fin > horaDesde)
-      .map(([hora_inicio, hora_fin]) => ({ id: b.id, fecha: b.fecha, hora_inicio, hora_fin }));
-  }).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora_inicio.localeCompare(b.hora_inicio));
+    if (dia === hasta) break;
+  }
+  return rangos;
 }
 
 export function urlAgenda(dia: string, extra: Record<string, string> = {}) {

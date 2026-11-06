@@ -5,7 +5,7 @@ import { clp } from "@/lib/clp";
 import { fechaConDia, hoyEnChile, inicioDelDia, finDelDia, rangoHorario, sumarDias } from "@/lib/fechas";
 import { leerTodas } from "@/lib/leer-todas";
 import { cargarAgenda } from "@/lib/agenda-servidor";
-import { diaBreve, horaActualEnChile, horariosLibres, RUTA_AGENDA, urlAgenda } from "@/lib/agenda";
+import { diaBreve, mostrarFechas, rangosDisponibles, RUTA_AGENDA, urlAgenda } from "@/lib/agenda";
 import { disponibleTrasPendientes, resumirCaja } from "@/lib/caja";
 import { cargarPendientes } from "@/lib/resumen-pendientes";
 import { pendientePersonal } from "@/lib/caja-fuentes";
@@ -56,14 +56,15 @@ export default async function Dashboard() {
   if (perfil?.rol !== "admin") redirect("/login");
 
   const hoy = hoyEnChile();
+  const hasta = sumarDias(hoy, 90);
   const [ventas, entregas, agenda, caja] = await Promise.all([
     leerTodas((a, b) => supabase.from("ventas").select("id,total").eq("anulada", false)
       .gte("fecha", inicioDelDia(hoy)).lte("fecha", finDelDia(hoy)).order("id").range(a, b)),
     supabase.from("ordenes_trabajo").select("id", { count: "exact", head: true }).eq("estado", "listo"),
-    cargarAgenda(supabase, perfil.tenant_id, hoy, sumarDias(hoy, 90)),
+    cargarAgenda(supabase, perfil.tenant_id, hoy, hasta),
     saldoDisponible(supabase, perfil.tenant_id),
   ]);
-  const libres = agenda.error ? [] : horariosLibres(agenda.disponibilidad, agenda.eventos, hoy, horaActualEnChile()).slice(0, 2);
+  const libres = agenda.error ? [] : rangosDisponibles(agenda.disponibilidad, agenda.eventos, hoy, hasta).slice(0, 2);
   const proximos = agenda.eventos.filter(o => o.estado === "confirmado" || o.estado === "pendiente");
   const porConfirmar = proximos.filter(o => o.tipo === "propio" && o.estado === "pendiente");
   const totalVentas = (ventas.data ?? []).reduce((s, v) => s + v.total, 0);
@@ -86,10 +87,10 @@ export default async function Dashboard() {
         <span className="text-xl font-bold">Calendario</span><span aria-hidden="true" className="ml-auto text-sky-100">→</span>
       </Link>
       <div className="px-4 pb-4">
-        <p className="text-sm text-sky-100">{agenda.error ? "Disponibilidad temporalmente inaccesible" : "Próximos horarios libres"}</p>
+        <p className="text-sm text-sky-100">{agenda.error ? "Disponibilidad temporalmente inaccesible" : "Próximas fechas disponibles"}</p>
         {libres.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">
-          {libres.map(b => <Link key={`${b.id}-${b.hora_inicio}`} href={urlAgenda(b.fecha, { ver: "disponibilidad" })} className="rounded-lg bg-sky-800 px-3 py-2 text-xs font-semibold capitalize">
-            <span aria-hidden="true" className="mr-1 text-green-300">●</span> {diaBreve(b.fecha)} · {b.hora_inicio}–{b.hora_fin}
+          {libres.map(b => <Link key={b.fecha} href={urlAgenda(b.fecha, { ver: "disponibilidad" })} className="rounded-lg bg-sky-800 px-3 py-2 text-xs font-semibold capitalize">
+            <span aria-hidden="true" className="mr-1 text-green-300">●</span> {mostrarFechas(b)}
           </Link>)}
         </div> : !agenda.error && <Link href={urlAgenda(hoy, { nuevo: "disponible" })} className="mt-1 inline-block rounded-lg bg-sky-800 px-3 py-2 text-xs font-semibold">Agregar disponibilidad →</Link>}
       </div>
@@ -120,7 +121,7 @@ export default async function Dashboard() {
           return <li key={o.id}><Link href={urlAgenda(dia)} className="flex items-center gap-3 py-3">
             <span className={`shrink-0 rounded-lg px-2 py-2 text-xs font-bold capitalize ${o.tipo === "propio" ? "bg-orange-100 text-orange-950" : "bg-sky-100 text-sky-950"}`}>{diaBreve(dia)}</span>
             <span className="min-w-0"><b className="block break-words text-sm">{o.nombre}</b>
-              <span className="block break-words text-xs text-tinta-suave">{[o.optica, o.direccion, rangoHorario(o.hora_inicio, o.hora_fin)].filter(Boolean).join(" · ")}</span>
+              <span className="block break-words text-xs text-tinta-suave">{[o.optica, o.direccion, (o.tipo === "propio" ? rangoHorario(o.hora_inicio, o.hora_fin) : mostrarFechas(o))].filter(Boolean).join(" · ")}</span>
             </span>
             <span aria-hidden="true" className="ml-auto text-tinta-suave">›</span>
           </Link></li>;

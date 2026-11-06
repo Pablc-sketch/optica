@@ -2,7 +2,7 @@ import Link from "next/link";
 import { randomUUID } from "node:crypto";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { cargarAgenda } from "@/lib/agenda-servidor";
-import { cubreDia, diaBreve, fechaAgendaValida, horaActualEnChile, horariosLibres, RUTA_AGENDA, urlAgenda, type EventoAgenda } from "@/lib/agenda";
+import { cubreDia, fechaAgendaValida, mostrarFechas, rangosDisponibles, RUTA_AGENDA, urlAgenda, type EventoAgenda } from "@/lib/agenda";
 import { fechaConDia, fechaLegible, horaCorta, hoyEnChile, mesDesplazado, nombreMes, primerDiaDelMes, rangoHorario, semanasDelMes, ultimoDiaDelMes } from "@/lib/fechas";
 import { borrarDisponibilidad } from "@/lib/actions/agenda";
 import FormularioAgenda from "./formulario";
@@ -25,8 +25,8 @@ function Evento({ evento, dia }: { evento: EventoAgenda; dia: string }) {
     </div>
     <h3 className="pt-1 font-bold">{o.nombre}</h3>
     <p className="text-sm text-tinta-suave">
-      {fechaLegible(o.fecha)}{o.fecha_fin && o.fecha_fin !== o.fecha ? ` al ${fechaLegible(o.fecha_fin)}` : ""}
-      {" · "}{rangoHorario(o.hora_inicio, o.hora_fin) ?? "Horario por definir"}
+      {mostrarFechas(o)}
+      {o.tipo === "propio" && ` · ${rangoHorario(o.hora_inicio, o.hora_fin) ?? "Horario por definir"}`}
     </p>
     {(o.tipo === "externo" || o.direccion) && <p className="text-sm">{[o.tipo === "externo" && o.optica, o.direccion].filter(Boolean).join(" · ")}</p>}
     {o.notas && <p className="whitespace-pre-line break-words text-sm text-tinta-suave">{o.notas}</p>}
@@ -47,14 +47,16 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
   const diaParam = param("dia");
   const dia = fechaAgendaValida(diaParam) && diaParam.startsWith(mes) ? diaParam : hoy.startsWith(mes) ? hoy : primerDiaDelMes(mes);
   const { eventos, disponibilidad, nombreOptica, error } = await cargarAgenda(supabase, tenantId, primerDiaDelMes(mes), ultimoDiaDelMes(mes));
-  const libres = horariosLibres(disponibilidad, eventos, hoy, horaActualEnChile());
+  const libres = rangosDisponibles(disponibilidad, eventos, hoy > primerDiaDelMes(mes) ? hoy : primerDiaDelMes(mes), ultimoDiaDelMes(mes));
   const delDia = eventos.filter(o => cubreDia(o, dia));
-  const libreHoy = libres.filter(b => b.fecha === dia);
+  const libreHoy = libres.some(b => cubreDia(b, dia));
+  const declarados = disponibilidad.filter(b => cubreDia(b, dia));
   const editar = eventos.find(o => o.id === param("editar") && o.estado !== "realizado");
+  const editarBloque = disponibilidad.find(b => b.id === param("editar"));
   const modo = param("nuevo");
-  const mostrarFormulario = !error && (editar || modo === "operativo" || modo === "disponible");
-  const tipo = editar?.tipo ?? (modo === "disponible" ? "disponible" : "propio");
-  const elegido = libreHoy.find(b => b.hora_inicio === param("inicio") && b.hora_fin === param("fin"));
+  const mostrarFormulario = !error && (editar || editarBloque || modo === "operativo" || modo === "disponible");
+  const tipo = editar?.tipo ?? (editarBloque || modo === "disponible" ? "disponible" : "propio");
+  const registro = editar ?? editarBloque;
 
   return <div className="mx-auto flex max-w-2xl flex-col gap-4">
     <div>
@@ -63,11 +65,11 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
       <p className="text-sm text-tinta-suave">Operativos y disponibilidad · {nombreOptica}</p>
     </div>
     {error ? <p role="alert" className="rounded-xl bg-amber-100 p-4 text-sm">No se pudo cargar la agenda. Vuelve a intentar.</p> : mostrarFormulario ? (
-      <FormularioAgenda key={editar?.id ?? `${dia}-${modo}-${elegido?.hora_inicio ?? ""}`} dia={dia}
-        edicion={!!editar} nombreOptica={nombreOptica} eventos={eventos} inicial={{
-          id: editar?.id ?? randomUUID(), tipo, fecha: editar?.fecha ?? dia,
-          fecha_fin: editar?.fecha_fin ?? "", hora_inicio: horaCorta(editar?.hora_inicio) ?? elegido?.hora_inicio ?? "",
-          hora_fin: horaCorta(editar?.hora_fin) ?? elegido?.hora_fin ?? "", nombre: editar?.nombre ?? "",
+      <FormularioAgenda key={registro?.id ?? `${dia}-${modo}`} dia={dia}
+        edicion={!!registro} nombreOptica={nombreOptica} eventos={eventos} inicial={{
+          id: registro?.id ?? randomUUID(), tipo, fecha: registro?.fecha ?? dia,
+          fecha_fin: registro?.fecha_fin ?? (tipo === "propio" ? "" : registro?.fecha ?? ""),
+          hora_inicio: horaCorta(editar?.hora_inicio) ?? "", hora_fin: horaCorta(editar?.hora_fin) ?? "", nombre: editar?.nombre ?? "",
           optica: editar?.tipo === "externo" ? editar.optica ?? "" : "", direccion: editar?.direccion ?? "",
           notas: editar?.notas ?? "", estado: editar?.estado ?? "pendiente",
         }} />
@@ -93,7 +95,7 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
             if (!d) return <span key={`vacío-${i}`} />;
             const enFecha = eventos.filter(o => o.estado !== "cancelado" && cubreDia(o, d));
             const marcas: (keyof typeof MARCAS)[] = [...new Set(enFecha.flatMap(o => o.estado === "pendiente" ? [o.tipo, "pendiente" as const] : [o.tipo]))];
-            if (libres.some(b => b.fecha === d)) marcas.push("disponible");
+            if (libres.some(b => cubreDia(b, d))) marcas.push("disponible");
             const primero = marcas[0];
             const etiquetas = marcas.map(m => ({ propio: nombreOptica, externo: "Otras ópticas", disponible: "Disponible", pendiente: "Por confirmar" }[m]));
             return <Link key={d} href={urlAgenda(d)} aria-current={d === dia ? "date" : undefined}
@@ -111,25 +113,29 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
         <h2 className="font-bold">{fechaConDia(dia)}</h2>
         {delDia.length === 0 && <p className="mt-2 text-sm text-tinta-suave">Sin operativos agendados para este día.</p>}
         {delDia.map(o => <Evento key={o.id} evento={o} dia={dia} />)}
-        {libreHoy.map(b => <Link key={`${b.id}-${b.hora_inicio}`}
-          href={urlAgenda(dia, { nuevo: "operativo", inicio: b.hora_inicio, fin: b.hora_fin })}
+        {libreHoy && <Link href={urlAgenda(dia, { nuevo: "operativo" })}
           className="mt-2 flex justify-between gap-2 rounded-lg bg-green-100 p-2.5 text-sm font-semibold text-green-950">
-          <span>{b.hora_inicio}–{b.hora_fin} disponible</span><span>Agendar →</span>
-        </Link>)}
-        {disponibilidad.some(b => b.fecha === dia) && <details className="mt-3 text-sm">
-          <summary className="cursor-pointer text-tinta-suave">Administrar bloques declarados</summary>
-          {disponibilidad.filter(b => b.fecha === dia).map(b => <form key={b.id} action={borrarDisponibilidad} className="flex items-center justify-between gap-2 py-2">
-            <input type="hidden" name="id" value={b.id} /><input type="hidden" name="fecha" value={dia} />
-            <span>{horaCorta(b.hora_inicio)}–{horaCorta(b.hora_fin)}</span>
-            <button className="rounded-lg bg-crema px-3 py-2 font-semibold text-brand-dark">Quitar</button>
-          </form>)}
+          <span>Día disponible</span><span>Agendar →</span>
+        </Link>}
+        {declarados.length > 0 && <details className="mt-3 text-sm">
+          <summary className="cursor-pointer text-tinta-suave">Administrar disponibilidad</summary>
+          {declarados.map(b => <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <span>{mostrarFechas(b)}</span>
+            <div className="flex items-center gap-2">
+              <Link href={urlAgenda(dia, { editar: b.id })} className="px-2 font-semibold text-brand-dark">Editar</Link>
+              <form action={borrarDisponibilidad}>
+                <input type="hidden" name="id" value={b.id} /><input type="hidden" name="fecha" value={b.fecha} />
+                <button className="rounded-lg bg-crema px-3 py-2 font-semibold text-brand-dark">Quitar</button>
+              </form>
+            </div>
+          </div>)}
         </details>}
       </section>
       {libres.length > 0 && <details id="disponibilidad" open={param("ver") === "disponibilidad"} className="scroll-mt-32 rounded-xl bg-green-50 p-3 text-green-950">
         <summary className="cursor-pointer text-sm font-bold">Disponibilidad del mes</summary>
         <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
-          {libres.map(b => <li key={`${b.id}-${b.hora_inicio}`}><Link href={urlAgenda(b.fecha, { nuevo: "operativo", inicio: b.hora_inicio, fin: b.hora_fin })}
-            className="block rounded-lg bg-white p-2.5 text-sm font-semibold capitalize">{diaBreve(b.fecha)} · {b.hora_inicio}–{b.hora_fin} →</Link></li>)}
+          {libres.map(b => <li key={b.fecha}><Link href={urlAgenda(b.fecha, { ver: "disponibilidad" })}
+            className="block rounded-lg bg-white p-2.5 text-sm font-semibold capitalize">{mostrarFechas(b)} →</Link></li>)}
         </ul>
       </details>}
       <div className="grid gap-2 sm:grid-cols-2">

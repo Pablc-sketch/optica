@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { buscarCruce, rangoAgendaValido, urlAgenda, type EventoAgenda } from "@/lib/agenda";
+import { buscarCruce, fechasAgendaValidas, horarioAgendaValido, urlAgenda, type EventoAgenda } from "@/lib/agenda";
 import { guardarAgenda } from "@/lib/actions/agenda";
 
 type Tipo = "propio" | "externo" | "disponible";
@@ -19,10 +19,18 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
   const [valores, setValores] = useState(inicial);
   const [respuesta, enviar, pendiente] = useActionState(guardarAgenda.bind(null, edicion), {});
   const { tipo, fecha, fecha_fin, hora_inicio, hora_fin, estado } = valores;
-  const fechaFin = tipo === "disponible" ? fecha : fecha_fin || fecha;
-  const valido = rangoAgendaValido(fecha, fechaFin, hora_inicio, hora_fin);
-  const cruce = tipo !== "disponible" && estado !== "cancelado" && valido
-    ? buscarCruce({ fecha, fecha_fin: fechaFin, hora_inicio, hora_fin }, eventos, edicion ? inicial.id : undefined)
+  const conHorario = tipo === "propio";
+  const fechaFin = fecha_fin || (conHorario ? fecha : "");
+  const valido = fechasAgendaValidas(fecha, fechaFin) && (!conHorario || horarioAgendaValido(hora_inicio, hora_fin));
+  const mismoRango = edicion && inicial.estado !== "cancelado" && fecha === inicial.fecha
+    && fechaFin === (inicial.fecha_fin || inicial.fecha)
+    && (!conHorario || (hora_inicio === inicial.hora_inicio && hora_fin === inicial.hora_fin));
+  const cruce = tipo !== "disponible" && estado !== "cancelado" && valido && !mismoRango
+    ? buscarCruce({
+      fecha, fecha_fin: fechaFin,
+      hora_inicio: conHorario ? hora_inicio : null,
+      hora_fin: conHorario ? hora_fin : null,
+    }, eventos, edicion ? inicial.id : undefined)
     : undefined;
   const cambiar = (key: keyof Datos, value: string) => setValores(v => ({ ...v, [key]: value }));
   const vincular = (key: keyof Datos) => ({
@@ -34,7 +42,7 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
 
   return <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h2 className="text-lg font-bold">{tipo === "disponible" ? "Agregar disponibilidad" : edicion ? "Editar operativo" : "Nuevo operativo"}</h2>
+      <h2 className="text-lg font-bold">{tipo === "disponible" ? (edicion ? "Editar disponibilidad" : "Agregar disponibilidad") : edicion ? "Editar operativo" : "Nuevo operativo"}</h2>
       <Link href={urlAgenda(dia)} className="text-sm font-semibold text-brand-dark">Volver</Link>
     </div>
     <form action={enviar} className="grid gap-3">
@@ -52,14 +60,16 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
         <label className="text-sm font-medium">Lugar o comuna<input {...vincular("direccion")} maxLength={250} className={campo} /></label>
       </>}
       <div className="grid grid-cols-2 gap-2">
-        <label className="min-w-0 text-sm font-medium">{tipo === "disponible" ? "Fecha" : "Fecha de inicio"}<input {...vincular("fecha")} type="date" required className={campo} /></label>
-        {tipo !== "disponible" && <label className="min-w-0 text-sm font-medium">Fecha de término<input {...vincular("fecha_fin")} type="date" min={fecha} className={campo} /></label>}
+        <label className="min-w-0 text-sm font-medium">Fecha de inicio<input {...vincular("fecha")} type="date" required className={campo} /></label>
+        <label className="min-w-0 text-sm font-medium">Fecha de término<input {...vincular("fecha_fin")} type="date" min={fecha} required={!conHorario} className={campo} /></label>
       </div>
+      {conHorario && <>
       <div className="grid grid-cols-2 gap-2">
         <label className="min-w-0 text-sm font-medium">Hora de inicio<input {...vincular("hora_inicio")} type="time" required className={campo} /></label>
         <label className="min-w-0 text-sm font-medium">Hora de término<input {...vincular("hora_fin")} type="time" required className={campo} /></label>
       </div>
-      <p className="text-xs text-tinta-suave">Hora de Chile continental{tipo !== "disponible" && " · se repite cada día del operativo"}.</p>
+      <p className="text-xs text-tinta-suave">Hora de Chile continental · se repite cada día del operativo.</p>
+      </>}
       {tipo !== "disponible" && <>
         <label className="text-sm font-medium">Estado<select {...vincular("estado")} className={campo}>
           <option value="pendiente">Por confirmar</option><option value="confirmado">Confirmado</option>
@@ -67,7 +77,7 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
         </select></label>
         <label className="text-sm font-medium">Notas de coordinación<textarea {...vincular("notas")} maxLength={2000} rows={2} className={campo} /></label>
       </>}
-      {cruce && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm font-semibold text-amber-950">Cruce con {cruce.nombre}. Elige otro horario.</p>}
+      {cruce && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm font-semibold text-amber-950">Cruce con {cruce.nombre}. Revisa las fechas{conHorario && " y horas"}.</p>}
       {respuesta.error && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm font-semibold text-amber-950">{respuesta.error}</p>}
       <button disabled={pendiente || !!cruce} className="rounded-xl bg-brand px-4 py-3 font-semibold text-white disabled:bg-neutral-200 disabled:text-neutral-700">
         {pendiente ? "Guardando…" : tipo === "disponible" ? "Guardar disponibilidad" : "Guardar operativo"}

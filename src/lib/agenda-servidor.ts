@@ -13,7 +13,7 @@ export async function cargarAgenda(
       .or(`fecha_fin.gte.${desde},and(fecha_fin.is.null,fecha.gte.${desde})`)
       .order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("agenda_bloques")
-      .select("id,tipo,nombre,optica,direccion,notas,fecha,fecha_fin,hora_inicio,hora_fin,estado")
+      .select("id,tipo,nombre,optica,direccion,notas,fecha,fecha_fin,estado")
       .eq("tenant_id", tenantId).lte("fecha", hasta)
       .or(`fecha_fin.gte.${desde},and(fecha_fin.is.null,fecha.gte.${desde})`)
       .order("id").range(a, b)),
@@ -26,7 +26,7 @@ export async function cargarAgenda(
       estado: o.estado === "planificado" ? (o.agenda_confirmado ? "confirmado" : "pendiente") : o.estado,
     })),
     ...(bloques.data ?? []).filter(o => o.tipo === "externo").map((o): EventoAgenda => ({
-      ...o, tipo: "externo", nombre: o.nombre ?? "Operativo externo",
+      ...o, tipo: "externo", nombre: o.nombre ?? "Operativo externo", hora_inicio: null, hora_fin: null,
     })),
   ];
   eventos.sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.hora_inicio ?? "99").localeCompare(b.hora_inicio ?? "99"));
