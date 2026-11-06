@@ -87,7 +87,7 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <section aria-label="Mes de la agenda" className="rounded-2xl bg-white p-3 shadow-sm sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="font-bold capitalize">{nombreMes(mes)}</h2>
+          <h2 className="font-bold first-letter:uppercase">{nombreMes(mes)}</h2>
           <div className="flex gap-1.5">
             <Link href={urlAgenda(hoy)} className="grid min-h-10 place-items-center rounded-lg bg-crema px-3 text-sm font-semibold">Hoy</Link>
             <Link aria-label="Mes anterior" href={`${RUTA_AGENDA}?mes=${mesDesplazado(mes, -1)}`} className="grid min-h-10 min-w-10 place-items-center rounded-lg bg-crema">‹</Link>

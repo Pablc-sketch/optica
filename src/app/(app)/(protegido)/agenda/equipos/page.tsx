@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from 'next/link';
 import { exigirRolPagina } from '@/lib/autorizacion';
 import { costoPorChequeo, mesAgenda, ROLES_AGENDA, totalPresupuesto, uuidAgenda, type Presupuesto, type RecursoAgenda } from '@/lib/agenda-terreno';
-import { fechaLegible, hoyEnChile, mesDesplazado, nombreMes, primerDiaDelMes, ultimoDiaDelMes, semanasDelMes } from '@/lib/fechas';
+import { fechaConDia, fechaLegible, hoyEnChile, mesDesplazado, nombreMes, primerDiaDelMes, ultimoDiaDelMes, semanasDelMes } from '@/lib/fechas';
 import { clp } from '@/lib/clp';
 import { gastosDeOperativo } from '@/lib/gastos-operativo';
 import { leerTodas } from '@/lib/leer-todas';
@@ -61,7 +61,7 @@ export default async function AgendaEquipos({ searchParams }: { searchParams: Pr
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Link href={url(mesDesplazado(mes,-1))} aria-label="Mes anterior" className={btn}>←</Link>
-          <h2 className="text-base font-bold capitalize sm:text-lg">{nombreMes(mes)}</h2>
+          <h2 className="text-base font-bold first-letter:uppercase sm:text-lg">{nombreMes(mes)}</h2>
           <Link href={url(mesDesplazado(mes,1))} aria-label="Mes siguiente" className={btn}>→</Link>
           <Link href={url(hoy.slice(0,7),hoy)} className={btn}>Hoy</Link>
         </div>
@@ -83,12 +83,13 @@ export default async function AgendaEquipos({ searchParams }: { searchParams: Pr
           if (!d) return <div key={'vacío'+i} className="rounded-lg bg-crema/50" />;
           const lista = actividades.filter(o=>o.fecha<=d && (o.fecha_fin ?? o.fecha)>=d && o.estado!=='cancelado');
           return <Link key={d} href={url(mes,d===dia ? '' : d)} aria-current={dia===d ? 'date' : undefined}
-            aria-label={fechaLegible(d)+': '+lista.length+' operativos'}
+            aria-label={fechaLegible(d)+': '+lista.length+(lista.length===1 ? ' operativo' : ' operativos')}
             className={`min-h-12 min-w-0 rounded-lg border p-1 text-xs sm:min-h-24 sm:p-2 sm:text-left ${d===dia ? 'border-brand bg-orange-50 text-brand-dark' : d===hoy ? 'border-accent bg-sky-50' : 'border-tinta/10 hover:bg-crema'}`}>
             <b>{Number(d.slice(8))}</b>
             {lista.length>0 && <span className="block font-semibold text-accent-dark sm:hidden">{lista.length}</span>}
-            {lista.slice(0,3).map(o=><span key={o.id} className="mt-1 hidden truncate rounded-md bg-sky-100 px-1 py-1 text-sky-950 sm:block">
-              {o.hora_inicio?.slice(0,5)} {o.nombre}
+            {lista.slice(0,3).map(o=><span key={o.id} title={o.nombre} className="mt-1 hidden rounded-md bg-sky-100 px-1.5 py-1 text-sky-950 sm:block">
+              {o.hora_inicio && <span className="block text-[0.65rem] font-semibold">{o.hora_inicio.slice(0,5)}</span>}
+              <span className="line-clamp-2 wrap-break-word leading-tight">{o.nombre}</span>
             </span>)}
             {lista.length>3 && <span className="hidden text-tinta-suave sm:block">＋{lista.length-3}</span>}
           </Link>;
@@ -97,7 +98,7 @@ export default async function AgendaEquipos({ searchParams }: { searchParams: Pr
     </section>
     <section aria-label="Operativos y asignaciones" className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-bold">{dia ? fechaLegible(dia) : 'Operativos del mes'}</h2>
+        <h2 className="text-lg font-bold first-letter:uppercase">{dia ? fechaConDia(dia) : 'Operativos del mes'}</h2>
         {dia && <Link href={url(mes)} className="text-sm underline">Ver todo el mes</Link>}
       </div>
       {!visibles.length && <p className="rounded-2xl bg-white p-5 text-sm text-tinta-suave">Sin operativos para esta vista.</p>}
