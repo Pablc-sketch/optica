@@ -6,6 +6,7 @@ import { cerrarSesion } from "@/lib/actions/auth";
 import EstadoSync from "@/components/estado-sync";
 import NavLinks from "@/components/nav-links";
 import BarraCarga from "@/components/barra-carga";
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { menuParaRol } from "@/lib/navegacion";
 import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
 import { diasRestantes, estaVigente, type Suscripcion } from "@/lib/suscripcion";
@@ -83,6 +84,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const porVencer = vigente && dias !== null && dias <= 7;
 
   const nav = menuParaRol(perfil.rol, mercadoPagoConfigurado(perfil.tenant_id), perfil.es_superadmin);
+  if (esPilotoTerreno(perfil.tenant_id) && perfil.rol === "admin") {
+    const i = nav.findIndex(n=>n.href === "/operativos");
+    if (i >= 0) nav[i] = {href:"/agenda/equipos",label:"Agenda",principal:true,movil:true};
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">

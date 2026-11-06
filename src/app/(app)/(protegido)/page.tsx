@@ -1,3 +1,4 @@
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -55,6 +56,14 @@ export default async function Dashboard() {
   if (perfil?.rol === "bodega") redirect("/ot");
   if (perfil?.rol !== "admin") redirect("/login");
 
+  if (esPilotoTerreno(perfil.tenant_id)) return <div className="space-y-5">
+    <div><p className="text-sm font-semibold text-accent-dark">Visión Herrante</p><h1 className="text-2xl font-bold">¿Dónde vas a trabajar?</h1></div>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Link href="/ventas" className="rounded-2xl bg-brand p-5 text-white shadow-sm"><b className="block text-lg">En sucursal</b><span className="text-sm">Abrir punto de venta →</span></Link>
+      <Link href="/agenda/equipos" className="rounded-2xl bg-sky-800 p-5 text-white shadow-sm"><b className="block text-lg">En terreno</b><span className="text-sm">Ver agenda, personal y kits →</span></Link>
+    </div>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[{href:"/pacientes",titulo:"Pacientes y recetas"},{href:"/cobros",titulo:"Cobros"},{href:"/entregas",titulo:"Entregas"},{href:"/inventario",titulo:"Inventario"}].map(b=><Link key={b.href} href={b.href} className="rounded-xl bg-white p-3 text-sm font-semibold shadow-sm">{b.titulo}</Link>)}</div>
+  </div>;
   const hoy = hoyEnChile();
   const hasta = sumarDias(hoy, 90);
   const [ventas, entregas, agenda, caja] = await Promise.all([

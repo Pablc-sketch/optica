@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { createClient } from "@/lib/supabase/server";
 import { crearOperativo, cambiarEstadoOperativo } from "@/lib/actions/operativos";
 import { formatearTelefono } from "@/lib/formato";
@@ -32,8 +34,9 @@ export default async function OperativosPage() {
   } = await supabase.auth.getUser();
 
   if (!user) return null;
-  const perfilRes = await supabase.from("users").select("rol").eq("id", user!.id).single();
+  const perfilRes = await supabase.from("users").select("rol,tenant_id").eq("id", user!.id).single();
   const esAdmin = perfilRes.data?.rol === "admin";
+  if (esAdmin && esPilotoTerreno(perfilRes.data?.tenant_id)) redirect("/agenda/equipos");
 
   if (!esAdmin) {
     return (
@@ -193,7 +196,7 @@ export default async function OperativosPage() {
         <h1 className="text-2xl font-bold">Operativos</h1>
         <div className="flex flex-wrap gap-2">
           <Link href="/operativos/agenda" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
-            📅 Calendario
+            Calendario
           </Link>
           <Link href="/operativos/contactos" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
             📇 Dirigentes

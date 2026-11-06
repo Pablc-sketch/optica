@@ -1,3 +1,5 @@
+import OperativoTerreno from "@/components/operativo-terreno";
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -86,6 +88,8 @@ const TIPOS_VENUE = [
 export default async function DetalleOperativo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  const { data: tenantId } = await supabase.rpc("jwt_tenant_id");
+  if (esPilotoTerreno(tenantId)) return <OperativoTerreno id={id}/>;
 
   const [
     operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes,

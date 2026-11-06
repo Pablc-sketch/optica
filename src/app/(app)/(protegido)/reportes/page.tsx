@@ -1,3 +1,4 @@
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { fechaValidaDocumento } from "@/lib/fecha-documentos";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
@@ -177,7 +178,8 @@ export default async function ReportesPage({
   const mes = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.mes ?? "") ? params.mes! : mesEnChile();
 
   // Costos y utilidades: solo administración (A09).
-  await exigirRolPagina(["admin"]);
+  const {tenantId} = await exigirRolPagina(["admin"]);
+  const piloto = esPilotoTerreno(tenantId);
   const supabase = await createClient();
 
   let ventasQuery = supabase
@@ -850,7 +852,7 @@ export default async function ReportesPage({
         )}
       </section>
 
-      <section className="print:hidden">
+      {!piloto && <section className="print:hidden">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">Sueldos del mes</h2>
           <form className="flex items-center gap-2" action="/reportes">
@@ -983,7 +985,7 @@ export default async function ReportesPage({
             </div>
           </>
         )}
-      </section>
+      </section>}
 
       <section className="print:hidden">
         <h2 className="mb-1 font-semibold">Gastos globales del mes</h2>
@@ -1070,7 +1072,7 @@ export default async function ReportesPage({
         )}
       </section>
 
-      <section className="print:hidden">
+      {!piloto && <section className="print:hidden">
         <h2 className="mb-1 font-semibold">Retiros y aportes del mes</h2>
         <p className="mb-2 text-xs text-tinta-suave">
           Retiro: descuenta sueldo y caja. Aporte: aumenta lo que se debe y la caja.
@@ -1177,7 +1179,7 @@ export default async function ReportesPage({
             })}
           </ul>
         )}
-      </section>
+      </section>}
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { cargarPendientes } from "@/lib/resumen-pendientes";
@@ -6,7 +8,8 @@ import { fechaLegible } from "@/lib/fechas";
 
 const VISTAS = [{ clave: "sueldos", titulo: "Sueldos" }, { clave: "costos", titulo: "Costos" }, { clave: "ahorro", titulo: "Ahorro" }] as const;
 export default async function Pagos({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
-  const { supabase } = await exigirRolPagina(["admin"]);
+  const { supabase, tenantId } = await exigirRolPagina(["admin"]);
+  if (esPilotoTerreno(tenantId)) redirect("/agenda/equipos");
   const { ver } = await searchParams;
   const vista = VISTAS.find((v) => v.clave === ver) ?? VISTAS[0];
   const { resumen, error, sinAsignar } = await cargarPendientes(supabase);

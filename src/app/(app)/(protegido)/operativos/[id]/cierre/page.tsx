@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirRolPagina } from "@/lib/autorizacion";
@@ -15,7 +17,8 @@ import CostoFidesEditor from "@/components/costo-fides-editor";
 // muestra lo mismo que la cuenta real después de repartir.
 export default async function CierreOperativo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase } = await exigirRolPagina(["admin"]);
+  const { supabase, tenantId } = await exigirRolPagina(["admin"]);
+  if (esPilotoTerreno(tenantId)) redirect("/operativos/"+id);
 
   const [opRes, ventasRes, tenantRes, retirosRes, fidesRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).maybeSingle(),

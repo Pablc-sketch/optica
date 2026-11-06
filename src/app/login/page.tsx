@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { correoDeAcceso } from "@/lib/piloto-terreno";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -20,12 +21,12 @@ export default function LoginPage() {
 
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
+      email: correoDeAcceso(email),
       password,
     });
 
     if (signInError) {
-      setError("Correo o contraseña incorrectos.");
+      setError("Usuario o contraseña incorrectos.");
       setCargando(false);
       return;
     }
@@ -47,11 +48,12 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-2xl bg-crema-claro p-6 shadow-sm">
           <label className="flex flex-col gap-1 text-sm font-medium">
-            Correo
+            Correo o usuario
             <input
-              type="email"
+              type="text"
               required
-              autoComplete="email"
+              autoComplete="username"
+              autoCapitalize="none"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"

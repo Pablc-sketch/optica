@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { mesAgenda } from "@/lib/agenda-terreno";
 import { clp } from "@/lib/clp";
 import {
   diasQueOcupa,
@@ -43,17 +44,13 @@ const COLOR_ESTADO: Record<string, string> = {
   cancelado: "bg-neutral-300 text-neutral-600 line-through",
 };
 
-function mesValido(valor: string | undefined): string {
-  return /^\d{4}-\d{2}$/.test(valor ?? "") ? (valor as string) : mesEnChile();
-}
-
 export default async function CalendarioOperativos({
   searchParams,
 }: {
   searchParams: Promise<{ mes?: string }>;
 }) {
   const { mes: mesParam } = await searchParams;
-  const mes = mesValido(mesParam);
+  const mes = mesAgenda(mesParam);
 
   const supabase = await createClient();
   const {
@@ -148,12 +145,9 @@ export default async function CalendarioOperativos({
     <div className="flex flex-col gap-5">
       <div>
         <Link href="/operativos" className="text-xs font-medium text-sky-700 hover:underline">
-          ← Todos los operativos
+          ← Operativos
         </Link>
         <h1 className="mt-1 text-xl font-bold">Calendario de operativos</h1>
-        <p className="text-sm text-tinta-suave">
-          Para agendar varios puntos en el mes y ver de un vistazo qué días quedan libres.
-        </p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -179,7 +173,9 @@ export default async function CalendarioOperativos({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <details className="rounded-xl bg-white p-3 shadow-sm">
+        <summary className="cursor-pointer text-sm font-semibold">Resumen y metas</summary>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-2xl bg-sky-50 p-3">
           <p className="text-xs text-sky-800">Puntos agendados</p>
           <p className="text-xl font-bold text-sky-950">{activos.length}</p>
@@ -208,6 +204,7 @@ export default async function CalendarioOperativos({
         </div>
       </div>
 
+      </details>
       {/* La grilla se hace angosta en el celular, así que va con scroll
           horizontal en vez de apretar siete columnas en 360px. */}
       <div className="overflow-x-auto">

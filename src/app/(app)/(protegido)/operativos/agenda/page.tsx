@@ -1,3 +1,5 @@
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { randomUUID } from "node:crypto";
 import { exigirRolPagina } from "@/lib/autorizacion";
@@ -39,6 +41,7 @@ function Evento({ evento, dia }: { evento: EventoAgenda; dia: string }) {
 
 export default async function Agenda({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
+  if (esPilotoTerreno(tenantId)) redirect("/agenda/equipos");
   const params = await searchParams;
   const param = (k: string) => typeof params[k] === "string" ? params[k] as string : "";
   const hoy = hoyEnChile();
@@ -62,7 +65,7 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
     <div>
       <Link href="/" className="text-sm font-semibold text-brand-dark">← Inicio</Link>
       <h1 className="mt-2 text-3xl font-bold">Calendario</h1>
-      <p className="text-sm text-tinta-suave">Operativos y disponibilidad · {nombreOptica}</p>
+      <p className="text-sm text-tinta-suave">Disponibilidad · {nombreOptica}</p>
     </div>
     {error ? <p role="alert" className="rounded-xl bg-amber-100 p-4 text-sm">No se pudo cargar la agenda. Vuelve a intentar.</p> : mostrarFormulario ? (
       <FormularioAgenda key={registro?.id ?? `${dia}-${modo}`} dia={dia}

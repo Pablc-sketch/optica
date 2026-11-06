@@ -654,6 +654,8 @@ export default function PuntoDeVenta({
   vendedorId,
   recetasPorPaciente,
   operativos,
+  operativoInicial,
+  sugerirOperativoPorReceta = true,
   comisionDebitoPct = 0,
   comisionCreditoPct = 0,
 }: {
@@ -668,6 +670,8 @@ export default function PuntoDeVenta({
   vendedorId: string | null;
   recetasPorPaciente: Record<string, RecetaResumen | undefined>;
   operativos: { id: string; nombre: string; fecha: string; fecha_entrega_estimada: string | null }[];
+  operativoInicial?: string;
+  sugerirOperativoPorReceta?: boolean;
   comisionDebitoPct?: number;
   comisionCreditoPct?: number;
 }) {
@@ -680,10 +684,10 @@ export default function PuntoDeVenta({
     window.scrollTo({ top: 0 });
   }, [paso]);
   const [pacienteId, setPacienteId] = useState<string>("");
-  const [operativoId, setOperativoId] = useState<string>("");
+  const [operativoId, setOperativoId] = useState<string>(operativoInicial ?? "");
   // Operativo de la jornada, fijado a mano ("hoy estamos en Educa"). Manda
   // sobre el operativo de la receta y se mantiene entre una venta y otra.
-  const [operativoSesion, setOperativoSesion] = useState<string>("");
+  const [operativoSesion, setOperativoSesion] = useState<string>(operativoInicial ?? "");
   const [avisoContexto, setAvisoContexto] = useState<string | null>(null);
   const [buscaPaciente, setBuscaPaciente] = useState("");
   const [buscaProducto, setBuscaProducto] = useState("");
@@ -958,7 +962,7 @@ export default function PuntoDeVenta({
     // acuerde de elegirlo a mano.
     // F01: el operativo se resuelve de nuevo para CADA paciente; nunca queda
     // pegado el del paciente anterior (ver lib/contexto-venta.ts).
-    const contexto = resolverContextoVenta(operativoSesion || null, id ? recetasPorPaciente[id]?.operativo_id : null);
+    const contexto = resolverContextoVenta(operativoSesion || null, id && sugerirOperativoPorReceta ? recetasPorPaciente[id]?.operativo_id : null);
     setOperativoId(contexto.operativoId ?? "");
     const otro = contexto.recetaDeOtroOperativo ? operativos.find((o) => o.id === contexto.recetaDeOtroOperativo) : null;
     setAvisoContexto(
@@ -1190,7 +1194,7 @@ export default function PuntoDeVenta({
                 }}
                 className={select}
               >
-                <option value="">— Sin especificar —</option>
+                <option value="">Sucursal · sin operativo</option>
                 {operativos.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.nombre}

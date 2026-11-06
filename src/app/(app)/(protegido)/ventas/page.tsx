@@ -1,9 +1,11 @@
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import PuntoDeVenta from "./pos";
 import { leerSugerenciasExtra } from "@/lib/sugerencias";
 
-export default async function VentasPage() {
+export default async function VentasPage({ searchParams }: { searchParams: Promise<{ op?: string }> }) {
+  const { op } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -73,6 +75,8 @@ export default async function VentasPage() {
     }
   }
 
+  const contexto = operativosRes.data?.find(o=>o.id===op);
+  if (op && !contexto) return <div className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-xl font-bold">Operativo no disponible</h1><p className="mt-1 text-sm">Revisa la agenda antes de registrar esta venta.</p><Link href="/operativos" className="mt-3 inline-block underline">Volver a operativos</Link></div>;
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -82,7 +86,11 @@ export default async function VentasPage() {
             Si no aparece, búscalo en Pacientes.
           </p>
         )}
+        {contexto && <p className="mb-3 rounded-xl bg-sky-50 p-3 text-sm"><b>Venta en terreno:</b> {contexto.nombre}</p>}
         <PuntoDeVenta
+          key={contexto?.id ?? "sucursal"}
+          operativoInicial={contexto?.id}
+          sugerirOperativoPorReceta={!esPilotoTerreno(perfilRes.data?.tenant_id)}
           pacientes={pacientesRes.data ?? []}
           productos={productosRes.data ?? []}
           costos={costosRes.data ?? []}

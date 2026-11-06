@@ -1,3 +1,4 @@
+import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from 'next/link';
 import { randomUUID } from 'node:crypto';
 import { exigirRolPagina } from '@/lib/autorizacion';
@@ -16,6 +17,7 @@ export const dynamic = 'force-dynamic';
 const campo = 'w-full min-w-0 rounded-xl border px-3 py-2.5';
 export default async function Caja({ searchParams }: { searchParams: Promise<{ guardado?: string; ver?: string; operativo?: string }> }) {
   const { supabase, tenantId } = await exigirRolPagina(['admin']);
+  const piloto = esPilotoTerreno(tenantId);
   const [caja, pendientes, gastos, movimientos, conteos, cobros, retiros, tenant, ventas, operativos, params] = await Promise.all([
     supabase.rpc('caja_global').single(), cargarPendientes(supabase),
     leerTodas((a,b) => supabase.from('gastos_globales').select('id,fecha,descripcion,monto,caja,operativo_id').eq('tenant_id',tenantId).order('id').range(a,b)),
@@ -38,7 +40,8 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
   const personales = (gastos.data ?? []).filter(g => g.caja === 'personal').map(g => ({ ...g,
     pendiente: pendientePersonal(g.monto,(movimientos.data ?? []).filter(m => m.gasto_id === g.id)) })).filter(g => g.pendiente > 0).sort((a,b) => a.fecha.localeCompare(b.fecha));
   const deudaPersonal = personales.reduce((s,g) => s+g.pendiente,0);
-  const p = pendientes.resumen;
+  const base = pendientes.resumen;
+  const p = piloto ? {...base,total:base.costos,ahorro:0,personas:{pablo:0,madre:0,isadora:0}} : base;
   const disponible = disponibleTrasPendientes(saldo, { pagos: p.total, devoluciones: deudaPersonal, ahorro: p.ahorro });
   const vistas = [['resumen','Resumen'],['movimientos','Movimientos'],['pendientes','Pendientes'],['cuadrar','Cuadrar']] as const;
   const vista = vistas.find(([clave]) => clave === params.ver)?.[0] ?? 'resumen';
@@ -65,21 +68,21 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       <nav aria-label="Acciones de caja" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Link href="/cobros" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">+ Cobrar venta</Link>
         <Link href="/caja?ver=movimientos#nuevo-gasto" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">− Gasto</Link>
-        <Link href="/pagos" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">Registrar pago</Link>
+        <Link href={piloto ? "/agenda/equipos" : "/pagos"} className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">{piloto ? 'Gastos por operativo' : 'Registrar pago'}</Link>
         <Link href="/caja?ver=movimientos#traspasos" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">Transferir entre cuentas</Link>
       </nav>
       <Link href="/caja?ver=cuadrar" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-50 p-4 text-amber-900"><span><b className="block">Conciliar caja</b><span className="text-sm">Confirma el efectivo contado y el saldo bancario.</span></span><span className="text-sm font-semibold">Revisar saldos →</span></Link>
-      {pendientes.sinAsignar && <Link href="/pagos/revisar" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 underline">Hay pagos o aportes sin operativo. Revisar →</Link>}
+      {pendientes.sinAsignar && <Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 underline">Hay pagos o aportes sin operativo. Revisar →</Link>}
       {(cobros.data ?? []).some(c=>!c.medio_pago) && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Hay cobros sin medio de pago, incluidos como efectivo. Revísalos si hay diferencias.</p>}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <CajaHistorial operativos={operativos.data ?? []} cobros={(cobros.data ?? []).map(c=>({...c,operativo_id:operativoPorVenta.get(c.venta_id) ?? null}))} gastos={gastos.data ?? []} retiros={retiros.data ?? []} traslados={movimientos.data ?? []} />
-        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Por pagar</h2><p className="mt-2 text-sm text-red-700">Compromisos pendientes · {clp(p.total+deudaPersonal)}</p><dl className="mt-4 divide-y divide-tinta/10">{filas.filter(([,monto])=>monto>0).map(([nombre,monto])=><div key={nombre} className="flex justify-between gap-3 py-3 text-sm"><dt>{nombre}</dt><dd className="font-semibold tabular-nums text-red-700">{clp(monto)}</dd></div>)}{deudaPersonal>0 && <div className="flex justify-between gap-3 py-3 text-sm"><dt>Devolver a Pablo</dt><dd className="font-semibold text-red-700">{clp(deudaPersonal)}</dd></div>}</dl><Link href="/caja?ver=pendientes" className="mt-3 block text-sm font-semibold underline">Ver por operativo →</Link><div className="mt-5 border-t border-tinta/10 pt-4"><h3 className="text-sm">Utilidad calculada · operativos</h3><p className={`mt-2 text-3xl font-bold ${pendientes.utilidadOperativos<0?'text-red-700':'text-emerald-800'}`}>{clp(pendientes.utilidadOperativos)}</p><p className="mt-2 text-xs text-tinta-suave">Ventas menos costos. Incluye ventas por cobrar; no es saldo disponible.</p><Link href="/pagos/revisar" className="mt-4 block rounded-xl border px-3 py-3 text-center font-semibold">Ahorro, pagos y retiros →</Link></div></section>
+        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Por pagar</h2><p className="mt-2 text-sm text-red-700">Compromisos pendientes · {clp(p.total+deudaPersonal)}</p><dl className="mt-4 divide-y divide-tinta/10">{filas.filter(([,monto])=>monto>0).map(([nombre,monto])=><div key={nombre} className="flex justify-between gap-3 py-3 text-sm"><dt>{nombre}</dt><dd className="font-semibold tabular-nums text-red-700">{clp(monto)}</dd></div>)}{deudaPersonal>0 && <div className="flex justify-between gap-3 py-3 text-sm"><dt>{piloto ? 'Gastos por reembolsar' : 'Devolver a Pablo'}</dt><dd className="font-semibold text-red-700">{clp(deudaPersonal)}</dd></div>}</dl><Link href="/caja?ver=pendientes" className="mt-3 block text-sm font-semibold underline">Ver por operativo →</Link><div className="mt-5 border-t border-tinta/10 pt-4"><h3 className="text-sm">Utilidad calculada · operativos</h3><p className={`mt-2 text-3xl font-bold ${pendientes.utilidadOperativos<0?'text-red-700':'text-emerald-800'}`}>{clp(pendientes.utilidadOperativos)}</p><p className="mt-2 text-xs text-tinta-suave">Ventas menos costos. Incluye ventas por cobrar; no es saldo disponible.</p><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="mt-4 block rounded-xl border px-3 py-3 text-center font-semibold">{piloto ? 'Ver reportes →' : 'Ahorro, pagos y retiros →'}</Link></div></section>
       </div>
-      <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b></Link><Link href="/pagos/revisar" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Ahorro registrado</p><b className="text-2xl text-emerald-800 tabular-nums">{clp(ahorroSeparado)}</b></Link></div>
+      <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Ahorro registrado</p><b className="text-2xl text-emerald-800 tabular-nums">{clp(ahorroSeparado)}</b></Link></div>
       <p className="text-xs text-tinta-suave">Los traspasos no son ingresos. Los pagos realizados reducen el saldo.</p>
       </>}
       {vista==='pendientes' && <>
-      <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b><p className="mt-2 text-sm underline">Gestionar cobros →</p></Link><Link href="/pagos/revisar" className="rounded-2xl bg-tinta p-4 font-semibold text-white">Confirmar o corregir pagos, gastos y ahorro →</Link></div>
+      <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b><p className="mt-2 text-sm underline">Gestionar cobros →</p></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-tinta p-4 font-semibold text-white">Confirmar o corregir pagos, gastos y ahorro →</Link></div>
       <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Por operativo</h2>
       {pendientesFiltrados.length===0 && <p className="mt-3 text-sm">Sin pagos ni ahorro pendientes.</p>}
       {pendientesFiltrados.map(o=><Link key={o.operativoId} href={`/operativos/${o.operativoId}/cierre`} className="mt-3 block rounded-xl border p-3"><b>{o.nombre}</b><p className="text-xs text-tinta-suave">{fechaLegible(o.fecha)}</p><dl className="mt-2 grid grid-cols-2 gap-2 text-sm">{[['Fides',o.fides],['Marcos',o.marcos],['Gastos',o.gastos],['Pablo',o.personas.pablo],['Pamela',o.personas.madre],['Isadora',o.personas.isadora],['Ahorro por separar',o.ahorro]].map(([n,m])=><div key={n} className="flex justify-between gap-2"><dt>{n}</dt><dd className="tabular-nums">{clp(Number(m))}</dd></div>)}</dl></Link>)}
@@ -87,11 +90,11 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-bold text-red-700">Total de la óptica por pagar · {clp(p.total+deudaPersonal)}</summary>
       <div className="pt-2">
         <dl className="mt-2 divide-y divide-tinta/10">{filas.filter(([,monto])=>monto>0).map(([nombre,monto]) => <div key={nombre} className="flex justify-between gap-3 py-2"><dt>{nombre}</dt><dd className="font-semibold tabular-nums">{clp(monto)}</dd></div>)}
-          <div className="flex justify-between gap-3 py-2"><dt>Devolver a Pablo · gastos personales</dt><dd className="font-semibold tabular-nums">{clp(deudaPersonal)}</dd></div>
+          <div className="flex justify-between gap-3 py-2"><dt>{piloto ? 'Gastos por reembolsar' : 'Devolver a Pablo · gastos personales'}</dt><dd className="font-semibold tabular-nums">{clp(deudaPersonal)}</dd></div>
           <div className="flex justify-between gap-3 py-3 font-bold"><dt>Total pendiente</dt><dd>{clp(p.total+deudaPersonal)}</dd></div>
         </dl><p className="text-xs text-tinta-suave">Pendientes y ahorro aún no descontados del saldo bancario.</p>
         {p.ahorro > 0 && <p className="mt-2 text-sm">Ahorro por separar: {clp(p.ahorro)}</p>}
-        <Link href="/pagos" className="mt-3 inline-block rounded-xl border px-3 py-2 font-semibold">Ver y registrar pagos →</Link>
+        <Link href={piloto ? "/agenda/equipos" : "/pagos"} className="mt-3 inline-block rounded-xl border px-3 py-2 font-semibold">Ver y registrar pagos →</Link>
       </div>
       </details>
       </>}
@@ -101,7 +104,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
           <form action={crearGastoGlobal} className="mt-3 grid gap-3"><input type="hidden" name="volver_caja" value="1" /><input type="hidden" name="id" value={randomUUID()} />
             <label className="text-sm">Qué se pagó<input name="descripcion" placeholder="Arriendo del equipo, bandejas…" maxLength={250} required className={campo} /></label>
             <div className="grid grid-cols-2 gap-3"><label className="text-sm">Fecha<input type="date" name="fecha" defaultValue={fecha} max={fecha} required className={campo} /></label><label className="text-sm">Monto<input name="monto" type="number" min="1" step="1" required className={campo} /></label></div>
-            <label className="text-sm">De dónde salió<select name="caja" required defaultValue="" className={campo}><option value="" disabled>Elige el origen</option><option value="digital">Cuenta bancaria (Mercado Pago)</option><option value="efectivo">Efectivo de la óptica</option><option value="personal">Dinero personal de Pablo</option></select></label>
+            <label className="text-sm">De dónde salió<select name="caja" required defaultValue="" className={campo}><option value="" disabled>Elige el origen</option><option value="digital">{piloto ? 'Cuenta bancaria' : 'Cuenta bancaria (Mercado Pago)'}</option><option value="efectivo">Efectivo de la óptica</option><option value="personal">{piloto ? 'Fondo personal' : 'Dinero personal de Pablo'}</option></select></label>
             <label className="text-sm">Categoría<select name="categoria" className={campo}><option value="otro">Otro gasto</option><option value="arriendo">Arriendo</option><option value="compra_inventario">Inventario / equipamiento</option></select></label>
             <p className="text-xs text-tinta-suave">Si ya está registrado en un operativo o en Reportes, no lo agregues otra vez.</p>
             <BotonEnviar className="rounded-xl bg-brand px-4 py-3 font-semibold text-white">Guardar gasto</BotonEnviar>
@@ -131,7 +134,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       <Link href="/caja?ver=movimientos" className="rounded-xl bg-white p-4 text-center font-semibold">Revisar movimientos y diferencias →</Link>
       <section className="rounded-2xl bg-white p-4 shadow-sm">
         <details className="mt-2"><summary className="cursor-pointer py-2 font-semibold">Gastos personales por devolver · {clp(deudaPersonal)}</summary>
-          {personales.length === 0 ? <p className="mt-2 text-sm">Sin gastos personales pendientes registrados.</p> : personales.map(g => <div key={g.id} className="mt-3 border-t pt-3"><p className="font-semibold">{g.descripcion} · {clp(g.pendiente)}</p><p className="mb-2 text-sm text-tinta-suave">{fechaLegible(g.fecha)} · pagado personalmente por Pablo</p>
+          {personales.length === 0 ? <p className="mt-2 text-sm">Sin gastos personales pendientes registrados.</p> : personales.map(g => <div key={g.id} className="mt-3 border-t pt-3"><p className="font-semibold">{g.descripcion} · {clp(g.pendiente)}</p><p className="mb-2 text-sm text-tinta-suave">{fechaLegible(g.fecha)}{piloto ? ' · Fondo personal' : ' · pagado personalmente por Pablo'}</p>
             <CajaFormulario texto="Registrar devolución ya realizada"><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="tipo" value="devolucion" /><input type="hidden" name="gasto_id" value={g.id} /><input type="hidden" name="descripcion" value={`Devolución a Pablo: ${g.descripcion}`.slice(0,250)} />
               <label className="text-sm">Monto devuelto<input type="number" name="monto" min="1" max={g.pendiente} step="1" required className={campo} /></label>
               <label className="text-sm">Fecha<input type="date" name="fecha" defaultValue={fecha} min={g.fecha} max={fecha} required className={campo} /></label>
