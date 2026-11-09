@@ -21,6 +21,15 @@ export type EventoAgenda = HorarioAgenda & {
 
 export type BloqueLibre = RangoFechasAgenda & { id: string };
 
+// Un día sin compromisos solo está libre si se declaró disponibilidad.
+// Los compromisos pendientes también reservan el día completo.
+export function estadoDiaAgenda(bloques: BloqueLibre[], eventos: EventoAgenda[], dia: string) {
+  const activos = eventos.filter(e => e.estado !== "cancelado" && cubreDia(e, dia));
+  if (activos.some(e => e.estado !== "pendiente")) return "ocupado";
+  if (activos.length) return "reservado";
+  return bloques.some(b => cubreDia(b, dia)) ? "disponible" : "sin_confirmar";
+}
+
 export function fechaAgendaValida(s: string) {
   if (!/^[1-9]\d{3}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(s + "T12:00:00Z");

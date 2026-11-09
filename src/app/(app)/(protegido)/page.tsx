@@ -1,9 +1,10 @@
+import CalendarioDisponibilidad from "@/components/calendario-disponibilidad";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
-import { fechaConDia, hoyEnChile, inicioDelDia, finDelDia, rangoHorario, sumarDias } from "@/lib/fechas";
+import { fechaConDia, hoyEnChile, inicioDelDia, finDelDia, rangoHorario, sumarDias, primerDiaDelMes, nombreMes } from "@/lib/fechas";
 import { leerTodas } from "@/lib/leer-todas";
 import { cargarAgenda } from "@/lib/agenda-servidor";
 import { diaBreve, mostrarFechas, rangosDisponibles, RUTA_AGENDA, urlAgenda } from "@/lib/agenda";
@@ -98,11 +99,11 @@ export default async function Dashboard() {
     leerTodas((a, b) => supabase.from("ventas").select("id,total").eq("anulada", false)
       .gte("fecha", inicioDelDia(hoy)).lte("fecha", finDelDia(hoy)).order("id").range(a, b)),
     supabase.from("ordenes_trabajo").select("id", { count: "exact", head: true }).eq("estado", "listo"),
-    cargarAgenda(supabase, perfil.tenant_id, hoy, hasta),
+    cargarAgenda(supabase, perfil.tenant_id, primerDiaDelMes(hoy.slice(0, 7)), hasta),
     saldoDisponible(supabase, perfil.tenant_id),
   ]);
-  const libres = agenda.error ? [] : rangosDisponibles(agenda.disponibilidad, agenda.eventos, hoy, hasta).slice(0, 2);
-  const proximos = agenda.eventos.filter(o => o.estado === "confirmado" || o.estado === "pendiente");
+  const libres = agenda.error ? [] : rangosDisponibles(agenda.disponibilidad, agenda.eventos, hoy, hasta).slice(0, 4);
+  const proximos = agenda.eventos.filter(o => (o.fecha_fin || o.fecha) >= hoy && (o.estado === "confirmado" || o.estado === "pendiente"));
   const porConfirmar = proximos.filter(o => o.tipo === "propio" && o.estado === "pendiente");
   const totalVentas = (ventas.data ?? []).reduce((s, v) => s + v.total, 0);
 
@@ -112,6 +113,27 @@ export default async function Dashboard() {
         <Icono nombre="venta" className="size-5" /> Nueva venta
       </Link>
     } />
+
+    <section aria-label="Disponibilidad del tecnólogo" className="rounded-2xl border-2 border-green-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div><p className="text-xs font-bold uppercase tracking-wide text-green-800">Calendario</p>
+          <h2 className="mt-1 text-xl font-bold sm:text-2xl">Disponibilidad del tecnólogo</h2></div>
+        <Link href={RUTA_AGENDA} className="rounded-xl bg-green-800 px-4 py-3 text-sm font-bold text-white">Abrir calendario →</Link>
+      </div>
+      {agenda.error ? <p role="alert" className="rounded-xl bg-amber-100 p-4 text-sm text-amber-950">No se pudo cargar la disponibilidad. Abre el calendario para volver a intentar.</p> : <div className="grid items-start gap-5 lg:grid-cols-2">
+        <div><h3 className="mb-1 font-bold capitalize">{nombreMes(hoy.slice(0, 7))}</h3>
+          <CalendarioDisponibilidad mes={hoy.slice(0, 7)} hoy={hoy} eventos={agenda.eventos} disponibilidad={agenda.disponibilidad} />
+        </div>
+        <div><h3 className="text-lg font-bold text-green-950">Próximas fechas disponibles</h3>
+          {libres.length > 0 ? <ul className="mt-3 grid gap-2">
+            {libres.map(b => <li key={b.fecha}><Link href={urlAgenda(b.fecha)} className="flex items-center justify-between gap-2 rounded-xl border border-green-200 bg-green-50 p-4 text-green-950">
+              <span><span className="block text-xs font-semibold">Disponible todo el día</span><span className="text-base font-bold">{mostrarFechas(b)}</span></span><span aria-hidden="true">→</span>
+            </Link></li>)}
+          </ul> : <p className="mt-3 rounded-xl bg-neutral-100 p-4 text-sm">Sin disponibilidad confirmada en los próximos 90 días.</p>}
+          <Link href={urlAgenda(hoy, { nuevo: "disponible" })} className="mt-3 flex min-h-12 items-center justify-center rounded-xl border-2 border-green-800 px-4 py-3 text-sm font-bold text-green-900">＋ Agregar mi disponibilidad</Link>
+        </div>
+      </div>}
+    </section>
 
     <div className="grid gap-3 min-[400px]:grid-cols-2 xl:grid-cols-3">
       <Link href="/ventas/historial" className="rounded-2xl bg-white p-4 shadow-sm">
@@ -131,24 +153,7 @@ export default async function Dashboard() {
       </Link>
     </div>
 
-    <div className="grid items-start gap-4 xl:grid-cols-2">
-    <section className="rounded-2xl bg-sidebar text-white shadow-sm">
-      <Link href={RUTA_AGENDA} className="flex items-center gap-3 rounded-t-2xl px-4 pb-2 pt-4">
-        <svg aria-hidden="true" className="size-7 shrink-0 rounded-md bg-sky-700 p-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-          <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18m-13 4h2m4 0h2m-8 3h2" />
-        </svg>
-        <span className="text-xl font-bold">Calendario</span><span aria-hidden="true" className="ml-auto text-sky-100">→</span>
-      </Link>
-      <div className="px-4 pb-4">
-        <p className="text-sm text-sky-100">{agenda.error ? "Disponibilidad temporalmente inaccesible" : "Próximas fechas disponibles"}</p>
-        {libres.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">
-          {libres.map(b => <Link key={b.fecha} href={urlAgenda(b.fecha, { ver: "disponibilidad" })} className="rounded-lg bg-sky-800 px-3 py-2 text-xs font-semibold capitalize">
-            <span aria-hidden="true" className="mr-1 text-green-300">●</span> {mostrarFechas(b)}
-          </Link>)}
-        </div> : !agenda.error && <Link href={urlAgenda(hoy, { nuevo: "disponible" })} className="mt-1 inline-block rounded-lg bg-sky-800 px-3 py-2 text-xs font-semibold">Agregar disponibilidad →</Link>}
-      </div>
-    </section>
-
+    <div>
     {!agenda.error && <section className="rounded-2xl bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-bold">Próximos operativos</h2>
