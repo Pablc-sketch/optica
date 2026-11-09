@@ -37,6 +37,10 @@ export function horarioAgendaValido(inicio: string, fin: string) {
   return horaValida.test(inicio) && horaValida.test(fin) && inicio < fin;
 }
 
+export function horarioAgendaOpcionalValido(inicio: string, fin: string) {
+  return (!inicio && !fin) || horarioAgendaValido(inicio, fin);
+}
+
 function fechaTermino(rango: RangoFechasAgenda) {
   return rango.fecha_fin && rango.fecha_fin >= rango.fecha ? rango.fecha_fin : rango.fecha;
 }

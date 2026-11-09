@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { buscarCruce, fechasAgendaValidas, horarioAgendaValido, urlAgenda, type EventoAgenda } from "@/lib/agenda";
+import { buscarCruce, fechasAgendaValidas, horarioAgendaOpcionalValido, urlAgenda, type EventoAgenda } from "@/lib/agenda";
 import { guardarAgenda } from "@/lib/actions/agenda";
 
 type Tipo = "propio" | "externo" | "disponible";
@@ -17,12 +17,13 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
   inicial: Datos; edicion: boolean; eventos: EventoAgenda[]; nombreOptica: string; dia: string;
 }) {
   const [valores, setValores] = useState(inicial);
+  const [confirmarBorrado, setConfirmarBorrado] = useState(false);
   const [respuesta, enviar, pendiente] = useActionState(guardarAgenda.bind(null, edicion), {});
   const { tipo, fecha, fecha_fin, hora_inicio, hora_fin, estado } = valores;
   const conHorario = tipo === "propio";
-  const fechaFin = fecha_fin || (conHorario ? fecha : "");
-  const valido = fechasAgendaValidas(fecha, fechaFin) && (!conHorario || horarioAgendaValido(hora_inicio, hora_fin));
-  const mismoRango = edicion && inicial.estado !== "cancelado" && fecha === inicial.fecha
+  const fechaFin = fecha_fin || fecha;
+  const valido = fechasAgendaValidas(fecha, fechaFin) && (!conHorario || horarioAgendaOpcionalValido(hora_inicio, hora_fin));
+  const mismoRango = edicion && tipo === inicial.tipo && inicial.estado !== "cancelado" && fecha === inicial.fecha
     && fechaFin === (inicial.fecha_fin || inicial.fecha)
     && (!conHorario || (hora_inicio === inicial.hora_inicio && hora_fin === inicial.hora_fin));
   const cruce = tipo !== "disponible" && estado !== "cancelado" && valido && !mismoRango
@@ -48,7 +49,8 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
     <form action={enviar} className="grid gap-3">
       <input type="hidden" name="id" value={inicial.id} />
       <input type="hidden" name="tipo" value={tipo} />
-      {!edicion && tipo !== "disponible" && <div aria-label="Tipo de operativo" className="grid grid-cols-2 gap-1 rounded-xl border border-tinta/10 p-1">
+      <input type="hidden" name="tipo_original" value={inicial.tipo} />
+      {tipo !== "disponible" && <div aria-label="Tipo de operativo" className="grid grid-cols-2 gap-1 rounded-xl border border-tinta/10 p-1">
         {([["propio", nombreOptica], ["externo", "Otra óptica"]] as const).map(([value, label]) =>
           <button key={value} type="button" aria-pressed={tipo === value} onClick={() => cambiar("tipo", value)}
             className={`rounded-lg p-2 text-sm font-semibold ${tipo === value ? "bg-sky-100 text-sky-950" : "text-tinta-suave"}`}>{label}</button>
@@ -61,14 +63,14 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
       </>}
       <div className="grid grid-cols-2 gap-2">
         <label className="min-w-0 text-sm font-medium">Fecha de inicio<input {...vincular("fecha")} type="date" required className={campo} /></label>
-        <label className="min-w-0 text-sm font-medium">Fecha de término<input {...vincular("fecha_fin")} type="date" min={fecha} required={!conHorario} className={campo} /></label>
+        <label className="min-w-0 text-sm font-medium">Fecha de término<input {...vincular("fecha_fin")} type="date" min={fecha}  className={campo} /></label>
       </div>
       {conHorario && <>
       <div className="grid grid-cols-2 gap-2">
-        <label className="min-w-0 text-sm font-medium">Hora de inicio<input {...vincular("hora_inicio")} type="time" required className={campo} /></label>
-        <label className="min-w-0 text-sm font-medium">Hora de término<input {...vincular("hora_fin")} type="time" required className={campo} /></label>
+        <label className="min-w-0 text-sm font-medium">Hora de inicio<input {...vincular("hora_inicio")} type="time" className={campo} /></label>
+        <label className="min-w-0 text-sm font-medium">Hora de término<input {...vincular("hora_fin")} type="time" className={campo} /></label>
       </div>
-      <p className="text-xs text-tinta-suave">Hora de Chile continental · se repite cada día del operativo.</p>
+      <p className="text-xs text-tinta-suave">Horario opcional · deja ambas horas vacías si aún no están definidas.</p>
       </>}
       {tipo !== "disponible" && <>
         <label className="text-sm font-medium">Estado<select {...vincular("estado")} className={campo}>
@@ -79,9 +81,19 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
       </>}
       {cruce && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm font-semibold text-amber-950">Cruce con {cruce.nombre}. Revisa las fechas{conHorario && " y horas"}.</p>}
       {respuesta.error && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm font-semibold text-amber-950">{respuesta.error}</p>}
-      <button disabled={pendiente || !!cruce} className="rounded-xl bg-brand px-4 py-3 font-semibold text-white disabled:bg-neutral-200 disabled:text-neutral-700">
+      <button name="accion" value="guardar" disabled={pendiente || !!cruce} className="rounded-xl bg-brand px-4 py-3 font-semibold text-white disabled:bg-neutral-200 disabled:text-neutral-700">
         {pendiente ? "Guardando…" : tipo === "disponible" ? "Guardar disponibilidad" : "Guardar operativo"}
       </button>
+      {edicion && inicial.tipo !== "disponible" && <div className="mt-3 border-t border-tinta/10 pt-4">
+        {confirmarBorrado ? <div className="space-y-3 rounded-xl bg-red-50 p-4">
+          <p className="font-semibold text-red-950">¿Eliminar este operativo del calendario?</p>
+          <p className="text-sm text-red-900">Se elimina solo si no tiene ventas, recetas, gastos ni otros datos vinculados.</p>
+          <div className="flex flex-wrap gap-2">
+            <button name="accion" value="eliminar" formNoValidate disabled={pendiente} className="rounded-xl bg-red-700 px-4 py-3 font-bold text-white disabled:opacity-50">Sí, eliminar</button>
+            <button type="button" onClick={() => setConfirmarBorrado(false)} className="rounded-xl bg-white px-4 py-3 font-semibold">Volver</button>
+          </div>
+        </div> : <button type="button" onClick={() => setConfirmarBorrado(true)} className="rounded-xl border border-red-300 px-4 py-3 font-semibold text-red-800">Eliminar del calendario</button>}
+      </div>}
     </form>
   </section>;
 }

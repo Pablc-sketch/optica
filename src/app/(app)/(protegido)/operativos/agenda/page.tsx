@@ -33,8 +33,8 @@ function Evento({ evento, dia }: { evento: EventoAgenda; dia: string }) {
     </p>
     {(o.tipo === "externo" || o.direccion) && <p className="text-sm">{[o.tipo === "externo" && o.optica, o.direccion].filter(Boolean).join(" · ")}</p>}
     {o.notas && <p className="whitespace-pre-line break-words text-sm text-tinta-suave">{o.notas}</p>}
-    <div className="flex flex-wrap gap-4 pt-1 text-sm font-semibold text-brand-dark">
-      {o.estado !== "realizado" && <Link href={urlAgenda(dia, { editar: o.id })}>Editar operativo</Link>}
+    <div className="flex flex-wrap gap-2 pt-2 text-sm font-semibold text-brand-dark">
+      {o.estado !== "realizado" && <Link href={urlAgenda(dia, { editar: o.id })} className="rounded-xl bg-crema px-4 py-3">Editar o eliminar</Link>}
       {o.tipo === "propio" && <Link href={`/operativos/${o.id}`}>Ver ficha del operativo →</Link>}
     </div>
   </article>;
@@ -78,6 +78,7 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
           notas: editar?.notas ?? "", estado: editar?.estado ?? "pendiente",
         }} />
     ) : <>
+      {param("eliminado") === "1" && <p role="status" className="rounded-xl bg-green-100 p-3 text-sm text-green-950">Operativo eliminado del calendario.</p>}
       {param("guardado") === "1" && <p role="status" className="rounded-xl bg-green-100 p-3 text-sm text-green-950">Agenda actualizada.</p>}
       {param("error") === "cruce" && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm text-amber-950">El operativo se cruza con otro horario. Elige un bloque libre en la agenda.</p>}
       {param("error") === "borrar" && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm">No se pudo quitar el bloque.</p>}

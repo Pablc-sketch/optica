@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { hoyEnChile } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
-import { fechaAgendaValida, fechasAgendaValidas, horarioAgendaValido, RUTA_AGENDA, urlAgenda } from "@/lib/agenda";
+import { fechaAgendaValida, fechasAgendaValidas, horarioAgendaOpcionalValido, RUTA_AGENDA, urlAgenda } from "@/lib/agenda";
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
@@ -15,8 +16,21 @@ export async function guardarAgenda(
     const { supabase, tenantId } = await requerirPerfil({ roles: ["admin"], suscripcion: true });
     const id = text(form, "id");
     const tipo = text(form, "tipo");
+    const origen = text(form, "tipo_original") || tipo;
+    const eliminar = text(form, "accion") === "eliminar";
+    if (edicion && eliminar) {
+      if (!UUID.test(id) || !["propio", "externo"].includes(origen)) return { error: "Revisa el registro a eliminar." };
+      const { error } = await supabase.rpc("agenda_reclasificar", { p: { id, origen, destino: "eliminar" } });
+      if (error) return { error: error.message };
+      revalidatePath("/");
+      revalidatePath("/operativos");
+      revalidatePath("/operativos/calendario");
+      revalidatePath(RUTA_AGENDA);
+      revalidatePath(`/operativos/${id}`);
+      redirect(urlAgenda(fechaAgendaValida(text(form, "fecha")) ? text(form, "fecha") : hoyEnChile(), { eliminado: "1" }));
+    }
     const fecha = text(form, "fecha");
-    const fechaFin = text(form, "fecha_fin") || (tipo === "propio" ? fecha : "");
+    const fechaFin = text(form, "fecha_fin") || fecha;
     const inicio = text(form, "hora_inicio");
     const fin = text(form, "hora_fin");
     const nombre = text(form, "nombre");
@@ -31,7 +45,7 @@ export async function guardarAgenda(
     if (!fechasAgendaValidas(fecha, fechaFin)) {
       return { error: "Indica un rango de fechas válido de hasta un año." };
     }
-    if (tipo === "propio" && !horarioAgendaValido(inicio, fin)) {
+    if (tipo === "propio" && !horarioAgendaOpcionalValido(inicio, fin)) {
       return { error: "La hora de término debe ser posterior a la de inicio." };
     }
     if ((tipo !== "disponible" && !nombre) || (tipo === "externo" && !optica)) {
@@ -40,11 +54,25 @@ export async function guardarAgenda(
     if (nombre.length > 160 || optica.length > 160 || direccion.length > 250 || notas.length > 2000) {
       return { error: "Acorta el nombre, el lugar o las notas." };
     }
+    if (edicion && origen !== tipo) {
+      if (!["propio", "externo"].includes(origen) || !["propio", "externo"].includes(tipo)) return { error: "No se puede convertir este registro." };
+      const { error } = await supabase.rpc("agenda_reclasificar", { p: {
+        id, origen, destino: tipo, fecha, fecha_fin: fechaFin, nombre, optica, direccion, notas, estado,
+        hora_inicio: inicio, hora_fin: fin,
+      } });
+      if (error) return { error: error.code === "23P01" ? "El rango se cruza con otro operativo. Revisa las fechas." : error.message };
+      revalidatePath("/");
+      revalidatePath("/operativos");
+      revalidatePath("/operativos/calendario");
+      revalidatePath(RUTA_AGENDA);
+      revalidatePath(`/operativos/${id}`);
+      redirect(urlAgenda(fecha, { guardado: "1" }));
+    }
     const fechas = { fecha, fecha_fin: fechaFin === fecha ? null : fechaFin };
     const detalles = { nombre, direccion: direccion || null, notas: notas || null };
     const propios = supabase.from("operativos");
     const bloques = supabase.from("agenda_bloques");
-    const propio = { ...fechas, hora_inicio: inicio, hora_fin: fin, ...detalles, estado: estado === "cancelado" ? estado : "planificado", agenda_confirmado: estado === "confirmado" };
+    const propio = { ...fechas, hora_inicio: inicio || null, hora_fin: fin || null, ...detalles, estado: estado === "cancelado" ? estado : "planificado", agenda_confirmado: estado === "confirmado" };
     const bloque = { ...fechas, estado, tipo, ...detalles, optica: optica || null };
     const operacion = tipo === "propio"
       ? edicion

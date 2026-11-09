@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buscarCruce, estadoDisponibilidad, fechasAgendaValidas, horarioAgendaValido, rangosDisponibles, type EventoAgenda } from "@/lib/agenda";
+import { buscarCruce, estadoDisponibilidad, fechasAgendaValidas, horarioAgendaValido, horarioAgendaOpcionalValido, rangosDisponibles, type EventoAgenda } from "@/lib/agenda";
 
 const bloque = { id: "libre", fecha: "2026-11-09", fecha_fin: "2026-11-17" };
 const externo: EventoAgenda = {
@@ -72,4 +72,13 @@ describe("distingue mi óptica de los compromisos externos", () => {
   it("un operativo propio cancelado no impide mostrar un día libre", () => {
     expect(estadoDisponibilidad("2026-11-12", [bloque], [{ ...propio, estado: "cancelado" }])).toBe("disponible");
   });
+});
+
+
+it("permite corregir jornadas sin hora y rechaza horarios parciales o invertidos", () => {
+  expect(horarioAgendaOpcionalValido("", "")).toBe(true);
+  expect(horarioAgendaOpcionalValido("09:00", "")).toBe(false);
+  expect(horarioAgendaOpcionalValido("", "18:00")).toBe(false);
+  expect(horarioAgendaOpcionalValido("18:00", "09:00")).toBe(false);
+  expect(horarioAgendaOpcionalValido("09:00", "18:00")).toBe(true);
 });
