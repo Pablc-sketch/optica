@@ -1,3 +1,4 @@
+import CalendarioDisponibilidad, { ESTILO_DISPONIBILIDAD, LeyendaDisponibilidad } from "@/components/calendario-disponibilidad";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { redirect } from "next/navigation";
@@ -5,12 +6,11 @@ import Link from "next/link";
 import { randomUUID } from "node:crypto";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { cargarAgenda } from "@/lib/agenda-servidor";
-import { cubreDia, fechaAgendaValida, mostrarFechas, rangosDisponibles, RUTA_AGENDA, urlAgenda, type EventoAgenda } from "@/lib/agenda";
-import { fechaConDia, fechaLegible, horaCorta, hoyEnChile, mesDesplazado, nombreMes, primerDiaDelMes, rangoHorario, semanasDelMes, ultimoDiaDelMes } from "@/lib/fechas";
+import { cubreDia, estadoDisponibilidad, fechaAgendaValida, mostrarFechas, rangosDisponibles, RUTA_AGENDA, urlAgenda, type EventoAgenda } from "@/lib/agenda";
+import { fechaConDia, horaCorta, hoyEnChile, mesDesplazado, nombreMes, primerDiaDelMes, rangoHorario, ultimoDiaDelMes } from "@/lib/fechas";
 import { borrarDisponibilidad } from "@/lib/actions/agenda";
 import FormularioAgenda from "./formulario";
 
-const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const MARCAS = {
   propio: "bg-orange-100 text-orange-950",
   externo: "bg-sky-100 text-sky-950",
@@ -53,7 +53,8 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
   const { eventos, disponibilidad, nombreOptica, error } = await cargarAgenda(supabase, tenantId, primerDiaDelMes(mes), ultimoDiaDelMes(mes));
   const libres = rangosDisponibles(disponibilidad, eventos, hoy > primerDiaDelMes(mes) ? hoy : primerDiaDelMes(mes), ultimoDiaDelMes(mes));
   const delDia = eventos.filter(o => cubreDia(o, dia));
-  const libreHoy = libres.some(b => cubreDia(b, dia));
+  const estadoDia = estadoDisponibilidad(dia, disponibilidad, eventos);
+  const libreHoy = dia >= hoy && estadoDia === "disponible";
   const declarados = disponibilidad.filter(b => cubreDia(b, dia));
   const editar = eventos.find(o => o.id === param("editar") && o.estado !== "realizado");
   const editarBloque = disponibilidad.find(b => b.id === param("editar"));
@@ -65,7 +66,7 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
   return <div className={`mx-auto flex flex-col gap-4 ${mostrarFormulario ? "max-w-3xl" : ""}`}>
     <div>
       <CabeceraPagina seccion="En terreno" titulo="Calendario" />
-      <p className="text-sm text-tinta-suave">Disponibilidad · {nombreOptica}</p>
+      <p className="text-sm text-tinta-suave">Disponibilidad del tecnólogo · {nombreOptica}</p>
     </div>
     {error ? <p role="alert" className="rounded-xl bg-amber-100 p-4 text-sm">No se pudo cargar la agenda. Vuelve a intentar.</p> : mostrarFormulario ? (
       <FormularioAgenda key={registro?.id ?? `${dia}-${modo}`} dia={dia}
@@ -80,48 +81,42 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
       {param("guardado") === "1" && <p role="status" className="rounded-xl bg-green-100 p-3 text-sm text-green-950">Agenda actualizada.</p>}
       {param("error") === "cruce" && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm text-amber-950">El operativo se cruza con otro horario. Elige un bloque libre en la agenda.</p>}
       {param("error") === "borrar" && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm">No se pudo quitar el bloque.</p>}
-      <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
-        {Object.entries({ propio: nombreOptica, externo: "Otras ópticas", disponible: "Disponible", pendiente: "Por confirmar" })
-          .map(([tipo, texto]) => <span key={tipo} className={`rounded-full px-2.5 py-1 ${MARCAS[tipo as keyof typeof MARCAS]}`}>{texto}</span>)}
-      </div>
+      <section id="disponibilidad" className="scroll-mt-32 rounded-2xl border border-green-200 bg-green-50 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-green-950">Días disponibles para agendar</h2>
+          <Link href={urlAgenda(dia, { nuevo: "disponible" })} className="rounded-xl bg-green-800 px-4 py-3 text-sm font-bold text-white">＋ Marcar disponibilidad</Link>
+        </div>
+        {libres.length > 0 ? <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {libres.map(b => <li key={b.fecha}><Link href={urlAgenda(b.fecha)} className="flex items-center justify-between gap-2 rounded-xl bg-white p-3 font-bold text-green-950 shadow-sm">
+            <span>{mostrarFechas(b)}</span><span aria-hidden>→</span>
+          </Link></li>)}
+        </ul> : <p className="mt-2 text-sm text-green-950">No hay días disponibles confirmados en lo que queda de este mes.</p>}
+
+      </section>
+      <LeyendaDisponibilidad nombreOptica={nombreOptica} />
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <section aria-label="Mes de la agenda" className="rounded-2xl bg-white p-3 shadow-sm sm:p-4">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="font-bold first-letter:uppercase">{nombreMes(mes)}</h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-bold first-letter:uppercase">{nombreMes(mes)}</h2>
           <div className="flex gap-1.5">
             <Link href={urlAgenda(hoy)} className="grid min-h-10 place-items-center rounded-lg bg-crema px-3 text-sm font-semibold">Hoy</Link>
             <Link aria-label="Mes anterior" href={`${RUTA_AGENDA}?mes=${mesDesplazado(mes, -1)}`} className="grid min-h-10 min-w-10 place-items-center rounded-lg bg-crema">‹</Link>
             <Link aria-label="Mes siguiente" href={`${RUTA_AGENDA}?mes=${mesDesplazado(mes, 1)}`} className="grid min-h-10 min-w-10 place-items-center rounded-lg bg-crema">›</Link>
           </div>
         </div>
-        <div className="grid grid-cols-7 gap-1 text-center">
-          {DIAS.map(d => <span key={d} className="py-1 text-xs text-tinta-suave">{d}</span>)}
-          {semanasDelMes(mes).flat().map((d, i) => {
-            if (!d) return <span key={`vacío-${i}`} />;
-            const enFecha = eventos.filter(o => o.estado !== "cancelado" && cubreDia(o, d));
-            const marcas: (keyof typeof MARCAS)[] = [...new Set(enFecha.flatMap(o => o.estado === "pendiente" ? [o.tipo, "pendiente" as const] : [o.tipo]))];
-            if (libres.some(b => cubreDia(b, d))) marcas.push("disponible");
-            const primero = marcas[0];
-            const etiquetas = marcas.map(m => ({ propio: nombreOptica, externo: "Otras ópticas", disponible: "Disponible", pendiente: "Por confirmar" }[m]));
-            return <Link key={d} href={urlAgenda(d)} aria-current={d === dia ? "date" : undefined}
-              aria-label={[`${fechaLegible(d)}${d === hoy ? ", hoy" : ""}`, ...etiquetas].join(", ")}
-              className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-sm font-semibold xl:min-h-14 ${d === dia ? "bg-sky-800 text-white" : primero ? MARCAS[primero] : "hover:bg-crema"} ${d === hoy ? "ring-1 ring-inset ring-brand" : ""}`}>
-              {Number(d.slice(8))}
-              <span className="flex gap-0.5" aria-hidden>{marcas.map(m =>
-                <span key={m} className={`size-1.5 rounded-full ${{ propio: "bg-orange-500", externo: "bg-teal-500", disponible: "bg-green-500", pendiente: "bg-amber-500" }[m]}`} />)}</span>
-            </Link>;
-          })}
-        </div>
-        <p className="mt-3 text-xs text-tinta-suave">Sin marca verde, la disponibilidad no está confirmada.</p>
+        <CalendarioDisponibilidad eventos={eventos} bloques={disponibilidad} hoy={hoy} mes={mes} seleccionado={dia} nombreOptica={nombreOptica} />
+        <p className="mt-3 text-sm text-tinta-suave">Toca un día para ver el detalle o agendar.</p>
       </section>
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
-        <h2 className="font-bold">{fechaConDia(dia)}</h2>
+      <section id="detalle-dia" className="scroll-mt-40 rounded-2xl bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-bold">{fechaConDia(dia)}</h2>
+        <p className={`mt-3 rounded-xl border p-3 font-bold ${ESTILO_DISPONIBILIDAD[estadoDia].clase}`}>{estadoDia === "propio" ? `Operativo de ${nombreOptica}` : ESTILO_DISPONIBILIDAD[estadoDia].texto}{dia < hoy && " · Fecha pasada"}</p>
         {delDia.length === 0 && <p className="mt-2 text-sm text-tinta-suave">Sin operativos agendados para este día.</p>}
         {delDia.map(o => <Evento key={o.id} evento={o} dia={dia} />)}
         {libreHoy && <Link href={urlAgenda(dia, { nuevo: "operativo" })}
           className="mt-2 flex justify-between gap-2 rounded-lg bg-green-100 p-2.5 text-sm font-semibold text-green-950">
           <span>Día disponible</span><span>Agendar →</span>
         </Link>}
+        {!libreHoy && <Link href={urlAgenda(dia, { nuevo: "operativo" })} className="mt-3 block rounded-xl bg-brand px-4 py-3 text-center text-sm font-semibold text-white">＋ Nuevo operativo</Link>}
         {declarados.length > 0 && <details className="mt-3 text-sm">
           <summary className="cursor-pointer text-tinta-suave">Administrar disponibilidad</summary>
           {declarados.map(b => <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -136,17 +131,6 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<R
           </div>)}
         </details>}
       </section>
-      </div>
-      {libres.length > 0 && <details id="disponibilidad" open={param("ver") === "disponibilidad"} className="scroll-mt-32 rounded-xl bg-green-50 p-3 text-green-950">
-        <summary className="cursor-pointer text-sm font-bold">Disponibilidad del mes</summary>
-        <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
-          {libres.map(b => <li key={b.fecha}><Link href={urlAgenda(b.fecha, { ver: "disponibilidad" })}
-            className="block rounded-lg bg-white p-2.5 text-sm font-semibold capitalize">{mostrarFechas(b)} →</Link></li>)}
-        </ul>
-      </details>}
-      <div className="grid gap-2 sm:grid-cols-2">
-        <Link href={urlAgenda(dia, { nuevo: "operativo" })} className="rounded-xl bg-brand px-4 py-3 text-center font-semibold text-white">＋ Nuevo operativo</Link>
-        <Link href={urlAgenda(dia, { nuevo: "disponible" })} className="rounded-xl bg-white px-4 py-3 text-center font-semibold text-sky-950 shadow-sm">Agregar disponibilidad</Link>
       </div>
       <Link href={`/operativos/calendario?mes=${mes}`} className="self-start text-sm font-semibold text-brand-dark">Metas y resultados del mes →</Link>
     </>}

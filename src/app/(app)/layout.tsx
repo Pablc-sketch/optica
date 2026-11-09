@@ -86,6 +86,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const nav = menuParaRol(perfil.rol, mercadoPagoConfigurado(perfil.tenant_id), perfil.es_superadmin);
   if (esPilotoTerreno(perfil.tenant_id) && perfil.rol === "admin") {
+    const calendario = nav.findIndex(n => n.href === "/operativos/agenda");
+    if (calendario >= 0) nav.splice(calendario, 1);
     const i = nav.findIndex(n=>n.href === "/operativos");
     if (i >= 0) nav[i] = {href:"/agenda/equipos",label:"Agenda",principal:true,movil:true};
   }

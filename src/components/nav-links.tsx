@@ -8,7 +8,7 @@ import { enlaceActivo, type EnlaceMenu } from "@/lib/navegacion";
 
 const grupos: { titulo: string; enlaces: Record<string, NombreIcono> }[] = [
   { titulo: "Operación", enlaces: { "/": "inicio", "/ventas": "venta", "/cobros": "cobros", "/entregas": "entregas", "/caja": "caja", "/seguros": "reembolsos" } },
-  { titulo: "Atención", enlaces: { "/pacientes": "pacientes", "/agenda/equipos": "agenda", "/operativos": "agenda", "/ot": "ordenes" } },
+  { titulo: "Atención", enlaces: { "/pacientes": "pacientes", "/operativos/agenda": "agenda", "/agenda/equipos": "agenda", "/operativos": "agenda", "/ot": "ordenes" } },
   { titulo: "Administración", enlaces: { "/inventario": "inventario", "/laboratorio": "laboratorio", "/configuracion": "configuracion", "/superadmin": "opticas" } },
 ];
 const iconos = Object.assign({}, ...grupos.map(g => g.enlaces)) as Record<string, NombreIcono>;

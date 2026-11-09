@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buscarCruce, fechasAgendaValidas, horarioAgendaValido, rangosDisponibles, type EventoAgenda } from "@/lib/agenda";
+import { buscarCruce, estadoDisponibilidad, fechasAgendaValidas, horarioAgendaValido, rangosDisponibles, type EventoAgenda } from "@/lib/agenda";
 
 const bloque = { id: "libre", fecha: "2026-11-09", fecha_fin: "2026-11-17" };
 const externo: EventoAgenda = {
@@ -35,5 +35,41 @@ describe("agenda compartida", () => {
   it("rechaza fechas inexistentes y horarios invertidos", () => {
     expect(fechasAgendaValidas("2026-02-30", "2026-03-02")).toBe(false);
     expect(horarioAgendaValido("18:00", "09:00")).toBe(false);
+  });
+});
+
+
+describe("disponibilidad visible del tecnólogo", () => {
+  it("no ofrece como libre un día sin confirmar aunque no tenga operativos", () => {
+    expect(estadoDisponibilidad("2026-11-18", [bloque], [])).toBe("sin_confirmar");
+  });
+  it("un operativo por confirmar también ocupa un día declarado disponible", () => {
+    expect(estadoDisponibilidad("2026-11-12", [bloque], [{ ...externo, estado: "pendiente" }])).toBe("ocupado");
+  });
+  it("una cancelación devuelve la disponibilidad solo si fue declarada", () => {
+    const eventos = [{ ...externo, estado: "cancelado" as const }];
+    expect(estadoDisponibilidad("2026-11-12", [bloque], eventos)).toBe("disponible");
+    expect(estadoDisponibilidad("2026-11-12", [], eventos)).toBe("sin_confirmar");
+  });
+  it("conserva ocupados todos los días de un rango que cruza de mes", () => {
+    const eventos = [{ ...externo, fecha: "2026-10-30", fecha_fin: "2026-11-02" }];
+    expect(estadoDisponibilidad("2026-11-01", [], eventos)).toBe("ocupado");
+    expect(estadoDisponibilidad("2026-11-02", [], eventos)).toBe("ocupado");
+    expect(estadoDisponibilidad("2026-11-03", [], eventos)).toBe("sin_confirmar");
+  });
+});
+
+
+describe("distingue mi óptica de los compromisos externos", () => {
+  const propio: EventoAgenda = { ...externo, id: "global", tipo: "propio", optica: "Óptica Global" };
+  it("identifica los días de Óptica Global aunque haya disponibilidad declarada", () => {
+    expect(estadoDisponibilidad("2026-11-12", [bloque], [propio])).toBe("propio");
+  });
+  it("un cruce externo conserva la advertencia de ocupado en cualquier orden", () => {
+    expect(estadoDisponibilidad("2026-11-12", [bloque], [propio, externo])).toBe("ocupado");
+    expect(estadoDisponibilidad("2026-11-12", [bloque], [externo, propio])).toBe("ocupado");
+  });
+  it("un operativo propio cancelado no impide mostrar un día libre", () => {
+    expect(estadoDisponibilidad("2026-11-12", [bloque], [{ ...propio, estado: "cancelado" }])).toBe("disponible");
   });
 });

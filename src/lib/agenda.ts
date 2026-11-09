@@ -45,6 +45,14 @@ export function cubreDia(rango: RangoFechasAgenda, dia: string) {
   return rango.fecha <= dia && fechaTermino(rango) >= dia;
 }
 
+export function estadoDisponibilidad(dia: string, bloques: BloqueLibre[], eventos: EventoAgenda[]) {
+  const activos = eventos.filter(e => e.estado !== "cancelado" && cubreDia(e, dia));
+  if (activos.some(e => e.tipo === "externo")) return "ocupado";
+  if (activos.some(e => e.tipo === "propio")) return "propio";
+  if (bloques.some(b => cubreDia(b, dia))) return "disponible";
+  return "sin_confirmar";
+}
+
 export function mostrarFechas(rango: RangoFechasAgenda) {
   const fin = fechaTermino(rango);
   return fin === rango.fecha ? fechaLegible(rango.fecha) : `${fechaLegible(rango.fecha)} al ${fechaLegible(fin)}`;
