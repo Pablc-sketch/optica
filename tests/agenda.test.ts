@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buscarCruce, fechasAgendaValidas, horarioAgendaValido, rangosDisponibles, type EventoAgenda } from "@/lib/agenda";
+import { buscarCruce, estadoDiaAgenda, fechasAgendaValidas, horarioAgendaValido, rangosDisponibles, type EventoAgenda } from "@/lib/agenda";
 
 const bloque = { id: "libre", fecha: "2026-11-09", fecha_fin: "2026-11-17" };
 const externo: EventoAgenda = {
@@ -8,6 +8,21 @@ const externo: EventoAgenda = {
 };
 
 describe("agenda compartida", () => {
+  it("distingue días declarados, vacíos, reservados y ocupados sin ofrecer falsos días libres", () => {
+    expect(estadoDiaAgenda([], [], "2026-11-09")).toBe("sin_confirmar");
+    expect(estadoDiaAgenda([bloque], [], "2026-11-09")).toBe("disponible");
+    expect(estadoDiaAgenda([bloque], [externo], "2026-11-14")).toBe("ocupado");
+    expect(estadoDiaAgenda([bloque], [{ ...externo, estado: "pendiente" }], "2026-11-10")).toBe("reservado");
+    expect(estadoDiaAgenda([bloque], [{ ...externo, estado: "cancelado" }], "2026-11-10")).toBe("disponible");
+    expect(estadoDiaAgenda([bloque], [externo], "2026-11-15")).toBe("disponible");
+  });
+
+  it("respeta bloqueos que cruzan meses y prioriza un compromiso confirmado ante uno pendiente", () => {
+    const cruce = { ...externo, fecha: "2026-10-30", fecha_fin: "2026-11-02" };
+    expect(estadoDiaAgenda([], [cruce], "2026-11-01")).toBe("ocupado");
+    expect(estadoDiaAgenda([bloque], [{ ...externo, id: "pendiente", estado: "pendiente" }, externo], "2026-11-11")).toBe("ocupado");
+  });
+
   it("descuenta días completos de la disponibilidad y conserva los rangos restantes", () => {
     expect(rangosDisponibles([bloque], [externo], bloque.fecha, bloque.fecha_fin)).toEqual([
       { fecha: "2026-11-09", fecha_fin: null },
