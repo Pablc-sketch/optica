@@ -1,5 +1,6 @@
 import CabeceraPagina from "@/components/cabecera-pagina";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { personasDelReparto } from "@/lib/configuracion-optica";
 import Link from 'next/link';
 import { randomUUID } from 'node:crypto';
 import { exigirRolPagina } from '@/lib/autorizacion';
@@ -42,7 +43,8 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
     pendiente: pendientePersonal(g.monto,(movimientos.data ?? []).filter(m => m.gasto_id === g.id)) })).filter(g => g.pendiente > 0).sort((a,b) => a.fecha.localeCompare(b.fecha));
   const deudaPersonal = personales.reduce((s,g) => s+g.pendiente,0);
   const base = pendientes.resumen;
-  const p = piloto ? {...base,total:base.costos,ahorro:0,personas:{pablo:0,madre:0,isadora:0}} : base;
+  const p = piloto ? {...base,total:base.costos,ahorro:0,personas:{}} : base;
+  const reparto = pendientes.reparto;
   const disponible = disponibleTrasPendientes(saldo, { pagos: p.total, devoluciones: deudaPersonal, ahorro: p.ahorro });
   const vistas = [['resumen','Resumen'],['movimientos','Movimientos'],['pendientes','Pendientes'],['cuadrar','Cuadrar']] as const;
   const vista = vistas.find(([clave]) => clave === params.ver)?.[0] ?? 'resumen';
@@ -50,10 +52,14 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
   const ventasFiltradas = (ventas.data ?? []).filter(v => !operativoId || v.operativo_id === operativoId);
   const operativoPorVenta = new Map((ventas.data ?? []).map(v => [v.id,v.operativo_id]));
   const porCobrar = ventasFiltradas.reduce((s,v) => s + Math.max(0, v.total - v.pagos_abonos.reduce((s,p) => s+p.monto,0)),0);
-  const ahorroSeparado = (retiros.data ?? []).filter(r => r.persona === 'ahorro').reduce((s,r) => s+r.monto,0);
+  const ahorroSeparado = reparto ? (retiros.data ?? []).filter(r => r.persona === reparto.ahorro.clave).reduce((s,r) => s+r.monto,0) : 0;
   const pendientesFiltrados = p.operativos.filter(o => !operativoId || o.operativoId === operativoId);
   const fecha = hoyEnChile();
-  const filas = [['Pablo',p.personas.pablo],['Pamela',p.personas.madre],['Isadora',p.personas.isadora],['Fides',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos]] as const;
+  // Personas del reparto configurado por la óptica (ninguna si no reparte).
+  const filas: [string, number][] = [
+    ...personasDelReparto(reparto).filter(x => !x.esAhorro).map((x): [string, number] => [x.nombre, p.personas[x.clave] ?? 0]),
+    ['Laboratorio', p.fides], ['Marcos / armazones', p.marcos], ['Gastos de operativos', p.gastos],
+  ];
   return <div className="flex flex-col gap-5">
     <CabeceraPagina seccion="Operación" titulo="Caja" />
     <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-4">{vistas.map(([clave,nombre]) => <Link key={clave} href={`/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-3 text-center font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>

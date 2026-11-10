@@ -6,9 +6,10 @@
 //   − marcos ($5.000 por par)
 //   − gastos del operativo (arriendo, equipos, transporte, ayudante…)
 //   − comisión de la máquina de tarjetas.
-// Reparto (reglas vigentes, no cambian): Isadora % de lo vendido en lentes,
-// ahorro % de lo que queda, resto mitad mamá y mitad Pablo.
-import { calcularSueldos, type BaseComision } from "./sueldos";
+// Reparto: el que configure cada óptica (vendedora %, ahorro %, socios).
+// Sin reparto configurado no se calcula comisión, ahorro ni partes.
+import { repartirUtilidad, type BaseComision } from "./sueldos";
+import type { Reparto } from "./configuracion-optica";
 
 export type EntradaCierre = {
   vendido: number;
@@ -32,31 +33,42 @@ export type Cierre = {
   utilidad: number;
   gastoTotal: number;
   gananciaLiquida: number;
-  isadora: number;
+  comisionVendedora: number;
   ahorro: number;
-  madre: number;
-  pablo: number;
+  // Lo que le corresponde a cada persona del reparto (vendedora, socios y
+  // ahorro), por su clave. Vacío si la óptica no reparte.
+  montos: Record<string, number>;
 };
 
-export function calcularCierre(e: EntradaCierre): Cierre {
+export function calcularCierre(e: EntradaCierre, reparto: Reparto | null): Cierre {
   const comisionTarjeta = Math.round((e.cobradoDebito * e.pctDebito + e.cobradoCredito * e.pctCredito) / 100);
   const costos = e.costoCristales + e.costoMarcos + (e.costoOtrosProductos ?? 0) + e.gastosOperativo + comisionTarjeta;
   const utilidad = e.vendido - costos;
-  const s = calcularSueldos(e.vendido, utilidad, {
-    comisionVendedoraPct: e.comisionVendedoraPct,
-    comisionVendedoraBase: e.comisionVendedoraBase,
-    ahorroPct: e.ahorroPct,
-    ventaSinComision: e.consultas,
-  });
+  const s = repartirUtilidad(
+    e.vendido,
+    utilidad,
+    {
+      comisionVendedoraPct: reparto ? e.comisionVendedoraPct : 0,
+      comisionVendedoraBase: e.comisionVendedoraBase,
+      ahorroPct: reparto ? e.ahorroPct : 0,
+      ventaSinComision: e.consultas,
+    },
+    reparto?.socios ?? []
+  );
+  const montos: Record<string, number> = {};
+  if (reparto) {
+    montos[reparto.vendedora.clave] = s.comisionVendedora;
+    for (const p of s.partes) montos[p.clave] = p.monto;
+    montos[reparto.ahorro.clave] = s.ahorro;
+  }
   return {
     comisionTarjeta,
     costos,
     utilidad,
-    gastoTotal: costos + s.comisionIsadora,
-    gananciaLiquida: utilidad - s.comisionIsadora,
-    isadora: s.comisionIsadora,
+    gastoTotal: costos + s.comisionVendedora,
+    gananciaLiquida: utilidad - s.comisionVendedora,
+    comisionVendedora: s.comisionVendedora,
     ahorro: s.ahorro,
-    madre: s.parteMadre,
-    pablo: s.partePablo,
+    montos,
   };
 }

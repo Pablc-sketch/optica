@@ -6,6 +6,7 @@ import TarjetaCobro, { type FilaCobro } from "./tarjeta-cobro";
 import RegistrarConsulta from "./registrar-consulta";
 import { leerTodas } from "@/lib/leer-todas";
 import { esConsulta } from "@/lib/consulta";
+import { cargarConfiguracion } from "@/lib/configuracion-optica";
 
 // Cobros y entregas, separado de la pantalla de vender: se elige el
 // operativo y se ve, grande y sin ruido, quién debe, cuánto, y si su lente
@@ -17,9 +18,10 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
   const vista: Vista = ver === "deben" || ver === "listos" || ver === "todos" ? ver : "pendientes";
   const supabase = await createClient();
 
-  const [operativosRes, tenantRes] = await Promise.all([
+  const [operativosRes, tenantRes, config] = await Promise.all([
     supabase.from("operativos").select("id, nombre, fecha").order("fecha", { ascending: false }).limit(30),
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+    cargarConfiguracion(supabase),
   ]);
   const pctDebito = Number(tenantRes.data?.comision_debito_pct ?? 0);
   const pctCredito = Number(tenantRes.data?.comision_credito_pct ?? 0);
@@ -195,7 +197,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
             </table>
           </details>
 
-          {elegido !== "todos" && <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} />}
+          {elegido !== "todos" && <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} precio={config.precioConsulta} />}
           {elegido !== "sin" && elegido !== "todos" && (
             <Link
               href={`/operativos/${elegido}/cierre`}

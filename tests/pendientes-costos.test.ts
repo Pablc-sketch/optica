@@ -15,7 +15,7 @@ describe("pagos de costos", () => {
   });
   it("pagar reduce caja y deuda una sola vez; el disponible no cambia", () => {
     const op: OperativoPorPagar = { operativoId: "1", nombre: "Colegio", fecha: "2026-10-01", sueldos: { isadora: 0, madre: 0, pablo: 0 },
-      fides: 0, gastos: 104000, ahorro: 10000, pagado: { isadora: 0, madre: 0, pablo: 0, fides: 0, gastos: 0, ahorro: 0 } };
+      fides: 0, gastos: 104000, ahorro: 10000, pagado: { sueldos: {}, fides: 0, gastos: 0, ahorro: 0 } };
     const disponible = (salida: number, pagado: number, ahorro: number) => {
       const caja = resumirCaja({ entroDigital: 200000, entroEfectivo: 0, entroDebito: 0, entroCredito: 0, salioDigital: salida, salioEfectivo: 0 });
       const pendientes = pendienteDeOperativo({ ...op, pagado: { ...op.pagado, gastos: pagado, ahorro } });

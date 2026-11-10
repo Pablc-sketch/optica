@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import PuntoDeVenta from "./pos";
 import { leerSugerenciasExtra } from "@/lib/sugerencias";
 import CabeceraPagina from "@/components/cabecera-pagina";
+import { cargarConfiguracion } from "@/lib/configuracion-optica";
 
 export default async function VentasPage({ searchParams }: { searchParams: Promise<{ op?: string }> }) {
   const { op } = await searchParams;
@@ -14,7 +15,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
 
   const [
     pacientesRes, productosRes, costosRes, tenantRes, perfilRes, sucursalRes,
-    recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, promoRes, operativosRes,
+    recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, promoRes, operativosRes, config,
   ] = await Promise.all([
     // Hasta 2.000: el buscador del punto de venta filtra en el navegador, así
     // que lo que no se carga no se encuentra. Si algún día se pasa, se avisa
@@ -63,7 +64,11 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
       .select("id, nombre, fecha, fecha_entrega_estimada")
       .in("estado", ["planificado", "realizado"])
       .order("fecha", { ascending: false }),
+    cargarConfiguracion(supabase),
   ]);
+  // La lista de laboratorio compartida solo la usa la óptica que la tiene
+  // habilitada; las demás cotizan con sus propios precios.
+  const compartido = config.usaCatalogoCompartido;
 
 
   // Última receta por paciente: la OT creada desde el POS la enlaza sola
@@ -104,11 +109,11 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
           laboratorios={laboratoriosRes.data ?? []}
           factorVenta={tenantRes.data?.factor_venta_cristales ?? 6}
           catalogoLab={{
-            stock: stockRes.data ?? [],
-            laboratorio: labRes.data ?? [],
-            montaje: montajeRes.data ?? [],
-            recargos: recargoRes.data ?? [],
-            promociones: (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })),
+            stock: compartido ? (stockRes.data ?? []) : [],
+            laboratorio: compartido ? (labRes.data ?? []) : [],
+            montaje: compartido ? (montajeRes.data ?? []) : [],
+            recargos: compartido ? (recargoRes.data ?? []) : [],
+            promociones: compartido ? (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })) : [],
             descuentoPct: Number(tenantRes.data?.descuento_laboratorio_pct ?? 0),
           }}
           tenantId={perfilRes.data?.tenant_id ?? ""}
@@ -118,6 +123,12 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
           operativos={operativosRes.data ?? []}
           comisionDebitoPct={Number(tenantRes.data?.comision_debito_pct ?? 0)}
           comisionCreditoPct={Number(tenantRes.data?.comision_credito_pct ?? 0)}
+          negocio={{
+            costoMarcoPorPar: config.costoMarcoPorPar,
+            precioMarcoPremium: config.precioMarcoPremium,
+            abonoMinimoPorTipo: config.abonoMinimoPorTipo,
+            precioConsulta: config.precioConsulta,
+          }}
         />
       </div>
     </div>

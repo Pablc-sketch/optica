@@ -4,7 +4,6 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { registrarConsulta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
-import { PRECIO_CONSULTA } from "@/lib/consulta";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 
@@ -15,9 +14,10 @@ const MEDIOS = [
   { valor: "transferencia", titulo: "Transferencia" },
 ] as const;
 
-// Cobrar una o varias consultas ($5.000 c/u) en el operativo elegido, en
-// dos toques. Entra a la caja del operativo y cuadra con Mercado Pago.
-export default function RegistrarConsulta({ operativoId }: { operativoId: string | null }) {
+// Cobrar una o varias consultas, al precio que configuró la óptica, en el
+// operativo elegido. Entra a la caja del operativo y cuadra con Mercado Pago.
+// Sin precio configurado (la óptica no cobra consulta) no se muestra.
+export default function RegistrarConsulta({ operativoId, precio }: { operativoId: string | null; precio: number | null }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [cantidad, setCantidad] = useState(1);
@@ -26,24 +26,27 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
   const [numeroVoucher, setNumeroVoucher] = useState("");
   const [pendiente, iniciar] = useTransition();
   const id = useRef<string | null>(null);
+  const PRECIO = precio ?? 0;
 
   function registrar() {
     iniciar(async () => {
       id.current ??= crypto.randomUUID();
-      const r = await registrarConsulta({ consultaId: id.current, operativoId, monto: PRECIO_CONSULTA, medioPago: medio, cantidad, numeroVoucher });
+      const r = await registrarConsulta({ consultaId: id.current, operativoId, monto: PRECIO, medioPago: medio, cantidad, numeroVoucher });
       if (r.ok) {
         id.current = null;
         setAbierto(false);
         setCantidad(1);
         setMedio("");
         setNumeroVoucher("");
-        setMensaje(`✓ ${cantidad === 1 ? "Consulta registrada" : `${cantidad} consultas registradas`} (${clp(PRECIO_CONSULTA * cantidad)})`);
+        setMensaje(`✓ ${cantidad === 1 ? "Consulta registrada" : `${cantidad} consultas registradas`} (${clp(PRECIO * cantidad)})`);
         router.refresh();
       } else {
         setMensaje(r.error ?? "No se pudo registrar");
       }
     });
   }
+
+  if (precio === null || precio <= 0) return null;
 
   if (!abierto) {
     return (
@@ -56,7 +59,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
           }}
           className="rounded-xl border-2 border-dashed border-brand/40 bg-white px-4 py-3 text-base font-semibold text-brand-dark hover:bg-brand/5"
         >
-          ＋ Cobrar consulta {clp(PRECIO_CONSULTA)}
+          ＋ Cobrar consulta {clp(PRECIO)}
           <span className="block text-sm font-normal text-tinta-suave">Solo si NO compra lentes</span>
         </button>
         {mensaje && (
@@ -83,7 +86,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
         <button type="button" onClick={() => setCantidad((c) => Math.min(20, c + 1))} className="h-10 w-10 rounded-full border text-lg font-bold">
           ＋
         </button>
-        <span className="ml-auto text-lg font-bold tabular-nums">{clp(PRECIO_CONSULTA * cantidad)}</span>
+        <span className="ml-auto text-lg font-bold tabular-nums">{clp(PRECIO * cantidad)}</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {MEDIOS.map((m) => (
@@ -106,11 +109,11 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
       <div className="flex gap-2">
         <button
           type="button"
-          disabled={pendiente || !medio || Boolean(validarVoucher(medio, PRECIO_CONSULTA * cantidad, numeroVoucher).error)}
+          disabled={pendiente || !medio || Boolean(validarVoucher(medio, PRECIO * cantidad, numeroVoucher).error)}
           onClick={registrar}
           className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
         >
-          {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : validarVoucher(medio, PRECIO_CONSULTA * cantidad, numeroVoucher).error ? "Completa el voucher" : `Registrar ${clp(PRECIO_CONSULTA * cantidad)}`}
+          {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : validarVoucher(medio, PRECIO * cantidad, numeroVoucher).error ? "Completa el voucher" : `Registrar ${clp(PRECIO * cantidad)}`}
         </button>
         <button type="button" onClick={() => setAbierto(false)} className="rounded-xl border-2 border-tinta/20 px-4 py-3 font-semibold">
           Cancelar

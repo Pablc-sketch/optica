@@ -17,7 +17,8 @@ import {
   primerDiaDelMes,
   ultimoDiaDelMes,
 } from "@/lib/fechas";
-import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { cargarConfiguracion } from "@/lib/configuracion-optica";
 import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
 import { calcularCaja, resumirCaja } from "@/lib/caja";
 import { salidasDeMovimiento } from "@/lib/caja-fuentes";
@@ -191,7 +192,7 @@ export default async function ReportesPage({
   let itemsQuery = supabase
     .from("venta_items")
     .select(
-      `cantidad, precio_unitario, descuento, cristal_slot,
+      `cantidad, precio_unitario, descuento, cristal_slot, costo_marco,
        productos:producto_id (costo, categoria),
        ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
        ventas!inner (fecha, operativo_id, anulada)`
@@ -288,6 +289,7 @@ export default async function ReportesPage({
     tenantRes,
     cajaGlobalRes,
     movimientosCajaRes,
+    config,
   ] = await Promise.all([
     ventasQuery,
     itemsQuery,
@@ -301,6 +303,7 @@ export default async function ReportesPage({
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
     cajaGlobalQuery,
     leerTodas((a,b) => supabase.from("caja_movimientos").select("tipo,monto,caja,id").gte("fecha",desde).lte("fecha",hasta).order("id").range(a,b)),
+    cargarConfiguracion(supabase),
   ]);
   const operativos = operativosRes.data ?? [];
 
@@ -348,7 +351,7 @@ export default async function ReportesPage({
         supabase
           .from("venta_items")
           .select(
-            `cantidad, precio_unitario, descuento, cristal_slot, descripcion,
+            `cantidad, precio_unitario, descuento, cristal_slot, costo_marco, descripcion,
              productos:producto_id (costo, categoria),
              ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
              ventas!inner (operativo_id, anulada)`
@@ -399,7 +402,7 @@ export default async function ReportesPage({
 
   const sueldosPorOperativo = operativosDelMes.map((o) => {
     const ventaTotal = ventaPorOperativo.get(o.id) ?? 0;
-    const costoProductos = conCostoFidesReal(desglosarCostos(itemsPorOperativo.get(o.id) ?? []),o.costo_fides_real).total;
+    const costoProductos = conCostoFidesReal(desglosarCostos(itemsPorOperativo.get(o.id) ?? [], config.costoMarcoPorPar),o.costo_fides_real).total;
     const costoOperativo = gastosDeOperativo(o);
     const utilidadNeta = ventaTotal - costoProductos - costoOperativo - Math.round(comisionPorOperativo.get(o.id) ?? 0);
     const sueldo = calcularSueldos(ventaTotal, utilidadNeta, {
@@ -503,7 +506,7 @@ export default async function ReportesPage({
   // arriendo, sueldos ni gastos fijos. El desglose (no solo el total) es
   // para poder revisar lente por lente cuánto cuesta de verdad, en vez de
   // solo confiar en la suma.
-  const desglose = desglosarCostos(items);
+  const desglose = desglosarCostos(items, config.costoMarcoPorPar);
   const costoDirecto = desglose.total;
   const utilidadBruta = totalVendido - costoDirecto;
   const margen = totalVendido > 0 ? Math.round((utilidadBruta / totalVendido) * 100) : 0;
@@ -795,7 +798,7 @@ export default async function ReportesPage({
               <span>{clp(desglose.totalCristales)}</span>
             </div>
             <div className="flex items-center justify-between px-3 py-1 text-sm">
-              <span>+ Marcos ({desglose.marcos} × {clp(COSTO_MARCO_POR_PAR)}, uno por cada par de cristales)</span>
+              <span>+ Marcos ({desglose.marcos}, uno por cada par de cristales)</span>
               <span className="font-semibold">{clp(desglose.totalArmazones)}</span>
             </div>
             {desglose.totalOtros > 0 && (
@@ -852,7 +855,7 @@ export default async function ReportesPage({
         )}
       </section>
 
-      {!piloto && <section className="print:hidden">
+      {!piloto && config.reparto?.socios.length === 2 && <section className="print:hidden">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">Sueldos del mes</h2>
           <form className="flex items-center gap-2" action="/reportes">
@@ -1072,7 +1075,7 @@ export default async function ReportesPage({
         )}
       </section>
 
-      {!piloto && <section className="print:hidden">
+      {!piloto && config.reparto && <section className="print:hidden">
         <h2 className="mb-1 font-semibold">Retiros y aportes del mes</h2>
         <p className="mb-2 text-xs text-tinta-suave">
           Retiro: descuenta sueldo y caja. Aporte: aumenta lo que se debe y la caja.

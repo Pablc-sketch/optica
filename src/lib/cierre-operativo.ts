@@ -6,6 +6,7 @@ import { desglosarCostos, type ItemConCosto } from "./costo-venta";
 import { gastosDeOperativo, type GastosOperativo } from "./gastos-operativo";
 import type { BaseComision } from "./sueldos";
 import { conCostoFidesReal } from "./costo-fides-real";
+import type { ConfiguracionOptica } from "./configuracion-optica";
 
 export type OperativoParaCierre = GastosOperativo & {
   costo_fides_real?: number | null;
@@ -33,10 +34,11 @@ export function numerosDeOperativo(
   op: OperativoParaCierre,
   ventas: VentaParaCierre[],
   pctDebito: number,
-  pctCredito: number
+  pctCredito: number,
+  config: Pick<ConfiguracionOptica, "costoMarcoPorPar" | "reparto">
 ): NumerosOperativo {
   const items = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
-  const desglose = conCostoFidesReal(desglosarCostos(items), op.costo_fides_real);
+  const desglose = conCostoFidesReal(desglosarCostos(items, config.costoMarcoPorPar), op.costo_fides_real);
   const pagos = ventas.flatMap((v) => v.pagos_abonos ?? []);
   const suma = (f: (p: { monto: number; medio_pago: string | null }) => boolean) =>
     pagos.filter(f).reduce((s, p) => s + p.monto, 0);
@@ -57,6 +59,6 @@ export function numerosDeOperativo(
     comisionVendedoraPct: Number(op.comision_vendedora_pct),
     comisionVendedoraBase: op.comision_vendedora_base as BaseComision,
     ahorroPct: Number(op.ahorro_pct),
-  });
+  }, config.reparto);
   return { vendido, cobrado, porCobrar: Math.max(0, vendido - cobrado), gastos, desglose, cierre };
 }

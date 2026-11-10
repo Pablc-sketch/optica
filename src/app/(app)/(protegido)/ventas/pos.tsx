@@ -12,7 +12,6 @@ import { resolverContextoVenta } from "@/lib/contexto-venta";
 import { faltaPacienteParaGuardar, quitarHuerfanos } from "@/lib/carrito";
 import { abonoMinimoDe, tasaDelMedio } from "@/lib/abono-minimo";
 import { montoAbono } from "@/lib/monto-abono";
-import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import RegistrarConsulta from "../cobros/registrar-consulta";
 import type { SugerenciaExtra } from "@/lib/sugerencias";
 import { clp } from "@/lib/clp";
@@ -110,15 +109,9 @@ type LineaCarrito = {
 // armazón, que es gratis y lo único que queda por elegir.
 const PASOS = ["Paciente", "Cristales", "Armazón", "Pago"] as const;
 
-// Abono mínimo por tipo de lente: números cerrados y fáciles de recordar,
-// no el costo exacto del laboratorio (que varía por tratamiento y rango).
-// Quedan un poco por sobre el costo real para dejar margen — así el abono
-// siempre alcanza para mandar a hacer el cristal sin poner plata propia.
-const ABONO_MINIMO_POR_TIPO: Record<string, number> = {
-  Monofocal: 10000,
-  Bifocal: 40000,
-  Multifocal: 80000,
-};
+// Abono mínimo fijo por tipo de lente, costo de marco por par y precio del
+// marco premium: son de cada óptica (configuracion_optica) y llegan como
+// prop `negocio`. Una óptica sin valores no tiene abono fijo ni premium.
 
 // Un color bien distinto por paso — alto contraste a propósito, para que
 // sea fácil seguir en qué parte de la venta se está de un vistazo (pedido
@@ -469,10 +462,9 @@ function FilaLente({
 // con apuro era fácil que el marco del Lente 2 quedara guardado como si
 // fuera el del Lente 1. Ahora cada lente tiene su propio buscador y su
 // propio marco elegido, sin ambigüedad.
-// Marco de la bandeja premium (marcas): se cobra aparte, una vez por par.
-// El costo del marco ya está contado por par en la utilidad, así que este
-// extra es ganancia, y suma a la venta (y a la comisión de la vendedora).
-const PRECIO_MARCO_PREMIUM = 10000;
+// Marco de la bandeja premium (marcas): se cobra aparte, una vez por par,
+// al precio que configure la óptica. El costo del marco ya está contado por
+// par en la utilidad, así que este extra es ganancia.
 
 const TIPOS_MARCO = ["acetato", "metal", "semi al aire", "al aire", "TR90"];
 const COLORES_MARCO = ["negro", "café", "carey", "dorado", "plateado", "rojo", "azul", "rosado", "transparente", "gris"];
@@ -658,6 +650,7 @@ export default function PuntoDeVenta({
   sugerirOperativoPorReceta = true,
   comisionDebitoPct = 0,
   comisionCreditoPct = 0,
+  negocio,
 }: {
   pacientes: Paciente[];
   productos: Producto[];
@@ -674,7 +667,9 @@ export default function PuntoDeVenta({
   sugerirOperativoPorReceta?: boolean;
   comisionDebitoPct?: number;
   comisionCreditoPct?: number;
+  negocio: { costoMarcoPorPar: number; precioMarcoPremium: number | null; abonoMinimoPorTipo: Record<string, number>; precioConsulta: number | null };
 }) {
+  const precioPremium = negocio.precioMarcoPremium;
   const router = useRouter();
   const [paso, setPaso] = useState(0);
   // Cada paso puede tener distinto largo — sin esto la pantalla se quedaba
@@ -792,9 +787,9 @@ export default function PuntoDeVenta({
     lineasCristal.map((l) => ({
       precio: l.precioUnitario,
       costoCristal: costoRealDeLinea(l)?.costo ?? null,
-      minimoFijo: ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0,
+      minimoFijo: negocio.abonoMinimoPorTipo[l.cristal?.tipoLente ?? ""] ?? 0,
     })),
-    COSTO_MARCO_POR_PAR,
+    negocio.costoMarcoPorPar,
     total,
     // Bruto del medio elegido: con tarjeta hay que cobrar algo más para que
     // después de la comisión llegue el costo.
@@ -867,15 +862,15 @@ export default function PuntoDeVenta({
     ]);
   }
 
-  // Marco premium: una línea aparte por par ("premium-N"), $10.000.
+  // Marco premium: una línea aparte por par ("premium-N").
   function alternarPremium(numero: number, premium: boolean) {
     const key = `premium-${numero}`;
     setCarrito((prev) => {
       const sin = prev.filter((l) => l.key !== key);
-      if (!premium) return sin;
+      if (!premium || precioPremium === null) return sin;
       return [
         ...sin,
-        { key, descripcion: `Marco premium (par ${numero})`, cantidad: 1, precioUnitario: PRECIO_MARCO_PREMIUM },
+        { key, descripcion: `Marco premium (par ${numero})`, cantidad: 1, precioUnitario: precioPremium },
       ];
     });
   }
@@ -1220,7 +1215,7 @@ export default function PuntoDeVenta({
 
           {/* La consulta ($5.000) se cobra aparte, sin armar una venta de
               lentes: queda en el operativo de hoy y cuadra con la máquina. */}
-          <RegistrarConsulta operativoId={operativoId || null} />
+          <RegistrarConsulta operativoId={operativoId || null} precio={negocio.precioConsulta} />
 
           <input
             type="search"
@@ -1440,7 +1435,7 @@ export default function PuntoDeVenta({
                     onMarcarPropio={() => marcarMarcoPropio(numero)}
                     onDescribir={(d) => describirMarco(numero, d)}
                   />
-                  {!marco?.marcoPropio && (
+                  {!marco?.marcoPropio && precioPremium !== null && (
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -1461,7 +1456,7 @@ export default function PuntoDeVenta({
                       >
                         <span className="block text-lg font-bold">⭐ Premium</span>
                         <span className={`block text-sm font-semibold ${esPremium ? "text-white" : "text-amber-800"}`}>
-                          +{clp(PRECIO_MARCO_PREMIUM)} · bandeja de marcas
+                          +{clp(precioPremium)} · bandeja de marcas
                         </span>
                       </button>
                     </div>

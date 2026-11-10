@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
-import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
+import { DESCRIPCION_CONSULTA } from "@/lib/consulta";
+import { cargarConfiguracion } from "@/lib/configuracion-optica";
+import { costoParDeTarifa, elegirTarifa, type TarifaLaboratorio } from "@/lib/tarifa-laboratorio";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { rangoParaPosicion } from "@/lib/cristales";
@@ -111,6 +113,18 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       .select("factor_venta_cristales, dias_entrega_default")
       .eq("id", tenantId)
       .single();
+    // Ópticas sin la lista compartida: el costo sale de sus propias tarifas.
+    let tarifas: TarifaLaboratorio[] | null = null;
+    try {
+      const config = await cargarConfiguracion(supabase);
+      if (!config.usaCatalogoCompartido) {
+        const { data, error } = await supabase.from("tarifas_laboratorio").select("*").eq("activo", true);
+        if (error) throw error;
+        tarifas = (data ?? []) as TarifaLaboratorio[];
+      }
+    } catch {
+      return { ok: false, error: "No se pudo leer la configuración de precios. Revisa la conexión e intenta de nuevo." };
+    }
 
     const calculados: { c: (typeof cristales)[number]; costo: NonNullable<ReturnType<typeof costoRealCristal>> }[] = [];
     for (const c of cristales) {
@@ -130,7 +144,19 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
           return { ok: false, error: "La receta cambió desde que se cotizó. Vuelve a elegir el cristal para recalcular el precio." };
         }
       }
-      const costo = costoRealCristal(fila, potencias, posicion, cotizar.catalogo, diaVenta);
+      let costo = tarifas ? null : costoRealCristal(fila, potencias, posicion, cotizar.catalogo, diaVenta);
+      if (tarifas) {
+        const t = elegirTarifa(tarifas, c.tipoLente, c.tratamiento, c.rangoReceta, input.proveedorLabId);
+        if (!t) {
+          return { ok: false, error: `Falta el costo del laboratorio para ${c.tipoLente} ${c.tratamiento}. Cárgalo en Configuración → Negocio.` };
+        }
+        const total = costoParDeTarifa(t);
+        costo = {
+          origen: "laboratorio", diseno: null, material: null, costo: total, costoSinPromocion: total,
+          promocion: null, unitarios: [], montaje: 0, descuento: 0, motivo: "Tarifa del laboratorio de la óptica",
+        };
+        input.proveedorLabId ??= t.proveedor_id;
+      }
       if (!costo) {
         return { ok: false, error: `Falta la equivalencia con el laboratorio para ${c.tipoLente} ${c.tratamiento}. Revísala en Precios.` };
       }
@@ -415,7 +441,7 @@ export async function cobrarSaldo(input: {
   return { ok: true, aplicado: (data as { aplicado: number } | null)?.aplicado ?? input.monto };
 }
 
-// Consulta cobrada aparte ($5.000 por defecto): una venta de un solo ítem,
+// Consulta cobrada aparte, al precio que configuró la óptica: una venta de un solo ítem,
 // pagada al tiro, en el operativo elegido. Sin paciente obligatorio (en
 // terreno se cobra antes de abrir ficha). consultaId es la clave de
 // idempotencia: el mismo toque dos veces registra una sola consulta.
@@ -440,6 +466,15 @@ export async function registrarConsulta(input: {
   if (!Number.isInteger(input.monto) || input.monto <= 0) return { ok: false, error: "El monto tiene que ser mayor a cero." };
   if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 20) return { ok: false, error: "Cantidad inválida." };
   if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
+  // El precio lo pone la configuración de la óptica, no la pantalla.
+  let precio: number | null;
+  try {
+    precio = (await cargarConfiguracion(ctx.supabase)).precioConsulta;
+  } catch {
+    return { ok: false, error: "No se pudo leer el precio de la consulta. Intenta de nuevo." };
+  }
+  if (precio === null || precio <= 0) return { ok: false, error: "Esta óptica no tiene precio de consulta configurado." };
+  if (input.monto !== precio) return { ok: false, error: "El precio de la consulta cambió. Recarga la página." };
   const voucher = validarVoucher(input.medioPago, input.monto * cantidad, input.numeroVoucher);
   if (voucher.error) return { ok: false, error: voucher.error };
   const { error } = await ctx.supabase.rpc("registrar_venta_con_voucher", {
@@ -458,7 +493,7 @@ export async function registrarConsulta(input: {
           cantidad,
           precio_unitario: input.monto,
           cristal_slot: null,
-          precio_lista: PRECIO_CONSULTA,
+          precio_lista: precio,
         },
       ],
     },

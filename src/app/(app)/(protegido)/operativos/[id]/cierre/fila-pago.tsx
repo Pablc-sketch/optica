@@ -7,7 +7,7 @@ import { formatearMonto, montoANumero } from "@/lib/formato";
 import { deshacerSueldoPagado, guardarAyudante, marcarFidesPagado, marcarSueldoPagado } from "@/lib/actions/cierre";
 
 type Props =
-  | { tipo: "sueldo"; operativoId: string; persona: "isadora" | "madre" | "pablo" | "ahorro"; nombre: string; monto: number; pagado: number }
+  | { tipo: "sueldo"; operativoId: string; persona: string; esAhorro?: boolean; nombre: string; monto: number; pagado: number }
   | { tipo: "fides"; operativoId: string; nombreOperativo: string; monto: number; pagado: boolean }
   | { tipo: "ayudante"; operativoId: string; monto: number };
 
@@ -127,7 +127,7 @@ export default function FilaPago(props: Props) {
           }
           className="shrink-0 rounded-xl bg-emerald-800 px-5 py-4 text-base font-semibold text-white hover:bg-emerald-900 disabled:opacity-40"
         >
-          {pendiente ? "Guardando…" : props.tipo === "sueldo" && props.persona === "ahorro" ? "Separar ahorro" : "Marcar pagado"}
+          {pendiente ? "Guardando…" : props.tipo === "sueldo" && props.esAhorro ? "Separar ahorro" : "Marcar pagado"}
         </button>
       )}
     </li>

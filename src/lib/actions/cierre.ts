@@ -7,6 +7,7 @@ import { COSTOS, prefijoCosto, PREFIJO_MARCOS, type ClaveCosto } from "@/lib/pag
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import { leerTodas } from "@/lib/leer-todas";
 import { idPagoCosto, claveConRevisiones } from "@/lib/id-pago";
+import { cargarConfiguracion, personasDelReparto } from "@/lib/configuracion-optica";
 import { montoCaja } from "@/lib/caja-fuentes";
 
 type Resultado = { ok: boolean; error?: string };
@@ -87,16 +88,17 @@ export async function registrarPagoCosto(input: {
   if (opError || !op) return { ok: false, error: "Operativo no disponible." };
   let total = input.clave === "fides" || input.clave === "marcos" ? 0 : Number(op[input.clave] ?? 0);
   if (input.clave === "fides" || input.clave === "marcos") {
-    const [ventas, tenant] = await Promise.all([
+    const [ventas, tenant, config] = await Promise.all([
       leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
-        venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
+        venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot, costo_marco,
           ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
           productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
       ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+      cargarConfiguracion(ctx.supabase),
     ]);
     if (ventas.error || tenant.error) return { ok: false, error: "No se pudo calcular el costo." };
     const { desglose } = numerosDeOperativo(op, ventas.data as unknown as VentaParaCierre[],
-      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
+      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0), config);
     total = input.clave === "fides" ? desglose.totalCristales : desglose.totalArmazones;
   }
   const pagos = await leerTodas((a, b) => ctx.supabase.from("gastos_globales").select("id, monto, descripcion")
@@ -121,7 +123,8 @@ export async function registrarPagoCosto(input: {
 // plata que ya se repartió.
 export async function marcarSueldoPagado(input: {
   operativoId: string;
-  persona: "isadora" | "madre" | "pablo" | "ahorro";
+  // Clave de una persona del reparto configurado por la óptica.
+  persona: string;
   // Lo que le corresponde EN TOTAL en este operativo. Se paga solo lo que
   // falta: tocar dos veces, o en dos pestañas, no paga dos veces.
   objetivo: number;
@@ -135,23 +138,24 @@ export async function marcarSueldoPagado(input: {
     throw e;
   }
   if (!UUID.test(input.operativoId)) return { ok: false, error: "Operativo inválido." };
-  if (!["isadora", "madre", "pablo", "ahorro"].includes(input.persona)) return { ok: false, error: "Persona inválida." };
   if (!Number.isInteger(input.objetivo) || input.objetivo <= 0) return { ok: false, error: "Monto inválido." };
   if (input.caja !== "digital" && input.caja !== "efectivo") return { ok: false, error: "Caja inválida." };
   const { data: op, error: opError } = await ctx.supabase.from("operativos").select("*")
     .eq("id", input.operativoId).eq("tenant_id", ctx.tenantId).maybeSingle();
   if (opError || !op) return { ok: false, error: "Operativo no disponible." };
-  const [ventas, tenant] = await Promise.all([
+  const [ventas, tenant, config] = await Promise.all([
     leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
-      venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
+      venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot, costo_marco,
         ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
         productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
     ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+    cargarConfiguracion(ctx.supabase),
   ]);
   if (ventas.error || tenant.error) return { ok: false, error: "No se pudo comprobar el reparto." };
+  if (!personasDelReparto(config.reparto).some((x) => x.clave === input.persona)) return { ok: false, error: "Persona inválida." };
   const n = numerosDeOperativo(op, ventas.data as unknown as VentaParaCierre[],
-    Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
-  if (input.objetivo !== n.cierre[input.persona]) return { ok: false, error: "El reparto cambió. Recarga antes de pagar." };
+    Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0), config);
+  if (input.objetivo !== n.cierre.montos[input.persona]) return { ok: false, error: "El reparto cambió. Recarga antes de pagar." };
   const { data: previos, error: errPrevios } = await ctx.supabase
     .from("retiros_sueldo")
     .select("id, monto, revision_version")

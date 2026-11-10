@@ -11,9 +11,11 @@
 // veía más alta que la real. Dos pares en una venta = dos marcos.
 // (Antes: $3.248 solo por marco cargado en Inventario, de la compra de
 // 24 marcos a Comercializadora Inosc, op. 176823790693.)
-export const COSTO_MARCO_POR_PAR = 5000;
-/** @deprecated nombre antiguo; es el mismo costo por par. */
-export const COSTO_MARCO_ABSORBIDO = COSTO_MARCO_POR_PAR;
+//
+// Versión comercial: el costo por par es de cada óptica
+// (configuracion_optica.costo_marco_por_par) y queda guardado en cada
+// venta (venta_items.costo_marco) al momento de vender. Las ventas
+// anteriores a esa columna se leen con el valor que reciba desglosarCostos.
 
 type OTConCosto = {
   costo_laboratorio: number | null;
@@ -26,6 +28,8 @@ type OTConCosto = {
 
 export type ItemConCosto = {
   cantidad: number;
+  // Costo de marco guardado al vender. null en ventas antiguas.
+  costo_marco?: number | null;
   descripcion?: string;
   // A cuál de los dos cupos de cristal de la OT corresponde este ítem —
   // lejos y cerca por separado comparten una sola OT, así que el costo de
@@ -53,9 +57,11 @@ export type DesgloseCosto = {
   total: number;
 };
 
-export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
+// costoMarcoPorDefecto: el de la óptica, para ventas sin costo guardado.
+export function desglosarCostos(items: ItemConCosto[], costoMarcoPorDefecto: number): DesgloseCosto {
   const cristales: DesgloseCosto["cristales"] = [];
   let marcos = 0;
+  let totalArmazones = 0;
   let totalOtros = 0;
 
   for (const it of items) {
@@ -69,6 +75,7 @@ export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
         costo: costo * it.cantidad,
       });
       marcos += it.cantidad;
+      totalArmazones += it.cantidad * (it.costo_marco ?? costoMarcoPorDefecto);
       continue;
     }
     const producto = uno(it.productos);
@@ -79,10 +86,9 @@ export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
   }
 
   const totalCristales = cristales.reduce((s, c) => s + c.costo, 0);
-  const totalArmazones = marcos * COSTO_MARCO_POR_PAR;
   return { cristales, totalCristales, marcos, totalArmazones, totalOtros, total: totalCristales + totalArmazones + totalOtros };
 }
 
-export function costoDeItems(items: ItemConCosto[]): number {
-  return desglosarCostos(items).total;
+export function costoDeItems(items: ItemConCosto[], costoMarcoPorDefecto: number): number {
+  return desglosarCostos(items, costoMarcoPorDefecto).total;
 }

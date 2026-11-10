@@ -14,9 +14,10 @@ import ContactosOperativo from "../contactos-operativo";
 import { fechaConDia, fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
-import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { cargarConfiguracion } from "@/lib/configuracion-optica";
 import { conCostoFidesReal } from "@/lib/costo-fides-real";
-import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
+import { repartirUtilidad, type BaseComision } from "@/lib/sueldos";
 import { type CatalogoLaboratorio } from "@/lib/costo-fides";
 import EliminarOperativo from "./eliminar-operativo";
 import { cargarVentasParaAviso, clasificarAvisos, destinatariosDeAvisos } from "@/lib/avisos";
@@ -93,7 +94,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
 
   const [
     operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes,
-    stockRes, laboratorioRes, montajeRes, promoRes, contactosRes,
+    stockRes, laboratorioRes, montajeRes, promoRes, contactosRes, config,
   ] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).single(),
     supabase
@@ -115,7 +116,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         `id, total, estado_pago, paciente_id,
          pacientes:paciente_id (id, nombre, rut, telefono),
          venta_items (
-           cantidad, precio_unitario, descuento, descripcion, cristal_slot,
+           cantidad, precio_unitario, descuento, descripcion, cristal_slot, costo_marco,
            ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio, costo_laboratorio_2),
            productos:producto_id (costo, categoria)
          ),
@@ -150,6 +151,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       .select("id, nombre, cargo, telefono, email, notas")
       .eq("operativo_id", id)
       .order("created_at", { ascending: true }),
+    cargarConfiguracion(supabase),
   ]);
 
   const operativo = operativoRes.data;
@@ -208,14 +210,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     0
   );
   // Un marco por cada par de cristales vendido (lib/costo-venta.ts).
-  const totalMarcosVendidos = desglosarCostos(ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[]).marcos;
+  const totalMarcosVendidos = desglosarCostos(ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[], config.costoMarcoPorPar).marcos;
   // Costo real de lo vendido (cristales de laboratorio + marcos + otros
   // productos) — sin esto "utilidad" quedaba igual a "vendido", porque solo
   // se restaban los gastos del operativo (transporte, arriendo, etc), no lo
   // que costó producir lo que se vendió. El desglose (no solo el total) es
   // para que la tarjeta de costos se pueda abrir y mostrar de qué se compone.
   const todosLosItems = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
-  const desglose = conCostoFidesReal(desglosarCostos(todosLosItems), operativo.costo_fides_real);
+  const desglose = conCostoFidesReal(desglosarCostos(todosLosItems, config.costoMarcoPorPar), operativo.costo_fides_real);
   const totalCostoProductos = desglose.total;
 
   const totalCostosOperativo =
@@ -259,19 +261,30 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const totalConsultasOperativo = totalConsultas(
     ventas.flatMap((v) => v.venta_items ?? []) as unknown as Parameters<typeof totalConsultas>[0]
   );
-  const sueldos = calcularSueldos(totalVendido, utilidadNeta, {
+  // El detalle de abajo muestra el reparto de dos socios (como el de
+  // Óptica Global) con los nombres que configuró la óptica. Sin reparto
+  // configurado no se muestra; otros esquemas se ven en Reparto y pagos.
+  const reparto = config.reparto?.socios.length === 2 ? config.reparto : null;
+  const kV = reparto?.vendedora.clave ?? "", nV = reparto?.vendedora.nombre ?? "";
+  const kS1 = reparto?.socios[0].clave ?? "", nS1 = reparto?.socios[0].nombre ?? "", pS1 = reparto?.socios[0].pct ?? 0;
+  const kS2 = reparto?.socios[1].clave ?? "", nS2 = reparto?.socios[1].nombre ?? "", pS2 = reparto?.socios[1].pct ?? 0;
+  const r = repartirUtilidad(totalVendido, utilidadNeta, {
     comisionVendedoraPct: Number(operativo.comision_vendedora_pct),
     comisionVendedoraBase: operativo.comision_vendedora_base as BaseComision,
     ahorroPct: Number(operativo.ahorro_pct),
     ventaSinComision: totalConsultasOperativo,
-  });
+  }, [{ clave: kS1, pct: pS1 }, { clave: kS2, pct: pS2 }]);
+  const sueldos = {
+    comisionIsadora: r.comisionVendedora, utilidadDisponible: r.utilidadDisponible, ahorro: r.ahorro,
+    restoParaDividir: r.restoParaDividir, parteMadre: r.partes[0].monto, partePablo: r.partes[1].monto,
+  };
   // Lo que falta transferir de verdad: el reparto de arriba menos lo que
   // cada persona ya sacó por adelantado contra este mismo operativo. Nunca
   // negativo — si alguien retiró de más, eso no se le "cobra" acá.
   const pendienteTransferir = {
-    isadora: Math.max(0, sueldos.comisionIsadora - (retirosPorPersona.get("isadora") ?? 0)),
-    madre: Math.max(0, sueldos.parteMadre - (retirosPorPersona.get("madre") ?? 0)),
-    pablo: Math.max(0, sueldos.partePablo - (retirosPorPersona.get("pablo") ?? 0)),
+    isadora: Math.max(0, sueldos.comisionIsadora - (retirosPorPersona.get(kV) ?? 0)),
+    madre: Math.max(0, sueldos.parteMadre - (retirosPorPersona.get(kS1) ?? 0)),
+    pablo: Math.max(0, sueldos.partePablo - (retirosPorPersona.get(kS2) ?? 0)),
   };
 
   // Próximas entregas: de las ventas de este operativo, las que tienen una
@@ -616,7 +629,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             <div className="flex flex-col gap-1.5">
               <p className="font-semibold text-sky-900">2. Marcos — ya pagados antes, solo contable</p>
               <div className="flex items-center justify-between pl-2 text-sky-800">
-                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"} × {clp(COSTO_MARCO_POR_PAR)}</span>
+                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"}</span>
                 <span className="font-medium">{clp(desglose.totalArmazones)}</span>
               </div>
               <p className="pl-2 text-xs text-sky-700">
@@ -713,7 +726,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </div>
             {totalRetiros > 0 && (
               <div className="flex items-center justify-between">
-                <span>− Ya retirado (Isadora, mamá, Pablo)</span>
+                <span>− Ya retirado</span>
                 <span className="font-medium">{clp(totalRetiros)}</span>
               </div>
             )}
@@ -728,6 +741,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </p>
           </div>
         </details>
+        {reparto && (
         <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden sm:col-span-2" open>
           <summary className="cursor-pointer list-none">
             <p className="text-sm text-sky-800">
@@ -736,14 +750,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </p>
             <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
               <span>
-                Isadora ({Number(operativo.comision_vendedora_pct)}%) por transferir:{" "}
+                {nV} ({Number(operativo.comision_vendedora_pct)}%) por transferir:{" "}
                 <span className="font-bold text-sky-900">{clp(pendienteTransferir.isadora)}</span>
               </span>
               <span>
-                Mamá por transferir: <span className="font-bold text-sky-900">{clp(pendienteTransferir.madre)}</span>
+                {nS1} por transferir: <span className="font-bold text-sky-900">{clp(pendienteTransferir.madre)}</span>
               </span>
               <span>
-                Pablo por transferir: <span className="font-bold text-sky-900">{clp(pendienteTransferir.pablo)}</span>
+                {nS2} por transferir: <span className="font-bold text-sky-900">{clp(pendienteTransferir.pablo)}</span>
               </span>
             </p>
           </summary>
@@ -754,7 +768,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             <form action={actualizarSueldosOperativo} className="grid grid-cols-1 gap-3 rounded-xl bg-white p-3 sm:grid-cols-3">
               <input type="hidden" name="id" value={operativo.id} />
               <label className="flex flex-col gap-1 text-xs font-medium text-sky-900">
-                % comisión Isadora
+                % comisión {nV}
                 <input
                   name="comision_vendedora_pct"
                   inputMode="decimal"
@@ -792,7 +806,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             <div className="flex flex-col gap-1.5 text-sm text-sky-800">
               <div className="flex items-center justify-between">
                 <span>
-                  Comisión Isadora ({Number(operativo.comision_vendedora_pct)}% de{" "}
+                  Comisión {nV} ({Number(operativo.comision_vendedora_pct)}% de{" "}
                   {operativo.comision_vendedora_base === "utilidad_neta" ? "la utilidad neta" : "lo vendido"})
                 </span>
                 <span className="font-medium">{clp(sueldos.comisionIsadora)}</span>
@@ -808,49 +822,49 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
                 <span className="font-medium">{clp(sueldos.ahorro)}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-white px-2 py-1.5 font-semibold">
-                <span>= Para dividir entre la mamá y Pablo</span>
+                <span>= Para dividir entre {nS1} y {nS2}</span>
                 <span>{clp(sueldos.restoParaDividir)}</span>
               </div>
               <div className="flex items-center justify-between pl-2">
-                <span>Mamá (50%)</span>
+                <span>{nS1} ({pS1}%)</span>
                 <span className="font-medium">{clp(sueldos.parteMadre)}</span>
               </div>
               <div className="flex items-center justify-between pl-2">
-                <span>Pablo (50%)</span>
+                <span>{nS2} ({pS2}%)</span>
                 <span className="font-medium">{clp(sueldos.partePablo)}</span>
               </div>
               {/* Lo ya retirado contra este operativo (Reportes → Retiros)
                   se descuenta acá para que el número final sea justo lo
                   que hay que transferir, no el bruto del reparto. */}
-              {(retirosPorPersona.get("isadora") ?? 0) > 0 && (
+              {(retirosPorPersona.get(kV) ?? 0) > 0 && (
                 <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
-                  <span>− Isadora ya retiró</span>
-                  <span>{clp(retirosPorPersona.get("isadora") ?? 0)}</span>
+                  <span>− {nV} ya retiró</span>
+                  <span>{clp(retirosPorPersona.get(kV) ?? 0)}</span>
                 </div>
               )}
-              {(retirosPorPersona.get("madre") ?? 0) > 0 && (
+              {(retirosPorPersona.get(kS1) ?? 0) > 0 && (
                 <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
-                  <span>− Mamá ya retiró</span>
-                  <span>{clp(retirosPorPersona.get("madre") ?? 0)}</span>
+                  <span>− {nS1} ya retiró</span>
+                  <span>{clp(retirosPorPersona.get(kS1) ?? 0)}</span>
                 </div>
               )}
-              {(retirosPorPersona.get("pablo") ?? 0) > 0 && (
+              {(retirosPorPersona.get(kS2) ?? 0) > 0 && (
                 <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
-                  <span>− Pablo ya retiró</span>
-                  <span>{clp(retirosPorPersona.get("pablo") ?? 0)}</span>
+                  <span>− {nS2} ya retiró</span>
+                  <span>{clp(retirosPorPersona.get(kS2) ?? 0)}</span>
                 </div>
               )}
               <div className="mt-1 flex flex-col gap-1 rounded-lg bg-sky-100 px-2 py-1.5 font-bold text-sky-900">
                 <div className="flex items-center justify-between">
-                  <span>Isadora — por transferir</span>
+                  <span>{nV} — por transferir</span>
                   <span>{clp(pendienteTransferir.isadora)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Mamá — por transferir</span>
+                  <span>{nS1} — por transferir</span>
                   <span>{clp(pendienteTransferir.madre)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Pablo — por transferir</span>
+                  <span>{nS2} — por transferir</span>
                   <span>{clp(pendienteTransferir.pablo)}</span>
                 </div>
               </div>
@@ -865,6 +879,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             </div>
           </div>
         </details>
+        )}
       </div>
 
       {(operativo.meta_examenes || operativo.meta_ventas || operativo.meta_utilidad) && (

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
-import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
+import { cargarConfiguracion, personasDelReparto } from "@/lib/configuracion-optica";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import FilaPago from "./fila-pago";
 import PagoCostoOperativo from "@/components/pago-costo-operativo";
@@ -20,13 +20,13 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
   if (esPilotoTerreno(tenantId)) redirect("/operativos/"+id);
 
-  const [opRes, ventasRes, tenantRes, retirosRes, fidesRes] = await Promise.all([
+  const [opRes, ventasRes, tenantRes, retirosRes, fidesRes, config] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).maybeSingle(),
     leerTodas((a, b) => supabase
       .from("ventas")
       .select(
         `id, total, pagos_abonos (monto, medio_pago),
-         venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
+         venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot, costo_marco,
            ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
            productos:producto_id (costo, categoria))`
       )
@@ -35,6 +35,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
     leerTodas((a, b) => supabase.from("retiros_sueldo").select("id, persona, monto").eq("operativo_id", id).order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("gastos_globales").select("id, descripcion, monto").eq("operativo_id", id).order("id").range(a, b)),
+    cargarConfiguracion(supabase),
   ]);
   const op = opRes.data;
   if (!op) notFound();
@@ -45,8 +46,10 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
     op,
     ventas as unknown as VentaParaCierre[],
     Number(tenantRes.data?.comision_debito_pct ?? 0),
-    Number(tenantRes.data?.comision_credito_pct ?? 0)
+    Number(tenantRes.data?.comision_credito_pct ?? 0),
+    config
   );
+  const personas = personasDelReparto(config.reparto);
   const { vendido, cobrado, gastos, desglose, cierre: c } = n;
 
   const pagadoA = (persona: string) =>
@@ -82,7 +85,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold">Marcos</h2>
           <p className="text-2xl font-bold tabular-nums">{clp(desglose.totalArmazones)}</p>
-          <p className="text-sm text-tinta-suave">{desglose.marcos} marcos · {clp(COSTO_MARCO_POR_PAR)} c/u</p>
+          <p className="text-sm text-tinta-suave">{desglose.marcos} marcos</p>
         </div>
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold">Cristales</h2>
@@ -125,7 +128,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
               {desglose.totalOtros !== 0 && <tr className="text-tinta-suave"><td className="py-1">− Otros productos</td><td className="text-right">−{clp(desglose.totalOtros)}</td></tr>}
               <tr className="text-tinta-suave"><td className="py-1">− Gastos (equipos, arriendo, Diego…)</td><td className="text-right">−{clp(gastos)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Comisión de la máquina</td><td className="text-right">−{clp(c.comisionTarjeta)}</td></tr>
-              <tr className="text-tinta-suave"><td className="py-1">− Comisión de venta</td><td className="text-right">−{clp(c.isadora)}</td></tr>
+              <tr className="text-tinta-suave"><td className="py-1">− Comisión de venta</td><td className="text-right">−{clp(c.comisionVendedora)}</td></tr>
               <tr className="border-t font-bold"><td className="py-1.5">Gasto total</td><td className="text-right">{clp(c.gastoTotal)}</td></tr>
               <tr className="font-bold"><td className="py-1.5">Ganancia líquida{porCobrar > 0 ? " estimada" : ""}</td><td className="text-right">{clp(c.gananciaLiquida)}</td></tr>
             </tbody>
@@ -145,13 +148,18 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
       <h2 id="sueldos" className="scroll-mt-6 text-lg font-bold">Remuneraciones</h2>
       <ul className="flex flex-col gap-3">
         <FilaPago tipo="ayudante" operativoId={id} monto={op.costo_ayudante ?? 0} />
-        <FilaPago tipo="sueldo" operativoId={id} persona="isadora" nombre="Isadora" monto={c.isadora} pagado={pagadoA("isadora")} />
-        <FilaPago tipo="sueldo" operativoId={id} persona="madre" nombre="Mamá" monto={c.madre} pagado={pagadoA("madre")} />
-        <FilaPago tipo="sueldo" operativoId={id} persona="pablo" nombre="Pablo" monto={c.pablo} pagado={pagadoA("pablo")} />
+        {/* Las personas del reparto que configuró la óptica (ninguna si no reparte). */}
+        {personas.filter((x) => !x.esAhorro).map((x) => (
+          <FilaPago key={x.clave} tipo="sueldo" operativoId={id} persona={x.clave} nombre={x.nombre} monto={c.montos[x.clave] ?? 0} pagado={pagadoA(x.clave)} />
+        ))}
       </ul>
 
-      <h2 id="ahorro" className="scroll-mt-6 text-lg font-bold">Ahorro por separar</h2>
-      <ul><FilaPago tipo="sueldo" operativoId={id} persona="ahorro" nombre="Ahorro del negocio" monto={c.ahorro} pagado={pagadoA("ahorro")} /></ul>
+      {personas.filter((x) => x.esAhorro).map((x) => (
+        <section key={x.clave}>
+          <h2 id="ahorro" className="scroll-mt-6 text-lg font-bold">Ahorro por separar</h2>
+          <ul><FilaPago tipo="sueldo" esAhorro operativoId={id} persona={x.clave} nombre={x.nombre} monto={c.montos[x.clave] ?? 0} pagado={pagadoA(x.clave)} /></ul>
+        </section>
+      ))}
       </>}
     </div>
   );

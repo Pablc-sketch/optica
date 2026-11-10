@@ -98,3 +98,37 @@ export function sumarDesgloses(desgloses: DesgloseSueldo[]): DesgloseSueldo {
     }
   );
 }
+
+// Reparto genérico, configurable por óptica: una comisión para quien vende,
+// un % de ahorro y el resto dividido entre socios según su porcentaje. El
+// último socio se lleva la diferencia de redondeo, así la suma siempre
+// cuadra. Con dos socios al 50% da exactamente lo mismo que calcularSueldos.
+export type ParteSocio = { clave: string; pct: number };
+export type RepartoCalculado = {
+  comisionVendedora: number;
+  utilidadDisponible: number;
+  ahorro: number;
+  restoParaDividir: number;
+  partes: { clave: string; monto: number }[];
+};
+
+export function repartirUtilidad(
+  ventaTotal: number,
+  utilidadNeta: number,
+  parametros: ParametrosSueldo,
+  socios: ParteSocio[]
+): RepartoCalculado {
+  const base =
+    parametros.comisionVendedoraBase === "venta_total" ? ventaTotal - (parametros.ventaSinComision ?? 0) : utilidadNeta;
+  const comisionVendedora = Math.round(Math.max(0, base) * (parametros.comisionVendedoraPct / 100));
+  const utilidadDisponible = utilidadNeta - comisionVendedora;
+  const ahorro = utilidadDisponible > 0 ? Math.round(utilidadDisponible * (parametros.ahorroPct / 100)) : 0;
+  const restoParaDividir = Math.max(0, utilidadDisponible - ahorro);
+  let asignado = 0;
+  const partes = socios.map((s, i) => {
+    const monto = i === socios.length - 1 ? restoParaDividir - asignado : Math.round((restoParaDividir * s.pct) / 100);
+    asignado += monto;
+    return { clave: s.clave, monto };
+  });
+  return { comisionVendedora, utilidadDisponible, ahorro, restoParaDividir, partes };
+}

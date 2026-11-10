@@ -1,6 +1,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { CatalogoLaboratorio } from "./costo-fides";
 import type { FilaCristal } from "./precio-venta";
+import { cargarConfiguracion } from "./configuracion-optica";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -12,7 +13,7 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 export async function cargarCatalogoParaCotizar(
   supabase: Supabase
 ): Promise<{ filas: FilaCristal[]; catalogo: CatalogoLaboratorio }> {
-  const [costosRes, tenantRes, stockRes, labRes, montajeRes, recargoRes, promoRes] = await Promise.all([
+  const [costosRes, tenantRes, stockRes, labRes, montajeRes, recargoRes, promoRes, config] = await Promise.all([
     supabase
       .from("costos_cristales")
       .select(
@@ -27,7 +28,10 @@ export async function cargarCatalogoParaCotizar(
     supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
     supabase.from("lab_precios_recargo").select("categoria, concepto, precio"),
     supabase.from("lab_promociones").select("diseno, material, descuento_pct, desde, hasta, nota"),
+    cargarConfiguracion(supabase),
   ]);
+  // Solo la óptica que tiene habilitada la lista compartida la usa.
+  const compartido = config.usaCatalogoCompartido;
 
   // Un catálogo incompleto cotiza mal sin avisar: sin la lista de stock,
   // todo sale "de laboratorio"; sin el descuento, todo cuesta de más. Si
@@ -39,15 +43,15 @@ export async function cargarCatalogoParaCotizar(
   return {
     filas: (costosRes.data ?? []) as FilaCristal[],
     catalogo: {
-      stock: (stockRes.data ?? []).map((s) => ({
+      stock: (compartido ? (stockRes.data ?? []) : []).map((s) => ({
         ...s,
         esfera_max: s.esfera_max === null ? null : Number(s.esfera_max),
         cilindro_max: s.cilindro_max === null ? null : Number(s.cilindro_max),
       })),
-      laboratorio: labRes.data ?? [],
-      montaje: montajeRes.data ?? [],
-      recargos: recargoRes.data ?? [],
-      promociones: (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })),
+      laboratorio: compartido ? (labRes.data ?? []) : [],
+      montaje: compartido ? (montajeRes.data ?? []) : [],
+      recargos: compartido ? (recargoRes.data ?? []) : [],
+      promociones: compartido ? (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })) : [],
       descuentoPct: Number(tenantRes.data?.descuento_laboratorio_pct ?? 0),
     },
   };

@@ -9,9 +9,13 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 import { cobrarSaldo, registrarAbono, registrarConsulta, registrarVenta } from "../src/lib/actions/ventas";
 
 const id = "00000000-0000-4000-8000-000000000001";
+// La fila de configuracion_optica de una óptica ficticia que cobra la consulta.
+const configuracionFicticia = (precio: number | null) => () => ({
+  select: () => ({ maybeSingle: async () => ({ data: { precio_consulta: precio }, error: null }) }),
+});
 beforeEach(() => {
   vi.clearAllMocks();
-  requerirPerfil.mockResolvedValue({ supabase: { rpc }, tenantId: "optica-ficticia" });
+  requerirPerfil.mockResolvedValue({ supabase: { rpc, from: configuracionFicticia(5000) }, tenantId: "optica-ficticia" });
   rpc.mockResolvedValue({ error: null, data: { aplicado: 80000 } });
 });
 
@@ -32,6 +36,13 @@ describe("validación del voucher en servidor", () => {
   });
   it("exige voucher también en consultas", async () => {
     expect((await registrarConsulta({ consultaId: id, operativoId: null, monto: 5000, medioPago: "debito" })).ok).toBe(false);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("la consulta se cobra al precio configurado por la óptica, no al que mande la pantalla", async () => {
+    const r = await registrarConsulta({ consultaId: id, operativoId: null, monto: 1, medioPago: "efectivo" });
+    expect(r).toEqual({ ok: false, error: "El precio de la consulta cambió. Recarga la página." });
+    requerirPerfil.mockResolvedValue({ supabase: { rpc, from: configuracionFicticia(null) }, tenantId: "otra" });
+    expect((await registrarConsulta({ consultaId: id, operativoId: null, monto: 5000, medioPago: "efectivo" })).ok).toBe(false);
     expect(rpc).not.toHaveBeenCalled();
   });
   it("registra consulta y voucher juntos", async () => {

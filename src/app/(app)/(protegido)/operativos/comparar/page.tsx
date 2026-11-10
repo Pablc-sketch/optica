@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import { fechaLegible } from "@/lib/fechas";
 import { costoDeItems, type ItemConCosto } from "@/lib/costo-venta";
+import { cargarConfiguracion } from "@/lib/configuracion-optica";
 
 // Ranking de operativos: para decidir dónde conviene repetir (mejor venta,
 // mejor conversión, mejor utilidad) en vez de guiarse por sensación. Mismos
@@ -37,7 +38,7 @@ export default async function CompararOperativos() {
     );
   }
 
-  const [{ data: operativos }, { data: recetas }, { data: ventas }] = await Promise.all([
+  const [{ data: operativos }, { data: recetas }, { data: ventas }, config] = await Promise.all([
     supabase
       .from("operativos")
       .select(
@@ -50,10 +51,11 @@ export default async function CompararOperativos() {
       .from("ventas")
       .select(
         `operativo_id, total, paciente_id,
-         venta_items (cantidad, cristal_slot, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2), productos:producto_id (costo, categoria))`
+         venta_items (cantidad, cristal_slot, costo_marco, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2), productos:producto_id (costo, categoria))`
       )
       .eq("anulada", false)
       .not("operativo_id", "is", null),
+    cargarConfiguracion(supabase),
   ]);
 
   // Conversión contada por PERSONA, no por receta: alguien puede salir con
@@ -75,7 +77,7 @@ export default async function CompararOperativos() {
     const actual =
       ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0, costoProductos: 0, pagaron: new Set<string>() };
     actual.total += v.total;
-    actual.costoProductos += costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[]);
+    actual.costoProductos += costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[], config.costoMarcoPorPar);
     // Una cortesía ($0) es atención, no venta: si cuenta como conversión,
     // el número dice que se vendió más de lo que de verdad entró en plata.
     if (v.total > 0) {

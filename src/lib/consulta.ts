@@ -1,12 +1,8 @@
-// La consulta (examen + receta) cobrada aparte, normalmente $5.000. Se
-// guarda como una venta de un solo ítem con esta descripción, para que
-// entre a la caja del operativo y cuadre con Mercado Pago.
-//
-// No cuenta para la comisión de Isadora: la regla vigente es 10% de lo
-// VENDIDO en lentes, y las consultas no se contaban antes. Si eso cambia,
-// es una decisión de Pablo, no un efecto colateral.
+// La consulta (examen + receta) cobrada aparte. El precio es de cada óptica
+// (configuracion_optica.precio_consulta). Se guarda como una venta de un
+// solo ítem con esta descripción, para que entre a la caja del operativo y
+// cuadre con Mercado Pago. No cuenta para la comisión de quien vende.
 export const DESCRIPCION_CONSULTA = "Consulta / receta";
-export const PRECIO_CONSULTA = 5000;
 
 export function esConsulta(descripcion: string | null | undefined): boolean {
   return descripcion === DESCRIPCION_CONSULTA;

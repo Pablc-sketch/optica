@@ -9,7 +9,7 @@ const base: OperativoPorPagar = {
   fides: 200000,
   gastos: 104000,
   ahorro: 60000,
-  pagado: { isadora: 0, madre: 0, pablo: 0, fides: 0, gastos: 0, ahorro: 0 },
+  pagado: { sueldos: { isadora: 0, madre: 0, pablo: 0 }, fides: 0, gastos: 0, ahorro: 0 },
 };
 
 describe("por pagar", () => {
@@ -23,18 +23,18 @@ describe("por pagar", () => {
   it("lo ya pagado no aparece", () => {
     const p = pendienteDeOperativo({
       ...base,
-      pagado: { ...base.pagado, isadora: 90000, madre: 40000, pablo: 0, fides: 200000 },
+      pagado: { ...base.pagado, sueldos: { ...base.pagado.sueldos, isadora: 90000, madre: 40000, pablo: 0 }, fides: 200000 },
     });
     expect(p.sueldos).toBe(60000 + 100000);
     expect(p.personas).toEqual({ isadora:0,madre:60000,pablo:100000 });
     expect(p.costos).toBe(104000);
   });
   it("un pago de más no da negativo", () => {
-    const p = pendienteDeOperativo({ ...base, pagado: { ...base.pagado, isadora: 999999 } });
+    const p = pendienteDeOperativo({ ...base, pagado: { ...base.pagado, sueldos: { ...base.pagado.sueldos, isadora: 999999 } } });
     expect(p.sueldos).toBe(200000);
   });
   it("operativo todo pagado: sin pendiente ni ahorro, y no sale en la lista", () => {
-    const pagado = { isadora: 90000, madre: 100000, pablo: 100000, fides: 200000, gastos: 104000, ahorro: 60000 };
+    const pagado = { sueldos: { isadora: 90000, madre: 100000, pablo: 100000 }, fides: 200000, gastos: 104000, ahorro: 60000 };
     expect(pendienteDeOperativo({ ...base, pagado })).toMatchObject({ total: 0, ahorro: 0 });
     expect(resumirPorPagar([{ ...base, pagado }]).operativos).toEqual([]);
   });
@@ -54,7 +54,7 @@ describe("por pagar", () => {
 });
 
  it("el ahorro sigue pendiente al pagar todas las cuentas", () => {
-   const p = pendienteDeOperativo({ ...base, pagado: { isadora: 90000, madre: 100000, pablo: 100000, fides: 200000, gastos: 104000, ahorro: 10000 } });
+   const p = pendienteDeOperativo({ ...base, pagado: { sueldos: { isadora: 90000, madre: 100000, pablo: 100000 }, fides: 200000, gastos: 104000, ahorro: 10000 } });
    expect(p).toMatchObject({ total: 0, ahorro: 50000 });
    expect(resumirPorPagar([{ ...base, pagado: { ...base.pagado, fides: 50000 } }]).costos).toBe(254000);
  });
