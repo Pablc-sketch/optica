@@ -254,7 +254,7 @@ export default async function ReportesPage({
   const operativosTodosQuery = supabase
     .from("operativos")
     .select(
-      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_fides_real"
+      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_fides_real, costo_detalle_real"
     )
     .order("fecha", { ascending: true });
 

@@ -22,7 +22,7 @@ export default async function AgendaEquipos({ searchParams }: { searchParams: Pr
   const recurso = uuidAgenda.test(p.recurso ?? '') ? p.recurso! : '';
   const [operativos, recursos] = await Promise.all([
     leerTodas((a,b) => supabase.from('operativos')
-      .select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,costo_transporte,costo_arriendo,costo_viaticos,costo_otros,costo_ayudante,costo_equipos,agenda_turnos(vendedora_id,tecnologo_id,coordinador_id,kit_id,presupuesto)')
+      .select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,costo_transporte,costo_arriendo,costo_viaticos,costo_otros,costo_ayudante,costo_equipos,costo_detalle_real,agenda_turnos(vendedora_id,tecnologo_id,coordinador_id,kit_id,presupuesto)')
       .eq('tenant_id',tenantId).lte('fecha',ultimo).or('fecha.gte.'+primero+',fecha_fin.gte.'+primero)
       .order('fecha').order('hora_inicio').order('id').range(a,b)),
     leerTodas((a,b) => supabase.from('agenda_recursos').select('id,tipo,nombre,detalle').eq('tenant_id',tenantId).order('nombre').order('id').range(a,b)),

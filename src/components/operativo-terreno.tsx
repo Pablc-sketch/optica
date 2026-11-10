@@ -15,7 +15,7 @@ const btn='rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold';
 export default async function OperativoTerreno({id}:{id:string}) {
   const {supabase,tenantId}=await exigirRolPagina(['admin']);
   const [r,personas]=await Promise.all([
-    supabase.from('operativos').select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,costo_transporte,costo_equipos,costo_viaticos,costo_arriendo,costo_ayudante,costo_otros').eq('id',id).eq('tenant_id',tenantId).maybeSingle(),
+    supabase.from('operativos').select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,costo_transporte,costo_equipos,costo_viaticos,costo_arriendo,costo_ayudante,costo_otros,costo_detalle_real').eq('id',id).eq('tenant_id',tenantId).maybeSingle(),
     leerTodas((a,b)=>supabase.from('recetas').select('id,paciente_id').eq('operativo_id',id).eq('tenant_id',tenantId).order('id').range(a,b)),
   ]);
   if (r.error || personas.error) throw new Error('No pudimos cargar el operativo');

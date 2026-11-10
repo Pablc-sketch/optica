@@ -205,6 +205,11 @@ export default async function OperativosPage() {
           <Link href="/operativos/comparar" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
             📊 Comparar
           </Link>
+          {esAdmin && (
+            <Link href="/equipo" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
+              Personal y equipos
+            </Link>
+          )}
         </div>
       </div>
 

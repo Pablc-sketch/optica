@@ -5,6 +5,8 @@ import {
   leerConfiguracion,
   leerReparto,
   personasDelReparto,
+  repartoDesdeFormulario,
+  claveDesdeNombre,
 } from "../src/lib/configuracion-optica";
 
 describe("configuración por óptica", () => {
@@ -54,5 +56,27 @@ describe("configuración por óptica", () => {
     expect(c.precioConsulta).toBeNull();
     expect(c.costoMarcoPorPar).toBe(0);
     expect(c.abonoMinimoPorTipo).toEqual({ Bifocal: 3 });
+  });
+});
+
+describe("reparto desde el formulario", () => {
+  it("conserva las claves existentes y crea claves para personas nuevas", () => {
+    const r = repartoDesdeFormulario([
+      { clave: "isadora", nombre: "Isadora", tipo: "vendedora" },
+      { clave: "madre", nombre: "Mamá", pct: 50, tipo: "socio" },
+      { nombre: "José Peña", pct: 50, tipo: "socio" },
+      { clave: "ahorro", nombre: "Ahorro", tipo: "ahorro" },
+    ]);
+    expect("reparto" in r && r.reparto?.socios.map((s) => s.clave)).toEqual(["madre", "jose_pena"]);
+  });
+  it("sin nombres = la óptica no reparte; porcentajes que no suman 100 = error", () => {
+    expect(repartoDesdeFormulario([{ nombre: " ", tipo: "vendedora" }])).toEqual({ reparto: null });
+    expect(repartoDesdeFormulario([
+      { nombre: "V", tipo: "vendedora" }, { nombre: "A", pct: 60, tipo: "socio" }, { nombre: "F", tipo: "ahorro" },
+    ])).toHaveProperty("error");
+  });
+  it("claves repetidas por nombre se desambiguan", () => {
+    const usadas = new Set<string>();
+    expect([claveDesdeNombre("Ana", usadas), claveDesdeNombre("Ana", usadas)]).toEqual(["ana", "ana_2"]);
   });
 });

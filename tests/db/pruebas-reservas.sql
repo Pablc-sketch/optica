@@ -304,6 +304,16 @@ select pruebas.falla($$insert into public.kit_equipos (tenant_id, kit_id, equipo
 select pruebas.igual((select count(*)::text from public.kit_equipos where kit_id = '00000000-0000-0000-0000-0000000003a3'), '4',
   'La composición del kit no cambió tras el rechazo');
 
+-- guardar_kit: cambia nombre y composición juntos, o nada.
+select pruebas.falla($$select public.guardar_kit('{"id": "00000000-0000-0000-0000-0000000003a3", "nombre": "Kit 3 renombrado",
+  "equipos": ["00000000-0000-0000-0000-0000000002a4", "00000000-0000-0000-0000-0000000002a1"]}')$$,
+  '23P01', 'ya está reservado', 'guardar_kit con un equipo ocupado');
+select pruebas.igual((select nombre || '|' || (select count(*) from public.kit_equipos where kit_id = k.id)
+  from public.kits k where id = '00000000-0000-0000-0000-0000000003a3'), 'Kit 3|4', 'El kit rechazado conserva nombre y composición');
+select public.guardar_kit('{"id": "00000000-0000-0000-0000-0000000003a4", "nombre": "Kit nuevo",
+  "equipos": ["00000000-0000-0000-0000-0000000002a6"]}');
+select pruebas.ok('guardar_kit crea un kit con sus equipos');
+
 -- ---------------------------------------------------------------------
 -- 5. Costos: presupuesto y gasto real
 -- ---------------------------------------------------------------------

@@ -4,6 +4,8 @@
 // acá. Una óptica sin fila (o con la fila vacía) no cobra consulta, no
 // tiene premium ni abono fijo, y no reparte utilidades desde Lentia.
 
+export const TIPOS_LENTE = ["Monofocal", "Bifocal", "Multifocal"] as const;
+
 export type PersonaReparto = { clave: string; nombre: string };
 export type SocioReparto = PersonaReparto & { pct: number };
 export type Reparto = {
@@ -117,4 +119,48 @@ export async function cargarConfiguracion(supabase: Cliente): Promise<Configurac
   const { data, error } = await supabase.from("configuracion_optica").select("*").maybeSingle();
   if (error) throw new Error(`No se pudo leer la configuración de la óptica: ${error.message}`);
   return leerConfiguracion(data);
+}
+
+// Clave estable para una persona del reparto a partir de su nombre. Las
+// claves ya usadas se conservan: los pagos anotados las referencian.
+export function claveDesdeNombre(nombre: string, usadas: Set<string>): string {
+  const base = nombre
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 30) || "persona";
+  let clave = base;
+  for (let i = 2; usadas.has(clave); i++) clave = `${base}_${i}`;
+  usadas.add(clave);
+  return clave;
+}
+
+// Arma el reparto desde el formulario de Configuración. Las filas existentes
+// traen su clave; las nuevas la reciben desde el nombre. Devuelve null si la
+// óptica no reparte, o un error si los porcentajes no suman 100.
+export function repartoDesdeFormulario(
+  filas: { clave?: string; nombre: string; pct?: number; tipo: "vendedora" | "socio" | "ahorro" }[]
+): { reparto: Reparto | null } | { error: string } {
+  const validas = filas.filter((f) => f.nombre.trim());
+  if (validas.length === 0) return { reparto: null };
+  const usadas = new Set(validas.map((f) => f.clave).filter((c): c is string => Boolean(c && CLAVE.test(c))));
+  const conClave = validas.map((f) => ({
+    ...f,
+    nombre: f.nombre.trim(),
+    clave: f.clave && CLAVE.test(f.clave) ? f.clave : claveDesdeNombre(f.nombre, usadas),
+  }));
+  const vendedora = conClave.find((f) => f.tipo === "vendedora");
+  const ahorro = conClave.find((f) => f.tipo === "ahorro");
+  const socios = conClave.filter((f) => f.tipo === "socio");
+  if (!vendedora || !ahorro || socios.length === 0) {
+    return { error: "El reparto necesita quien vende, al menos un socio y el nombre del ahorro." };
+  }
+  const reparto = leerReparto({
+    vendedora: { clave: vendedora.clave, nombre: vendedora.nombre },
+    ahorro: { clave: ahorro.clave, nombre: ahorro.nombre },
+    socios: socios.map((s) => ({ clave: s.clave, nombre: s.nombre, pct: s.pct ?? 0 })),
+  });
+  return reparto ? { reparto } : { error: "Los porcentajes de los socios deben sumar 100%." };
 }

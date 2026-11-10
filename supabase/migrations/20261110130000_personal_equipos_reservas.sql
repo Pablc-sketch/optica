@@ -350,6 +350,54 @@ grant execute on function public.guardar_operativo_equipo(jsonb) to authenticate
 revoke execute on function public.sincronizar_reservas(), public.sincronizar_kit(), public.verificar_costo_unico(),
   public.totalizar_costos_operativo() from public, anon, authenticated;
 
+-- Guardar un kit y su composición juntos. Si un equipo agregado está
+-- ocupado en un operativo futuro del kit, no cambia nada.
+-- p: {id, nombre, activo, equipos: [id]}
+create function public.guardar_kit(p jsonb)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  t uuid := public.jwt_tenant_id();
+  v_id uuid := (p ->> 'id')::uuid;
+  v_nombre text := btrim(p ->> 'nombre');
+  v_equipos uuid[];
+begin
+  if t is null or not coalesce(public.es_admin(), false) then
+    raise exception 'Solo un administrador puede armar kits.' using errcode = '42501';
+  end if;
+  if v_id is null or v_nombre is null or length(v_nombre) not between 1 and 100 then
+    raise exception 'Revisa el nombre del kit.' using errcode = '22023';
+  end if;
+  select coalesce(array_agg(distinct (e #>> '{}')::uuid), '{}') into v_equipos
+    from jsonb_array_elements(coalesce(p -> 'equipos', '[]')) e;
+  if exists (select 1 from unnest(v_equipos) x where not exists (
+      select 1 from public.equipos e where e.tenant_id = t and e.id = x)) then
+    raise exception 'Elige equipos de esta óptica.' using errcode = '22023';
+  end if;
+  insert into public.kits (id, tenant_id, nombre, activo)
+  values (v_id, t, v_nombre, coalesce((p ->> 'activo')::boolean, true))
+  on conflict (id) do update set nombre = excluded.nombre, activo = excluded.activo
+    where public.kits.tenant_id = t;
+  if not exists (select 1 from public.kits k where k.id = v_id and k.tenant_id = t) then
+    raise exception 'Kit no disponible.' using errcode = '42501';
+  end if;
+  delete from public.kit_equipos ke where ke.kit_id = v_id and ke.tenant_id = t and ke.equipo_id <> all (v_equipos);
+  begin
+    insert into public.kit_equipos (tenant_id, kit_id, equipo_id)
+    select t, v_id, x from unnest(v_equipos) x
+    on conflict (kit_id, equipo_id) do nothing;
+  exception when exclusion_violation then
+    raise exception 'Un equipo agregado ya está reservado en otro operativo en las fechas de este kit.' using errcode = '23P01';
+  end;
+  return v_id;
+end;
+$$;
+revoke execute on function public.guardar_kit(jsonb) from public, anon;
+grant execute on function public.guardar_kit(jsonb) to authenticated;
+
 -- ---------------------------------------------------------------------
 -- Permisos
 -- ---------------------------------------------------------------------

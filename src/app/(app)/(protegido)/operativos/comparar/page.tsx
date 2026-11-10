@@ -42,7 +42,7 @@ export default async function CompararOperativos() {
     supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, estado, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos"
+        "id, nombre, tipo_venue, fecha, estado, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_detalle_real"
       )
       .neq("estado", "cancelado")
       .order("fecha", { ascending: false }),

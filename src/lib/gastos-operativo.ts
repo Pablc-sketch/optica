@@ -9,10 +9,12 @@ export type GastosOperativo = {
   costo_otros: number;
   costo_ayudante?: number | null;
   costo_equipos?: number | null;
+  // Gasto real anotado en el detalle por categoría (operativo_costos),
+  // totalizado por la base. Nunca se superpone con las columnas de arriba:
+  // la base no deja anotar la misma categoría en los dos lugares.
+  costo_detalle_real?: number | null;
 };
 
-// Valor sugerido del arriendo de equipos + cartilla por día.
-export const EQUIPOS_POR_DIA = 52000;
 
 export function gastosDeOperativo(o: GastosOperativo): number {
   return (
@@ -21,6 +23,7 @@ export function gastosDeOperativo(o: GastosOperativo): number {
     o.costo_viaticos +
     o.costo_otros +
     (o.costo_ayudante ?? 0) +
-    (o.costo_equipos ?? 0)
+    (o.costo_equipos ?? 0) +
+    (o.costo_detalle_real ?? 0)
   );
 }

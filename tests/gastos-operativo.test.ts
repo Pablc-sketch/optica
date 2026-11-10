@@ -12,3 +12,9 @@ describe("gastosDeOperativo", () => {
     expect(gastosDeOperativo({ ...base, costo_ayudante: null, costo_equipos: null })).toBe(65000);
   });
 });
+
+describe("gasto real del detalle por categoría", () => {
+  it("se suma a los gastos; el presupuesto no está en este cálculo", () => {
+    expect(gastosDeOperativo({ ...base, costo_detalle_real: 68000 })).toBe(65000 + 68000);
+  });
+});
