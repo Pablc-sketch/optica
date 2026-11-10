@@ -1,7 +1,7 @@
 import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import { createClient } from "@/lib/supabase/server";
 import { crearOperativo, cambiarEstadoOperativo } from "@/lib/actions/operativos";
 import { formatearTelefono } from "@/lib/formato";
@@ -37,7 +37,7 @@ export default async function OperativosPage() {
   if (!user) return null;
   const perfilRes = await supabase.from("users").select("rol,tenant_id").eq("id", user!.id).single();
   const esAdmin = perfilRes.data?.rol === "admin";
-  if (esAdmin && esPilotoTerreno(perfilRes.data?.tenant_id)) redirect("/agenda/equipos");
+  if (esAdmin && await usaGestionGeneral(supabase,perfilRes.data?.tenant_id)) redirect("/agenda/equipos");
 
   if (!esAdmin) {
     return (

@@ -9,7 +9,7 @@ export const COSTOS = [
   { clave: "costo_ayudante", titulo: "Ayudante" },
   { clave: "costo_otros", titulo: "Otros" },
 ] as const;
-export type ClaveCosto = (typeof COSTOS)[number]["clave"];
+export type ClaveCosto = (typeof COSTOS)[number]["clave"]|"costo_hospedaje";
 export const prefijoCosto = (clave: ClaveCosto) => `Costo operativo · ${clave} · `;
 // Fides y marcos no son columnas del operativo: su monto sale de lo vendido.
 export const PREFIJO_FIDES = "Fides · ";
@@ -22,7 +22,8 @@ export function pagadoCosto(pagos: PagoCosto[], clave: ClaveCosto) {
   return pagos.filter((p) => p.descripcion.startsWith(prefijoCosto(clave))).reduce((s, p) => s + p.monto, 0);
 }
 export function pendientesCostos(op: GastosOperativo, pagos: PagoCosto[]) {
-  return COSTOS.map((c) => ({ ...c, total: op[c.clave] ?? 0, pagado: pagadoCosto(pagos, c.clave) }));
+  const costos:readonly {clave:ClaveCosto;titulo:string}[]=op.costo_hospedaje?[...COSTOS,{clave:"costo_hospedaje",titulo:"Hospedaje"}]:COSTOS;
+  return costos.map((c) => ({ ...c, total: op[c.clave] ?? 0, pagado: pagadoCosto(pagos, c.clave) }));
 }
 
 // Un abono extra de laboratorio implica un nuevo costo total, incluyendo

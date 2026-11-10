@@ -54,7 +54,7 @@ async function crearUsuarioConRol(rol: string) {
 beforeAll(async () => {
   const { data: tenant } = await admin
     .from("tenants")
-    .insert({ nombre_comercial: "Óptica Permisos" })
+    .insert({ modelo_operacion:"personalizado", nombre_comercial: "Óptica Permisos" })
     .select()
     .single();
   tenantId = tenant!.id;

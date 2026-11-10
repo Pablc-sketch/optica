@@ -1,3 +1,5 @@
+import {redirect} from "next/navigation";
+import {configuracionModelo} from "@/lib/modelo-optica";
 import Link from 'next/link';
 import { exigirRolPagina } from '@/lib/autorizacion';
 import { leerTodas } from '@/lib/leer-todas';
@@ -8,6 +10,7 @@ import type { MovimientoRevision } from '@/lib/revision-financiera';
 
 export default async function RevisarPagos({ searchParams }: { searchParams: Promise<{ operativo?: string }> }) {
   const { supabase, tenantId } = await exigirRolPagina(['admin']);
+  if((await configuracionModelo(supabase)).comercial)redirect('/caja');
   const params = await searchParams;
   const [retiros, gastos, pendientes, historial] = await Promise.all([
     leerTodas((a,b) => supabase.from('retiros_sueldo').select('*').eq('tenant_id',tenantId).order('id').range(a,b)),

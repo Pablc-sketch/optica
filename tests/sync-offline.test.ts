@@ -27,14 +27,14 @@ let dispositivoB: SupabaseClient;
 beforeAll(async () => {
   const { data: tenant } = await admin
     .from("tenants")
-    .insert({ nombre_comercial: "Óptica Sync Offline" })
+    .insert({ modelo_operacion:"personalizado", nombre_comercial: "Óptica Sync Offline" })
     .select()
     .single();
   tenantId = tenant!.id;
 
   const { data: ajeno } = await admin
     .from("tenants")
-    .insert({ nombre_comercial: "Óptica Ajena" })
+    .insert({ modelo_operacion:"personalizado", nombre_comercial: "Óptica Ajena" })
     .select()
     .single();
   tenantAjenoId = ajeno!.id;

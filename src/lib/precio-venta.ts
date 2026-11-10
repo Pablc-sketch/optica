@@ -23,6 +23,8 @@ import { limitesDeRango } from "./cristales";
 // Una fila del catálogo de /precios (costos_cristales): el precio de venta
 // más el puente hacia la lista del laboratorio.
 export type FilaCristal = MapaCristal & {
+  catalogo_propio?:boolean;
+  proveedor_id?:string|null;
   rango_receta: string;
   tratamiento: string;
   costo: number;
@@ -75,6 +77,7 @@ export function costoRealCristal(
   catalogo: CatalogoLaboratorio,
   hoy: string
 ): CostoCristal | null {
+  if(fila.catalogo_propio)return {costo:fila.costo,origen:"laboratorio",diseno:null,material:null,costoSinPromocion:fila.costo,promocion:null,unitarios:[],montaje:0,descuento:0,motivo:"Tarifa propia del laboratorio"};
   if (receta) return costoCristal(fila, ojosParaCristal(receta, fila.tipo_lente, posicion), catalogo, hoy);
   const limites = limitesDeRango(fila.rango_receta);
   if (!limites) return null;
@@ -99,10 +102,11 @@ export function origenCristal(
 // factorVenta es solo el respaldo para una fila que todavía no tiene
 // precio fijado en /precios.
 export function precioVentaCristal(
-  fila: Pick<FilaCristal, "tipo_lente" | "costo" | "precio_venta" | "precio_venta_stock">,
+  fila: Pick<FilaCristal, "tipo_lente" | "costo" | "precio_venta" | "precio_venta_stock" | "catalogo_propio">,
   origen: "stock" | "laboratorio",
   factorVenta = 0
 ): number {
+  if(fila.catalogo_propio)return fila.precio_venta;
   if (
     fila.tipo_lente === "Monofocal" &&
     origen === "stock" &&

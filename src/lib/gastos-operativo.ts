@@ -7,6 +7,7 @@ export type GastosOperativo = {
   costo_arriendo: number;
   costo_viaticos: number;
   costo_otros: number;
+  costo_hospedaje?:number|null;
   costo_ayudante?: number | null;
   costo_equipos?: number | null;
 };
@@ -20,6 +21,7 @@ export function gastosDeOperativo(o: GastosOperativo): number {
     o.costo_arriendo +
     o.costo_viaticos +
     o.costo_otros +
+    (o.costo_hospedaje??0) +
     (o.costo_ayudante ?? 0) +
     (o.costo_equipos ?? 0)
   );

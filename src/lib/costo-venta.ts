@@ -26,6 +26,8 @@ type OTConCosto = {
 
 export type ItemConCosto = {
   cantidad: number;
+  costo_producto_snapshot?:number|null;
+  costo_marco_snapshot?:number|null;
   descripcion?: string;
   // A cuál de los dos cupos de cristal de la OT corresponde este ítem —
   // lejos y cerca por separado comparten una sola OT, así que el costo de
@@ -57,6 +59,7 @@ export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
   const cristales: DesgloseCosto["cristales"] = [];
   let marcos = 0;
   let totalOtros = 0;
+  let totalArmazones=0;
 
   for (const it of items) {
     const ot = uno(it.ordenes_trabajo);
@@ -68,18 +71,17 @@ export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
         descripcion: [tipoLente, tratamiento].filter(Boolean).join(" · ") || it.descripcion || "Cristal",
         costo: costo * it.cantidad,
       });
-      marcos += it.cantidad;
+      if(it.costo_marco_snapshot==null){marcos+=it.cantidad;totalArmazones+=it.cantidad*COSTO_MARCO_POR_PAR;}else totalArmazones+=it.cantidad*it.costo_marco_snapshot;
       continue;
     }
     const producto = uno(it.productos);
     // El marco del inventario ya está contado en el par de cristales al
     // que va: no se cobra dos veces.
-    if (producto?.categoria === "armazon") continue;
-    if (producto) totalOtros += producto.costo * it.cantidad;
+    if(producto?.categoria==="armazon"){if(it.costo_producto_snapshot!=null){marcos+=it.cantidad;totalArmazones+=it.costo_producto_snapshot*it.cantidad;}continue;}
+    if(producto)totalOtros+=(it.costo_producto_snapshot??producto.costo)*it.cantidad;
   }
 
   const totalCristales = cristales.reduce((s, c) => s + c.costo, 0);
-  const totalArmazones = marcos * COSTO_MARCO_POR_PAR;
   return { cristales, totalCristales, marcos, totalArmazones, totalOtros, total: totalCristales + totalArmazones + totalOtros };
 }
 

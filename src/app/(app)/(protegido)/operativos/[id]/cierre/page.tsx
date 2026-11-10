@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirRolPagina } from "@/lib/autorizacion";
@@ -18,7 +18,7 @@ import CostoFidesEditor from "@/components/costo-fides-editor";
 export default async function CierreOperativo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
-  if (esPilotoTerreno(tenantId)) redirect("/operativos/"+id);
+  if (await usaGestionGeneral(supabase,tenantId)) redirect("/operativos/"+id);
 
   const [opRes, ventasRes, tenantRes, retirosRes, fidesRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).maybeSingle(),
@@ -28,7 +28,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         `id, total, pagos_abonos (monto, medio_pago),
          venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
            ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
-           productos:producto_id (costo, categoria))`
+           costo_producto_snapshot, costo_marco_snapshot, productos:producto_id (costo, categoria))`
       )
       .eq("operativo_id", id)
       .eq("anulada", false).order("id").range(a, b)),

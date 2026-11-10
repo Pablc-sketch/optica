@@ -52,6 +52,8 @@ type CostoCristal = FilaCristal;
 // Lo que trae una receta ya guardada, para precargar el formulario en modo
 // edición. Si no llega (modo creación), el formulario parte en blanco.
 type RecetaExistente = {
+  tecnologo_recurso_id?:string|null;
+  profesional_snapshot?:{nombre?:string}|null;
   id: string;
   tipo: string;
   od_esfera: number | null;
@@ -131,7 +133,7 @@ function SelectorLenteConPrecio({
   const hoy = hoyEnChile();
   const opciones = tiposPermitidos.flatMap((tipo) => {
       const posicion = tipo === "Monofocal" ? posicionSlot : "lejos";
-      const rango = rangoParaPosicion(esferas, cilindros, [add, add], posicion);
+      const rango = rangoParaPosicion(esferas,cilindros,[add,add],posicion,costos.filter(c=>c.tipo_lente===tipo));
       return costos
         .filter((c) => c.tipo_lente === tipo && c.rango_receta === rango)
         .map((fila) => {
@@ -280,7 +282,9 @@ export default function NuevaReceta({
   costos,
   catalogoLab,
   receta,
+  profesionales=[],
 }: {
+  profesionales?:{id:string;nombre:string;rut:string|null}[];
   pacienteId: string;
   operativos: { id: string; nombre: string }[];
   costos: CostoCristal[];
@@ -337,7 +341,9 @@ export default function NuevaReceta({
   const [guardada, setGuardada] = useState(false);
   const [vuelta, setVuelta] = useState(0);
 
+  const [errorGuardar,setErrorGuardar]=useState<string|null>(null);
   async function guardar(formData: FormData) {
+    setErrorGuardar(null);try{
     if (receta) {
       await actualizarReceta(formData);
       return;
@@ -346,6 +352,7 @@ export default function NuevaReceta({
     formData.set("receta_id_nuevo", idNuevo.current);
     await crearReceta(formData);
     setGuardada(true);
+    }catch(e){setErrorGuardar(e instanceof Error?e.message:"No se pudo guardar la receta.");}
   }
 
   if (guardada) {
@@ -376,9 +383,11 @@ export default function NuevaReceta({
 
   const contenido = (
     <form key={vuelta} action={guardar} className="mt-4 flex flex-col gap-4">
+      {errorGuardar&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{errorGuardar}</p>}
       <input type="hidden" name="paciente_id" value={pacienteId} />
       {receta && <input type="hidden" name="receta_id" value={receta.id} />}
 
+      {(profesionales.length>0||receta?.tecnologo_recurso_id)&&<label className="text-sm font-semibold">Tecnólogo que emite la receta<select name="tecnologo_recurso_id" defaultValue={receta?.tecnologo_recurso_id??""} className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5"><option value="">Mi perfil profesional</option>{receta?.tecnologo_recurso_id&&!profesionales.some(p=>p.id===receta.tecnologo_recurso_id)&&<option value={receta.tecnologo_recurso_id}>{receta.profesional_snapshot?.nombre??"Profesional original"}</option>}{profesionales.map(p=><option key={p.id} value={p.id}>{p.nombre}{p.rut?" · "+p.rut:""}</option>)}</select></label>}
       <fieldset className="rounded-xl border border-tinta-suave/20 p-3">
         <legend className="px-1 text-sm font-bold">¿Qué lente necesita?</legend>
         <input type="hidden" name="tipo" value={tipo} />

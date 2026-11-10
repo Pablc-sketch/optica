@@ -61,7 +61,7 @@ async function pedirPacientesConToken(token: string) {
 beforeAll(async () => {
   const { data: tenant, error: tenantError } = await admin
     .from("tenants")
-    .insert({ nombre_comercial: "Óptica Test Sesiones" })
+    .insert({ modelo_operacion:"personalizado", nombre_comercial: "Óptica Test Sesiones" })
     .select()
     .single();
   if (tenantError) throw tenantError;

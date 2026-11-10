@@ -133,35 +133,14 @@ export async function construirPdfReceta(datos: DatosRecetaImpresion) {
     y += texto.length * 5 + 4;
   }
 
-  // Recuadro único con los datos del profesional a modo de firma/timbre —
-  // el nombre, título y registro impresos ya cumplen esa función, no hace
-  // falta dejar espacio en blanco arriba como si faltara estampar algo.
-  y = Math.max(y + 15, 225);
-  const alturaRecuadro = 24;
-  doc.setDrawColor(180, 180, 180);
-  doc.rect(139, y, 56, alturaRecuadro);
-  let yTimbre = y + 7;
+  // El timbre viene de la receta; ajustar nombres y títulos largos.
   doc.setFontSize(8);
-  if (datos.profesional) {
-    doc.setTextColor(60, 60, 60);
-    doc.setFont("helvetica", "bold");
-    doc.text(datos.profesional.nombre, 167, yTimbre, { align: "center" });
-    yTimbre += 4;
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(120, 120, 120);
-    doc.text(datos.profesional.tituloProfesional, 167, yTimbre, { align: "center" });
-    yTimbre += 4;
-    if (datos.profesional.rut) {
-      doc.text(`RUT: ${datos.profesional.rut}`, 167, yTimbre, { align: "center" });
-      yTimbre += 4;
-    }
-    if (datos.profesional.registroProfesional) {
-      doc.text(`Registro N.° ${datos.profesional.registroProfesional}`, 167, yTimbre, { align: "center" });
-    }
-  } else {
-    doc.setTextColor(120, 120, 120);
-    doc.text("Firma profesional", 167, y + alturaRecuadro / 2 + 2, { align: "center" });
-  }
+  const lineas:{texto:string;negrita:boolean}[]=[];
+  const agregar=(texto:string,negrita=false)=>{doc.setFont("helvetica",negrita?"bold":"normal");for(const linea of doc.splitTextToSize(texto,50) as string[])lineas.push({texto:linea,negrita});};
+  if(datos.profesional){agregar(datos.profesional.nombre,true);agregar(datos.profesional.tituloProfesional);if(datos.profesional.rut)agregar(`RUT: ${datos.profesional.rut}`);if(datos.profesional.registroProfesional)agregar(`Registro N.° ${datos.profesional.registroProfesional}`);}else agregar("Firma profesional");
+  const alturaRecuadro=Math.max(24,10+lineas.length*3.8);y=Math.max(y+15,225);if(y+alturaRecuadro>277){doc.addPage();y=20;}
+  doc.setDrawColor(180,180,180);doc.rect(139,y,56,alturaRecuadro);let yTimbre=y+6;
+  for(const linea of lineas){doc.setFont("helvetica",linea.negrita?"bold":"normal");doc.setTextColor(60,60,60);doc.text(linea.texto,167,yTimbre,{align:"center"});yTimbre+=3.8;}
 
   return doc;
 }

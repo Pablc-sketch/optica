@@ -7,7 +7,7 @@ import EstadoSync from "@/components/estado-sync";
 import Icono from "@/components/icono";
 import NavLinks from "@/components/nav-links";
 import BarraCarga from "@/components/barra-carga";
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import { menuParaRol } from "@/lib/navegacion";
 import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
 import { diasRestantes, estaVigente, type Suscripcion } from "@/lib/suscripcion";
@@ -85,7 +85,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const porVencer = vigente && dias !== null && dias <= 7;
 
   const nav = menuParaRol(perfil.rol, mercadoPagoConfigurado(perfil.tenant_id), perfil.es_superadmin);
-  if (esPilotoTerreno(perfil.tenant_id) && perfil.rol === "admin") {
+  if (await usaGestionGeneral(supabase,perfil.tenant_id) && perfil.rol === "admin") {
     const calendario = nav.findIndex(n => n.href === "/operativos/agenda");
     if (calendario >= 0) nav.splice(calendario, 1);
     const i = nav.findIndex(n=>n.href === "/operativos");

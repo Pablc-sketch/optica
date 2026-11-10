@@ -1,3 +1,5 @@
+import PreciosComerciales from "@/components/precios-comerciales";
+import {configuracionModelo} from "@/lib/modelo-optica";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { exigirRolPagina } from "@/lib/autorizacion";
@@ -27,6 +29,7 @@ export default async function PreciosPage({
   // Costos y utilidades: solo administración (A09).
   await exigirRolPagina(["admin"]);
   const supabase = await createClient();
+  if((await configuracionModelo(supabase)).comercial)return <PreciosComerciales/>;
 
   const [{ data: todos }, { data: cristales }, { data: promociones }] = await Promise.all([
     supabase

@@ -1,4 +1,5 @@
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import {configuracionModelo} from "@/lib/modelo-optica";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import PuntoDeVenta from "./pos";
@@ -8,6 +9,7 @@ import CabeceraPagina from "@/components/cabecera-pagina";
 export default async function VentasPage({ searchParams }: { searchParams: Promise<{ op?: string }> }) {
   const { op } = await searchParams;
   const supabase = await createClient();
+  const modelo=await configuracionModelo(supabase);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -22,13 +24,13 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     supabase.from("pacientes").select("id, nombre, rut", { count: "exact" }).order("nombre").limit(2000),
     supabase
       .from("productos")
-      .select("id, nombre, marca, precio_venta, categoria")
+      .select("id, nombre, marca, precio_venta, costo, categoria")
       .order("marca")
       .limit(2000),
     supabase
       .from("costos_cristales")
       .select(
-        `tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock,
+        `catalogo_propio, proveedor_id, tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock,
          material_stock, material_laboratorio, diseno_laboratorio, montaje_material,
          diseno_laboratorio_proximo, diseno_proximo_desde`
       )
@@ -51,11 +53,11 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     // La lista del laboratorio, para calcular el costo real de cada
     // cristal contra la potencia de cada ojo (no contra un rango
     // aproximado) y decidir solo si sale de stock o hay que tallarlo.
-    supabase.from("lab_precios_stock").select("material, diseno, esfera_max, cilindro_max, precio_unitario"),
-    supabase.from("lab_precios_laboratorio").select("diseno, material, precio_unitario"),
-    supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
-    supabase.from("lab_precios_recargo").select("categoria, concepto, precio"),
-    supabase.from("lab_promociones").select("diseno, material, descuento_pct, desde, hasta, nota"),
+    modelo.comercial?Promise.resolve({data:[],error:null}):supabase.from("lab_precios_stock").select("material, diseno, esfera_max, cilindro_max, precio_unitario"),
+    modelo.comercial?Promise.resolve({data:[],error:null}):supabase.from("lab_precios_laboratorio").select("diseno, material, precio_unitario"),
+    modelo.comercial?Promise.resolve({data:[],error:null}):supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
+    modelo.comercial?Promise.resolve({data:[],error:null}):supabase.from("lab_precios_recargo").select("categoria, concepto, precio"),
+    modelo.comercial?Promise.resolve({data:[],error:null}):supabase.from("lab_promociones").select("diseno, material, descuento_pct, desde, hasta, nota"),
     // Independiente del selector de sucursal (que es para stock físico):
     // planificados/realizados más recientes primero.
     supabase
@@ -77,7 +79,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   }
 
   const contexto = operativosRes.data?.find(o=>o.id===op);
-  const piloto = esPilotoTerreno(perfilRes.data?.tenant_id);
+  const piloto = await usaGestionGeneral(supabase,perfilRes.data?.tenant_id);
   if (op && !contexto) return <div className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-xl font-bold">Operativo no disponible</h1><p className="mt-1 text-sm">Revisa la agenda antes de registrar esta venta.</p><Link href={piloto ? "/agenda/equipos" : "/operativos"} className="mt-3 inline-block underline">Volver a operativos</Link></div>;
   return (
     <div className="flex flex-col gap-4">
@@ -98,11 +100,13 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
           key={contexto?.id ?? "sucursal"}
           operativoInicial={contexto?.id}
           sugerirOperativoPorReceta={!piloto}
+          comercial={modelo.comercial}
+          precioConsulta={modelo.precioConsulta}
           pacientes={pacientesRes.data ?? []}
           productos={productosRes.data ?? []}
           costos={costosRes.data ?? []}
           laboratorios={laboratoriosRes.data ?? []}
-          factorVenta={tenantRes.data?.factor_venta_cristales ?? 6}
+          factorVenta={modelo.comercial?0:tenantRes.data?.factor_venta_cristales??6}
           catalogoLab={{
             stock: stockRes.data ?? [],
             laboratorio: labRes.data ?? [],

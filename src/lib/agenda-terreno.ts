@@ -29,8 +29,9 @@ export function leerTurno(datos: FormData) {
   if (!uuidAgenda.test(id) || !nombre || nombre.length > 120 || !direccion || direccion.length > 220)
     throw new Error('Completa el nombre y lugar del operativo.');
   if (!fechaValidaDocumento(fecha) || (fecha_fin && !fechaValidaDocumento(fecha_fin))
-    || !horaAgenda.test(inicio) || !horaAgenda.test(fin)
-    || (fecha_fin && fecha_fin < fecha) || ((!fecha_fin || fecha === fecha_fin) && fin <= inicio))
+    || ((inicio||fin)&&(!horaAgenda.test(inicio)||!horaAgenda.test(fin)))
+    || (fecha_fin && fecha_fin < fecha) || (fecha_fin&&(Date.parse(fecha_fin)-Date.parse(fecha))/86400000>365)
+    || (inicio&&(!fecha_fin||fecha===fecha_fin)&&fin<=inicio))
     throw new Error('Revisa el día y el horario. El término debe ser posterior al inicio.');
   const recursos = Object.fromEntries(Object.keys(ROLES_AGENDA).map(k => [k, leer(k)]));
   if (!Object.values(recursos).every(v => uuidAgenda.test(v))) throw new Error('Elige las tres personas y el kit.');

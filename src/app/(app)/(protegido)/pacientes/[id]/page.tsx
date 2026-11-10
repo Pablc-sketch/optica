@@ -1,3 +1,4 @@
+import {profesionalesParaReceta} from "@/lib/profesionales-receta";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -23,6 +24,7 @@ function fmtDioptria(v: number | null): string {
 export default async function FichaPaciente({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  const profesionales=await profesionalesParaReceta(supabase);
 
   const { data: paciente } = await supabase
     .from("pacientes")
@@ -180,6 +182,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       </details>
 
       <NuevaReceta
+        profesionales={profesionales}
         pacienteId={paciente.id}
         operativos={operativos ?? []}
         costos={cotizar.filas}

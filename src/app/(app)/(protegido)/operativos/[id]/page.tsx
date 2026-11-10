@@ -1,5 +1,5 @@
 import OperativoTerreno from "@/components/operativo-terreno";
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -89,7 +89,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const { id } = await params;
   const supabase = await createClient();
   const { data: tenantId } = await supabase.rpc("jwt_tenant_id");
-  if (esPilotoTerreno(tenantId)) return <OperativoTerreno id={id}/>;
+  if (await usaGestionGeneral(supabase,tenantId)) return <OperativoTerreno id={id}/>;
 
   const [
     operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes,
@@ -117,7 +117,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
          venta_items (
            cantidad, precio_unitario, descuento, descripcion, cristal_slot,
            ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio, costo_laboratorio_2),
-           productos:producto_id (costo, categoria)
+           costo_producto_snapshot, costo_marco_snapshot, productos:producto_id (costo, categoria)
          ),
          pagos_abonos (monto, medio_pago)`
       )

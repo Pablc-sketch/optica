@@ -1,4 +1,4 @@
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import Link from "next/link";
 import { fechaValidaDocumento } from "@/lib/fecha-documentos";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
@@ -179,8 +179,8 @@ export default async function ReportesPage({
 
   // Costos y utilidades: solo administración (A09).
   const {tenantId} = await exigirRolPagina(["admin"]);
-  const piloto = esPilotoTerreno(tenantId);
   const supabase = await createClient();
+  const piloto = await usaGestionGeneral(supabase,tenantId);
 
   let ventasQuery = supabase
     .from("ventas")
@@ -192,7 +192,7 @@ export default async function ReportesPage({
     .from("venta_items")
     .select(
       `cantidad, precio_unitario, descuento, cristal_slot,
-       productos:producto_id (costo, categoria),
+       costo_producto_snapshot, costo_marco_snapshot, productos:producto_id (costo, categoria),
        ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
        ventas!inner (fecha, operativo_id, anulada)`
     )
@@ -253,7 +253,7 @@ export default async function ReportesPage({
   const operativosTodosQuery = supabase
     .from("operativos")
     .select(
-      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_fides_real"
+      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_hospedaje, costo_ayudante, costo_equipos, costo_fides_real"
     )
     .order("fecha", { ascending: true });
 
@@ -349,7 +349,7 @@ export default async function ReportesPage({
           .from("venta_items")
           .select(
             `cantidad, precio_unitario, descuento, cristal_slot, descripcion,
-             productos:producto_id (costo, categoria),
+             costo_producto_snapshot, costo_marco_snapshot, productos:producto_id (costo, categoria),
              ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
              ventas!inner (operativo_id, anulada)`
           )
@@ -795,7 +795,7 @@ export default async function ReportesPage({
               <span>{clp(desglose.totalCristales)}</span>
             </div>
             <div className="flex items-center justify-between px-3 py-1 text-sm">
-              <span>+ Marcos ({desglose.marcos} × {clp(COSTO_MARCO_POR_PAR)}, uno por cada par de cristales)</span>
+              <span>{piloto?`+ Marcos (${desglose.marcos}, costo registrado al vender)`:`+ Marcos (${desglose.marcos} × ${clp(COSTO_MARCO_POR_PAR)}, uno por cada par de cristales)`}</span>
               <span className="font-semibold">{clp(desglose.totalArmazones)}</span>
             </div>
             {desglose.totalOtros > 0 && (
@@ -1033,7 +1033,7 @@ export default async function ReportesPage({
               >
                 <option value="efectivo">💵 Salió del efectivo</option>
                 <option value="digital">🏦 Cuenta bancaria (Mercado Pago)</option>
-                <option value="personal">Dinero personal de Pablo</option>
+                <option value="personal">{piloto?"Dinero personal por reembolsar":"Dinero personal de Pablo"}</option>
               </select>
               <select
                 name="medio_pago"

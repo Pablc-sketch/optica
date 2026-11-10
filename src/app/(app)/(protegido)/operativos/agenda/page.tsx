@@ -1,6 +1,6 @@
 import CalendarioDisponibilidad, { ESTILO_DISPONIBILIDAD, LeyendaDisponibilidad } from "@/components/calendario-disponibilidad";
 import CabeceraPagina from "@/components/cabecera-pagina";
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { randomUUID } from "node:crypto";
@@ -42,7 +42,7 @@ function Evento({ evento, dia }: { evento: EventoAgenda; dia: string }) {
 
 export default async function Agenda({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
-  if (esPilotoTerreno(tenantId)) redirect("/agenda/equipos");
+  if (await usaGestionGeneral(supabase,tenantId)) redirect("/agenda/equipos");
   const params = await searchParams;
   const param = (k: string) => typeof params[k] === "string" ? params[k] as string : "";
   const hoy = hoyEnChile();
