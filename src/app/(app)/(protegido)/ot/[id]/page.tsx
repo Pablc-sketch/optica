@@ -1,3 +1,5 @@
+import {configuracionModelo} from "@/lib/modelo-optica";
+import {timbreDeReceta} from "@/lib/timbre-receta";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BotonImprimir from "@/components/boton-imprimir";
@@ -38,7 +40,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
          marco_propio_2, posicion_2, origen_cristal_2, marco_descripcion, marco_descripcion_2,
          fecha_ingreso, fecha_entrega_estimada, fecha_entrega_real, notas,
          pacientes:paciente_id (nombre, rut, telefono, diabetes, hipertension, glaucoma, cirugia_ocular, alergias),
-         recetas:receta_id (fecha, tipo, od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, av_od, av_oi, dp, altura, notas),
+         recetas:receta_id (profesional_snapshot, fecha, tipo, od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, av_od, av_oi, dp, altura, notas),
          productos:armazon_producto_id (sku, nombre, marca, color),
          productos_2:armazon_producto_id_2 (sku, nombre, marca, color)`
       )
@@ -62,7 +64,9 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
   const ot = otRes.data;
   if (!ot) notFound();
 
-  const responsable = responsableRes.data;
+  const modelo=await configuracionModelo(supabase);
+  const timbre=timbreDeReceta((Array.isArray(ot.recetas)?ot.recetas[0]:ot.recetas)?.profesional_snapshot,null);
+  const responsable=modelo.comercial?(timbre?{nombre:timbre.nombre,titulo_profesional:timbre.tituloProfesional,registro_profesional:timbre.registroProfesional}:null):responsableRes.data;
 
   const paciente = ot.pacientes as unknown as {
     nombre: string; rut: string | null; telefono: string | null;
@@ -441,7 +445,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                 </>
               )}
               <br />
-              Responsable óptica
+              {modelo.comercial?"Profesional de la receta":"Responsable óptica"}
             </p>
           </div>
         </div>

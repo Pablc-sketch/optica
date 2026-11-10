@@ -1,10 +1,11 @@
 "use server";
+import {configuracionModelo} from "@/lib/modelo-optica";
 
 import { revalidatePath } from "next/cache";
 import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
-import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
+import { DESCRIPCION_CONSULTA } from "@/lib/consulta";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { rangoParaPosicion } from "@/lib/cristales";
@@ -112,6 +113,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       .eq("id", tenantId)
       .single();
 
+    const proveedoresPropios=new Set<string>();
     const calculados: { c: (typeof cristales)[number]; costo: NonNullable<ReturnType<typeof costoRealCristal>> }[] = [];
     for (const c of cristales) {
       const fila = cotizar.filas.find(
@@ -124,7 +126,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
           [potencias.od_esfera, potencias.oi_esfera],
           [potencias.od_cilindro, potencias.oi_cilindro],
           [potencias.od_add, potencias.oi_add],
-          posicion
+          posicion,cotizar.filas.filter(f=>f.tipo_lente===c.tipoLente)
         );
         if (rangoReal !== c.rangoReceta) {
           return { ok: false, error: "La receta cambió desde que se cotizó. Vuelve a elegir el cristal para recalcular el precio." };
@@ -134,6 +136,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       if (!costo) {
         return { ok: false, error: `Falta la equivalencia con el laboratorio para ${c.tipoLente} ${c.tratamiento}. Revísala en Precios.` };
       }
+      if(fila.catalogo_propio&&fila.proveedor_id)proveedoresPropios.add(fila.proveedor_id);
       preciosLista.set(c.cupo, precioVentaCristal(fila, costo.origen, Number(tenant?.factor_venta_cristales ?? 0)));
       calculados.push({ c, costo });
     }
@@ -144,7 +147,10 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
     const entrega: string = operativo?.fecha_entrega_estimada ?? sumarDias(diaVenta, Number(tenant?.dias_entrega_default ?? 7));
 
     const necesitaLab = calculados.some((x) => x.costo.origen === "laboratorio");
-    let proveedor = input.proveedorLabId ?? null;
+    if(proveedoresPropios.size>1)return {ok:false,error:"Estos cristales pertenecen a laboratorios distintos. Registra cada laboratorio en una venta separada."};
+    const proveedorPropio=[...proveedoresPropios][0];
+    if(proveedorPropio&&input.proveedorLabId&&input.proveedorLabId!==proveedorPropio)return {ok:false,error:"El laboratorio elegido no corresponde a la tarifa del cristal."};
+    let proveedor=proveedorPropio??input.proveedorLabId??null;
     if (necesitaLab && !proveedor) {
       const { data } = await supabase.from("proveedores").select("id").eq("tipo", "laboratorio").order("nombre").limit(1).maybeSingle();
       proveedor = data?.id ?? null;
@@ -434,6 +440,9 @@ export async function registrarConsulta(input: {
     if (e instanceof SinPermiso) return { ok: false, error: e.message };
     throw e;
   }
+  const modelo=await configuracionModelo(ctx.supabase),precioConsulta=modelo.precioConsulta;
+  if(precioConsulta===null||precioConsulta<=0)return {ok:false,error:"Configura un precio de consulta con cobro antes de registrar el pago."};
+  if(modelo.comercial&&input.monto!==precioConsulta)return {ok:false,error:"El precio de consulta cambió. Recarga antes de cobrar."};
   const cantidad = input.cantidad ?? 1;
   if (!UUID.test(input.consultaId)) return { ok: false, error: "Datos inválidos." };
   if (input.operativoId && !UUID.test(input.operativoId)) return { ok: false, error: "Operativo inválido." };
@@ -458,7 +467,7 @@ export async function registrarConsulta(input: {
           cantidad,
           precio_unitario: input.monto,
           cristal_slot: null,
-          precio_lista: PRECIO_CONSULTA,
+          precio_lista: precioConsulta,
         },
       ],
     },

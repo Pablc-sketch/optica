@@ -187,6 +187,7 @@ export async function crearReceta(formData: FormData) {
     tenant_id: tenantId,
     paciente_id: pacienteId,
     profesional_id: userId,
+    tecnologo_recurso_id:String(formData.get("tecnologo_recurso_id")??"").trim()||null,
     // Explícita en vez de dejarla en el default de la columna
     // (current_date): ese default lo evalúa Postgres en UTC, así que una
     // receta tomada de noche en Chile quedaba fechada al día siguiente.
@@ -269,6 +270,7 @@ export async function actualizarReceta(formData: FormData) {
   const { error } = await supabase
     .from("recetas")
     .update({
+      ...(formData.has("tecnologo_recurso_id")?{tecnologo_recurso_id:String(formData.get("tecnologo_recurso_id")??"").trim()||null}:{}),
       operativo_id: String(formData.get("operativo_id") ?? "").trim() || null,
       od_esfera: num("od_esfera"),
       od_cilindro: num("od_cilindro"),

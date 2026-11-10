@@ -1,4 +1,6 @@
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import CamposTurno from "@/components/campos-turno";
+import type {ReservaEquipo} from "@/lib/disponibilidad-equipo";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import Link from 'next/link';
 import { randomUUID } from 'node:crypto';
 import { notFound } from 'next/navigation';
@@ -17,9 +19,9 @@ export default async function EditarTurno({ searchParams }: {searchParams:Promis
   const p = await searchParams;
   if (p.id && !uuidAgenda.test(p.id)) notFound();
   const {supabase,tenantId} = await exigirRolPagina(['admin']);
-  if (!esPilotoTerreno(tenantId)) notFound();
+  if (!(await usaGestionGeneral(supabase,tenantId))) notFound();
   const [r,o] = await Promise.all([
-    leerTodas((a,b)=>supabase.from('agenda_recursos').select('id,tipo,nombre,detalle').eq('tenant_id',tenantId).order('nombre').order('id').range(a,b)),
+    leerTodas((a,b)=>supabase.from('agenda_recursos').select('id,tipo,nombre,detalle').eq('tenant_id',tenantId).eq('activo',true).order('nombre').order('id').range(a,b)),
     p.id ? supabase.from('operativos').select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,agenda_turnos(vendedora_id,tecnologo_id,coordinador_id,kit_id,presupuesto)').eq('id',p.id).eq('tenant_id',tenantId).maybeSingle() : null,
   ]);
   if (r.error || o?.error) throw new Error('No pudimos cargar el operativo');
@@ -30,6 +32,10 @@ export default async function EditarTurno({ searchParams }: {searchParams:Promis
   const equipo = (r.data ?? []) as RecursoAgenda[];
   const faltan = Object.keys(ROLES_AGENDA).filter(tipo=>!equipo.some(e=>e.tipo===tipo));
   const fecha = op?.fecha ?? (fechaValidaDocumento(p.dia) ? p.dia : hoyEnChile());
+  const reservasRes=await leerTodas((a,b)=>supabase.from('agenda_turnos').select('operativo_id,vendedora_id,tecnologo_id,coordinador_id,kit_id,operativos!inner(id,nombre,fecha,fecha_fin,hora_inicio,hora_fin)').eq('tenant_id',tenantId).eq('activo',true).order('operativo_id').range(a,b));
+  if(reservasRes.error)throw new Error('No se pudo comprobar la disponibilidad.');
+  const reservas=(reservasRes.data??[]).map(r=>{const o=Array.isArray(r.operativos)?r.operativos[0]:r.operativos;return {...o,recursos:[r.vendedora_id,r.tecnologo_id,r.coordinador_id,r.kit_id]};}) as ReservaEquipo[];
+
   return <div className="mx-auto max-w-3xl space-y-4">
     <Link href={'/agenda/equipos?mes='+fecha.slice(0,7)+'&dia='+fecha} className="text-sm underline">← Agenda de equipos</Link>
     <CabeceraPagina seccion="En terreno" titulo={op ? 'Editar operativo' : 'Agendar operativo'} />
@@ -41,21 +47,7 @@ export default async function EditarTurno({ searchParams }: {searchParams:Promis
         <label className="text-sm font-medium">Nombre del operativo<input name="nombre" defaultValue={op?.nombre} required maxLength={120} className={campo} /></label>
         <label className="text-sm font-medium">Lugar o dirección<input name="direccion" defaultValue={op?.direccion ?? ''} required maxLength={220} className={campo} /></label>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <label className="min-w-0 text-sm font-medium">Día<input type="date" name="fecha" defaultValue={fecha} required className={campo} /></label>
-        <label className="min-w-0 text-sm font-medium">Inicio<input type="time" name="inicio" defaultValue={op?.hora_inicio?.slice(0,5) ?? '09:00'} required className={campo} /></label>
-        <label className="min-w-0 text-sm font-medium">Término<input type="time" name="fin" defaultValue={op?.hora_fin?.slice(0,5) ?? '13:00'} required className={campo} /></label>
-        <label className="min-w-0 text-sm font-medium">Último día (opcional)<input type="date" name="fecha_fin" defaultValue={op?.fecha_fin ?? ''} className={campo} /></label>
-      </div>
-      <h2 className="border-t border-tinta/10 pt-3 font-bold">Personal y kit</h2>
-      <div className="grid grid-cols-2 gap-3">
-        {Object.entries(ROLES_AGENDA).map(([k,v])=><label key={k} className="min-w-0 text-sm font-medium">{v}
-          <select className={campo} required name={k} defaultValue={turno?.[(k+'_id') as Exclude<keyof Turno,'presupuesto'>] ?? ''}>
-            <option value="">Elegir…</option>
-            {equipo.filter(e=>e.tipo===k).map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}
-          </select>
-        </label>)}
-      </div>
+      <CamposTurno id={op?.id??''} equipo={equipo} reservas={reservas} inicial={{fecha,fecha_fin:op?.fecha_fin??'',inicio:op?.hora_inicio?.slice(0,5)??'',fin:op?.hora_fin?.slice(0,5)??'',asignados:Object.fromEntries(Object.keys(ROLES_AGENDA).map(k=>[k,turno?.[(k+'_id') as Exclude<keyof Turno,'presupuesto'>]??'']))}}/>
       <details className="rounded-xl border border-tinta/15 p-3" open={Boolean(turno && Object.values(turno.presupuesto).some(n=>n>0))}>
         <summary className="cursor-pointer font-semibold">Presupuesto y chequeos</summary>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">

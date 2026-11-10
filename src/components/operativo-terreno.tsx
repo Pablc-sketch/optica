@@ -1,3 +1,6 @@
+import PagoCostoOperativo from "./pago-costo-operativo";
+import {pendientesCostos,pagadoCon,PREFIJO_FIDES,PREFIJO_MARCOS} from "@/lib/pagos-operativo";
+import {desglosarCostos,type ItemConCosto} from "@/lib/costo-venta";
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { exigirRolPagina } from '@/lib/autorizacion';
@@ -10,18 +13,23 @@ import { costoPorChequeo } from '@/lib/agenda-terreno';
 import FormularioAgenda from '@/components/formulario-agenda';
 
 const gastos = { costo_transporte:'Bencina y transporte',costo_equipos:'Arriendo de equipos',costo_viaticos:'Viáticos',
-  costo_arriendo:'Arriendo del lugar',costo_ayudante:'Personal',costo_otros:'Hospedaje y otros' } as const;
+  costo_arriendo:'Arriendo del lugar',costo_ayudante:'Personal',costo_hospedaje:'Hospedaje',costo_otros:'Otros' } as const;
 const btn='rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold';
 export default async function OperativoTerreno({id}:{id:string}) {
   const {supabase,tenantId}=await exigirRolPagina(['admin']);
   const [r,personas]=await Promise.all([
-    supabase.from('operativos').select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,costo_transporte,costo_equipos,costo_viaticos,costo_arriendo,costo_ayudante,costo_otros').eq('id',id).eq('tenant_id',tenantId).maybeSingle(),
+    supabase.from('operativos').select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,costo_transporte,costo_equipos,costo_viaticos,costo_arriendo,costo_ayudante,costo_otros,costo_hospedaje').eq('id',id).eq('tenant_id',tenantId).maybeSingle(),
     leerTodas((a,b)=>supabase.from('recetas').select('id,paciente_id').eq('operativo_id',id).eq('tenant_id',tenantId).order('id').range(a,b)),
   ]);
   if (r.error || personas.error) throw new Error('No pudimos cargar el operativo');
   if (!r.data) notFound();
   const o=r.data,n=new Set((personas.data ?? []).map(p=>p.paciente_id).filter(Boolean)).size;
-  const total=gastosDeOperativo(o), unitario=costoPorChequeo(total,n);
+  const [gastosRes,ventasRes]=await Promise.all([
+   leerTodas((a,b)=>supabase.from('gastos_globales').select('id,descripcion,monto').eq('tenant_id',tenantId).eq('operativo_id',id).order('id').range(a,b)),
+   leerTodas((a,b)=>supabase.from('ventas').select('id,venta_items(cantidad,cristal_slot,costo_producto_snapshot,costo_marco_snapshot,productos:producto_id(costo,categoria),ordenes_trabajo:ot_id(costo_laboratorio,costo_laboratorio_2))').eq('tenant_id',tenantId).eq('operativo_id',id).eq('anulada',false).order('id').range(a,b)),
+  ]);if(gastosRes.error||ventasRes.error)throw new Error('No se pudieron cargar los pagos del operativo.');
+  const pagos=gastosRes.data??[],costos=desglosarCostos((ventasRes.data??[]).flatMap(v=>v.venta_items??[]) as unknown as ItemConCosto[]);
+  const total=gastosDeOperativo(o),unitario=costoPorChequeo(total,n);
   return <div className="mx-auto max-w-3xl space-y-4">
     <Link href={'/agenda/equipos?mes='+o.fecha.slice(0,7)+'&dia='+o.fecha} className="text-sm underline">← Agenda de equipos</Link>
     <div><h1 className="text-2xl font-bold">{o.nombre}</h1><p className="text-sm text-tinta-suave">{fechaLegible(o.fecha)} · {rangoHorario(o.hora_inicio,o.hora_fin) || 'Sin horario'} · <span className="capitalize">{o.estado}</span></p><p className="text-sm">{o.direccion}</p></div>
@@ -46,6 +54,7 @@ export default async function OperativoTerreno({id}:{id:string}) {
         </div>
       </FormularioAgenda>
     </section>
+    <section className="space-y-3"><h2 className="font-bold">Pagos de este operativo</h2><p className="text-xs text-tinta-suave">Guardar un costo no registra una salida de dinero. Confirma aquí lo efectivamente pagado.</p><ul className="space-y-3">{pendientesCostos(o,pagos).map(c=><PagoCostoOperativo comercial key={c.clave} operativoId={id} clave={c.clave} titulo={c.titulo} total={c.total} pagado={c.pagado}/>)}<PagoCostoOperativo comercial operativoId={id} clave="fides" titulo="Laboratorio" total={costos.totalCristales} pagado={pagadoCon(pagos,PREFIJO_FIDES)}/><PagoCostoOperativo comercial operativoId={id} clave="marcos" titulo="Marcos" total={costos.totalArmazones} pagado={pagadoCon(pagos,PREFIJO_MARCOS)}/></ul></section>
     <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Cambiar estado</summary>
       <div className="mt-3"><FormularioAgenda accion={actualizarJornada} etiqueta="Guardar estado">
         <input name="id" type="hidden" value={id}/>

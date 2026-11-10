@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { registrarConsulta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
-import { PRECIO_CONSULTA } from "@/lib/consulta";
+
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 
@@ -17,7 +17,8 @@ const MEDIOS = [
 
 // Cobrar una o varias consultas ($5.000 c/u) en el operativo elegido, en
 // dos toques. Entra a la caja del operativo y cuadra con Mercado Pago.
-export default function RegistrarConsulta({ operativoId }: { operativoId: string | null }) {
+export default function RegistrarConsulta({operativoId,precioConsulta,comercial=false}:{operativoId:string|null;precioConsulta:number|null;comercial?:boolean}){
+ const PRECIO_CONSULTA=precioConsulta??0;
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [cantidad, setCantidad] = useState(1);
@@ -45,6 +46,8 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
     });
   }
 
+  if(precioConsulta===null)return <p className="rounded-xl bg-white p-4 text-sm">Configura el precio de consulta en Precios antes de cobrar.</p>;
+  if(precioConsulta===0)return <p className="rounded-xl bg-white p-4 text-sm">Consulta sin cobro. Registra la receta desde la ficha del paciente.</p>;
   if (!abierto) {
     return (
       <div className="flex flex-col gap-1">
@@ -57,7 +60,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
           className="rounded-xl border-2 border-dashed border-brand/40 bg-white px-4 py-3 text-base font-semibold text-brand-dark hover:bg-brand/5"
         >
           ＋ Cobrar consulta {clp(PRECIO_CONSULTA)}
-          <span className="block text-sm font-normal text-tinta-suave">Solo si NO compra lentes</span>
+          <span className="block text-sm font-normal text-tinta-suave">{comercial?"Consulta / receta":"Solo si NO compra lentes"}</span>
         </button>
         {mensaje && (
           <p className={`text-sm font-semibold ${mensaje.startsWith("✓") ? "text-emerald-800" : "text-red-700"}`}>{mensaje}</p>

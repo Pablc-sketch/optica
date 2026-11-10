@@ -1,3 +1,4 @@
+import {profesionalesParaReceta} from "@/lib/profesionales-receta";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -11,6 +12,7 @@ export default async function EditarRecetaPage({
 }) {
   const { id, recetaId } = await params;
   const supabase = await createClient();
+  const profesionales=await profesionalesParaReceta(supabase);
 
   const [recetaRes, operativosRes, cotizar] = await Promise.all([
     supabase.from("recetas").select("*").eq("id", recetaId).eq("paciente_id", id).single(),
@@ -39,6 +41,7 @@ export default async function EditarRecetaPage({
 
       <div className="rounded-2xl bg-crema-claro p-4 shadow-sm">
         <NuevaReceta
+          profesionales={profesionales}
           pacienteId={id}
           operativos={operativosRes.data ?? []}
           costos={cotizar.filas}

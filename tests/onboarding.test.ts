@@ -82,7 +82,7 @@ afterAll(async () => {
 });
 
 describe("Registro de óptica nueva", () => {
-  it("deja la óptica lista para trabajar: perfil admin, sucursal, matriz de costos y trial", async () => {
+  it("deja la óptica lista para trabajar: perfil admin, sucursal, catálogo propio vacío y trial", async () => {
     // Tras crear el perfil hay que refrescar: el token del signup se emitió
     // antes de que existiera la fila en users, así que no trae tenant_id.
     const { error: refreshError } = await opticaA.cliente.auth.refreshSession();
@@ -103,7 +103,7 @@ describe("Registro de óptica nueva", () => {
     ]);
 
     expect(sucursales).toHaveLength(1);
-    expect(costos).toBe(150);
+    expect(costos).toBe(0);
     expect(suscripcion!.estado).toBe("trial");
 
     const dias = Math.round(

@@ -1,3 +1,4 @@
+import {timbreDeReceta} from "@/lib/timbre-receta";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -36,11 +37,8 @@ export default async function RecetaImprimible({
 }) {
   const { id, recetaId } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  const [pacienteRes, recetaRes, tenantRes, profesionalRes] = await Promise.all([
+  const [pacienteRes, recetaRes, tenantRes] = await Promise.all([
     supabase.from("pacientes").select("*").eq("id", id).single(),
     supabase
       .from("recetas")
@@ -49,13 +47,6 @@ export default async function RecetaImprimible({
       .eq("paciente_id", id)
       .single(),
     supabase.from("tenants").select("nombre_comercial, telefono, direccion, logo_url").single(),
-    // Timbre del profesional: siempre el de quien tiene la sesión abierta al
-    // imprimir/enviar, mismo criterio que la orden de trabajo.
-    supabase
-      .from("users")
-      .select("nombre, rut, titulo_profesional, registro_profesional")
-      .eq("id", user!.id)
-      .single(),
   ]);
 
   const paciente = pacienteRes.data;
@@ -63,7 +54,8 @@ export default async function RecetaImprimible({
   if (!paciente || !receta) notFound();
 
   const optica = tenantRes.data;
-  const profesional = profesionalRes.data;
+  const autor=receta.profesional_snapshot||!receta.profesional_id?null:(await supabase.from("users").select("nombre,rut,titulo_profesional,registro_profesional").eq("id",receta.profesional_id).eq("tenant_id",receta.tenant_id).maybeSingle()).data;
+  const profesional=timbreDeReceta(receta.profesional_snapshot,autor);
 
   const edad = paciente.fecha_nacimiento
     ? Math.floor(
@@ -138,14 +130,7 @@ export default async function RecetaImprimible({
     alertas,
     observaciones,
     notas: receta.notas,
-    profesional: profesional?.titulo_profesional
-      ? {
-          nombre: profesional.nombre,
-          rut: profesional.rut ? formatearRut(profesional.rut) : null,
-          tituloProfesional: profesional.titulo_profesional,
-          registroProfesional: profesional.registro_profesional,
-        }
-      : null,
+    profesional,
   };
 
   return (

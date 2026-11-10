@@ -63,7 +63,7 @@ export async function registrarPagoCosto(input: {
   if (!UUID.test(input.operativoId) || !Number.isSafeInteger(input.pagadoEsperado) || input.pagadoEsperado < 0
     || !Number.isSafeInteger(input.monto) || input.monto <= 0
     || !["digital", "efectivo", "personal"].includes(input.caja)
-    || (input.clave !== "fides" && input.clave !== "marcos" && !COSTOS.some((c) => c.clave === input.clave))) {
+    || (input.clave !== "fides" && input.clave !== "marcos" && input.clave !== "costo_hospedaje" && !COSTOS.some((c) => c.clave === input.clave))) {
     return { ok: false, error: "Pago inválido." };
   }
   // Dos pestañas que pagan sobre el mismo saldo compiten por la misma PK.
@@ -91,7 +91,7 @@ export async function registrarPagoCosto(input: {
       leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
         venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
           ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
-          productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
+          costo_producto_snapshot, costo_marco_snapshot, productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
       ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
     ]);
     if (ventas.error || tenant.error) return { ok: false, error: "No se pudo calcular el costo." };
@@ -145,7 +145,7 @@ export async function marcarSueldoPagado(input: {
     leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
       venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
         ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
-        productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
+        costo_producto_snapshot, costo_marco_snapshot, productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
     ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
   ]);
   if (ventas.error || tenant.error) return { ok: false, error: "No se pudo comprobar el reparto." };

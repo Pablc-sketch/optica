@@ -12,7 +12,7 @@ export async function cargarPendientes(supabase: Awaited<ReturnType<typeof creat
     leerTodas((a, b) => supabase.from("ventas").select(`id, operativo_id, total, pagos_abonos (monto, medio_pago),
       venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
         ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
-        productos:producto_id (costo, categoria))`).eq("anulada", false).not("operativo_id", "is", null).order("id").range(a, b)),
+        costo_producto_snapshot, costo_marco_snapshot, productos:producto_id (costo, categoria))`).eq("anulada", false).not("operativo_id", "is", null).order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("retiros_sueldo").select("id, operativo_id, persona, monto").order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("gastos_globales").select("id, operativo_id, descripcion, monto").not("operativo_id", "is", null).order("id").range(a, b)),
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),

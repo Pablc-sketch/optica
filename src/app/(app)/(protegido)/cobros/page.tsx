@@ -1,3 +1,4 @@
+import {configuracionModelo} from "@/lib/modelo-optica";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +17,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
   const { op, ver } = await searchParams;
   const vista: Vista = ver === "deben" || ver === "listos" || ver === "todos" ? ver : "pendientes";
   const supabase = await createClient();
+  const modelo=await configuracionModelo(supabase);
 
   const [operativosRes, tenantRes] = await Promise.all([
     supabase.from("operativos").select("id, nombre, fecha").order("fecha", { ascending: false }).limit(30),
@@ -195,8 +197,8 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
             </table>
           </details>
 
-          {elegido !== "todos" && <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} />}
-          {elegido !== "sin" && elegido !== "todos" && (
+          {elegido !== "todos" && <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} precioConsulta={modelo.precioConsulta} comercial={modelo.comercial}/>}
+          {!modelo.comercial && elegido !== "sin" && elegido !== "todos" && (
             <Link
               href={`/operativos/${elegido}/cierre`}
               className="rounded-xl bg-emerald-800 px-4 py-3 text-center text-base font-semibold text-white hover:bg-emerald-900"

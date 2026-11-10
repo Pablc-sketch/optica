@@ -24,10 +24,12 @@ import { costoRealCristal, origenCristal as origenDelCristal, precioVentaCristal
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
-type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string };
+type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; costo?:number; categoria: string };
 // Una fila del catálogo de /precios: el precio al que se vende, más el
 // puente hacia la lista del laboratorio para poder calcular el costo real.
 type CostoCristal = {
+  catalogo_propio?:boolean;
+  proveedor_id?:string|null;
   tipo_lente: string;
   rango_receta: string;
   tratamiento: string;
@@ -241,7 +243,7 @@ function FilaLente({
         [receta.od_esfera, receta.oi_esfera],
         [receta.od_cilindro, receta.oi_cilindro],
         [receta.od_add, receta.oi_add],
-        posicionParaRango
+        posicionParaRango,costos.filter(c=>c.tipo_lente===tipoLente)
       )
     : null;
   const rango = rangoAuto ?? rangoManual;
@@ -484,7 +486,9 @@ function SelectorArmazon({
   onElegir,
   onMarcarPropio,
   onDescribir,
+  comercial=false,
 }: {
+  comercial?:boolean;
   etiqueta: string;
   productos: Producto[];
   elegido: LineaCarrito | undefined;
@@ -500,7 +504,7 @@ function SelectorArmazon({
   // El código o modelo del marco (lo que trae la etiqueta), aparte del
   // color: así sale en el pedido sin tener que cargar el marco al inventario.
   const [codigoMarco, setCodigoMarco] = useState("");
-  const [verInventario, setVerInventario] = useState(false);
+  const [verInventario,setVerInventario]=useState(comercial);
   const descripcion = [
     [tipoMarco, colorMarco.trim().toLowerCase()].filter(Boolean).join(" "),
     codigoMarco.trim() ? `cód. ${codigoMarco.trim().toUpperCase()}` : "",
@@ -534,7 +538,7 @@ function SelectorArmazon({
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          <div className="flex flex-col gap-2 rounded-lg bg-amber-50 p-2.5">
+          {!comercial&&<div className="flex flex-col gap-2 rounded-lg bg-amber-50 p-2.5">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-900">Describe el marco</p>
             <div className="flex flex-wrap gap-1.5">
               {TIPOS_MARCO.map((t) => (
@@ -588,7 +592,7 @@ function SelectorArmazon({
             >
               {tipoMarco && (colorMarco.trim() || codigoMarco.trim()) ? `Usar: marco ${descripcion}` : "Elige tipo y color (o código)"}
             </button>
-          </div>
+          </div>}
           <button
             type="button"
             onClick={onMarcarPropio}
@@ -624,7 +628,7 @@ function SelectorArmazon({
                 >
                   <span className="flex-1 truncate">
                     {p.marca ? `${p.marca} ` : ""}
-                    {p.nombre}
+                    {p.nombre}{comercial&&` · ${clp(p.precio_venta)}`}
                   </span>
                 </button>
               </li>
@@ -650,6 +654,8 @@ export default function PuntoDeVenta({
   catalogoLab,
   laboratorios,
   factorVenta,
+  comercial=false,
+  precioConsulta=5000,
   sucursalId,
   vendedorId,
   recetasPorPaciente,
@@ -665,6 +671,8 @@ export default function PuntoDeVenta({
   catalogoLab: CatalogoLaboratorio;
   laboratorios: { id: string; nombre: string }[];
   factorVenta: number;
+  comercial?:boolean;
+  precioConsulta?:number|null;
   tenantId: string;
   sucursalId: string | null;
   vendedorId: string | null;
@@ -790,11 +798,11 @@ export default function PuntoDeVenta({
   // fijo por tipo: un fotocromático tallado cuesta bastante más de $10.000.
   const { monto: abonoMinimo, noCubre: abonoNoCubre } = abonoMinimoDe(
     lineasCristal.map((l) => ({
-      precio: l.precioUnitario,
-      costoCristal: costoRealDeLinea(l)?.costo ?? null,
-      minimoFijo: ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0,
+      precio:l.precioUnitario+(comercial?carrito.find(m=>m.key===`armazon-${numeroDePar(l.key)}`)?.precioUnitario??0:0),
+      costoCristal:comercial?(costoRealDeLinea(l)?.costo??0)+(productos.find(p=>p.id===carrito.find(m=>m.key===`armazon-${numeroDePar(l.key)}`)?.productoId)?.costo??0):costoRealDeLinea(l)?.costo??null,
+      minimoFijo:comercial?0:ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente??""]??0,
     })),
-    COSTO_MARCO_POR_PAR,
+    comercial?0:COSTO_MARCO_POR_PAR,
     total,
     // Bruto del medio elegido: con tarjeta hay que cobrar algo más para que
     // después de la comisión llegue el costo.
@@ -841,7 +849,7 @@ export default function PuntoDeVenta({
           productoId: producto.id,
           descripcion: `${producto.marca ? producto.marca + " " : ""}${producto.nombre}`,
           cantidad: 1,
-          precioUnitario: 0,
+          precioUnitario:comercial?producto.precio_venta:0,
           armazonSlot: numero,
         },
       ];
@@ -901,7 +909,7 @@ export default function PuntoDeVenta({
     // Los armazones se regalan (el costo ya está absorbido en el precio del
     // cristal): siempre entran al carrito en $0, sin importar lo que diga
     // su precio_venta en Inventario.
-    const precio = p.categoria === "armazon" ? 0 : p.precio_venta;
+    const precio=!comercial&&p.categoria==="armazon"?0:p.precio_venta;
     setCarrito((prev) => {
       const existe = prev.find((l) => l.productoId === p.id);
       if (existe) {
@@ -1053,7 +1061,7 @@ export default function PuntoDeVenta({
       // Sin cobro ahora (cortesía o sin abono) el medio no se usa.
       medioPago: medioPago || "efectivo",
       numeroVoucher: requiereVoucher(medioPago, cobro.monto) ? numeroVoucher.trim() : null,
-      proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
+      proveedorLabId:!comercial&&origenCristal==="laboratorio"?laboratorioId||null:null,
     };
   }
 
@@ -1220,7 +1228,7 @@ export default function PuntoDeVenta({
 
           {/* La consulta ($5.000) se cobra aparte, sin armar una venta de
               lentes: queda en el operativo de hoy y cuadra con la máquina. */}
-          <RegistrarConsulta operativoId={operativoId || null} />
+          <RegistrarConsulta operativoId={operativoId||null} precioConsulta={precioConsulta} comercial={comercial}/>
 
           <input
             type="search"
@@ -1323,7 +1331,7 @@ export default function PuntoDeVenta({
               error, y es un dato que se le informa al paciente. */}
           {lineasCristal.length > 0 && receta && (
             <div className="flex flex-col gap-1.5 rounded-xl border border-tinta-suave/20 bg-white p-3">
-              <p className="text-sm font-semibold">Cómo se pide a Fides</p>
+              <p className="text-sm font-semibold">{comercial?"Laboratorio y costo":"Cómo se pide a Fides"}</p>
               {lineasCristal.map((l) => {
                 const real = costoRealDeLinea(l);
                 const esStock = real?.origen === "stock";
@@ -1341,7 +1349,7 @@ export default function PuntoDeVenta({
                       {esStock ? "Stock" : "Laboratorio"}
                     </span>
                     <span className="text-xs text-tinta-suave">
-                      {real ? `${real.motivo} · costo ${clp(real.costo)}` : "Este cristal no está enlazado al catálogo de Fides (revisa Precios)"}
+                      {real ? `${real.motivo} · costo ${clp(real.costo)}` : (comercial?"Falta configurar esta tarifa en Precios":"Este cristal no está enlazado al catálogo de Fides (revisa Precios)")}
                     </span>
                     {/* Una promoción del laboratorio con fecha de término.
                         Se avisa acá porque el precio de venta se fija hoy
@@ -1357,7 +1365,7 @@ export default function PuntoDeVenta({
             </div>
           )}
 
-          {lineasCristal.length > 0 && origenCristal === "laboratorio" && laboratorios.length > 0 && (
+          {!comercial&&lineasCristal.length>0&&origenCristal==="laboratorio"&&laboratorios.length>0&&(
             <label className="flex flex-col gap-1 text-sm font-medium">
               Laboratorio
               <select value={laboratorioId} onChange={(e) => setLaboratorioId(e.target.value)} className={select}>
@@ -1433,6 +1441,7 @@ export default function PuntoDeVenta({
                 return (
                   <div key={`armazon-slot-${numero}`} className="flex flex-col gap-2">
                   <SelectorArmazon
+                    comercial={comercial}
                     etiqueta={etiqueta}
                     productos={productos}
                     elegido={carrito.find((c) => c.key === `armazon-${numero}`)}
@@ -1440,7 +1449,7 @@ export default function PuntoDeVenta({
                     onMarcarPropio={() => marcarMarcoPropio(numero)}
                     onDescribir={(d) => describirMarco(numero, d)}
                   />
-                  {!marco?.marcoPropio && (
+                  {!comercial&&!marco?.marcoPropio&&(
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -1494,7 +1503,7 @@ export default function PuntoDeVenta({
                     {p.marca ? `${p.marca} ` : ""}
                     {p.nombre}
                   </span>
-                  {p.categoria === "armazon" ? (
+                  {!comercial&&p.categoria==="armazon"?(
                     <span className="font-semibold text-amber-700">Gratis</span>
                   ) : (
                     <span className="font-semibold">{clp(p.precio_venta)}</span>

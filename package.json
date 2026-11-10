@@ -11,7 +11,9 @@
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:database": "node scripts/test-comercial-database.mjs",
+    "test:unit": "vitest run --exclude tests/tenant-isolation.test.ts --exclude tests/onboarding.test.ts --exclude tests/permisos-rol.test.ts --exclude tests/session-security.test.ts --exclude tests/sync-offline.test.ts --exclude tests/flujo-completo.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
@@ -28,6 +30,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.3.14",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

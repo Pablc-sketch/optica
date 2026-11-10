@@ -1,5 +1,5 @@
 import CalendarioDisponibilidad, { LeyendaDisponibilidad } from "@/components/calendario-disponibilidad";
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -72,9 +72,9 @@ export default async function Dashboard() {
   if (perfil?.rol === "bodega") redirect("/ot");
   if (perfil?.rol !== "admin") redirect("/login");
 
-  if (esPilotoTerreno(perfil.tenant_id)) return (
+  if (await usaGestionGeneral(supabase,perfil.tenant_id)) return (
     <div className="space-y-6">
-      <CabeceraPagina seccion="Visión Herrante" titulo="¿Dónde vas a trabajar?" />
+      <CabeceraPagina seccion="Mi óptica" titulo="¿Dónde vas a trabajar?" />
       <div className="grid gap-4 sm:grid-cols-2">
         <Link href="/ventas" className="group flex min-h-40 flex-col items-start gap-2 rounded-2xl bg-white p-5 shadow-sm hover:shadow-md sm:p-6">
           <span className="rounded-xl bg-brand/10 p-2.5 text-brand-dark"><Icono nombre="venta" className="size-6" /></span>

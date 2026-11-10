@@ -1,3 +1,4 @@
+import {configuracionModelo} from "./modelo-optica";
 import type { createClient } from "@/lib/supabase/server";
 import type { CatalogoLaboratorio } from "./costo-fides";
 import type { FilaCristal } from "./precio-venta";
@@ -12,11 +13,15 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 export async function cargarCatalogoParaCotizar(
   supabase: Supabase
 ): Promise<{ filas: FilaCristal[]; catalogo: CatalogoLaboratorio }> {
+  if((await configuracionModelo(supabase)).comercial){
+    const {data,error}=await supabase.from('costos_cristales').select('catalogo_propio,proveedor_id,tipo_lente,rango_receta,tratamiento,costo,precio_venta,precio_venta_stock,material_stock,material_laboratorio,diseno_laboratorio,montaje_material').order('tipo_lente');
+    if(error)throw new Error('No se pudo cargar el catálogo propio.');return {filas:(data??[]) as FilaCristal[],catalogo:{stock:[],laboratorio:[],montaje:[],recargos:[],promociones:[],descuentoPct:0}};
+  }
   const [costosRes, tenantRes, stockRes, labRes, montajeRes, recargoRes, promoRes] = await Promise.all([
     supabase
       .from("costos_cristales")
       .select(
-        `tipo_lente, rango_receta, tratamiento, costo, precio_venta, precio_venta_stock,
+        `catalogo_propio, proveedor_id, tipo_lente, rango_receta, tratamiento, costo, precio_venta, precio_venta_stock,
          material_stock, material_laboratorio, diseno_laboratorio, montaje_material,
          diseno_laboratorio_proximo, diseno_proximo_desde`
       )

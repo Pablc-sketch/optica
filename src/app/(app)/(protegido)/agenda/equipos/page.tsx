@@ -1,4 +1,4 @@
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import { notFound } from "next/navigation";
 import Link from 'next/link';
 import { exigirRolPagina } from '@/lib/autorizacion';
@@ -14,7 +14,7 @@ const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 type Turno = { vendedora_id: string; tecnologo_id: string; coordinador_id: string; kit_id: string; presupuesto: Presupuesto };
 export default async function AgendaEquipos({ searchParams }: { searchParams: Promise<{mes?: string; dia?: string; recurso?: string}> }) {
   const { supabase, tenantId } = await exigirRolPagina(['admin']);
-  if (!esPilotoTerreno(tenantId)) notFound();
+  if (!(await usaGestionGeneral(supabase,tenantId))) notFound();
   const p = await searchParams, mes = mesAgenda(p.mes);
   const primero = primerDiaDelMes(mes), ultimo = ultimoDiaDelMes(mes), hoy = hoyEnChile();
   const semanas = semanasDelMes(mes);
@@ -22,7 +22,7 @@ export default async function AgendaEquipos({ searchParams }: { searchParams: Pr
   const recurso = uuidAgenda.test(p.recurso ?? '') ? p.recurso! : '';
   const [operativos, recursos] = await Promise.all([
     leerTodas((a,b) => supabase.from('operativos')
-      .select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,costo_transporte,costo_arriendo,costo_viaticos,costo_otros,costo_ayudante,costo_equipos,agenda_turnos(vendedora_id,tecnologo_id,coordinador_id,kit_id,presupuesto)')
+      .select('id,nombre,direccion,fecha,fecha_fin,hora_inicio,hora_fin,estado,meta_examenes,costo_transporte,costo_arriendo,costo_viaticos,costo_otros,costo_ayudante,costo_equipos,costo_hospedaje,agenda_turnos(vendedora_id,tecnologo_id,coordinador_id,kit_id,presupuesto)')
       .eq('tenant_id',tenantId).lte('fecha',ultimo).or('fecha.gte.'+primero+',fecha_fin.gte.'+primero)
       .order('fecha').order('hora_inicio').order('id').range(a,b)),
     leerTodas((a,b) => supabase.from('agenda_recursos').select('id,tipo,nombre,detalle').eq('tenant_id',tenantId).order('nombre').order('id').range(a,b)),
@@ -53,7 +53,7 @@ export default async function AgendaEquipos({ searchParams }: { searchParams: Pr
   return <div className="space-y-5">
     <CabeceraPagina seccion="En terreno" titulo="Agenda de equipos" acciones={
       <>
-        <Link href={ruta+'/recursos'} className={btn}>Personal y kits</Link>
+        <Link href={ruta+'/recursos'} className={btn}>Personal</Link><Link href={ruta+'/kits'} className={btn}>Inventario y kits</Link>
         <Link href={ruta+'/turno?dia='+(dia || (hoy.startsWith(mes) ? hoy : primero))} className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark">＋ Agendar operativo</Link>
       </>
     } />

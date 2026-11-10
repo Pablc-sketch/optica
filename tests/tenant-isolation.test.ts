@@ -40,7 +40,7 @@ let clientA: SupabaseClient;
 async function crearTenantConUsuario(nombre: string) {
   const { data: tenant, error: tenantError } = await admin
     .from("tenants")
-    .insert({ nombre_comercial: nombre })
+    .insert({ modelo_operacion:"personalizado", nombre_comercial: nombre })
     .select()
     .single();
   if (tenantError) throw tenantError;

@@ -1,3 +1,5 @@
+import {redirect} from "next/navigation";
+import {configuracionModelo} from "@/lib/modelo-optica";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { mesAgenda } from "@/lib/agenda-terreno";
@@ -53,6 +55,7 @@ export default async function CalendarioOperativos({
   const mes = mesAgenda(mesParam);
 
   const supabase = await createClient();
+  if((await configuracionModelo(supabase)).comercial)redirect("/agenda/equipos");
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -1,5 +1,5 @@
 import CabeceraPagina from "@/components/cabecera-pagina";
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
+import { usaGestionGeneral } from "@/lib/modelo-optica";
 import Link from 'next/link';
 import { randomUUID } from 'node:crypto';
 import { exigirRolPagina } from '@/lib/autorizacion';
@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 const campo = 'w-full min-w-0 rounded-xl border px-3 py-2.5';
 export default async function Caja({ searchParams }: { searchParams: Promise<{ guardado?: string; ver?: string; operativo?: string }> }) {
   const { supabase, tenantId } = await exigirRolPagina(['admin']);
-  const piloto = esPilotoTerreno(tenantId);
+  const piloto = await usaGestionGeneral(supabase,tenantId);
   const [caja, pendientes, gastos, movimientos, conteos, cobros, retiros, tenant, ventas, operativos, params] = await Promise.all([
     supabase.rpc('caja_global').single(), cargarPendientes(supabase),
     leerTodas((a,b) => supabase.from('gastos_globales').select('id,fecha,descripcion,monto,caja,operativo_id').eq('tenant_id',tenantId).order('id').range(a,b)),
@@ -53,7 +53,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
   const ahorroSeparado = (retiros.data ?? []).filter(r => r.persona === 'ahorro').reduce((s,r) => s+r.monto,0);
   const pendientesFiltrados = p.operativos.filter(o => !operativoId || o.operativoId === operativoId);
   const fecha = hoyEnChile();
-  const filas = [['Pablo',p.personas.pablo],['Pamela',p.personas.madre],['Isadora',p.personas.isadora],['Fides',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos]] as const;
+  const filas=piloto?[['Laboratorio',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos]] as const:[['Pablo',p.personas.pablo],['Pamela',p.personas.madre],['Isadora',p.personas.isadora],['Fides',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos]] as const;
   return <div className="flex flex-col gap-5">
     <CabeceraPagina seccion="Operación" titulo="Caja" />
     <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-4">{vistas.map(([clave,nombre]) => <Link key={clave} href={`/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-3 text-center font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>
@@ -63,7 +63,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       {vista==='resumen' && <>
       <div className="grid items-start gap-4 xl:grid-cols-3">
         <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-sm font-semibold text-tinta-suave">Efectivo registrado</h2><p className={`mt-3 text-3xl font-bold tabular-nums ${efectivo<0?'text-red-700':'text-tinta'}`}>{clp(efectivo)}</p><p className="mt-2 text-xs text-tinta-suave">Esperado según movimientos</p>{ultimoConteo ? <p className="mt-3 text-sm">Último conteo: <b>{clp(ultimoConteo.contado)}</b><span className={`block ${ultimoConteo.contado===ultimoConteo.esperado?'text-emerald-800':'text-red-700'}`}>Diferencia entonces: {clp(ultimoConteo.contado-ultimoConteo.esperado)}</span></p> : <p className="mt-3 text-sm text-amber-900">Por contar</p>}</section>
-        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-sm font-semibold text-tinta-suave">Cuenta bancaria · registrada</h2><p className={`mt-3 text-3xl font-bold tabular-nums ${saldo.hayDigital<0?'text-red-700':'text-tinta'}`}>{clp(saldo.hayDigital)}</p><p className="mt-2 text-xs text-tinta-suave">Mercado Pago + transferencias · comisiones estimadas</p><Link href="/caja?ver=cuadrar" className="mt-3 inline-block text-sm font-semibold underline">Comprobar saldo bancario →</Link></section>
+        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-sm font-semibold text-tinta-suave">Cuenta bancaria · registrada</h2><p className={`mt-3 text-3xl font-bold tabular-nums ${saldo.hayDigital<0?'text-red-700':'text-tinta'}`}>{clp(saldo.hayDigital)}</p><p className="mt-2 text-xs text-tinta-suave">{piloto?"Pagos digitales y transferencias · comisiones estimadas":"Mercado Pago + transferencias · comisiones estimadas"}</p><Link href="/caja?ver=cuadrar" className="mt-3 inline-block text-sm font-semibold underline">Comprobar saldo bancario →</Link></section>
         <section className={`rounded-2xl p-5 shadow-sm ${disponible.restante<0?'bg-red-50':'bg-emerald-50'}`} aria-labelledby="resumen-caja"><h2 id="resumen-caja" className="text-sm font-semibold">Disponible tras pendientes</h2><p className={`mt-3 text-3xl font-bold tabular-nums ${disponible.restante<0?'text-red-700':'text-emerald-800'}`}>{clp(disponible.restante)}</p><p className="mt-2 text-xs">{clp(disponible.total)} − {clp(disponible.porPagar)} por pagar − {clp(disponible.ahorro)} ahorro</p><p className="mt-3 text-xs text-tinta-suave">Estimación registrada, sin ventas por cobrar.</p></section>
       </div>
       <nav aria-label="Acciones de caja" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -76,7 +76,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       {pendientes.sinAsignar && <Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 underline">Hay pagos o aportes sin operativo. Revisar →</Link>}
       {(cobros.data ?? []).some(c=>!c.medio_pago) && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Hay cobros sin medio de pago, incluidos como efectivo. Revísalos si hay diferencias.</p>}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <CajaHistorial operativos={operativos.data ?? []} cobros={(cobros.data ?? []).map(c=>({...c,operativo_id:operativoPorVenta.get(c.venta_id) ?? null}))} gastos={gastos.data ?? []} retiros={retiros.data ?? []} traslados={movimientos.data ?? []} />
+        <CajaHistorial comercial={piloto} operativos={operativos.data ?? []} cobros={(cobros.data ?? []).map(c=>({...c,operativo_id:operativoPorVenta.get(c.venta_id) ?? null}))} gastos={gastos.data ?? []} retiros={retiros.data ?? []} traslados={movimientos.data ?? []} />
         <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Por pagar</h2><p className="mt-2 text-sm text-red-700">Compromisos pendientes · {clp(p.total+deudaPersonal)}</p><dl className="mt-4 divide-y divide-tinta/10">{filas.filter(([,monto])=>monto>0).map(([nombre,monto])=><div key={nombre} className="flex justify-between gap-3 py-3 text-sm"><dt>{nombre}</dt><dd className="font-semibold tabular-nums text-red-700">{clp(monto)}</dd></div>)}{deudaPersonal>0 && <div className="flex justify-between gap-3 py-3 text-sm"><dt>{piloto ? 'Gastos por reembolsar' : 'Devolver a Pablo'}</dt><dd className="font-semibold text-red-700">{clp(deudaPersonal)}</dd></div>}</dl><Link href="/caja?ver=pendientes" className="mt-3 block text-sm font-semibold underline">Ver por operativo →</Link><div className="mt-5 border-t border-tinta/10 pt-4"><h3 className="text-sm">Utilidad calculada · operativos</h3><p className={`mt-2 text-3xl font-bold ${pendientes.utilidadOperativos<0?'text-red-700':'text-emerald-800'}`}>{clp(pendientes.utilidadOperativos)}</p><p className="mt-2 text-xs text-tinta-suave">Ventas menos costos. Incluye ventas por cobrar; no es saldo disponible.</p><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="mt-4 block rounded-xl border px-3 py-3 text-center font-semibold">{piloto ? 'Ver reportes →' : 'Ahorro, pagos y retiros →'}</Link></div></section>
       </div>
       <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Ahorro registrado</p><b className="text-2xl text-emerald-800 tabular-nums">{clp(ahorroSeparado)}</b></Link></div>
@@ -86,7 +86,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b><p className="mt-2 text-sm underline">Gestionar cobros →</p></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-tinta p-4 font-semibold text-white">Confirmar o corregir pagos, gastos y ahorro →</Link></div>
       <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Por operativo</h2>
       {pendientesFiltrados.length===0 && <p className="mt-3 text-sm">Sin pagos ni ahorro pendientes.</p>}
-      {pendientesFiltrados.map(o=><Link key={o.operativoId} href={`/operativos/${o.operativoId}/cierre`} className="mt-3 block rounded-xl border p-3"><b>{o.nombre}</b><p className="text-xs text-tinta-suave">{fechaLegible(o.fecha)}</p><dl className="mt-2 grid grid-cols-2 gap-2 text-sm">{[['Fides',o.fides],['Marcos',o.marcos],['Gastos',o.gastos],['Pablo',o.personas.pablo],['Pamela',o.personas.madre],['Isadora',o.personas.isadora],['Ahorro por separar',o.ahorro]].map(([n,m])=><div key={n} className="flex justify-between gap-2"><dt>{n}</dt><dd className="tabular-nums">{clp(Number(m))}</dd></div>)}</dl></Link>)}
+      {pendientesFiltrados.map(o=><Link key={o.operativoId} href={`/operativos/${o.operativoId}/cierre`} className="mt-3 block rounded-xl border p-3"><b>{o.nombre}</b><p className="text-xs text-tinta-suave">{fechaLegible(o.fecha)}</p><dl className="mt-2 grid grid-cols-2 gap-2 text-sm">{(piloto?[['Laboratorio',o.fides],['Marcos',o.marcos],['Gastos',o.gastos]]:[['Fides',o.fides],['Marcos',o.marcos],['Gastos',o.gastos],['Pablo',o.personas.pablo],['Pamela',o.personas.madre],['Isadora',o.personas.isadora],['Ahorro por separar',o.ahorro]]).map(([n,m])=><div key={n} className="flex justify-between gap-2"><dt>{n}</dt><dd className="tabular-nums">{clp(Number(m))}</dd></div>)}</dl></Link>)}
       </section>
       <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-bold text-red-700">Total de la óptica por pagar · {clp(p.total+deudaPersonal)}</summary>
       <div className="pt-2">
@@ -114,13 +114,13 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       </section>
       <details id="traspasos" open className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Trasladar entre efectivo y cuenta</summary><p className="my-3 text-sm text-tinta-suave">Registra un depósito o retiro que ya hiciste. Lentia no mueve dinero.</p>
         <CajaFormulario><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="caja" value="digital" />
-          <label className="text-sm">Movimiento<select name="tipo" className={campo}><option value="deposito">Depositaste efectivo en Mercado Pago</option><option value="retiro">Retiraste efectivo de Mercado Pago</option></select></label>
+          <label className="text-sm">Movimiento<select name="tipo" className={campo}><option value="deposito">{piloto?"Depositaste efectivo en la cuenta bancaria":"Depositaste efectivo en Mercado Pago"}</option><option value="retiro">{piloto?"Retiraste efectivo de la cuenta bancaria":"Retiraste efectivo de Mercado Pago"}</option></select></label>
           <label className="text-sm">Monto<input type="number" name="monto" min="1" step="1" required className={campo} /></label>
           <label className="text-sm">Fecha<input type="date" name="fecha" defaultValue={fecha} max={fecha} required className={campo} /></label>
           <label className="text-sm">Descripción<input name="descripcion" maxLength={250} required className={campo} /></label>
         </CajaFormulario>
       </details>
-      <CajaHistorial key={operativoId} operativoId={operativoId} operativos={operativos.data ?? []} cobros={(cobros.data ?? []).map(c=>({...c,operativo_id:operativoPorVenta.get(c.venta_id) ?? null}))} gastos={gastos.data ?? []} retiros={retiros.data ?? []} traslados={movimientos.data ?? []} />
+      <CajaHistorial comercial={piloto} key={operativoId} operativoId={operativoId} operativos={operativos.data ?? []} cobros={(cobros.data ?? []).map(c=>({...c,operativo_id:operativoPorVenta.get(c.venta_id) ?? null}))} gastos={gastos.data ?? []} retiros={retiros.data ?? []} traslados={movimientos.data ?? []} />
       </>}
       {vista==='cuadrar' && <>
       <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-lg font-bold">Cuadrar efectivo</h2><p className="mt-2 text-sm">Esperado según Lentia</p><p className="text-3xl font-bold tabular-nums">{clp(efectivo)}</p>
@@ -131,12 +131,12 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
           </CajaFormulario>
         </details>
       </section>
-      <CuentaBancaria tenantId={tenantId} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito ?? 0)+(t?.entro_credito ?? 0),transferencias:(t?.entro_digital ?? 0)-(t?.entro_debito ?? 0)-(t?.entro_credito ?? 0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}} />
+      {piloto?<section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="font-bold">Cuenta bancaria registrada</h2><p className="mt-2 text-3xl font-bold">{clp(saldo.hayDigital)}</p><p className="mt-2 text-sm text-tinta-suave">Compara este saldo con tu cartola y revisa los movimientos si hay diferencias.</p></section>:<CuentaBancaria tenantId={tenantId} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito ?? 0)+(t?.entro_credito ?? 0),transferencias:(t?.entro_digital ?? 0)-(t?.entro_debito ?? 0)-(t?.entro_credito ?? 0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}} />}
       <Link href="/caja?ver=movimientos" className="rounded-xl bg-white p-4 text-center font-semibold">Revisar movimientos y diferencias →</Link>
       <section className="rounded-2xl bg-white p-4 shadow-sm">
         <details className="mt-2"><summary className="cursor-pointer py-2 font-semibold">Gastos personales por devolver · {clp(deudaPersonal)}</summary>
           {personales.length === 0 ? <p className="mt-2 text-sm">Sin gastos personales pendientes registrados.</p> : personales.map(g => <div key={g.id} className="mt-3 border-t pt-3"><p className="font-semibold">{g.descripcion} · {clp(g.pendiente)}</p><p className="mb-2 text-sm text-tinta-suave">{fechaLegible(g.fecha)}{piloto ? ' · Fondo personal' : ' · pagado personalmente por Pablo'}</p>
-            <CajaFormulario texto="Registrar devolución ya realizada"><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="tipo" value="devolucion" /><input type="hidden" name="gasto_id" value={g.id} /><input type="hidden" name="descripcion" value={`Devolución a Pablo: ${g.descripcion}`.slice(0,250)} />
+            <CajaFormulario texto="Registrar devolución ya realizada"><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="tipo" value="devolucion" /><input type="hidden" name="gasto_id" value={g.id} /><input type="hidden" name="descripcion" value={`${piloto?"Devolución de gasto personal":"Devolución a Pablo"}: ${g.descripcion}`.slice(0,250)} />
               <label className="text-sm">Monto devuelto<input type="number" name="monto" min="1" max={g.pendiente} step="1" required className={campo} /></label>
               <label className="text-sm">Fecha<input type="date" name="fecha" defaultValue={fecha} min={g.fecha} max={fecha} required className={campo} /></label>
               <label className="text-sm">Se devolvió desde<select name="caja" className={campo}><option value="digital">Cuenta bancaria (Mercado Pago)</option><option value="efectivo">Efectivo</option></select></label>

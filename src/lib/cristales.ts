@@ -60,8 +60,8 @@ export function clasificarRango(esferas: (number | null)[], cilindros: (number |
 // para la receta real de esa persona, que como mucho llega a ese tope —
 // nunca se cuela una receta más exigente de la que el casillero permite.
 export function limitesDeRango(rango: string): { esfera: number; cilindro: number } | null {
-  const banda = BANDAS_RANGO.find((b) => b.rango === rango);
-  return banda ? { esfera: banda.esfera, cilindro: banda.cilindro } : null;
+  const m=/^±?(\d+(?:[.,]\d{1,2})?)\s*\/\s*±?(\d+(?:[.,]\d{1,2})?)$/.exec(rango.trim());if(!m)return null;
+  const esfera=Number(m[1].replace(",",".")),cilindro=Number(m[2].replace(",","."));return esfera<=100&&cilindro<=100?{esfera,cilindro}:null;
 }
 
 // Para un Monofocal de cerca (lectura) la potencia real del cristal es la
@@ -73,8 +73,15 @@ export function rangoParaPosicion(
   esferas: (number | null)[],
   cilindros: (number | null)[],
   adds: (number | null)[],
-  posicion: "lejos" | "cerca"
+  posicion: "lejos" | "cerca",
+  filas?:{catalogo_propio?:boolean;rango_receta:string}[]
 ): string {
+  if(filas?.some(f=>f.catalogo_propio)){
+    const maxEsfera=Math.max(0,...esferas.map((e,i)=>Math.abs((e??0)+(posicion==="cerca"?(adds[i]??0):0))));
+    const maxCil=Math.max(0,...cilindros.map(c=>Math.abs(c??0)));
+    const cubren=filas.map(f=>({f,l:limitesDeRango(f.rango_receta)})).filter(x=>x.l&&x.l.esfera>=maxEsfera&&x.l.cilindro>=maxCil).sort((a,b)=>(a.l!.esfera+a.l!.cilindro)-(b.l!.esfera+b.l!.cilindro)||a.f.rango_receta.localeCompare(b.f.rango_receta));
+    return cubren[0]?.f.rango_receta??"Fuera del catálogo";
+  }
   if (posicion === "lejos") return clasificarRango(esferas, cilindros);
   // Esfera vacía = plano (0), igual que en el cálculo de costo
   // (ojosParaCristal): una receta de solo ADD (présbita sin defecto de

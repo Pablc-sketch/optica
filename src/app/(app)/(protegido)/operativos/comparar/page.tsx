@@ -41,7 +41,7 @@ export default async function CompararOperativos() {
     supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, estado, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos"
+        "id, nombre, tipo_venue, fecha, estado, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_hospedaje, costo_ayudante, costo_equipos"
       )
       .neq("estado", "cancelado")
       .order("fecha", { ascending: false }),
@@ -50,7 +50,7 @@ export default async function CompararOperativos() {
       .from("ventas")
       .select(
         `operativo_id, total, paciente_id,
-         venta_items (cantidad, cristal_slot, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2), productos:producto_id (costo, categoria))`
+         venta_items (cantidad, cristal_slot, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2), costo_producto_snapshot, costo_marco_snapshot, productos:producto_id (costo, categoria))`
       )
       .eq("anulada", false)
       .not("operativo_id", "is", null),
