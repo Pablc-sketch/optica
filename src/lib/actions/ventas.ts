@@ -289,15 +289,17 @@ export async function actualizarVoucherAbono(formData: FormData) {
 // pasó. Se revierte el stock que había salido y se cancela la OT ligada
 // (si no se había entregado ya).
 export async function anularVenta(formData: FormData) {
-  let supabase;
+  let supabase, tenantId;
   try {
-    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+    ({ supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
   } catch (e) {
     if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
     throw e;
   }
   const ventaId = String(formData.get("venta_id") ?? "");
   const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  const venta = await validarReferenciaTenant(supabase, tenantId, "ventas", ventaId, "La venta");
+  if (!venta.ok) return { ok: false as const, error: venta.error };
 
   // Una sola transacción: devuelve el stock NETO (venta + ediciones) una
   // vez, cancela las OT y deja registro. Antes devolvía solo lo de la
@@ -320,15 +322,17 @@ export async function anularVenta(formData: FormData) {
 // solo los números. El total de la venta se recalcula solo, y el stock del
 // marco se ajusta por la diferencia si la cantidad cambió.
 export async function actualizarVenta(formData: FormData) {
-  let supabase;
+  let supabase, tenantId;
   try {
-    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+    ({ supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
   } catch (e) {
     if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
     throw e;
   }
   const ventaId = String(formData.get("venta_id") ?? "");
   const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  const venta = await validarReferenciaTenant(supabase, tenantId, "ventas", ventaId, "La venta");
+  if (!venta.ok) return { ok: false as const, error: venta.error };
 
   const { data: itemsActuales } = await supabase
     .from("venta_items")

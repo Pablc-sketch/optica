@@ -77,11 +77,14 @@ export async function crearGastoGlobal(formData: FormData) {
 }
 
 export async function eliminarGastoGlobal(formData: FormData) {
-  const { supabase } = await requerirTenant();
+  const { supabase, tenantId } = await requerirTenant();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
-  const { error } = await supabase.from("gastos_globales").delete().eq("id", id);
+  const { data: gasto, error: lectura } = await supabase.from("gastos_globales").select("id").eq("id", id).eq("tenant_id", tenantId).maybeSingle();
+  if (lectura || !gasto) return;
+
+  const { error } = await supabase.from("gastos_globales").delete().eq("id", gasto.id).eq("tenant_id", tenantId);
   if (error) throw error;
 
   revalidatePath("/reportes");
@@ -159,11 +162,14 @@ export async function pagarSueldo(formData: FormData) {
 }
 
 export async function eliminarRetiro(formData: FormData) {
-  const { supabase } = await requerirTenant();
+  const { supabase, tenantId } = await requerirTenant();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
-  const { error } = await supabase.from("retiros_sueldo").delete().eq("id", id);
+  const { data: retiro, error: lectura } = await supabase.from("retiros_sueldo").select("id").eq("id", id).eq("tenant_id", tenantId).maybeSingle();
+  if (lectura || !retiro) return;
+
+  const { error } = await supabase.from("retiros_sueldo").delete().eq("id", retiro.id).eq("tenant_id", tenantId);
   if (error) throw error;
 
   revalidatePath("/reportes");
