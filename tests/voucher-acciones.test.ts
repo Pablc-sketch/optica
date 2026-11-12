@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rpc, requerirPerfil } = vi.hoisted(() => ({ rpc: vi.fn(), requerirPerfil: vi.fn() }));
+const { rpc, from, requerirPerfil } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), requerirPerfil: vi.fn() }));
 vi.mock("@/lib/autorizacion", () => ({ requerirPerfil, SinPermiso: class SinPermiso extends Error {} }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/catalogo-laboratorio", () => ({ cargarCatalogoParaCotizar: vi.fn() }));
@@ -11,7 +11,15 @@ import { cobrarSaldo, registrarAbono, registrarConsulta, registrarVenta } from "
 const id = "00000000-0000-4000-8000-000000000001";
 beforeEach(() => {
   vi.clearAllMocks();
-  requerirPerfil.mockResolvedValue({ supabase: { rpc }, tenantId: "optica-ficticia" });
+  from.mockImplementation(() => ({
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: { id }, error: null }),
+    single: vi.fn().mockResolvedValue({ data: { id }, error: null }),
+  }));
+  requerirPerfil.mockResolvedValue({ supabase: { rpc, from }, tenantId: "optica-ficticia" });
   rpc.mockResolvedValue({ error: null, data: { aplicado: 80000 } });
 });
 
@@ -47,5 +55,27 @@ describe("validación del voucher en servidor", () => {
   it("permite efectivo sin exigir un número inexistente", async () => {
     expect((await cobrarSaldo({ ventaId: id, operacionId: id, monto: 80000, medioPago: "efectivo" })).ok).toBe(true);
     expect(rpc).toHaveBeenCalledWith("registrar_abono_con_voucher", expect.objectContaining({ p_numero_voucher: null }));
+  });
+  it("rechaza un abono para una venta que no pertenece al tenant actual", async () => {
+    from.mockImplementationOnce(() => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }));
+    const resultado = await cobrarSaldo({ ventaId: "11111111-1111-4111-8111-111111111111", operacionId: id, monto: 80000, medioPago: "debito", numeroVoucher: "000123" });
+    expect(resultado.ok).toBe(false);
+    expect(resultado.error).toMatch(/no pertenece|óptica/i);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("rechaza una consulta asociada a un operativo ajeno al tenant actual", async () => {
+    from.mockImplementationOnce(() => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }));
+    const resultado = await registrarConsulta({ consultaId: id, operativoId: "22222222-2222-4222-8222-222222222222", monto: 5000, medioPago: "debito", numeroVoucher: "001234", cantidad: 1 });
+    expect(resultado.ok).toBe(false);
+    expect(resultado.error).toMatch(/operativo|óptica/i);
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

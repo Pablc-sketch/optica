@@ -58,11 +58,30 @@ Se enfocó la validación en la superficie financiera y de sincronización con M
 - 24 tests pasados
 - 0 fallos
 
+## Fase 3: hardening financiero y validación de referencias por tenant
+
+Se reforzó la capa de servidor para asegurar que las acciones críticas de caja y pagos solo operen sobre registros que pertenezcan al tenant activo.
+
+### Mejora aplicada
+- se añadieron comprobaciones defensivas antes de registrar abonos, consultas y entregas
+- se valida que la venta, el operativo, la sucursal, el paciente y la receta correspondan a la misma óptica antes de aceptar la operación
+- esto reduce el riesgo de acciones cruzadas si un actor intenta manipular IDs o reutilizar referencias ajenas
+
+### Pruebas añadidas
+- validación de venta ajena al tenant en cobros
+- validación de operativo ajeno al tenant en consultas
+
+### Resultado verificado
+- 9 archivos de test pasados
+- 70 tests pasados
+- 0 fallos
+
 ## Principios aplicados
 - no se tocaron datos reales ni la base de producción
 - las pruebas se ejecutaron contra una instancia local equivalente
 - la validación se orientó a comportamiento real, no a mocks aislados
 - se priorizaron flujos con impacto financiero y acceso multi-tenant
+- se reforzó la capa de servidor con validación explícita para referencias ajenas al tenant
 
 ## Recomendación de versionado
 Es buena práctica dejar estos cambios documentados en un historial claro del repositorio. La opción recomendada es:

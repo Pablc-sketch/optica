@@ -43,6 +43,13 @@ export type ResultadoVenta =
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MEDIOS = ["efectivo", "debito", "credito", "transferencia"];
 
+async function validarReferenciaTenant(supabase: { from: (tabla: string) => any }, tenantId: string, tabla: string, id: string, etiqueta: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!UUID.test(id)) return { ok: false, error: `${etiqueta} inválido.` };
+  const { data, error } = await supabase.from(tabla).select("id").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
+  if (error || !data) return { ok: false, error: `${etiqueta} no pertenece a esta óptica.` };
+  return { ok: true };
+}
+
 export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta> {
   let ctx;
   try {
@@ -54,6 +61,21 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   const { supabase, tenantId } = ctx;
 
   if (!UUID.test(input.ventaId ?? "")) return { ok: false, error: "Falta el identificador de la venta." };
+  if (input.pacienteId && !(await validarReferenciaTenant(supabase, tenantId, "pacientes", input.pacienteId, "El paciente")).ok) {
+    return { ok: false, error: "El paciente no pertenece a esta óptica." };
+  }
+  if (input.sucursalId && !(await validarReferenciaTenant(supabase, tenantId, "sucursales", input.sucursalId, "La sucursal")).ok) {
+    return { ok: false, error: "La sucursal no pertenece a esta óptica." };
+  }
+  if (input.operativoId && !(await validarReferenciaTenant(supabase, tenantId, "operativos", input.operativoId, "El operativo")).ok) {
+    return { ok: false, error: "El operativo no pertenece a esta óptica." };
+  }
+  if (input.proveedorLabId && !(await validarReferenciaTenant(supabase, tenantId, "proveedores", input.proveedorLabId, "El proveedor")).ok) {
+    return { ok: false, error: "El proveedor no pertenece a esta óptica." };
+  }
+  if (input.recetaId && !(await validarReferenciaTenant(supabase, tenantId, "recetas", input.recetaId, "La receta")).ok) {
+    return { ok: false, error: "La receta no pertenece a esta óptica." };
+  }
   if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
   if (!Number.isInteger(input.abonoInicial) || input.abonoInicial < 0) {
     return { ok: false, error: "El abono tiene que ser un monto entero, sin negativos." };
@@ -352,14 +374,16 @@ export async function actualizarVenta(formData: FormData) {
 // estaban LISTAS. No registra ningún pago: cobrar y entregar son dos
 // acciones distintas (una entrega no prueba un pago).
 export async function entregarVenta(ventaId: string): Promise<{ ok: boolean; entregadas?: number; error?: string }> {
-  let supabase;
+  let supabase, tenantId;
   try {
-    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas", "bodega"], suscripcion: true }));
+    ({ supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas", "bodega"], suscripcion: true }));
   } catch (e) {
     if (e instanceof SinPermiso) return { ok: false, error: e.message };
     throw e;
   }
-  const { data: items, error: errItems } = await supabase.from("venta_items").select("ot_id").eq("venta_id", ventaId);
+  const venta = await validarReferenciaTenant(supabase, tenantId, "ventas", ventaId, "La venta");
+  if (!venta.ok) return { ok: false, error: venta.error };
+  const { data: items, error: errItems } = await supabase.from("venta_items").select("ot_id").eq("venta_id", ventaId).eq("tenant_id", tenantId);
   if (errItems) return { ok: false, error: errItems.message };
   const ots = [...new Set((items ?? []).map((i) => i.ot_id).filter((x): x is string => Boolean(x)))];
   if (ots.length === 0) return { ok: false, error: "Esta venta no tiene órdenes de trabajo." };
@@ -387,14 +411,16 @@ export async function cobrarSaldo(input: {
   medioPago: string;
   numeroVoucher?: string | null;
 }): Promise<{ ok: boolean; aplicado?: number; error?: string }> {
-  let supabase;
+  let supabase, tenantId;
   try {
-    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+    ({ supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
   } catch (e) {
     if (e instanceof SinPermiso) return { ok: false, error: e.message };
     throw e;
   }
   if (!UUID.test(input.ventaId) || !UUID.test(input.operacionId)) return { ok: false, error: "Datos inválidos." };
+  const venta = await validarReferenciaTenant(supabase, tenantId, "ventas", input.ventaId, "La venta");
+  if (!venta.ok) return { ok: false, error: venta.error };
   if (!Number.isInteger(input.monto) || input.monto <= 0) return { ok: false, error: "El monto tiene que ser mayor a cero." };
   if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
   const voucher = validarVoucher(input.medioPago, input.monto, input.numeroVoucher);
@@ -436,7 +462,10 @@ export async function registrarConsulta(input: {
   }
   const cantidad = input.cantidad ?? 1;
   if (!UUID.test(input.consultaId)) return { ok: false, error: "Datos inválidos." };
-  if (input.operativoId && !UUID.test(input.operativoId)) return { ok: false, error: "Operativo inválido." };
+  if (input.operativoId) {
+    const operativo = await validarReferenciaTenant(ctx.supabase, ctx.tenantId, "operativos", input.operativoId, "El operativo");
+    if (!operativo.ok) return { ok: false, error: operativo.error };
+  }
   if (!Number.isInteger(input.monto) || input.monto <= 0) return { ok: false, error: "El monto tiene que ser mayor a cero." };
   if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 20) return { ok: false, error: "Cantidad inválida." };
   if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
