@@ -6,7 +6,8 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/catalogo-laboratorio", () => ({ cargarCatalogoParaCotizar: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
-import { cobrarSaldo, registrarAbono, registrarConsulta, registrarVenta } from "../src/lib/actions/ventas";
+import { anularVenta, actualizarVenta, cobrarSaldo, registrarAbono, registrarConsulta, registrarVenta } from "../src/lib/actions/ventas";
+import { eliminarGastoGlobal, eliminarRetiro } from "../src/lib/actions/gastos";
 
 const id = "00000000-0000-4000-8000-000000000001";
 beforeEach(() => {
@@ -16,6 +17,7 @@ beforeEach(() => {
     eq: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
+    delete: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({ data: { id }, error: null }),
     single: vi.fn().mockResolvedValue({ data: { id }, error: null }),
   }));
@@ -76,6 +78,59 @@ describe("validación del voucher en servidor", () => {
     const resultado = await registrarConsulta({ consultaId: id, operativoId: "22222222-2222-4222-8222-222222222222", monto: 5000, medioPago: "debito", numeroVoucher: "001234", cantidad: 1 });
     expect(resultado.ok).toBe(false);
     expect(resultado.error).toMatch(/operativo|óptica/i);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("rechaza anular una venta que no pertenece al tenant actual", async () => {
+    from.mockImplementationOnce(() => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }));
+    const form = new FormData();
+    form.set('venta_id', '11111111-1111-4111-8111-111111111111');
+    const resultado = await anularVenta(form);
+    expect(resultado).toEqual({ ok: false, error: "La venta no pertenece a esta óptica." });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("rechaza actualizar una venta que no pertenece al tenant actual", async () => {
+    from.mockImplementationOnce(() => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }));
+    const form = new FormData();
+    form.set('venta_id', '11111111-1111-4111-8111-111111111111');
+    form.set('cantidad_aaa', '1');
+    form.set('precio_aaa', '10000');
+    form.set('descuento_aaa', '0');
+    const resultado = await actualizarVenta(form);
+    expect(resultado).toEqual({ ok: false, error: "La venta no pertenece a esta óptica." });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("rechaza borrar un gasto global ajeno al tenant actual", async () => {
+    from.mockImplementationOnce(() => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      delete: vi.fn().mockReturnThis(),
+    }));
+    const form = new FormData();
+    form.set('id', '11111111-1111-4111-8111-111111111111');
+    const resultado = await eliminarGastoGlobal(form);
+    expect(resultado).toBeUndefined();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("rechaza borrar un retiro ajeno al tenant actual", async () => {
+    from.mockImplementationOnce(() => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      delete: vi.fn().mockReturnThis(),
+    }));
+    const form = new FormData();
+    form.set('id', '11111111-1111-4111-8111-111111111111');
+    const resultado = await eliminarRetiro(form);
+    expect(resultado).toBeUndefined();
     expect(rpc).not.toHaveBeenCalled();
   });
 });
