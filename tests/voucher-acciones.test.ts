@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rpc, from, requerirPerfil } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), requerirPerfil: vi.fn() }));
+const { rpc, from, requerirPerfil, createClient } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), requerirPerfil: vi.fn(), createClient: vi.fn() }));
 vi.mock("@/lib/autorizacion", () => ({ requerirPerfil, SinPermiso: class SinPermiso extends Error {} }));
-vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/supabase/server", () => ({ createClient }));
 vi.mock("@/lib/catalogo-laboratorio", () => ({ cargarCatalogoParaCotizar: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 import { anularVenta, actualizarVenta, cobrarSaldo, registrarAbono, registrarConsulta, registrarVenta } from "../src/lib/actions/ventas";
 import { eliminarGastoGlobal, eliminarRetiro } from "../src/lib/actions/gastos";
+import { actualizarOperativo, eliminarOperativoVacio } from "../src/lib/actions/operativos";
+import { deshacerSueldoPagado, guardarAyudante, marcarFidesPagado } from "../src/lib/actions/cierre";
 
 const id = "00000000-0000-4000-8000-000000000001";
 beforeEach(() => {
@@ -16,7 +18,11 @@ beforeEach(() => {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
+    like: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
     delete: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({ data: { id }, error: null }),
     single: vi.fn().mockResolvedValue({ data: { id }, error: null }),
@@ -132,5 +138,33 @@ describe("validación del voucher en servidor", () => {
     const resultado = await eliminarRetiro(form);
     expect(resultado).toBeUndefined();
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("aplica tenant_id al editar un operativo y al deshacer un pago de cierre", async () => {
+    const eq = vi.fn().mockReturnThis();
+    const update = vi.fn().mockReturnThis();
+    const deleteFn = vi.fn().mockReturnThis();
+    const select = vi.fn().mockReturnThis();
+    const fromMock = vi.fn((tabla: string) => {
+      if (tabla === "users") return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), single: vi.fn().mockResolvedValue({ data: { tenant_id: "optica-ficticia", rol: "admin" } }) };
+      if (tabla === "operativos") return { update, eq, select, single: vi.fn().mockResolvedValue({ data: { id } }) };
+      if (tabla === "retiros_sueldo") return { select: vi.fn().mockReturnThis(), eq, order: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis(), in: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { id }, error: null }), delete: deleteFn };
+      return { select, eq, update, maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }), delete: deleteFn };
+    });
+    createClient.mockResolvedValue({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u-1" } } }) }, from: fromMock });
+
+    const form = new FormData();
+    form.set("id", id); form.set("nombre", "Operativo 1"); form.set("fecha", "2026-11-14");
+    await actualizarOperativo(form);
+    expect(eq).toHaveBeenCalledWith("tenant_id", "optica-ficticia");
+
+    await guardarAyudante({ operativoId: id, monto: 5000 });
+    expect(eq).toHaveBeenCalledWith("tenant_id", "optica-ficticia");
+
+    await deshacerSueldoPagado({ operativoId: id, persona: "madre" });
+    expect(eq).toHaveBeenCalledWith("tenant_id", "optica-ficticia");
+
+    await marcarFidesPagado({ operativoId: id, nombre: "Cristales", monto: 1000, pagado: false });
+    expect(eq).toHaveBeenCalledWith("tenant_id", "optica-ficticia");
   });
 });

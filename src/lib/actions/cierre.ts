@@ -156,7 +156,8 @@ export async function marcarSueldoPagado(input: {
     .from("retiros_sueldo")
     .select("id, monto, revision_version")
     .eq("operativo_id", input.operativoId)
-    .eq("persona", input.persona);
+    .eq("persona", input.persona)
+    .eq("tenant_id", ctx.tenantId);
   if (errPrevios) return { ok: false, error: errPrevios.message };
   const yaPagado = (previos ?? []).reduce((s, r) => s + r.monto, 0);
   const falta = input.objetivo - yaPagado;
@@ -194,13 +195,14 @@ export async function deshacerSueldoPagado(input: { operativoId: string; persona
     .select("id")
     .eq("operativo_id", input.operativoId)
     .eq("persona", input.persona)
+    .eq("tenant_id", ctx.tenantId)
     .in("motivo", [MOTIVO_CIERRE, "Pago del operativo"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (errUltimo) return { ok: false, error: errUltimo.message };
   if (!ultimo) return { ok: false, error: "No hay un pago marcado desde esta pantalla para deshacer." };
-  const { error } = await ctx.supabase.from("retiros_sueldo").delete().eq("id", ultimo.id);
+  const { error } = await ctx.supabase.from("retiros_sueldo").delete().eq("id", ultimo.id).eq("tenant_id", ctx.tenantId);
   if (error) return { ok: false, error: error.message };
   refrescar(input.operativoId);
   return { ok: true };
@@ -220,6 +222,7 @@ export async function guardarAyudante(input: { operativoId: string; monto: numbe
     .from("operativos")
     .update({ costo_ayudante: input.monto })
     .eq("id", input.operativoId)
+    .eq("tenant_id", ctx.tenantId)
     .select("id");
   if (error) return { ok: false, error: error.message };
   if (!data?.length) return { ok: false, error: "No se guardó." };
@@ -241,6 +244,7 @@ export async function marcarFidesPagado(input: { operativoId: string; nombre: st
     .from("gastos_globales")
     .select("id")
     .eq("operativo_id", input.operativoId)
+    .eq("tenant_id", ctx.tenantId)
     .like("descripcion", `${PREFIJO_FIDES}%`)
     .order("created_at", { ascending: false });
   if (errExist) return { ok: false, error: errExist.message };
@@ -248,7 +252,7 @@ export async function marcarFidesPagado(input: { operativoId: string; nombre: st
     // Solo el último pago a Fides marcado desde esta pantalla.
     const ultimo = existentes?.[0];
     if (!ultimo) return { ok: true };
-    const { error } = await ctx.supabase.from("gastos_globales").delete().eq("id", ultimo.id);
+    const { error } = await ctx.supabase.from("gastos_globales").delete().eq("id", ultimo.id).eq("tenant_id", ctx.tenantId);
     if (error) return { ok: false, error: error.message };
     refrescar(input.operativoId);
     return { ok: true };

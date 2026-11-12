@@ -61,7 +61,7 @@ export async function crearOperativo(formData: FormData) {
 
   // Mismo nombre y misma fecha = el mismo operativo enviado dos veces (la
   // app lenta, un segundo toque). No se crea otro.
-  const { data: existentes } = await supabase.from("operativos").select("id, nombre").eq("fecha", fecha);
+  const { data: existentes } = await supabase.from("operativos").select("id, nombre").eq("fecha", fecha).eq("tenant_id", tenantId);
   const normal = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ");
   if ((existentes ?? []).some((o) => normal(o.nombre) === normal(nombre))) {
     revalidatePath("/operativos");
@@ -113,7 +113,7 @@ export async function crearOperativo(formData: FormData) {
 // esto había que borrar y crear todo de nuevo. Los dirigentes ya no se
 // editan acá: viven en su propia agenda, porque son varios por lugar.
 export async function actualizarOperativo(formData: FormData) {
-  const { supabase } = await requerirAdmin();
+  const { supabase, tenantId } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
   const nombre = String(formData.get("nombre") ?? "").trim();
   const fecha = String(formData.get("fecha") ?? "").trim();
@@ -135,7 +135,8 @@ export async function actualizarOperativo(formData: FormData) {
       direccion: String(formData.get("direccion") ?? "").trim() || null,
       notas: String(formData.get("notas") ?? "").trim() || null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("tenant_id", tenantId);
   if (error?.code === "23P01") redirect(urlAgenda(fecha, { error: "cruce" }));
   if (error) throw error;
 
@@ -148,12 +149,12 @@ export async function actualizarOperativo(formData: FormData) {
 }
 
 export async function cambiarEstadoOperativo(formData: FormData) {
-  const { supabase } = await requerirAdmin();
+  const { supabase, tenantId } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
   const estado = String(formData.get("estado") ?? "");
   if (!id || !["planificado", "realizado", "cancelado"].includes(estado)) return;
 
-  const { error } = await supabase.from("operativos").update({ estado }).eq("id", id);
+  const { error } = await supabase.from("operativos").update({ estado }).eq("id", id).eq("tenant_id", tenantId);
   if (error?.code === "23P01") redirect(RUTA_AGENDA + "?error=cruce");
   if (error) throw error;
 
@@ -182,7 +183,7 @@ function parsearMetaOpcional(valor: FormDataEntryValue | null): number | null {
 // juntos desde el detalle porque todo esto es "planificación" del
 // operativo, no algo que se cargue al crear.
 export async function actualizarDetallesOperativo(formData: FormData) {
-  const { supabase } = await requerirAdmin();
+  const { supabase, tenantId } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
@@ -200,7 +201,8 @@ export async function actualizarDetallesOperativo(formData: FormData) {
       // Hora y lugar de la entrega ya no van acá: se editan solo en el
       // recuadro del aviso (actualizarEntregaOperativo).
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("tenant_id", tenantId);
   if (error) throw error;
 
   revalidatePath(`/operativos/${id}`);
@@ -222,7 +224,7 @@ function parsearPorcentaje(valor: FormDataEntryValue | null, porDefecto: number)
 // el operativo (no en un ajuste global) para que cambiar el criterio hacia
 // adelante no le mueva el piso a lo ya repartido en operativos pasados.
 export async function actualizarSueldosOperativo(formData: FormData) {
-  const { supabase } = await requerirAdmin();
+  const { supabase, tenantId } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
@@ -235,7 +237,8 @@ export async function actualizarSueldosOperativo(formData: FormData) {
       comision_vendedora_base: (BASES_COMISION as readonly string[]).includes(base) ? base : "venta_total",
       ahorro_pct: parsearPorcentaje(formData.get("ahorro_pct"), 20),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("tenant_id", tenantId);
   if (error) throw error;
 
   revalidatePath(`/operativos/${id}`);
@@ -269,7 +272,7 @@ export async function crearContactoOperativo(formData: FormData) {
 }
 
 export async function actualizarContactoOperativo(formData: FormData) {
-  const { supabase } = await requerirAdmin();
+  const { supabase, tenantId } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
   const operativoId = String(formData.get("operativo_id") ?? "");
   const nombre = String(formData.get("nombre") ?? "").trim();
@@ -284,7 +287,8 @@ export async function actualizarContactoOperativo(formData: FormData) {
       email: String(formData.get("email") ?? "").trim() || null,
       notas: String(formData.get("notas") ?? "").trim() || null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("tenant_id", tenantId);
   if (error) throw error;
 
   if (operativoId) revalidatePath(`/operativos/${operativoId}`);
@@ -292,12 +296,12 @@ export async function actualizarContactoOperativo(formData: FormData) {
 }
 
 export async function eliminarContactoOperativo(formData: FormData) {
-  const { supabase } = await requerirAdmin();
+  const { supabase, tenantId } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
   const operativoId = String(formData.get("operativo_id") ?? "");
   if (!id) return;
 
-  const { error } = await supabase.from("contactos_operativo").delete().eq("id", id);
+  const { error } = await supabase.from("contactos_operativo").delete().eq("id", id).eq("tenant_id", tenantId);
   if (error) throw error;
 
   if (operativoId) revalidatePath(`/operativos/${operativoId}`);
@@ -309,12 +313,12 @@ export async function eliminarContactoOperativo(formData: FormData) {
 // —donde se está pensando en volver— y no al corregir la fecha o la
 // dirección.
 export async function actualizarCadenciaOperativo(formData: FormData) {
-  const { supabase } = await requerirAdmin();
+  const { supabase, tenantId } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
   const meses = Math.round(Number(String(formData.get("volver_en_meses") ?? "")));
   if (!id || !Number.isFinite(meses) || meses < 1 || meses > 60) return;
 
-  const { error } = await supabase.from("operativos").update({ volver_en_meses: meses }).eq("id", id);
+  const { error } = await supabase.from("operativos").update({ volver_en_meses: meses }).eq("id", id).eq("tenant_id", tenantId);
   if (error) throw error;
 
   revalidatePath(`/operativos/${id}`);
@@ -325,9 +329,9 @@ export async function actualizarCadenciaOperativo(formData: FormData) {
 // veces con la app lenta). Solo si está vacío: sin recetas, ventas,
 // órdenes ni retiros. Uno con datos no se borra nunca desde acá.
 export async function eliminarOperativoVacio(id: string): Promise<{ ok: boolean; error?: string }> {
-  const { supabase } = await requerirAdmin();
+  const { supabase, tenantId } = await requerirAdmin();
   const contar = async (tabla: string) => {
-    const { count, error } = await supabase.from(tabla).select("id", { count: "exact", head: true }).eq("operativo_id", id);
+    const { count, error } = await supabase.from(tabla).select("id", { count: "exact", head: true }).eq("operativo_id", id).eq("tenant_id", tenantId);
     if (error) throw error;
     return count ?? 0;
   };
@@ -335,7 +339,7 @@ export async function eliminarOperativoVacio(id: string): Promise<{ ok: boolean;
   if (usados.some((n) => n > 0)) {
     return { ok: false, error: "Este operativo tiene recetas, ventas u órdenes: no se puede borrar." };
   }
-  const { error } = await supabase.from("operativos").delete().eq("id", id);
+  const { error } = await supabase.from("operativos").delete().eq("id", id).eq("tenant_id", tenantId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/operativos");
   revalidatePath("/operativos/calendario");
@@ -345,7 +349,7 @@ export async function eliminarOperativoVacio(id: string): Promise<{ ok: boolean;
 // Fecha, hora y lugar de la entrega, editados desde el mismo recuadro del
 // aviso por WhatsApp (sin tener que ir a "Editar datos del operativo").
 export async function actualizarEntregaOperativo(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const { supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
+  const { supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true });
   const id = String(formData.get("id") ?? "");
   const fecha = String(formData.get("fecha_entrega_estimada") ?? "").trim();
   if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, error: "Fecha inválida." };
@@ -357,6 +361,7 @@ export async function actualizarEntregaOperativo(formData: FormData): Promise<{ 
       lugar_entrega: String(formData.get("lugar_entrega") ?? "").trim().slice(0, 120) || null,
     })
     .eq("id", id)
+    .eq("tenant_id", tenantId)
     .select("id");
   if (error) return { ok: false, error: error.message };
   // Sin error pero sin filas = no se guardó nada (sin permiso o no existe).
