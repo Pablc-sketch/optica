@@ -89,11 +89,16 @@ update public.plantilla_costos_cristales
 -- que las órdenes quedaban sin laboratorio asignado).
 -- ---------------------------------------------------------------------
 insert into public.proveedores (tenant_id, nombre, tipo)
-select '7e4b2a1a-8926-4262-92e2-1f0e75951b9a', 'Fides', 'laboratorio'
- where not exists (
-   select 1 from public.proveedores
-    where tenant_id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a' and tipo = 'laboratorio' and lower(nombre) = 'fides'
- );
+select t.id, 'Fides', 'laboratorio'
+  from public.tenants t
+ where t.id = '7e4b2a1a-8926-4262-92e2-1f0e75951b9a'
+   and not exists (
+     select 1
+       from public.proveedores p
+      where p.tenant_id = t.id
+        and p.tipo = 'laboratorio'
+        and lower(p.nombre) = 'fides'
+   );
 
 update public.ordenes_trabajo ot
    set proveedor_lab_id = p.id
