@@ -5,7 +5,17 @@ vi.mock('../src/lib/autorizacion', () => ({ requerirPerfil: perfil, SinPermiso: 
 vi.mock('next/cache', () => ({ revalidatePath: revalidar }));
 import { guardarReembolso } from '../src/lib/actions/seguros';
 const id = 'f6ca2300-0701-4c82-b895-4a714f3f1969';
-beforeEach(() => { vi.resetAllMocks(); perfil.mockResolvedValue({ supabase: { rpc } }); rpc.mockResolvedValue({data:true,error:null}); });
+const ventaOk = { id, anulada: false };
+const mockFrom = vi.fn(() => ({
+  select: vi.fn(() => ({
+    eq: vi.fn(() => ({
+      eq: vi.fn(() => ({
+        maybeSingle: vi.fn().mockResolvedValue({ data: ventaOk, error: null }),
+      })),
+    })),
+  })),
+}));
+beforeEach(() => { vi.resetAllMocks(); perfil.mockResolvedValue({ supabase: { rpc, from: mockFrom }, tenantId: 'tenant-1' }); rpc.mockResolvedValue({data:true,error:null}); });
 describe('fecha única y persistente de documentos', () => {
   it('la fecha guardada prevalece para ambos documentos aunque existan abonos posteriores', () => {
     expect(fechaDocumentos('2026-09-01T15:00:00Z',[{fecha:'2026-10-30T15:00:00Z',monto:1000}],'2026-10-29')).toBe('2026-10-29');

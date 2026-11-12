@@ -28,9 +28,13 @@ export async function cargarCompraReembolso(id: string): Promise<CompraReembolso
 }
 
 export async function guardarReembolso(id: string, fecha: string, entidad: string): Promise<{ ok: boolean; error?: string }> {
-  const { supabase } = await requerirPerfil({ roles: ['admin','ventas'], suscripcion: true });
+  const { supabase, tenantId } = await requerirPerfil({ roles: ['admin','ventas'], suscripcion: true });
   if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id) || !fechaValidaDocumento(fecha)
     || !['fonasa','banmedica','complementario'].includes(entidad)) return { ok: false, error: 'Revisa la fecha y el destino.' };
+  const { data: venta, error: errorVenta } = await supabase.from('ventas').select('id, anulada').eq('tenant_id', tenantId).eq('id', id).maybeSingle();
+  if (errorVenta) return { ok: false, error: 'No se pudo verificar la venta.' };
+  if (!venta) return { ok: false, error: 'La venta no pertenece a esta óptica.' };
+  if (venta.anulada) return { ok: false, error: 'La venta está anulada y no puede recibir un reembolso.' };
   const { data, error } = await supabase.rpc('guardar_reembolso',{ p_venta: id,p_fecha: fecha,p_entidad: entidad });
   if (error || data !== true) return { ok: false, error: 'No se pudo guardar. Recarga e intenta nuevamente.' };
   revalidatePath(`/ventas/${id}`,'layout');

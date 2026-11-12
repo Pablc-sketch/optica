@@ -1,21 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prepararBusquedaSeguro } from "../src/lib/seguros-busqueda";
 
-const { requerirPerfil, from, query } = vi.hoisted(() => {
+const { requerirPerfil, from, query, rpc } = vi.hoisted(() => {
   const query: Record<string, ReturnType<typeof vi.fn>> = {};
   for (const metodo of ["select", "eq", "ilike", "order"]) query[metodo] = vi.fn(() => query);
   query.limit = vi.fn(async () => ({ data: [], error: null }));
   query.maybeSingle = vi.fn();
   const from = vi.fn(() => query);
-  return { requerirPerfil: vi.fn(), from, query };
+  const rpc = vi.fn(async () => ({ data: true, error: null }));
+  return { requerirPerfil: vi.fn(), from, query, rpc };
 });
 vi.mock("@/lib/autorizacion", () => ({ requerirPerfil, SinPermiso: class SinPermiso extends Error {} }));
-import { buscarDocumentosSeguro, cargarCompraReembolso } from "../src/lib/actions/seguros";
+import { buscarDocumentosSeguro, cargarCompraReembolso, guardarReembolso } from "../src/lib/actions/seguros";
 import { SinPermiso } from "../src/lib/autorizacion";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requerirPerfil.mockResolvedValue({ supabase: { from }, tenantId: "optica-prueba" });
+  requerirPerfil.mockResolvedValue({ supabase: { from, rpc }, tenantId: "optica-prueba" });
   query.limit.mockResolvedValue({ data: [], error: null });
 });
 
@@ -51,6 +52,19 @@ describe("carga del expediente de una compra", () => {
     const compra = await cargarCompraReembolso(id);
     expect(query.select).toHaveBeenCalledWith(expect.stringContaining("boleta_folio"));
     expect(compra?.boleta_folio).toBe("000123");
+  });
+});
+
+describe("guardado de reembolso", () => {
+  it("rechaza ventas que no pertenecen al tenant activo", async () => {
+    query.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    const resultado = await guardarReembolso(
+      "00000000-0000-4000-8000-000000000001",
+      "2026-10-29",
+      "fonasa"
+    );
+    expect(resultado).toEqual({ ok: false, error: "La venta no pertenece a esta óptica." });
+    expect(rpc).not.toHaveBeenCalled();
   });
 });
 
