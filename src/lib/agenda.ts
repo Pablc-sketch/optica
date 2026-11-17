@@ -21,6 +21,29 @@ export type EventoAgenda = HorarioAgenda & {
 
 export type BloqueLibre = RangoFechasAgenda & { id: string };
 
+export type FiltroAgenda = "todos" | "propio" | "externo";
+
+export function filtroAgenda(valor: string): FiltroAgenda {
+  return valor === "propio" || valor === "externo" ? valor : "todos";
+}
+
+export function eventosDelDia(eventos: EventoAgenda[], dia: string, filtro: FiltroAgenda = "todos") {
+  return eventos.filter(e => e.estado !== "cancelado" && cubreDia(e, dia)
+    && (filtro === "todos" || e.tipo === filtro))
+    .sort((a, b) => (horaCorta(a.hora_inicio) ?? "99:99").localeCompare(horaCorta(b.hora_inicio) ?? "99:99")
+      || (horaCorta(a.hora_fin) ?? "99:99").localeCompare(horaCorta(b.hora_fin) ?? "99:99")
+      || a.nombre.localeCompare(b.nombre, "es") || a.id.localeCompare(b.id));
+}
+
+export function resumenAgenda(eventos: EventoAgenda[], desde: string, hasta: string, filtro: FiltroAgenda = "todos") {
+  const dias: { fecha: string; eventos: EventoAgenda[] }[] = [];
+  for (let fecha = desde; fecha <= hasta; fecha = sumarDias(fecha, 1)) {
+    const delDia = eventosDelDia(eventos, fecha, filtro);
+    if (delDia.length) dias.push({ fecha, eventos: delDia });
+  }
+  return dias;
+}
+
 export function fechaAgendaValida(s: string) {
   if (!/^[1-9]\d{3}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(s + "T12:00:00Z");
