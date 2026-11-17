@@ -15,7 +15,7 @@ const ENLACES: EnlaceMenu[] = [
   { href: '/configuracion', label: 'Configuración' },
 ];
 const PERMITIDOS: Record<string, string[]> = {
-  ventas: ['/pacientes', '/ventas', '/ventas/historial', '/ot', '/ot/buscar', '/cobros', '/entregas', '/avisos', '/seguros', '/configuracion'],
+  ventas: ['/operativos/agenda', '/pacientes', '/ventas', '/ventas/historial', '/ot', '/ot/buscar', '/cobros', '/entregas', '/avisos', '/seguros', '/configuracion'],
   clinico: ['/pacientes', '/ot', '/ot/buscar', '/inventario', '/configuracion'],
   bodega: ['/ot', '/ot/buscar', '/inventario', '/configuracion'],
 };

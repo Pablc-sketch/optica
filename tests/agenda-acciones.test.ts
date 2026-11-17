@@ -10,8 +10,22 @@ function formulario(extra: Record<string,string>={}) {
  Object.entries({ id,tipo:'externo',tipo_original:'propio',nombre:'Operativo ejemplo',optica:'Óptica ejemplo',fecha:'2033-11-18',fecha_fin:'2033-11-22',estado:'pendiente', ...extra }).forEach(([k,v]) => datos.set(k,v));
  return datos;
 }
-beforeEach(() => { vi.clearAllMocks(); mocks.perfil.mockResolvedValue({tenantId:'tenant',supabase:{rpc:mocks.rpc,from:mocks.from}}); });
+beforeEach(() => { vi.clearAllMocks(); mocks.perfil.mockResolvedValue({tenantId:'tenant',rol:'admin',supabase:{rpc:mocks.rpc,from:mocks.from}}); });
 describe('corregir operativos en la agenda', () => {
+ it('permite a ventas editar ubicación y horarios mediante la API de coordinación', async () => {
+  mocks.perfil.mockResolvedValue({rol:'ventas',tenantId:'tenant',supabase:{rpc:mocks.rpc,from:mocks.from}});
+  mocks.rpc.mockResolvedValue({data:id,error:null});
+  await expect(guardarAgenda(true,{},formulario({tipo:'propio',tipo_original:'propio',hora_inicio:'09:00',hora_fin:'12:00',comuna:'Quilicura',region:'Metropolitana'}))).rejects.toThrow('guardado=1');
+  expect(mocks.perfil).toHaveBeenCalledWith({roles:['admin','ventas'],suscripcion:true});
+  expect(mocks.rpc).toHaveBeenCalledWith('agenda_guardar',{p_edicion:true,p:expect.objectContaining({comuna:'Quilicura',region:'Metropolitana',hora_inicio:'09:00'})});
+  expect(mocks.from).not.toHaveBeenCalled();
+ });
+ it('reserva la eliminación y reclasificación al administrador', async () => {
+  mocks.perfil.mockResolvedValue({rol:'ventas',supabase:{rpc:mocks.rpc}});
+  expect(await guardarAgenda(true,{},formulario({accion:'eliminar'}))).toHaveProperty('error');
+  expect(await guardarAgenda(true,{},formulario())).toHaveProperty('error');
+  expect(mocks.rpc).not.toHaveBeenCalled();
+ });
  it('cambia de propio a externo sin requerir horas y conserva el identificador', async () => {
   mocks.rpc.mockResolvedValue({data:id,error:null});
   await expect(guardarAgenda(true,{},formulario())).rejects.toThrow('REDIRECT:');

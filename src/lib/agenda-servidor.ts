@@ -8,12 +8,12 @@ export async function cargarAgenda(
 ) {
   const [propios, bloques, tenant] = await Promise.all([
     leerTodas((a, b) => supabase.from("operativos")
-      .select("id,nombre,fecha,fecha_fin,hora_inicio,hora_fin,direccion,notas,estado,agenda_confirmado")
+      .select("id,nombre,fecha,fecha_fin,hora_inicio,hora_fin,direccion,comuna,region,notas,estado,agenda_confirmado")
       .eq("tenant_id", tenantId).lte("fecha", hasta)
       .or(`fecha_fin.gte.${desde},and(fecha_fin.is.null,fecha.gte.${desde})`)
       .order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("agenda_bloques")
-      .select("id,tipo,nombre,optica,direccion,notas,fecha,fecha_fin,estado")
+      .select("id,tipo,nombre,optica,direccion,comuna,region,notas,fecha,fecha_fin,estado")
       .eq("tenant_id", tenantId).lte("fecha", hasta)
       .or(`fecha_fin.gte.${desde},and(fecha_fin.is.null,fecha.gte.${desde})`)
       .order("id").range(a, b)),
