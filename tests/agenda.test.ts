@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buscarCruce, estadoDisponibilidad, fechasAgendaValidas, horarioAgendaValido, horarioAgendaOpcionalValido, rangosDisponibles, type EventoAgenda } from "@/lib/agenda";
+import { agendaPorDia, buscarCruce, estadoDisponibilidad, fechasAgendaValidas, horarioAgendaValido, horarioAgendaOpcionalValido, rangosDisponibles, vistaAgenda, type EventoAgenda } from "@/lib/agenda";
 
 const bloque = { id: "libre", fecha: "2026-11-09", fecha_fin: "2026-11-17" };
 const externo: EventoAgenda = {
@@ -81,4 +81,35 @@ it("permite corregir jornadas sin hora y rechaza horarios parciales o invertidos
   expect(horarioAgendaOpcionalValido("", "18:00")).toBe(false);
   expect(horarioAgendaOpcionalValido("18:00", "09:00")).toBe(false);
   expect(horarioAgendaOpcionalValido("09:00", "18:00")).toBe(true);
+});
+
+describe("resumen diario con varias sedes", () => {
+  const sede = (id: string, hora: string | null): EventoAgenda => ({ ...externo, id, tipo: "propio", nombre: id,
+    fecha: "2026-11-18", fecha_fin: null, hora_inicio: hora, hora_fin: hora ? "20:00:00" : null });
+
+  it("ordena tres sedes por hora, conserva las sin horario al final y excluye cancelados", () => {
+    const eventos = [sede("Tarde", "16:00:00"), sede("Por definir", null), sede("Mediodía", "12:00:00"),
+      sede("Mañana", "09:00:00"), { ...sede("Cancelado", "08:00:00"), estado: "cancelado" as const }];
+    expect(agendaPorDia(eventos, "2026-11", "propio").get("2026-11-18")?.map(e => e.id))
+      .toEqual(["Mañana", "Mediodía", "Tarde", "Por definir"]);
+    expect(eventos[0].id).toBe("Tarde");
+  });
+
+  it("repite rangos en cada día del mes visible y aplica el mismo filtro al resumen", () => {
+    const rango = { ...externo, fecha: "2026-10-30", fecha_fin: "2026-11-02" };
+    const eventos = [rango, sede("Global", "09:00:00")];
+    expect([...agendaPorDia(eventos, "2026-11", "externo").keys()]).toEqual(["2026-11-01", "2026-11-02"]);
+    expect([...agendaPorDia(eventos, "2026-11", "propio").keys()]).toEqual(["2026-11-18"]);
+    expect([...agendaPorDia(eventos, "2026-11", "todos").keys()]).toEqual(["2026-11-01", "2026-11-02", "2026-11-18"]);
+    expect(agendaPorDia(eventos, "2026-12", "todos").size).toBe(0);
+    expect(estadoDisponibilidad("2026-11-01", [], eventos)).toBe("ocupado");
+  });
+
+  it("incluye el último día de un febrero bisiesto y normaliza filtros desconocidos", () => {
+    expect([...agendaPorDia([{ ...externo, fecha: "2028-02-29", fecha_fin: "2028-03-02" }], "2028-02", "todos").keys()])
+      .toEqual(["2028-02-29"]);
+    expect(vistaAgenda("externo")).toBe("externo");
+    expect(vistaAgenda("propio")).toBe("propio");
+    expect(vistaAgenda("invalido")).toBe("todos");
+  });
 });

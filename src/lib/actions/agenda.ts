@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { hoyEnChile } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
-import { fechaAgendaValida, fechasAgendaValidas, horarioAgendaOpcionalValido, RUTA_AGENDA, urlAgenda } from "@/lib/agenda";
+import { fechaAgendaValida, fechasAgendaValidas, horarioAgendaOpcionalValido, RUTA_AGENDA, urlAgenda, vistaAgenda } from "@/lib/agenda";
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
@@ -15,6 +15,7 @@ export async function guardarAgenda(
   try {
     const { supabase, tenantId } = await requerirPerfil({ roles: ["admin"], suscripcion: true });
     const id = text(form, "id");
+    const vista = vistaAgenda(text(form, "vista"));
     const tipo = text(form, "tipo");
     const origen = text(form, "tipo_original") || tipo;
     const eliminar = text(form, "accion") === "eliminar";
@@ -27,7 +28,7 @@ export async function guardarAgenda(
       revalidatePath("/operativos/calendario");
       revalidatePath(RUTA_AGENDA);
       revalidatePath(`/operativos/${id}`);
-      redirect(urlAgenda(fechaAgendaValida(text(form, "fecha")) ? text(form, "fecha") : hoyEnChile(), { eliminado: "1" }));
+      redirect(urlAgenda(fechaAgendaValida(text(form, "fecha")) ? text(form, "fecha") : hoyEnChile(), { eliminado: "1", vista }));
     }
     const fecha = text(form, "fecha");
     const fechaFin = text(form, "fecha_fin") || fecha;
@@ -66,7 +67,7 @@ export async function guardarAgenda(
       revalidatePath("/operativos/calendario");
       revalidatePath(RUTA_AGENDA);
       revalidatePath(`/operativos/${id}`);
-      redirect(urlAgenda(fecha, { guardado: "1" }));
+      redirect(urlAgenda(fecha, { guardado: "1", vista }));
     }
     const fechas = { fecha, fecha_fin: fechaFin === fecha ? null : fechaFin };
     const detalles = { nombre, direccion: direccion || null, notas: notas || null };
@@ -100,7 +101,7 @@ export async function guardarAgenda(
     revalidatePath("/operativos/calendario");
     revalidatePath(RUTA_AGENDA);
     if (tipo === "propio") revalidatePath(`/operativos/${id}`);
-    redirect(urlAgenda(fecha, { guardado: "1" }));
+    redirect(urlAgenda(fecha, { guardado: "1", vista }));
   } catch (error) {
     if (error instanceof SinPermiso) return { error: error.message };
     throw error;
@@ -116,5 +117,5 @@ export async function borrarDisponibilidad(form: FormData) {
     .eq("id", id).eq("tenant_id", tenantId).eq("tipo", "disponible").eq("fecha", fecha);
   revalidatePath("/");
   revalidatePath(RUTA_AGENDA);
-  redirect(urlAgenda(fecha, error ? { error: "borrar" } : {}));
+  redirect(urlAgenda(fecha, { vista: vistaAgenda(text(form, "vista")), ...(error ? { error: "borrar" } : {}) }));
 }

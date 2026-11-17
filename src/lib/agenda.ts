@@ -1,4 +1,4 @@
-import { diaDeLaSemana, fechaLegible, horaCorta, sumarDias } from "@/lib/fechas";
+import { diaDeLaSemana, fechaLegible, horaCorta, sumarDias, ultimoDiaDelMes } from "@/lib/fechas";
 
 export const RUTA_AGENDA = "/operativos/agenda";
 
@@ -20,6 +20,28 @@ export type EventoAgenda = HorarioAgenda & {
 };
 
 export type BloqueLibre = RangoFechasAgenda & { id: string };
+
+export type VistaAgenda = "todos" | "propio" | "externo";
+
+export function vistaAgenda(valor: string): VistaAgenda {
+  return valor === "propio" || valor === "externo" ? valor : "todos";
+}
+
+// Se ordena dentro de cada día: un rango puede empezar el mes anterior.
+// Las jornadas sin hora se conservan al final, sin inventar un horario.
+export function agendaPorDia(eventos: EventoAgenda[], mes: string, vista: VistaAgenda) {
+  const porDia = new Map<string, EventoAgenda[]>();
+  const ultimo = Number(ultimoDiaDelMes(mes).slice(8));
+  for (let numero = 1; numero <= ultimo; numero++) {
+    const dia = `${mes}-${String(numero).padStart(2, "0")}`;
+    const delDia = eventos.filter(e => e.estado !== "cancelado" && (vista === "todos" || e.tipo === vista) && cubreDia(e, dia))
+      .sort((a, b) => (horaCorta(a.hora_inicio) ?? "99:99").localeCompare(horaCorta(b.hora_inicio) ?? "99:99")
+        || (horaCorta(a.hora_fin) ?? "99:99").localeCompare(horaCorta(b.hora_fin) ?? "99:99")
+        || a.nombre.localeCompare(b.nombre, "es") || a.id.localeCompare(b.id));
+    if (delDia.length) porDia.set(dia, delDia);
+  }
+  return porDia;
+}
 
 export function fechaAgendaValida(s: string) {
   if (!/^[1-9]\d{3}-\d{2}-\d{2}$/.test(s)) return false;

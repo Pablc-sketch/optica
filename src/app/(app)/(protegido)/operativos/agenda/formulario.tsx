@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { buscarCruce, fechasAgendaValidas, horarioAgendaOpcionalValido, urlAgenda, type EventoAgenda } from "@/lib/agenda";
+import { buscarCruce, fechasAgendaValidas, horarioAgendaOpcionalValido, urlAgenda, type EventoAgenda, type VistaAgenda } from "@/lib/agenda";
 import { guardarAgenda } from "@/lib/actions/agenda";
 
 type Tipo = "propio" | "externo" | "disponible";
@@ -13,8 +13,8 @@ type Datos = {
 
 const campo = "mt-1 w-full min-w-0 rounded-xl border bg-white px-2.5 py-2.5 text-base";
 
-export default function FormularioAgenda({ inicial, edicion, eventos, nombreOptica, dia }: {
-  inicial: Datos; edicion: boolean; eventos: EventoAgenda[]; nombreOptica: string; dia: string;
+export default function FormularioAgenda({ inicial, edicion, eventos, nombreOptica, dia, vista = "todos" }: {
+  inicial: Datos; edicion: boolean; eventos: EventoAgenda[]; nombreOptica: string; dia: string; vista?: VistaAgenda;
 }) {
   const [valores, setValores] = useState(inicial);
   const [confirmarBorrado, setConfirmarBorrado] = useState(false);
@@ -44,10 +44,11 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
   return <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
     <div className="mb-4 flex items-center justify-between gap-3">
       <h2 className="text-lg font-bold">{tipo === "disponible" ? (edicion ? "Editar disponibilidad" : "Agregar disponibilidad") : edicion ? "Editar operativo" : "Nuevo operativo"}</h2>
-      <Link href={urlAgenda(dia)} className="text-sm font-semibold text-brand-dark">Volver</Link>
+      <Link href={urlAgenda(dia, { vista })} className="text-sm font-semibold text-brand-dark">Volver</Link>
     </div>
     <form action={enviar} className="grid gap-3">
       <input type="hidden" name="id" value={inicial.id} />
+      <input type="hidden" name="vista" value={vista} />
       <input type="hidden" name="tipo" value={tipo} />
       <input type="hidden" name="tipo_original" value={inicial.tipo} />
       {tipo !== "disponible" && <div aria-label="Tipo de operativo" className="grid grid-cols-2 gap-1 rounded-xl border border-tinta/10 p-1">
