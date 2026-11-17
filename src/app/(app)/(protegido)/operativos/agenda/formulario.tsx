@@ -4,17 +4,18 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { buscarCruce, fechasAgendaValidas, horarioAgendaOpcionalValido, urlAgenda, type EventoAgenda, type FiltroAgenda } from "@/lib/agenda";
 import { guardarAgenda } from "@/lib/actions/agenda";
+import UbicacionOperativo from "@/components/ubicacion-operativo";
 
 type Tipo = "propio" | "externo" | "disponible";
 type Datos = {
   id: string; tipo: Tipo; fecha: string; fecha_fin: string; hora_inicio: string; hora_fin: string;
-  nombre: string; optica: string; direccion: string; notas: string; estado: string;
+  nombre: string; optica: string; direccion: string; comuna: string; region: string; notas: string; estado: string;
 };
 
 const campo = "mt-1 w-full min-w-0 rounded-xl border bg-white px-2.5 py-2.5 text-base";
 
-export default function FormularioAgenda({ inicial, edicion, eventos, nombreOptica, dia, filtro = "todos" }: {
-  inicial: Datos; edicion: boolean; eventos: EventoAgenda[]; nombreOptica: string; dia: string; filtro?: FiltroAgenda;
+export default function FormularioAgenda({ inicial, edicion, eventos, nombreOptica, dia, filtro = "todos", administrador = false }: {
+  inicial: Datos; edicion: boolean; eventos: EventoAgenda[]; nombreOptica: string; dia: string; filtro?: FiltroAgenda; administrador?: boolean;
 }) {
   const [valores, setValores] = useState(inicial);
   const [confirmarBorrado, setConfirmarBorrado] = useState(false);
@@ -51,7 +52,7 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
       <input type="hidden" name="id" value={inicial.id} />
       <input type="hidden" name="tipo" value={tipo} />
       <input type="hidden" name="tipo_original" value={inicial.tipo} />
-      {tipo !== "disponible" && <div aria-label="Tipo de operativo" className="grid grid-cols-2 gap-1 rounded-xl border border-tinta/10 p-1">
+      {tipo !== "disponible" && (!edicion || administrador) && <div aria-label="Tipo de operativo" className="grid grid-cols-2 gap-1 rounded-xl border border-tinta/10 p-1">
         {([["propio", nombreOptica], ["externo", "Otra óptica"]] as const).map(([value, label]) =>
           <button key={value} type="button" aria-pressed={tipo === value} onClick={() => cambiar("tipo", value)}
             className={`rounded-lg p-2 text-sm font-semibold ${tipo === value ? "bg-sky-100 text-sky-950" : "text-tinta-suave"}`}>{label}</button>
@@ -60,7 +61,7 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
       {tipo !== "disponible" && <>
         <label className="text-sm font-medium">Nombre del operativo<input {...vincular("nombre")} required maxLength={160} className={campo} /></label>
         {tipo === "externo" && <label className="text-sm font-medium">Óptica externa<input {...vincular("optica")} required maxLength={160} className={campo} /></label>}
-        <label className="text-sm font-medium">Lugar o comuna<input {...vincular("direccion")} maxLength={250} className={campo} /></label>
+        <UbicacionOperativo direccion={valores.direccion} comuna={valores.comuna} region={valores.region} cambiar={datos => setValores(v => ({ ...v, ...datos }))} />
       </>}
       <div className="grid grid-cols-2 gap-2">
         <label className="min-w-0 text-sm font-medium">Fecha de inicio<input {...vincular("fecha")} type="date" required className={campo} /></label>
@@ -85,7 +86,7 @@ export default function FormularioAgenda({ inicial, edicion, eventos, nombreOpti
       <button name="accion" value="guardar" disabled={pendiente || !!cruce} className="rounded-xl bg-brand px-4 py-3 font-semibold text-white disabled:bg-neutral-200 disabled:text-neutral-700">
         {pendiente ? "Guardando…" : tipo === "disponible" ? "Guardar disponibilidad" : "Guardar operativo"}
       </button>
-      {edicion && inicial.tipo !== "disponible" && <div className="mt-3 border-t border-tinta/10 pt-4">
+      {edicion && administrador && inicial.tipo !== "disponible" && <div className="mt-3 border-t border-tinta/10 pt-4">
         {confirmarBorrado ? <div className="space-y-3 rounded-xl bg-red-50 p-4">
           <p className="font-semibold text-red-950">¿Eliminar este operativo del calendario?</p>
           <p className="text-sm text-red-900">Se elimina solo si no tiene ventas, recetas, gastos ni otros datos vinculados.</p>

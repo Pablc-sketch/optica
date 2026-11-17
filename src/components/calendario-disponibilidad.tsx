@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cubreDia, estadoDisponibilidad, eventosDelDia, urlAgenda, type BloqueLibre, type EventoAgenda, type FiltroAgenda } from "@/lib/agenda";
 import { diaDeLaSemana, fechaConDia, rangoHorario, semanasDelMes, sumarDias } from "@/lib/fechas";
+import { textoUbicacion } from "@/lib/mapas";
 
 export const ESTILO_DISPONIBILIDAD = {
   disponible: { texto: "Disponible para agendar", corto: "Libre", clase: "border-green-800 bg-green-700 text-white" },
@@ -42,7 +43,7 @@ export default function CalendarioDisponibilidad({ eventos, bloques, hoy, mes, s
             <span className="block text-xs font-bold tabular-nums">{e.tipo === "externo" ? "Sin horario" : rangoHorario(e.hora_inicio, e.hora_fin) ?? "Hora por definir"}</span>
             <span className="mt-1 block break-words text-sm font-bold leading-snug">{e.nombre}</span>
             {e.tipo === "externo" && e.optica && <span className="mt-1 block break-words text-xs">{e.optica}</span>}
-            {e.direccion && <span className="mt-1 block break-words text-xs leading-snug">{e.direccion}</span>}
+            {textoUbicacion(e) && <span className="mt-1 block break-words text-xs leading-snug">{textoUbicacion(e)}</span>}
             {e.estado === "pendiente" && <span className="mt-1 block text-[10px] font-bold">Por confirmar</span>}
           </span>)}
           {visibles.length > 0 && <span className="mt-auto text-xs font-semibold text-tinta-suave">{visibles.length} {visibles.length === 1 ? "operativo" : "operativos"}</span>}

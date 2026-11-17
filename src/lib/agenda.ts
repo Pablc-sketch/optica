@@ -14,6 +14,8 @@ export type EventoAgenda = HorarioAgenda & {
   tipo: "propio" | "externo";
   nombre: string;
   direccion: string | null;
+  comuna?: string | null;
+  region?: string | null;
   notas: string | null;
   estado: "pendiente" | "confirmado" | "realizado" | "cancelado";
   optica: string | null;

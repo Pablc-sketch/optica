@@ -12,7 +12,7 @@ const evento = (id: string, cambios: Partial<EventoAgenda> = {}): EventoAgenda =
   hora_inicio: "09:00", hora_fin: "11:00", direccion: "Quilicura", notas: null, estado: "confirmado", ...cambios,
 });
 beforeEach(() => {
-  mocks.perfil.mockResolvedValue({ tenantId: "ejemplo", supabase: {} });
+  mocks.perfil.mockResolvedValue({ tenantId: "ejemplo", rol: "admin", supabase: {} });
   mocks.agenda.mockResolvedValue({ nombreOptica: "Óptica Global", disponibilidad: [], error: null, eventos: [
     evento("Sede tarde", { hora_inicio: "16:00", hora_fin: "18:00", direccion: "Renca" }),
     evento("Sede mañana"), evento("Sede mediodía", { hora_inicio: "12:00", hora_fin: "14:00", direccion: "Conchalí" }),
@@ -21,6 +21,15 @@ beforeEach(() => {
 });
 const html = async (filtro: string) => renderToStaticMarkup(await Agenda({ searchParams: Promise.resolve({ mes: "2026-11", dia: "2026-11-17", filtro }) }));
 describe("pantalla de calendario", () => {
+  it("permite a una vendedora ver y editar las sedes y abrir su ruta", async () => {
+    mocks.perfil.mockResolvedValue({ tenantId: "ejemplo", rol: "ventas", supabase: {} });
+    const s = await html("propio");
+    expect(mocks.perfil).toHaveBeenCalledWith(["admin", "ventas"]);
+    expect(s).toContain("Editar");
+    expect(s).toContain("Ruta del día");
+    expect(s).toContain("Cómo llegar");
+    expect(s).not.toContain("Metas y resultados del mes");
+  });
   it("muestra tres sedes dentro del día y un resumen propio en orden de horario", async () => {
     const s = await html("propio");
     expect(s).toContain("Resumen · Óptica Global");
