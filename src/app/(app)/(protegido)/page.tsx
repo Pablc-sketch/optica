@@ -59,7 +59,7 @@ async function saldoDisponible(supabase: Awaited<ReturnType<typeof createClient>
   });
   const deuda = (gastos.data ?? []).reduce((suma, g) =>
     suma + pendientePersonal(g.monto, (devoluciones.data ?? []).filter(d => d.gasto_id === g.id)), 0);
-  return disponibleTrasPendientes(saldo, { pagos: pendientes.resumen.total, devoluciones: deuda, ahorro: pendientes.resumen.ahorro }).restante;
+  return disponibleTrasPendientes(saldo, { pagos: pendientes.resumen.total + (pendientes.impuestosPendientes??0), devoluciones: deuda, ahorro: pendientes.resumen.ahorro }).restante;
 }
 
 export default async function Dashboard() {

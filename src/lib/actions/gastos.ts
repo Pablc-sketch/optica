@@ -70,6 +70,7 @@ export async function crearGastoGlobal(formData: FormData) {
   });
   if (error && !(id && error.code === "23505")) throw error;
 
+  revalidatePath("/impuestos");
   revalidatePath("/gastos");
   revalidatePath("/reportes");
   revalidatePath("/");
@@ -85,6 +86,7 @@ export async function eliminarGastoGlobal(formData: FormData) {
   const { error } = await supabase.from("gastos_globales").delete().eq("id", id);
   if (error) throw error;
 
+  revalidatePath("/impuestos");
   revalidatePath("/gastos");
   revalidatePath("/reportes");
 }
@@ -124,6 +126,7 @@ export async function crearRetiro(formData: FormData) {
   });
   if (error) throw error;
 
+  revalidatePath("/impuestos");
   revalidatePath("/gastos");
   revalidatePath("/reportes");
 }
@@ -158,6 +161,7 @@ export async function pagarSueldo(formData: FormData) {
   });
   if (error) throw error;
 
+  revalidatePath("/impuestos");
   revalidatePath("/gastos");
   revalidatePath("/reportes");
 }
@@ -170,6 +174,7 @@ export async function eliminarRetiro(formData: FormData) {
   const { error } = await supabase.from("retiros_sueldo").delete().eq("id", id);
   if (error) throw error;
 
+  revalidatePath("/impuestos");
   revalidatePath("/gastos");
   revalidatePath("/reportes");
 }
@@ -195,6 +200,7 @@ export async function actualizarComisionMedioPago(formData: FormData) {
     .eq("id", tenantId);
   if (error) throw error;
 
+  revalidatePath("/impuestos");
   revalidatePath("/gastos");
   revalidatePath("/reportes");
 }

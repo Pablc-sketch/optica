@@ -30,6 +30,14 @@ beforeEach(()=>{
 });
 const html=async(ver='resumen',operativo='')=>renderToStaticMarkup(await Caja({searchParams:Promise.resolve({ver,operativo})}));
 describe('panel financiero de Caja',()=>{
+  it('reserva el impuesto declarado pendiente sin volver a descontar lo ya pagado',async()=>{
+    const anterior=await cargarPendientes();
+    cargarPendientes.mockResolvedValue({...anterior,impuestosPendientes:30000});
+    const s=await html();
+    expect(s).toContain('200.000');
+    expect(s).toContain('SII declarado por pagar');
+    expect(s).not.toContain('230.000');
+  });
   it('separa dinero, cobros pendientes y ahorro sin abrir formularios en Resumen',async()=>{
     const s=await html();
     expect(s).toContain('230.000');

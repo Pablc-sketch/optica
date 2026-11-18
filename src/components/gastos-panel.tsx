@@ -13,7 +13,7 @@ type Gasto={id:string;fecha:string;descripcion:string;monto:number;categoria:str
 type Fila={id:string;nombre:string;fecha:string;vendido:number;cobrado:number;utilidad:number;costo:number;atendidos:number;pares:number;costoFidesActual:number|null;
   costos:{clave:string;titulo:string;total:number;pagado:number}[];importes:Record<string,number>;costoMarco:number};
 const campo='mt-1 w-full rounded-xl border bg-white p-3';
-export default function GastosPanel({filas,gastos,asignaciones,hoy,generales}:{filas:Fila[];gastos:Gasto[];asignaciones:AsignacionCosto[];hoy:string;generales:Gasto[]}) {
+export default function GastosPanel({filas,gastos,asignaciones,hoy,generales,gastosSii=[]}:{filas:Fila[];gastos:Gasto[];asignaciones:AsignacionCosto[];hoy:string;generales:Gasto[];gastosSii?:string[]}) {
   const [vista,setVista]=useState('pendientes');
   const [busqueda,setBusqueda]=useState('');
   const [pagina,setPagina]=useState(0);
@@ -27,7 +27,7 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,generales}:{f
   const pendientes=costos.filter(c=>c.total>c.pagado),pagados=costos.filter(c=>c.pagado>=c.total);
   const visibles=costos.filter(c=>(vista==='pendientes'?c.total>c.pagado:vista==='pagados'?c.pagado>=c.total:true)&&`${c.titulo} ${c.op.nombre}`.toLowerCase().includes(busqueda.toLowerCase()));
   const paginas=Math.max(1,Math.ceil(visibles.length/20)),actual=Math.min(pagina,paginas-1);
-  const candidatos=gastos.map(g=>({...g,disponible:disponibleDeGasto(g,asignaciones)})).filter(g=>g.disponible>0);
+  const candidatos=gastos.filter(g=>!gastosSii.includes(g.id)&&!g.descripcion.startsWith('SII F29 · ')).map(g=>({...g,disponible:disponibleDeGasto(g,asignaciones)})).filter(g=>g.disponible>0);
   const fuente=candidatos.find(g=>g.id===gastoId);
   return <>
     <nav className="flex flex-wrap gap-2" aria-label="Estado de los gastos">{[['pendientes',`Pendientes (${pendientes.length})`],['pagados',`Pagados (${pagados.length})`],['todos','Todos']].map(([v,n])=><button key={v} onClick={()=>{setVista(v);setPagina(0);}} aria-pressed={vista===v} className={`rounded-xl px-4 py-3 font-semibold ${vista===v?'bg-emerald-800 text-white':'bg-white'}`}>{n}</button>)}</nav>
