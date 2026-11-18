@@ -215,7 +215,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // que costó producir lo que se vendió. El desglose (no solo el total) es
   // para que la tarjeta de costos se pueda abrir y mostrar de qué se compone.
   const todosLosItems = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
-  const desglose = conCostoFidesReal(desglosarCostos(todosLosItems), operativo.costo_fides_real);
+  const desglose = conCostoFidesReal(desglosarCostos(todosLosItems, operativo.costo_marco_unitario ?? undefined), operativo.costo_fides_real);
   const totalCostoProductos = desglose.total;
 
   const totalCostosOperativo =
@@ -616,7 +616,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
             <div className="flex flex-col gap-1.5">
               <p className="font-semibold text-sky-900">2. Marcos — ya pagados antes, solo contable</p>
               <div className="flex items-center justify-between pl-2 text-sky-800">
-                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"} × {clp(COSTO_MARCO_POR_PAR)}</span>
+                <span>{totalMarcosVendidos} marco{totalMarcosVendidos === 1 ? "" : "s"} × {clp(operativo.costo_marco_unitario ?? COSTO_MARCO_POR_PAR)}</span>
                 <span className="font-medium">{clp(desglose.totalArmazones)}</span>
               </div>
               <p className="pl-2 text-xs text-sky-700">

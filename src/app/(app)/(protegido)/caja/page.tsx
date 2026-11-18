@@ -68,7 +68,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       </div>
       <nav aria-label="Acciones de caja" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Link href="/cobros" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">+ Cobrar venta</Link>
-        <Link href="/caja?ver=movimientos#nuevo-gasto" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">− Gasto</Link>
+        <Link href="/gastos" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">Gastos · saldar pendientes</Link>
         <Link href={piloto ? "/agenda/equipos" : "/pagos"} className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">{piloto ? 'Gastos por operativo' : 'Registrar pago'}</Link>
         <Link href="/caja?ver=movimientos#traspasos" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">Transferir entre cuentas</Link>
       </nav>

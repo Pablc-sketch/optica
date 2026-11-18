@@ -15,6 +15,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const { resumen, error, sinAsignar } = await cargarPendientes(supabase);
   const filas = resumen.operativos.filter((o) => o[vista.clave] > 0);
   return <div className="mx-auto flex max-w-2xl flex-col gap-4">
+    <Link href="/gastos" className="rounded-xl bg-emerald-800 p-4 text-center font-bold text-white">Gastos: saldar pendientes o vincular pagos anteriores →</Link>
     <h1 className="text-2xl font-bold">Pagos y ahorro</h1>
     <Link href="/pagos/revisar" className="rounded-xl bg-tinta px-4 py-3 text-center font-semibold text-white">Revisar pagos y gastos →</Link>
     <nav className="flex gap-2" aria-label="Tipo de pendiente">

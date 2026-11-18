@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
+import { fechaValidaDocumento } from "@/lib/fecha-documentos";
 import { hoyEnChile } from "@/lib/fechas";
-import { COSTOS, prefijoCosto, PREFIJO_MARCOS, type ClaveCosto } from "@/lib/pagos-operativo";
+import { COSTOS, prefijoCosto, PREFIJO_MARCOS, type ClaveCosto, pagosConAsignaciones } from "@/lib/pagos-operativo";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import { leerTodas } from "@/lib/leer-todas";
 import { idPagoCosto, claveConRevisiones } from "@/lib/id-pago";
@@ -22,6 +23,7 @@ function refrescar(operativoId: string) {
   revalidatePath("/caja");
   revalidatePath("/");
   revalidatePath("/pagos");
+  revalidatePath("/gastos");
   revalidatePath("/operativos");
 }
 
@@ -53,14 +55,14 @@ export async function actualizarCostoFides(_: { error?: string; guardado?: boole
 // consulta en el servidor y no se altera al registrar un abono.
 export async function registrarPagoCosto(input: {
   operativoId: string; clave: ClaveCosto | "fides" | "marcos"; monto: number;
-  caja: "efectivo" | "digital" | "personal"; pagadoEsperado: number;
+  caja: "efectivo" | "digital" | "personal"; pagadoEsperado: number; fecha?: string;
 }): Promise<Resultado> {
   let ctx;
   try { ctx = await admin(); } catch (e) {
     if (e instanceof SinPermiso) return { ok: false, error: e.message };
     throw e;
   }
-  if (!UUID.test(input.operativoId) || !Number.isSafeInteger(input.pagadoEsperado) || input.pagadoEsperado < 0
+  if ((input.fecha && (!fechaValidaDocumento(input.fecha) || input.fecha > hoyEnChile())) || !UUID.test(input.operativoId) || !Number.isSafeInteger(input.pagadoEsperado) || input.pagadoEsperado < 0
     || !Number.isSafeInteger(input.monto) || input.monto <= 0
     || !["digital", "efectivo", "personal"].includes(input.caja)
     || (input.clave !== "fides" && input.clave !== "marcos" && !COSTOS.some((c) => c.clave === input.clave))) {
@@ -102,13 +104,15 @@ export async function registrarPagoCosto(input: {
   const pagos = await leerTodas((a, b) => ctx.supabase.from("gastos_globales").select("id, monto, descripcion")
     .eq("operativo_id", op.id).order("id").range(a, b));
   if (pagos.error) return { ok: false, error: "No se pudieron leer los abonos." };
-  const yaPagado = (pagos.data ?? []).filter((p) => p.descripcion.startsWith(prefijo)).reduce((s, p) => s + p.monto, 0);
+  const asignaciones = await leerTodas((a,b) => ctx.supabase.from("gastos_asignaciones").select("id,gasto_id,operativo_id,clave,monto,anulado_en").eq("operativo_id",op.id).order("id").range(a,b));
+  if (asignaciones.error) return {ok:false,error:"No se pudieron comprobar los pagos vinculados."};
+  const yaPagado = pagosConAsignaciones(pagos.data ?? [],asignaciones.data ?? [],op.id).filter((p) => p.descripcion.startsWith(prefijo)).reduce((s,p) => s+p.monto,0);
   if (yaPagado !== input.pagadoEsperado) return { ok: false, error: "Los abonos cambiaron. Recarga antes de pagar." };
   const saldo = Math.max(0, total - yaPagado);
   if (input.monto > saldo) return { ok: false, error: "El saldo cambió. Recarga antes de pagar." };
   const { error } = await ctx.supabase.from("gastos_globales").insert({
     id: movimientoId, tenant_id: ctx.tenantId, operativo_id: op.id,
-    fecha: hoyEnChile(), categoria: "otro", descripcion: `${prefijo}${op.nombre}`.slice(0, 120),
+    fecha: input.fecha ?? hoyEnChile(), categoria: "otro", descripcion: `${prefijo}${op.nombre}`.slice(0, 120),
     monto: input.monto, caja: input.caja, medio_pago: input.caja === "personal" ? null : input.caja === "efectivo" ? "efectivo" : "transferencia",
   });
   if (error) return { ok: false, error: "No se pudo registrar. Recarga y revisa el historial antes de reintentar." };

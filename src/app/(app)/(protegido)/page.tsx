@@ -147,6 +147,7 @@ export default async function Dashboard() {
         <p className="my-1 text-2xl font-bold tabular-nums">{entregas.error ? "—" : entregas.count ?? 0}</p>
         <p className="text-xs text-tinta-suave">{entregas.error ? "No disponible" : "Órdenes listas para entregar"}</p>
       </Link>
+      <Link href="/gastos" className="rounded-2xl bg-emerald-800 p-4 font-semibold text-white">Gastos · saldar pendientes y ver utilidad →</Link>
       <Link href="/caja" className="rounded-2xl bg-white p-4 shadow-sm">
         <p className="flex items-center gap-2 text-sm font-semibold text-accent-dark"><Icono nombre="caja" className="size-4" /> Caja</p>
         <p className={`my-1 text-2xl font-bold tabular-nums ${caja != null && caja < 0 ? "text-red-700" : ""}`}>{caja === null ? "—" : clp(caja)}</p>

@@ -54,7 +54,8 @@ export async function actualizarJornada(datos: FormData): Promise<ResultadoAgend
       if (!['planificado','realizado','cancelado'].includes(estado)) return {error:'Estado inválido.'};
       cambios = {estado};
     } else {
-      for (const k of ['costo_transporte','costo_arriendo','costo_viaticos','costo_otros','costo_ayudante','costo_equipos']) {
+      for (const k of ['costo_transporte','costo_arriendo','costo_viaticos','costo_otros','costo_ayudante','costo_equipos','costo_hospedaje','costo_comida','costo_peajes','costo_marco_unitario']) {
+        if (!datos.has(k)) continue;
         const v=String(datos.get(k) ?? '').trim();
         if (v && (!/^\d{1,9}$/.test(v))) return {error:'Ingresa los gastos en pesos enteros.'};
         cambios[k]=Number(v);
@@ -65,6 +66,9 @@ export async function actualizarJornada(datos: FormData): Promise<ResultadoAgend
     revalidatePath('/agenda/equipos','layout');
     revalidatePath('/operativos','layout');
     revalidatePath('/ventas');
+    revalidatePath('/gastos');
+    revalidatePath('/pagos');
+    revalidatePath('/caja');
     revalidatePath('/reportes');
     revalidatePath('/');
     return {mensaje:'Guardado'};

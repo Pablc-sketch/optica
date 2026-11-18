@@ -28,7 +28,7 @@ describe("registro de un pago", () => {
     const escritura = respuesta(null);
     mock.from.mockReturnValueOnce(respuesta(null).builder)
       .mockReturnValueOnce(respuesta({ id: operativoId, nombre: "Colegio", costo_equipos: 104000 }).builder)
-      .mockReturnValueOnce(respuesta([]).builder).mockReturnValueOnce(escritura.builder);
+      .mockReturnValueOnce(respuesta([]).builder).mockReturnValueOnce(respuesta([]).builder).mockReturnValueOnce(escritura.builder);
     expect(await registrarPagoCosto(input)).toEqual({ ok: true });
     expect(escritura.insertar).toHaveBeenCalledWith(expect.objectContaining({ monto: 40000, operativo_id: operativoId, tenant_id: "tenant", caja: "digital" }));
     expect(escritura.insertar.mock.calls[0][0].id).toBe(idPagoCosto(operativoId, "costo_equipos", 0));
@@ -39,7 +39,7 @@ describe("registro de un pago", () => {
       .mockReturnValueOnce(respuesta(null).builder)
       .mockReturnValueOnce(respuesta({id:operativoId,nombre:"Colegio",costo_equipos:104000}).builder)
       .mockReturnValueOnce(respuesta([{id:"corregido",monto:0,descripcion:"Costo operativo · costo_equipos · Colegio"}]).builder)
-      .mockReturnValueOnce(escritura.builder);
+      .mockReturnValueOnce(respuesta([]).builder).mockReturnValueOnce(escritura.builder);
     expect(await registrarPagoCosto(input)).toEqual({ok:true});
     expect(escritura.insertar.mock.calls[0][0].id).not.toBe(idPagoCosto(operativoId,"costo_equipos",0));
   });
@@ -51,14 +51,26 @@ describe("registro de un pago", () => {
   it("rechaza un formulario desactualizado cuando aparecen otros abonos", async () => {
     mock.from.mockReturnValueOnce(respuesta(null).builder)
       .mockReturnValueOnce(respuesta({ id: operativoId, nombre: "Colegio", costo_equipos: 104000 }).builder)
-      .mockReturnValueOnce(respuesta([{ id: "manual", monto: 20000, descripcion: "Costo operativo · costo_equipos · Colegio" }]).builder);
+      .mockReturnValueOnce(respuesta([{ id: "manual", monto: 20000, descripcion: "Costo operativo · costo_equipos · Colegio" }]).builder).mockReturnValueOnce(respuesta([]).builder);
     expect((await registrarPagoCosto(input)).ok).toBe(false);
-    expect(mock.from).toHaveBeenCalledTimes(3);
+    expect(mock.from).toHaveBeenCalledTimes(4);
   });
   it("no escribe si el operativo no es accesible", async () => {
     mock.from.mockReturnValueOnce(respuesta(null).builder).mockReturnValueOnce(respuesta(null).builder);
     expect((await registrarPagoCosto(input)).ok).toBe(false);
     expect(mock.from).toHaveBeenCalledTimes(2);
+  });
+  it("registra la fecha histórica real del pago omitido", async () => {
+    const escritura=respuesta(null);
+    mock.from.mockReturnValueOnce(respuesta(null).builder).mockReturnValueOnce(respuesta({id:operativoId,nombre:"Colegio",costo_equipos:104000}).builder)
+      .mockReturnValueOnce(respuesta([]).builder).mockReturnValueOnce(respuesta([]).builder).mockReturnValueOnce(escritura.builder);
+    expect(await registrarPagoCosto({...input,fecha:"2026-10-20"})).toEqual({ok:true});
+    expect(escritura.insertar).toHaveBeenCalledWith(expect.objectContaining({fecha:"2026-10-20"}));
+  });
+  it("no paga nuevamente si un gasto global ya cubre el costo", async () => {
+    mock.from.mockReturnValueOnce(respuesta(null).builder).mockReturnValueOnce(respuesta({id:operativoId,nombre:"Colegio",costo_equipos:104000}).builder)
+      .mockReturnValueOnce(respuesta([]).builder).mockReturnValueOnce(respuesta([{id:"a",gasto_id:"g",operativo_id:operativoId,clave:"costo_equipos",monto:104000,anulado_en:null}]).builder);
+    expect((await registrarPagoCosto(input)).ok).toBe(false);
   });
   it("rechaza montos negativos y categorías inventadas antes de consultar", async () => {
     expect((await registrarPagoCosto({ ...input, monto: -1 })).ok).toBe(false);

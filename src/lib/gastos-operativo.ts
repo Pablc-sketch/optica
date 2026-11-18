@@ -9,6 +9,9 @@ export type GastosOperativo = {
   costo_otros: number;
   costo_ayudante?: number | null;
   costo_equipos?: number | null;
+  costo_hospedaje?: number | null;
+  costo_comida?: number | null;
+  costo_peajes?: number | null;
 };
 
 // Valor sugerido del arriendo de equipos + cartilla por día.
@@ -21,6 +24,6 @@ export function gastosDeOperativo(o: GastosOperativo): number {
     o.costo_viaticos +
     o.costo_otros +
     (o.costo_ayudante ?? 0) +
-    (o.costo_equipos ?? 0)
+    (o.costo_equipos ?? 0) + (o.costo_hospedaje ?? 0) + (o.costo_comida ?? 0) + (o.costo_peajes ?? 0)
   );
 }

@@ -41,7 +41,7 @@ export default async function CompararOperativos() {
     supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, estado, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos"
+        "id, nombre, tipo_venue, fecha, estado, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_hospedaje, costo_comida, costo_peajes, costo_marco_unitario"
       )
       .neq("estado", "cancelado")
       .order("fecha", { ascending: false }),
@@ -75,7 +75,7 @@ export default async function CompararOperativos() {
     const actual =
       ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0, costoProductos: 0, pagaron: new Set<string>() };
     actual.total += v.total;
-    actual.costoProductos += costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[]);
+    actual.costoProductos += costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[], (operativos ?? []).find(o => o.id === v.operativo_id)?.costo_marco_unitario ?? undefined);
     // Una cortesía ($0) es atención, no venta: si cuenta como conversión,
     // el número dice que se vendió más de lo que de verdad entró en plata.
     if (v.total > 0) {

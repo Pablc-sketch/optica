@@ -8,7 +8,7 @@ import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import FilaPago from "./fila-pago";
 import PagoCostoOperativo from "@/components/pago-costo-operativo";
-import { pagadoCon, pendientesCostos, PREFIJO_FIDES, PREFIJO_MARCOS } from "@/lib/pagos-operativo";
+import { pagadoCon, pendientesCostos, PREFIJO_FIDES, PREFIJO_MARCOS, pagosConAsignaciones } from "@/lib/pagos-operativo";
 import { leerTodas } from "@/lib/leer-todas";
 import CostoFidesEditor from "@/components/costo-fides-editor";
 
@@ -20,7 +20,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
   if (esPilotoTerreno(tenantId)) redirect("/operativos/"+id);
 
-  const [opRes, ventasRes, tenantRes, retirosRes, fidesRes] = await Promise.all([
+  const [opRes, ventasRes, tenantRes, retirosRes, fidesRes, asignacionesRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).maybeSingle(),
     leerTodas((a, b) => supabase
       .from("ventas")
@@ -35,10 +35,11 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
     leerTodas((a, b) => supabase.from("retiros_sueldo").select("id, persona, monto").eq("operativo_id", id).order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("gastos_globales").select("id, descripcion, monto").eq("operativo_id", id).order("id").range(a, b)),
+    leerTodas((a,b) => supabase.from("gastos_asignaciones").select("id,gasto_id,operativo_id,clave,monto,anulado_en").eq("operativo_id",id).order("id").range(a,b)),
   ]);
   const op = opRes.data;
   if (!op) notFound();
-  const error = opRes.error ?? tenantRes.error ?? ventasRes.error ?? retirosRes.error ?? fidesRes.error;
+  const error = opRes.error ?? tenantRes.error ?? ventasRes.error ?? retirosRes.error ?? fidesRes.error ?? asignacionesRes.error;
 
   const ventas = ventasRes.data ?? [];
   const n = numerosDeOperativo(
@@ -51,9 +52,10 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
 
   const pagadoA = (persona: string) =>
     (retirosRes.data ?? []).filter((r) => r.persona === persona).reduce((s, r) => s + r.monto, 0);
-  const fidesPagado = pagadoCon(fidesRes.data ?? [], PREFIJO_FIDES);
-  const marcosPagado = pagadoCon(fidesRes.data ?? [], PREFIJO_MARCOS);
-  const costos = pendientesCostos(op, fidesRes.data ?? []);
+  const pagos = pagosConAsignaciones(fidesRes.data ?? [],asignacionesRes.data ?? [],id);
+  const fidesPagado = pagadoCon(pagos, PREFIJO_FIDES);
+  const marcosPagado = pagadoCon(pagos, PREFIJO_MARCOS);
+  const costos = pendientesCostos(op, pagos);
   const porCobrar = n.porCobrar;
 
   return (
@@ -62,6 +64,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         <Link href={`/operativos/${id}`} className="text-sm text-tinta-suave underline">
           ← {op.nombre}
         </Link>
+        <Link href={`/gastos?op=${id}`} className="mt-2 block rounded-xl bg-emerald-800 px-4 py-3 text-center font-semibold text-white">Gastos: saldar y vincular pagos anteriores →</Link>
         <h1 className="mt-1 text-2xl font-bold">Reparto y pagos del operativo</h1>
         <Link
           href={`/cobros?op=${id}&ver=deben`}
@@ -82,7 +85,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold">Marcos</h2>
           <p className="text-2xl font-bold tabular-nums">{clp(desglose.totalArmazones)}</p>
-          <p className="text-sm text-tinta-suave">{desglose.marcos} marcos · {clp(COSTO_MARCO_POR_PAR)} c/u</p>
+          <p className="text-sm text-tinta-suave">{desglose.marcos} marcos · {clp(op.costo_marco_unitario ?? COSTO_MARCO_POR_PAR)} c/u</p>
         </div>
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold">Cristales</h2>
@@ -121,7 +124,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
             <tbody>
               <tr><td className="py-1">Vendido</td><td className="text-right">{clp(vendido)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Cristales (Fides)</td><td className="text-right">−{clp(desglose.totalCristales)}</td></tr>
-              <tr className="text-tinta-suave"><td className="py-1">− Marcos ({desglose.marcos} × $5.000)</td><td className="text-right">−{clp(desglose.totalArmazones)}</td></tr>
+              <tr className="text-tinta-suave"><td className="py-1">− Marcos ({desglose.marcos} × {clp(op.costo_marco_unitario ?? COSTO_MARCO_POR_PAR)})</td><td className="text-right">−{clp(desglose.totalArmazones)}</td></tr>
               {desglose.totalOtros !== 0 && <tr className="text-tinta-suave"><td className="py-1">− Otros productos</td><td className="text-right">−{clp(desglose.totalOtros)}</td></tr>}
               <tr className="text-tinta-suave"><td className="py-1">− Gastos (equipos, arriendo, Diego…)</td><td className="text-right">−{clp(gastos)}</td></tr>
               <tr className="text-tinta-suave"><td className="py-1">− Comisión de la máquina</td><td className="text-right">−{clp(c.comisionTarjeta)}</td></tr>
