@@ -22,7 +22,7 @@ export async function revisarMovimiento(input: { movimiento: MovimientoRevision;
       p_motivo: input.motivo.trim(),
     });
     if (error) return { ok: false, error: error.code === '23505' ? 'Este registro ya existe. Recarga y revísalo antes de volver a agregarlo.' : error.code === 'P0001' ? error.message : 'No se pudo guardar. Recarga y revisa el historial antes de reintentar.' };
-    for (const path of ['/', '/gastos', '/caja', '/reportes', '/pagos', '/pagos/revisar', '/operativos']) revalidatePath(path);
+    for (const path of ['/', '/impuestos', '/gastos', '/caja', '/reportes', '/pagos', '/pagos/revisar', '/operativos']) revalidatePath(path);
     revalidatePath('/operativos/[id]/cierre', 'page');
     revalidatePath('/operativos/[id]', 'page');
     return { ok: true };

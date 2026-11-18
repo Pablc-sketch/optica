@@ -6,6 +6,7 @@ const ENLACES: EnlaceMenu[] = [
   { href: '/entregas', label: 'Entregas', principal: true },
   { href: '/caja', label: 'Caja', principal: true, movil: true },
   { href: '/gastos', label: 'Gastos', principal: true, movil: true },
+  { href: '/impuestos', label: 'SII mensual' },
   { href: '/operativos/agenda', label: 'Calendario', principal: true, movil: true },
   { href: '/pacientes', label: 'Pacientes' },
   { href: '/operativos', label: 'Operativos' },

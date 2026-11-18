@@ -42,7 +42,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
     pendiente: pendientePersonal(g.monto,(movimientos.data ?? []).filter(m => m.gasto_id === g.id)) })).filter(g => g.pendiente > 0).sort((a,b) => a.fecha.localeCompare(b.fecha));
   const deudaPersonal = personales.reduce((s,g) => s+g.pendiente,0);
   const base = pendientes.resumen;
-  const p = piloto ? {...base,total:base.costos,ahorro:0,personas:{pablo:0,madre:0,isadora:0}} : base;
+  const p = piloto ? {...base,total:base.costos,ahorro:0,personas:{pablo:0,madre:0,isadora:0}} : {...base,total:base.total+(pendientes.impuestosPendientes??0)};
   const disponible = disponibleTrasPendientes(saldo, { pagos: p.total, devoluciones: deudaPersonal, ahorro: p.ahorro });
   const vistas = [['resumen','Resumen'],['movimientos','Movimientos'],['pendientes','Pendientes'],['cuadrar','Cuadrar']] as const;
   const vista = vistas.find(([clave]) => clave === params.ver)?.[0] ?? 'resumen';
@@ -53,9 +53,10 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
   const ahorroSeparado = (retiros.data ?? []).filter(r => r.persona === 'ahorro').reduce((s,r) => s+r.monto,0);
   const pendientesFiltrados = p.operativos.filter(o => !operativoId || o.operativoId === operativoId);
   const fecha = hoyEnChile();
-  const filas = [['Pablo',p.personas.pablo],['Pamela',p.personas.madre],['Isadora',p.personas.isadora],['Fides',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos]] as const;
+  const filas = [['Pablo',p.personas.pablo],['Pamela',p.personas.madre],['Isadora',p.personas.isadora],['Fides',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos],['SII declarado por pagar',pendientes.impuestosPendientes??0]] as const;
   return <div className="flex flex-col gap-5">
     <CabeceraPagina seccion="Operación" titulo="Caja" />
+    <Link href="/impuestos" className="rounded-xl bg-tinta p-4 text-center font-semibold text-white">SII mensual · registrar pagos y ver saldo acumulado →</Link>
     <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-4">{vistas.map(([clave,nombre]) => <Link key={clave} href={`/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-3 text-center font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>
     {(vista==='movimientos'||vista==='pendientes') && <form action="/caja" className="flex flex-wrap items-end gap-2"><input type="hidden" name="ver" value={vista} /><label className="min-w-0 flex-1 text-sm">Operativo<select name="operativo" defaultValue={operativoId} className={campo}><option value="">Todos los operativos</option>{[...(operativos.data ?? [])].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(o=><option key={o.id} value={o.id}>{o.nombre} · {fechaLegible(o.fecha)}</option>)}</select></label><button className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Ver</button></form>}
     {params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>}
