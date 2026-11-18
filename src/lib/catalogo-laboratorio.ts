@@ -1,5 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { CatalogoLaboratorio } from "./costo-fides";
+import {leerRecargosMarcos,type RecargosMarcos} from "./niveles-marco";
 import type { FilaCristal } from "./precio-venta";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -11,7 +12,7 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 // precio y la vendedora otro.
 export async function cargarCatalogoParaCotizar(
   supabase: Supabase
-): Promise<{ filas: FilaCristal[]; catalogo: CatalogoLaboratorio }> {
+): Promise<{ filas: FilaCristal[]; catalogo: CatalogoLaboratorio; recargosMarcos:RecargosMarcos|null }> {
   const [costosRes, tenantRes, stockRes, labRes, montajeRes, recargoRes, promoRes] = await Promise.all([
     supabase
       .from("costos_cristales")
@@ -21,7 +22,7 @@ export async function cargarCatalogoParaCotizar(
          diseno_laboratorio_proximo, diseno_proximo_desde`
       )
       .order("tipo_lente"),
-    supabase.from("tenants").select("descuento_laboratorio_pct").single(),
+    supabase.from("tenants").select("descuento_laboratorio_pct,recargos_marcos").single(),
     supabase.from("lab_precios_stock").select("material, diseno, esfera_max, cilindro_max, precio_unitario"),
     supabase.from("lab_precios_laboratorio").select("diseno, material, precio_unitario"),
     supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
@@ -37,6 +38,7 @@ export async function cargarCatalogoParaCotizar(
   if (fallo?.error) throw new Error(`No se pudo leer el catálogo de precios: ${fallo.error.message}`);
 
   return {
+    recargosMarcos:leerRecargosMarcos(tenantRes.data?.recargos_marcos),
     filas: (costosRes.data ?? []) as FilaCristal[],
     catalogo: {
       stock: (stockRes.data ?? []).map((s) => ({

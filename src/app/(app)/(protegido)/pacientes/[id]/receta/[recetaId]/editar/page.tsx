@@ -42,7 +42,7 @@ export default async function EditarRecetaPage({
           pacienteId={id}
           operativos={operativosRes.data ?? []}
           costos={cotizar.filas}
-          catalogoLab={cotizar.catalogo}
+          catalogoLab={cotizar.catalogo} recargosMarcos={cotizar.recargosMarcos}
           receta={receta}
         />
       </div>

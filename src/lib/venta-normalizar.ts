@@ -1,3 +1,4 @@
+import {esNivelMarco,type NivelMarco} from "./niveles-marco";
 // Validación y normalización de lo que manda el punto de venta, ANTES de
 // guardar. Es código puro (sin base de datos) para poder probarlo caso a
 // caso.
@@ -34,7 +35,7 @@ export type CristalPedido = {
 
 // Un marco es del inventario (productoId), del paciente (marcoPropio) o
 // descrito en palabras ("acetato rojo"), sin cargarlo al inventario.
-export type ArmazonPedido = { slot: Cupo; productoId: string | null; marcoPropio: boolean; descripcion?: string | null };
+export type ArmazonPedido = { slot: Cupo; productoId: string | null; marcoPropio: boolean; descripcion?: string | null; nivelMarco?:NivelMarco };
 
 export type ItemPedido = {
   productoId?: string | null;
@@ -42,6 +43,7 @@ export type ItemPedido = {
   cantidad: number;
   precioUnitario: number;
   cristalSlot?: Cupo | null;
+  marcoSlot?: Cupo | null;
 };
 
 export type VentaNormalizada = {
@@ -88,6 +90,10 @@ export function normalizarVenta(
   const ordenados = [...cristales].sort((a, b) => a.slot - b.slot);
   const cupoNuevo = new Map<Cupo, Cupo>(ordenados.map((c, i) => [c.slot, i + 1]));
 
+  if(armazones.some(a=>a.nivelMarco!==undefined&&!esNivelMarco(a.nivelMarco)))return {ok:false,error:"Línea de marco inválida."};
+  if(armazones.some(a=>a.marcoPropio&&a.nivelMarco&&a.nivelMarco!=="esencial"))return {ok:false,error:"Un marco del paciente no lleva recargo de línea."};
+  if(new Set(armazones.map(a=>a.slot)).size!==armazones.length)return {ok:false,error:"Hay dos marcos asignados al mismo par."};
+  if(items.some(i=>i.marcoSlot!=null&&(!Number.isInteger(i.marcoSlot)||!slots.includes(i.marcoSlot)||i.cristalSlot!=null)))return {ok:false,error:"Recargo de marco sin su par."};
   const marcoDeCupo: Partial<Record<Cupo, ArmazonPedido>> = {};
   for (const a of armazones) {
     const cupo = cupoNuevo.get(a.slot);
@@ -101,7 +107,7 @@ export function normalizarVenta(
     venta: {
       cristales: ordenados.map((c) => ({ ...c, cupo: cupoNuevo.get(c.slot)! })),
       marcoDeCupo,
-      items: items.map((i) => (i.cristalSlot ? { ...i, cristalSlot: cupoNuevo.get(i.cristalSlot)! } : { ...i, cristalSlot: null })),
+      items: items.map((i) => (i.marcoSlot ? {...i,marcoSlot:cupoNuevo.get(i.marcoSlot)!,cristalSlot:null} : i.cristalSlot ? { ...i, cristalSlot: cupoNuevo.get(i.cristalSlot)! } : { ...i, cristalSlot: null })),
     },
   };
 }

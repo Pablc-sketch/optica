@@ -183,7 +183,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
         pacienteId={paciente.id}
         operativos={operativos ?? []}
         costos={cotizar.filas}
-        catalogoLab={cotizar.catalogo}
+        catalogoLab={cotizar.catalogo} recargosMarcos={cotizar.recargosMarcos}
       />
 
       <section>
