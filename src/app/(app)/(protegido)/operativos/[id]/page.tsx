@@ -1,3 +1,4 @@
+import { leerRecargosMarcos, NIVELES_MARCO, precioParConMarco } from "@/lib/niveles-marco";
 import OperativoTerreno from "@/components/operativo-terreno";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
@@ -137,7 +138,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
          material_stock, material_laboratorio, diseno_laboratorio, montaje_material,
          diseno_laboratorio_proximo, diseno_proximo_desde`
       ),
-    supabase.from("tenants").select("nombre_comercial, descuento_laboratorio_pct, comision_debito_pct, comision_credito_pct").single(),
+    supabase.from("tenants").select("nombre_comercial, descuento_laboratorio_pct, comision_debito_pct, comision_credito_pct, recargos_marcos").single(),
     supabase.from("lab_precios_stock").select("material, diseno, esfera_max, cilindro_max, precio_unitario"),
     supabase.from("lab_precios_laboratorio").select("diseno, material, precio_unitario"),
     supabase.from("lab_precios_montaje").select("origen, material, diseno, precio"),
@@ -380,7 +381,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       sugerencia_tipo_lente_cerca: string | null;
       sugerencia_tratamiento_cerca: string | null;
     }
-  ): { nombre: string; precio: number } | null => {
+  ): { nombre: string; precio: number; pares:number } | null => {
     const principal = cotizarLente(
       r,
       r.sugerencia_tipo_lente,
@@ -395,9 +396,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       return {
         nombre: `${principal.nombre} para lejos y ${cerca.nombre} para cerca`,
         precio: principal.precio + cerca.precio,
+        pares:2,
       };
     }
-    return principal ?? cerca;
+    const unico=principal??cerca;
+    return unico?{...unico,pares:1}:null;
   };
 
   const paraCotizar: DestinatarioWsp[] = recetas
@@ -416,7 +419,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       monto: sugerido?.precio,
       valores: {
         lente: sugerido?.nombre ?? "el lente que necesita",
-        precio: sugerido ? clp(sugerido.precio) : "(consultar)",
+        precio: sugerido ? (leerRecargosMarcos(tenantRes.data?.recargos_marcos) ? NIVELES_MARCO.map(n=>`${n.nombre} ${clp(precioParConMarco(sugerido.precio,n.id,leerRecargosMarcos(tenantRes.data?.recargos_marcos)) + (sugerido.pares===2 ? precioParConMarco(0,n.id,leerRecargosMarcos(tenantRes.data?.recargos_marcos)):0))}`).join(" / ") : clp(sugerido.precio)) : "(consultar)",
         lugar: direccionConLugar ?? operativo.nombre,
         // Mismo día y hora que la entrega real: es cuando el equipo ya va
         // a estar ahí de todas formas, así que invitar a pasar en ese

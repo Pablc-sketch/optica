@@ -5,6 +5,8 @@ import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
+import { validarRecargosVenta } from "@/lib/recargos-venta";
+import { nombreNivelMarco } from "@/lib/niveles-marco";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { rangoParaPosicion } from "@/lib/cristales";
@@ -106,6 +108,8 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
     } catch {
       return { ok: false, error: "No se pudo leer el catálogo de precios. Revisa la conexión e intenta de nuevo." };
     }
+    const errorRecargo=validarRecargosVenta(normal.venta,cotizar.recargosMarcos);
+    if(errorRecargo)return {ok:false,error:errorRecargo};
     const { data: tenant } = await supabase
       .from("tenants")
       .select("factor_venta_cristales, dias_entrega_default")
@@ -159,7 +163,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
         [`armazon_producto_id${sufijo}`]: marco?.marcoPropio ? null : (marco?.productoId ?? null),
         [`marco_propio${sufijo}`]: marco?.marcoPropio ?? false,
         [`marco_descripcion${sufijo}`]:
-          marco && !marco.marcoPropio && !marco.productoId ? (marco.descripcion ?? "").trim().slice(0, 120) || null : null,
+          marco && !marco.marcoPropio ? [marco.nivelMarco ? nombreNivelMarco(marco.nivelMarco) : null, marco.descripcion].filter(Boolean).join(" · ").trim().slice(0,120) || null : null,
         [`tipo_lente${sufijo}`]: x.c.tipoLente,
         [`rango_receta${sufijo}`]: x.c.rangoReceta,
         [`tratamiento${sufijo}`]: x.c.tratamiento,
@@ -211,7 +215,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
         cristal_slot: i.cristalSlot ? ubicacionDeCupo(i.cristalSlot).slot : null,
         precio_lista: i.cristalSlot
           ? (preciosLista.get(i.cristalSlot) ?? null)
-          : (productos ?? []).find((p) => p.id === i.productoId)?.precio_venta ?? null,
+          : i.marcoSlot ? i.precioUnitario : (productos ?? []).find((p) => p.id === i.productoId)?.precio_venta ?? null,
       })),
     },
   });

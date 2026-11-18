@@ -14,6 +14,7 @@ type Fila={id:string;nombre:string;fecha:string;vendido:number;cobrado:number;ut
   costos:{clave:string;titulo:string;total:number;pagado:number}[];importes:Record<string,number>;costoMarco:number};
 const campo='mt-1 w-full rounded-xl border bg-white p-3';
 export default function GastosPanel({filas,gastos,asignaciones,hoy,generales,gastosSii=[]}:{filas:Fila[];gastos:Gasto[];asignaciones:AsignacionCosto[];hoy:string;generales:Gasto[];gastosSii?:string[]}) {
+  const [pagoAbierto,setPagoAbierto]=useState<string|null>(null);
   const [vista,setVista]=useState('pendientes');
   const [busqueda,setBusqueda]=useState('');
   const [pagina,setPagina]=useState(0);
@@ -44,16 +45,17 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,generales,gas
     {visibles.length===0&&<p className="rounded-xl bg-emerald-50 p-4">No hay gastos con este filtro. Los operativos con costos $0 aparecen abajo para completarlos.</p>}
     <ul className="space-y-3">{visibles.slice(actual*20,actual*20+20).map(c=><li key={`${c.op.id}:${c.clave}`} className="rounded-2xl border border-tinta/10 p-3">
       <Link href={`/operativos/${c.op.id}/cierre#costos`} className="mb-2 block font-semibold underline">{c.op.nombre} · {c.op.fecha}</Link>
-      <ul><PagoCostoOperativo operativoId={c.op.id} clave={c.clave as ClaveCosto|'fides'|'marcos'} titulo={c.titulo} total={c.total} pagado={c.pagado} costoFidesActual={c.op.costoFidesActual} hoy={hoy}/></ul>
+      <div className="flex flex-wrap items-center justify-between gap-2"><p><b>{c.titulo}</b><br/><span className="text-sm">Total {clp(c.total)} · pagado {clp(c.pagado)} · pendiente <b>{clp(Math.max(0,c.total-c.pagado))}</b></span></p>{c.total>c.pagado&&<button className="rounded-xl bg-emerald-800 px-4 py-3 font-semibold text-white" onClick={()=>setPagoAbierto(pagoAbierto===`${c.op.id}:${c.clave}`?null:`${c.op.id}:${c.clave}`)}>{pagoAbierto===`${c.op.id}:${c.clave}`?'Cerrar':'Registrar pago'}</button>}</div>
+      {pagoAbierto===`${c.op.id}:${c.clave}`&&<ul><PagoCostoOperativo operativoId={c.op.id} clave={c.clave as ClaveCosto|'fides'|'marcos'} titulo={c.titulo} total={c.total} pagado={c.pagado} costoFidesActual={c.op.costoFidesActual} hoy={hoy}/></ul>}
       {c.total>c.pagado&&<button disabled={ocupado} onClick={()=>{setError('');setVinculo({id:crypto.randomUUID(),op:c.op.id,clave:c.clave,total:c.total,pagado:c.pagado});setGastoId('');setMonto('');window.scrollTo({top:0,behavior:'smooth'});}} className="mt-2 rounded-xl border bg-white px-4 py-3 text-sm font-semibold">Ya lo pagué: vincular gasto existente</button>}
       {c.pagado>c.total&&<p className="mt-2 text-sm text-amber-900">Pago superior al costo: {clp(c.pagado-c.total)}. Revisa el registro o el costo.</p>}
     </li>)}</ul>
     {paginas>1&&<nav className="flex items-center justify-between"><button className="rounded-xl border p-3" disabled={actual===0} onClick={()=>setPagina(actual-1)}>Anterior</button><span>{actual+1} / {paginas}</span><button className="rounded-xl border p-3" disabled={actual===paginas-1} onClick={()=>setPagina(actual+1)}>Siguiente</button></nav>}
-    <section className="space-y-3"><h2 className="text-xl font-bold">Utilidad y gastos por sede</h2>{filas.map(o=><details key={o.id} className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">{o.nombre} · {o.fecha} · utilidad {clp(o.utilidad)}</summary>
+    <details className="space-y-3 rounded-2xl bg-white p-4"><summary className="cursor-pointer text-lg font-bold">Completar costos y revisar utilidad por sede</summary>{filas.map(o=><details key={o.id} className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">{o.nombre} · {o.fecha} · utilidad {clp(o.utilidad)}</summary>
       <p className="my-3 text-sm">Ventas {clp(o.vendido)} · cobrado {clp(o.cobrado)} · costos {clp(o.costo)} · {o.atendidos} atendidos · {o.pares} anteojos. Costo por atención: {o.atendidos?clp(o.costo/o.atendidos):'sin atenciones'}. Utilidad por atención: {o.atendidos?clp(o.utilidad/o.atendidos):'sin atenciones'}.</p>
       <FormularioAgenda accion={actualizarJornada} etiqueta="Guardar costos del operativo"><input name="id" type="hidden" value={o.id}/><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{COSTOS.map(c=><label key={c.clave} className="text-sm">{c.titulo}<input className={campo} name={c.clave} type="number" min={0} max={999999999} step={1} defaultValue={o.importes[c.clave]}/></label>)}<label className="text-sm">Costo por marco vendido<input className={campo} name="costo_marco_unitario" type="number" min={0} max={999999999} step={1} defaultValue={o.costoMarco}/></label></div></FormularioAgenda>
       <p className="mt-2 text-xs text-tinta-suave">Completa el costo total, esté pagado o pendiente. Combustible va en transporte; no repitas hospedaje o comida también dentro de viáticos.</p>
-    </details>)}</section>
+    </details>)}</details>
     <details className="rounded-2xl bg-white p-4"><summary className="cursor-pointer font-bold">Gastos generales pagados · {clp(generales.reduce((s,g)=>s+g.monto,0))}</summary>
       <p className="mt-3 text-sm">Incluye compras de inventario como salida de caja. Sus marcos se cuentan en utilidad al venderlos.</p>
       <Link href="/caja?ver=movimientos#nuevo-gasto" className="my-3 inline-block rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Agregar gasto global pagado</Link>

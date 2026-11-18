@@ -1,3 +1,6 @@
+import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
+import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
+import { comisionHistorica } from "@/lib/rentabilidad-precios";
 import Link from 'next/link';
 import { exigirRolPagina } from '@/lib/autorizacion';
 import { leerTodas } from '@/lib/leer-todas';
@@ -9,9 +12,10 @@ import GastosPanel from '@/components/gastos-panel';
 import SimuladorSalida from '@/components/simulador-salida';
 import { clp } from '@/lib/clp';
 
-export default async function Gastos({searchParams}:{searchParams:Promise<{op?:string;desde?:string;hasta?:string}>}) {
+export default async function Gastos({searchParams}:{searchParams:Promise<{op?:string;desde?:string;hasta?:string;ver?:string}>}) {
   const {supabase}=await exigirRolPagina(['admin']);
   const filtros=await searchParams;
+  const rentabilidad=filtros.ver==="rentabilidad";
   const desde=fechaValidaDocumento(filtros.desde??'') ? filtros.desde! : '';
   const hasta=fechaValidaDocumento(filtros.hasta??'') ? filtros.hasta! : '';
   const [ops,ventas,gastos,asignaciones,tenant,recetas,impuestosPagos]=await Promise.all([
@@ -41,21 +45,29 @@ export default async function Gastos({searchParams}:{searchParams:Promise<{op?:s
   const gastosSii=(impuestosPagos.data??[]).map(p=>p.gasto_id);
   const overhead=generales.filter(g=>!gastosSii.includes(g.id)&&!g.descripcion.startsWith('SII F29 · ')).filter(g=>g.categoria!=='compra_inventario').reduce((s,g)=>s+disponibleDeGasto(g,asignaciones.data??[]),0);
   const utilidad=filas.reduce((s,o)=>s+o.utilidad,0)-overhead;
+  const cotizar=rentabilidad?await cargarCatalogoParaCotizar(supabase):null;
+  const perfiles=cotizar?cotizar.filas.filter(f=>f.rango_receta==='±2.00 / ±2.00').flatMap(f=>{
+    const costo=costoRealCristal(f,null,'lejos',cotizar.catalogo,hoyEnChile());
+    return costo?[{id:`${f.tipo_lente}|${f.tratamiento}`,nombre:`${f.tipo_lente} · ${f.tratamiento}`,precio:precioVentaCristal(f,costo.origen),costo:costo.costo,origen:costo.origen}]:[];
+  }):[];
+  const debito=Number(tenant.data?.comision_debito_pct??0),credito=Number(tenant.data?.comision_credito_pct??0);
+  const historica=comisionHistorica((ventas.data??[]).flatMap(v=>v.pagos_abonos??[]),debito,credito);
+  const ventasSeleccionadas=lista.map(o=>Number(o.comision_vendedora_pct??10));
   return <div className="mx-auto max-w-5xl space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-bold">Gastos y utilidad</h1><Link href="/caja" className="rounded-xl border bg-white px-4 py-3">Ver caja</Link></div>
-    <Link href="/impuestos" className="block rounded-xl bg-tinta p-4 font-semibold text-white">SII mensual · declarado, estimado y saldo acumulado →</Link>
-    <form className="flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4">
-      <label className="min-w-48 flex-1 text-sm">Operativo<select name="op" defaultValue={filtros.op??''} className="mt-1 w-full rounded-xl border p-3"><option value="">Todos / salida completa</option>{[...(ops.data??[])].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(o=><option value={o.id} key={o.id}>{o.fecha} · {o.nombre}</option>)}</select></label>
+    <nav className="flex flex-wrap gap-2" aria-label="Gastos y rentabilidad"><Link href="/gastos" className={`rounded-xl px-4 py-3 font-semibold ${!rentabilidad?'bg-tinta text-white':'bg-white'}`}>Saldar gastos</Link><Link href="/gastos?ver=rentabilidad&desde=2026-11-23&hasta=2026-11-28" className={`rounded-xl px-4 py-3 font-semibold ${rentabilidad?'bg-tinta text-white':'bg-white'}`}>Evaluar rentabilidad</Link><Link href="/impuestos" className="rounded-xl border bg-white px-4 py-3">SII mensual →</Link></nav>
+    <details className="rounded-2xl bg-white p-4" open={rentabilidad}><summary className="cursor-pointer font-semibold">Elegir operativo o fechas</summary><form className="flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4">
+      <input type="hidden" name="ver" value={rentabilidad?"rentabilidad":"gastos"}/><label className="min-w-48 flex-1 text-sm">Operativo<select name="op" defaultValue={filtros.op??''} className="mt-1 w-full rounded-xl border p-3"><option value="">Todos / salida completa</option>{[...(ops.data??[])].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(o=><option value={o.id} key={o.id}>{o.fecha} · {o.nombre}</option>)}</select></label>
       <label className="text-sm">Desde<input type="date" name="desde" defaultValue={desde} className="mt-1 block rounded-xl border p-3"/></label>
       <label className="text-sm">Hasta<input type="date" name="hasta" defaultValue={hasta} className="mt-1 block rounded-xl border p-3"/></label>
       <button className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Ver</button><Link href="/gastos" className="p-3 underline">Todos</Link>
-    </form>
-    <Link href="/gastos?desde=2026-11-23&hasta=2026-11-28" className="block rounded-xl bg-sky-50 p-4 font-semibold text-sky-900">Salida 23–28 de noviembre · presupuesto y gastos →</Link>
-    <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Resumen de gastos">
+    </form></details>
+    <Link href="/gastos?ver=rentabilidad&desde=2026-11-23&hasta=2026-11-28" className="block rounded-xl bg-sky-50 p-4 font-semibold text-sky-900">Salida 23–28 de noviembre · presupuesto y gastos →</Link>
+    {!rentabilidad&&<><section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Resumen de gastos">
       {[['Ventas',filas.reduce((s,o)=>s+o.vendido,0)],['Costos de operativos',filas.reduce((s,o)=>s+o.costo,0)],['Gastos generales adicionales',overhead],['Utilidad operativa',utilidad]].map(([titulo,monto])=><div key={String(titulo)} className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-sm">{titulo}</h2><b className={`mt-2 block text-xl tabular-nums ${Number(monto)<0?'text-red-700':''}`}>{clp(Number(monto))}</b></div>)}
     </section>
     <p className="text-xs text-tinta-suave">Utilidad según ventas y costos registrados, antes de impuestos, ahorro y reparto. Los pagos saldan deudas; no restan el mismo costo dos veces. Comprar stock baja la caja; la utilidad considera los marcos vendidos.</p>
-    <GastosPanel key={`${filtros.op??''}:${desde}:${hasta}`} filas={filas} gastos={gastos.data??[]} asignaciones={asignaciones.data??[]} hoy={hoyEnChile()} generales={generales} gastosSii={gastosSii} />
-    <SimuladorSalida key={`presupuesto:${desde}:${hasta}`} titulo={desde&&hasta?`Presupuesto ${desde} al ${hasta}`:'Simular una salida'} fijosRegistrados={filas.reduce((s,o)=>s+Object.values(o.importes).reduce((a,b)=>a+b,0),0)} />
+    <GastosPanel key={`${filtros.op??''}:${desde}:${hasta}`} filas={filas} gastos={gastos.data??[]} asignaciones={asignaciones.data??[]} hoy={hoyEnChile()} generales={generales} gastosSii={gastosSii} /></>}
+    {rentabilidad&&cotizar&&<SimuladorSalida key={`presupuesto:${desde}:${hasta}:${filtros.op??''}`} titulo={desde&&hasta?`Presupuesto ${desde} al ${hasta}`:'Simular una salida'} equiposRegistrados={filas.reduce((s,o)=>s+Number(o.importes.costo_equipos??0),0)} esSalidaNoviembre={desde==='2026-11-23'&&hasta==='2026-11-28'} fijosRegistrados={filas.reduce((s,o)=>s+Object.values(o.importes).reduce((a,b)=>a+b,0),0)} perfiles={perfiles} recargosMarcos={cotizar.recargosMarcos} debito={debito} credito={credito} historica={historica} comisionVenta={ventasSeleccionadas.length?Math.max(...ventasSeleccionadas):10}/>}
   </div>;
 }

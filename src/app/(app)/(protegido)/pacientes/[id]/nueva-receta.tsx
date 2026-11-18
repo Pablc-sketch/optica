@@ -1,5 +1,6 @@
 "use client";
 
+import { NIVELES_MARCO, precioParConMarco, type RecargosMarcos } from "@/lib/niveles-marco";
 import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
@@ -86,6 +87,7 @@ function SelectorLenteConPrecio({
   tiposPermitidos,
   costos,
   catalogoLab,
+  recargosMarcos = null,
   nombreTipo,
   nombreTratamiento,
   esferas,
@@ -99,6 +101,7 @@ function SelectorLenteConPrecio({
   tiposPermitidos: string[];
   costos: CostoCristal[];
   catalogoLab: CatalogoLaboratorio;
+  recargosMarcos?: RecargosMarcos | null;
   nombreTipo: string;
   nombreTratamiento: string;
   esferas: [number | null, number | null];
@@ -177,7 +180,8 @@ function SelectorLenteConPrecio({
           )}
         </span>
         <span className="flex shrink-0 flex-col items-end leading-tight">
-          <span className="font-semibold tabular-nums">{o.precio > 0 ? clp(o.precio) : "sin precio"}</span>
+          <span className="font-semibold tabular-nums">{o.precio > 0 ? `${recargosMarcos?"Esencial ":""}${clp(o.precio)}` : "sin precio"}</span>
+          {recargosMarcos&&o.precio>0&&NIVELES_MARCO.filter(n=>n.id!=="esencial").map(n=><span key={n.id} className="text-xs tabular-nums">{n.nombre} {clp(precioParConMarco(o.precio,n.id,recargosMarcos))}</span>)}
           {/* Un lente de stock también se puede mandar a tallar: si el
               precio cambia, se muestra el de laboratorio también. */}
           {o.origen === "stock" && hayReceta && o.precioLaboratorio !== o.precio && (
@@ -232,6 +236,7 @@ function SelectorLenteConPrecio({
             <p className="text-2xl font-bold tracking-tight text-brand-dark tabular-nums">
               {sel.precio > 0 ? clp(sel.precio) : "Sin precio (revisa Precios)"}
             </p>
+            {recargosMarcos&&<p className="my-2 text-sm">{NIVELES_MARCO.map(n=>`${n.nombre} ${clp(precioParConMarco(sel.precio,n.id,recargosMarcos))}`).join(" · ")}<br/>Mismo cristal; cambia la línea del marco. Precio por par, IVA incluido.</p>}
             <p className="text-sm text-tinta-suave">
               {!hayReceta
                 ? "Escribe la receta para saber si sale de stock."
@@ -279,12 +284,14 @@ export default function NuevaReceta({
   operativos,
   costos,
   catalogoLab,
+  recargosMarcos = null,
   receta,
 }: {
   pacienteId: string;
   operativos: { id: string; nombre: string }[];
   costos: CostoCristal[];
   catalogoLab: CatalogoLaboratorio;
+  recargosMarcos?: RecargosMarcos | null;
   // Si viene, el formulario parte precargado y guarda con actualizarReceta
   // en vez de crear una receta nueva.
   receta?: RecetaExistente;
@@ -479,7 +486,7 @@ export default function NuevaReceta({
         titulo={modo === "dos_pares" ? "Lente de lejos" : modo === "multifocal" ? "Bifocal o multifocal" : "Lente"}
         tiposPermitidos={modo === "multifocal" ? ["Bifocal", "Multifocal"] : ["Monofocal"]}
         costos={costos}
-        catalogoLab={catalogoLab}
+        catalogoLab={catalogoLab} recargosMarcos={recargosMarcos}
         nombreTipo="sugerencia_tipo_lente"
         nombreTratamiento="sugerencia_tratamiento"
         esferas={[odEsfera, oiEsfera]}
@@ -494,7 +501,7 @@ export default function NuevaReceta({
           titulo="Lente de cerca"
           tiposPermitidos={["Monofocal"]}
           costos={costos}
-          catalogoLab={catalogoLab}
+          catalogoLab={catalogoLab} recargosMarcos={recargosMarcos}
           nombreTipo="sugerencia_tipo_lente_cerca"
           nombreTratamiento="sugerencia_tratamiento_cerca"
           esferas={[odEsfera, oiEsfera]}
@@ -548,7 +555,7 @@ export default function NuevaReceta({
             titulo={extra.modo === "multifocal" ? "Bifocal o multifocal" : extra.modo === "cerca" ? "Lente de cerca" : "Lente de lejos"}
             tiposPermitidos={extra.modo === "multifocal" ? ["Bifocal", "Multifocal"] : ["Monofocal"]}
             costos={costos}
-            catalogoLab={catalogoLab}
+            catalogoLab={catalogoLab} recargosMarcos={recargosMarcos}
             nombreTipo={`extra_tipo_${i}`}
             nombreTratamiento={`extra_tratamiento_${i}`}
             esferas={[odEsfera, oiEsfera]}

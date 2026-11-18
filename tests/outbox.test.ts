@@ -28,6 +28,15 @@ const venta = (id: string): VentaInput => ({
 describe("cola offline (A04)", () => {
   beforeEach(() => almacen.clear());
 
+  it("conserva línea Selección y su par al sincronizar sin conexión", async () => {
+    const input:VentaInput={...venta("tiers"),items:[{descripcion:"Cristal",cantidad:1,precioUnitario:38000,cristalSlot:2},{descripcion:"Línea Selección",cantidad:1,precioUnitario:11990,marcoSlot:2}],cristales:[{slot:2,tipoLente:"Monofocal",tratamiento:"Orgánico Antirreflejo",rangoReceta:"±2.00 / ±2.00"}],armazones:[{slot:2,productoId:null,marcoPropio:false,nivelMarco:"seleccion",descripcion:"Acetato"}]};
+    encolarVenta("u1",input);
+    let recibido:VentaInput|undefined;
+    await sincronizar("u1",async v=>{recibido=v;return {ok:true,ventaId:v.ventaId,otFolio:1};});
+    expect(recibido).toEqual(input);
+    expect(pendientes("u1")).toHaveLength(0);
+  });
+
   it("conserva el voucher al sincronizar y permite completar una venta anterior pendiente", async () => {
     encolarVenta("u1", { ...venta("V"), medioPago: "debito", abonoInicial: 8000, numeroVoucher: "000123" });
     await sincronizar("u1", async (input) => {
