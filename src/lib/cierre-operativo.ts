@@ -9,6 +9,7 @@ import { conCostoFidesReal } from "./costo-fides-real";
 
 export type OperativoParaCierre = GastosOperativo & {
   costo_fides_real?: number | null;
+  costo_marco_unitario?: number | null;
   comision_vendedora_pct: number | string;
   comision_vendedora_base: string;
   ahorro_pct: number | string;
@@ -36,7 +37,7 @@ export function numerosDeOperativo(
   pctCredito: number
 ): NumerosOperativo {
   const items = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
-  const desglose = conCostoFidesReal(desglosarCostos(items), op.costo_fides_real);
+  const desglose = conCostoFidesReal(desglosarCostos(items, op.costo_marco_unitario ?? undefined), op.costo_fides_real);
   const pagos = ventas.flatMap((v) => v.pagos_abonos ?? []);
   const suma = (f: (p: { monto: number; medio_pago: string | null }) => boolean) =>
     pagos.filter(f).reduce((s, p) => s + p.monto, 0);

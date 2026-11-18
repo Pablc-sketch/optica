@@ -53,7 +53,7 @@ export type DesgloseCosto = {
   total: number;
 };
 
-export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
+export function desglosarCostos(items: ItemConCosto[], costoMarco = COSTO_MARCO_POR_PAR): DesgloseCosto {
   const cristales: DesgloseCosto["cristales"] = [];
   let marcos = 0;
   let totalOtros = 0;
@@ -79,10 +79,10 @@ export function desglosarCostos(items: ItemConCosto[]): DesgloseCosto {
   }
 
   const totalCristales = cristales.reduce((s, c) => s + c.costo, 0);
-  const totalArmazones = marcos * COSTO_MARCO_POR_PAR;
+  const totalArmazones = marcos * costoMarco;
   return { cristales, totalCristales, marcos, totalArmazones, totalOtros, total: totalCristales + totalArmazones + totalOtros };
 }
 
-export function costoDeItems(items: ItemConCosto[]): number {
-  return desglosarCostos(items).total;
+export function costoDeItems(items: ItemConCosto[], costoMarco = COSTO_MARCO_POR_PAR): number {
+  return desglosarCostos(items, costoMarco).total;
 }

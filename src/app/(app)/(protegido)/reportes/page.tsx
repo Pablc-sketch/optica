@@ -17,7 +17,7 @@ import {
   primerDiaDelMes,
   ultimoDiaDelMes,
 } from "@/lib/fechas";
-import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
+import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
 import { calcularCaja, resumirCaja } from "@/lib/caja";
 import { salidasDeMovimiento } from "@/lib/caja-fuentes";
@@ -68,6 +68,7 @@ type OTResumen = {
 };
 
 type ItemVenta = {
+  ventas: {operativo_id:string|null} | {operativo_id:string|null}[] | null;
   cantidad: number;
   precio_unitario: number;
   descuento: number;
@@ -253,7 +254,7 @@ export default async function ReportesPage({
   const operativosTodosQuery = supabase
     .from("operativos")
     .select(
-      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_fides_real"
+      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_fides_real, costo_hospedaje, costo_comida, costo_peajes, costo_marco_unitario"
     )
     .order("fecha", { ascending: true });
 
@@ -399,7 +400,7 @@ export default async function ReportesPage({
 
   const sueldosPorOperativo = operativosDelMes.map((o) => {
     const ventaTotal = ventaPorOperativo.get(o.id) ?? 0;
-    const costoProductos = conCostoFidesReal(desglosarCostos(itemsPorOperativo.get(o.id) ?? []),o.costo_fides_real).total;
+    const costoProductos = conCostoFidesReal(desglosarCostos(itemsPorOperativo.get(o.id) ?? [], o.costo_marco_unitario ?? undefined),o.costo_fides_real).total;
     const costoOperativo = gastosDeOperativo(o);
     const utilidadNeta = ventaTotal - costoProductos - costoOperativo - Math.round(comisionPorOperativo.get(o.id) ?? 0);
     const sueldo = calcularSueldos(ventaTotal, utilidadNeta, {
@@ -504,6 +505,12 @@ export default async function ReportesPage({
   // para poder revisar lente por lente cuánto cuesta de verdad, en vez de
   // solo confiar en la suma.
   const desglose = desglosarCostos(items);
+  desglose.totalArmazones = items.reduce((s,item) => {
+    const venta = uno(item.ventas);
+    const op = (operativosTodosRes.data ?? []).find(o => o.id === venta?.operativo_id);
+    return s + desglosarCostos([item], op?.costo_marco_unitario ?? undefined).totalArmazones;
+  },0);
+  desglose.total = desglose.totalCristales + desglose.totalArmazones + desglose.totalOtros;
   const costoDirecto = desglose.total;
   const utilidadBruta = totalVendido - costoDirecto;
   const margen = totalVendido > 0 ? Math.round((utilidadBruta / totalVendido) * 100) : 0;
@@ -795,7 +802,7 @@ export default async function ReportesPage({
               <span>{clp(desglose.totalCristales)}</span>
             </div>
             <div className="flex items-center justify-between px-3 py-1 text-sm">
-              <span>+ Marcos ({desglose.marcos} × {clp(COSTO_MARCO_POR_PAR)}, uno por cada par de cristales)</span>
+              <span>+ Marcos ({desglose.marcos}, según costo de cada operativo)</span>
               <span className="font-semibold">{clp(desglose.totalArmazones)}</span>
             </div>
             {desglose.totalOtros > 0 && (

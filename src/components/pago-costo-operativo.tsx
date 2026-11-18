@@ -3,13 +3,15 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { registrarPagoCosto, actualizarCostoFides } from "@/lib/actions/cierre";
 import { costoFidesParaPago, type ClaveCosto } from "@/lib/pagos-operativo";
+import { hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
 import { formatearMonto, montoANumero } from "@/lib/formato";
 
-export default function PagoCostoOperativo({ operativoId, clave, titulo, total, pagado, bloqueado = false, costoFidesActual = null }: {
-  operativoId: string; clave: ClaveCosto | "fides" | "marcos"; titulo: string; total: number; pagado: number; bloqueado?: boolean; costoFidesActual?: number | null;
+export default function PagoCostoOperativo({ operativoId, clave, titulo, total, pagado, bloqueado = false, costoFidesActual = null, hoy = hoyEnChile() }: {
+  operativoId: string; clave: ClaveCosto | "fides" | "marcos"; titulo: string; total: number; pagado: number; bloqueado?: boolean; costoFidesActual?: number | null; hoy?: string;
 }) {
   const saldo = Math.max(0, total - pagado);
+  const [fecha, setFecha] = useState(hoy);
   const [texto, setTexto] = useState("");
   const [caja, setCaja] = useState<"digital" | "efectivo" | "personal">("digital");
   const [aviso, setAviso] = useState<string | null>(null);
@@ -28,17 +30,18 @@ export default function PagoCostoOperativo({ operativoId, clave, titulo, total, 
       <select disabled={pendiente} aria-label={`Caja: ${titulo}`} value={caja} onChange={(e) => setCaja(e.target.value as typeof caja)} className="rounded-xl border bg-white p-3">
         <option value="digital">Cuenta bancaria (Mercado Pago)</option><option value="efectivo">Efectivo</option><option value="personal">Dinero personal de Pablo</option>
       </select>
-      <button disabled={bloqueado || pendiente || monto <= 0 || monto > saldo} className="rounded-xl bg-emerald-800 px-4 py-3 font-semibold text-white disabled:opacity-40"
+      <label className="text-sm">Fecha real del pago<input type="date" aria-label={`Fecha del pago: ${titulo}`} max={hoy} required value={fecha} onChange={e=>setFecha(e.target.value)} className="block rounded-xl border p-3" /></label>
+      <button disabled={bloqueado || pendiente || !fecha || monto <= 0 || monto > saldo} className="rounded-xl bg-emerald-800 px-4 py-3 font-semibold text-white disabled:opacity-40"
         onClick={() => {
           iniciar(async () => {
             setError(null);
             try {
-              const r = await registrarPagoCosto({ operativoId, clave, monto, caja, pagadoEsperado: pagado });
+              const r = await registrarPagoCosto({ operativoId, clave, monto, caja, pagadoEsperado: pagado, fecha });
               if (!r.ok) setError(r.error ?? "No se pudo registrar");
-              else { setTexto(""); router.refresh(); }
-            } catch { setError("No se pudo confirmar. Reintenta sin cambiar el monto."); }
+              else { setTexto(""); setAviso("Pago registrado. Pendiente actualizado."); router.refresh(); }
+            } catch { setError("No se pudo confirmar. Recarga y revisa antes de reintentar."); }
           });
-        }}>{pendiente ? "Guardando…" : "Registrar pago"}</button>
+        }}>{pendiente ? "Guardando…" : texto ? "Registrar abono" : "Saldar pendiente"}</button>
     </div>}
     {nuevoTotal !== null && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-amber-950">
       <p className="text-sm">El pago supera el costo registrado. Confirma el costo real de Fides: <b>{clp(nuevoTotal)}</b>{pagado > 0 ? ` (incluye ${clp(pagado)} ya pagados)` : ''}.</p>
