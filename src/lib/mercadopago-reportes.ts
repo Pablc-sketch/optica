@@ -39,8 +39,12 @@ async function configurarColumnas(){
 function validarMeta(raw:unknown,collector:string,hasta:string){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new ReporteMPInvalido('METADATA_INVALIDA');
  const m=raw as Record<string,unknown>;
- if(idMercadoPago(m.user_id)!==collector||m.currency_id!=='CLP'||m.is_test!==false
-  ||typeof m.end_date!=='string'||!Number.isFinite(Date.parse(m.end_date))||Math.abs(Date.parse(m.end_date)-Date.parse(hasta))>1000)throw new ReporteMPInvalido('REPORTE_NO_COINCIDE');
+ if(!idMercadoPago(m.user_id))throw new ReporteMPInvalido('REPORTE_SIN_TITULAR');
+ if(idMercadoPago(m.user_id)!==collector)throw new ReporteMPInvalido('REPORTE_NO_COINCIDE');
+ if(m.currency_id!=='CLP')throw new ReporteMPInvalido(`REPORTE_MONEDA_${typeof m.currency_id==='string'&&/^[A-Z]{3}$/.test(m.currency_id)?m.currency_id:'NO_INFORMADA'}`);
+ if(m.is_test!==false)throw new ReporteMPInvalido('REPORTE_SIN_CONFIRMAR_PRODUCCION');
+ if(typeof m.end_date!=='string'||!Number.isFinite(Date.parse(m.end_date)))throw new ReporteMPInvalido('REPORTE_SIN_CORTE');
+ if(Math.abs(Date.parse(m.end_date)-Date.parse(hasta))>1000)throw new ReporteMPInvalido('REPORTE_CORTE_NO_COINCIDE');
  return m;
 }
 export async function actualizarSaldoPorReporte(tenant:string){
@@ -56,7 +60,7 @@ export async function actualizarSaldoPorReporte(tenant:string){
   if(idMercadoPago((await consultarApiMP('/users/me')).id)!==collector)throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
   const {data:r,error}=await db.from('mercadopago_saldos').select('*').eq('tenant_id',tenant).single();
   if(error||!r)throw new ReporteMPInvalido('REGISTRO_NO_DISPONIBLE');
-  if(r.tarea_id&&r.periodo_hasta&&r.estado==='preparando'){
+  if(r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
    const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_hasta);
    if(['pending','processing','created','scheduled'].includes(String(meta.status)))return;
    if(meta.status!=='processed')throw new ReporteMPInvalido('GENERACION_FALLIDA');
