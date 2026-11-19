@@ -79,11 +79,16 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
    if(Number(resp.headers.get('content-length')??0)>5_000_000)throw new ReporteMPInvalido('ARCHIVO_GRANDE');
    const texto=await resp.text();
    const saldo=saldoDeReporteCSV(texto,String(meta.currency_id),corte);
+   // Un cierre anterior no puede reemplazar una instantánea más reciente.
+   if(r.saldo_al&&Date.parse(corte)<=Date.parse(r.saldo_al)){
+    await guardar({estado:'verificado',error_codigo:null});
+    return {estado:'verificado',saldo:Number(r.saldo_disponible)};
+   }
    await guardar({estado:'verificado',saldo_disponible:saldo,saldo_al:corte,verificado_en:new Date().toISOString(),reporte_id:String(meta.report_id??meta.id),error_codigo:null});
    return {estado:'verificado',saldo};
   }
-  // Nueva instantánea cada 15 minutos; las recargas no generan reportes duplicados.
-  if(!opciones.cierreAnterior&&r.solicitado_en&&Date.now()-Date.parse(r.solicitado_en)<15*60000)return;
+  // Una tarea a la vez; se solicita otra cuando se completa y pasan 5 minutos.
+  if(!opciones.cierreAnterior&&r.solicitado_en&&Date.now()-Date.parse(r.solicitado_en)<5*60000)return;
   await guardar({solicitado_en:new Date().toISOString()});
   await configurarColumnas();
   // La API de reportes exige UTC a segundos (rechaza fracciones de segundo).

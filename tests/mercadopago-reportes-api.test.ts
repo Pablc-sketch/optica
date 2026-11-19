@@ -74,4 +74,11 @@ describe('reportes oficiales y configuración',()=>{
    expect(ctx.updates).toContainEqual(expect.objectContaining({saldo_disponible:0,saldo_al:'2026-01-01T12:03:00.000Z'}));
   }finally{vi.useRealTimers();}
  });
+ it('un cierre histórico completado después no reemplaza un saldo más reciente',async()=>{
+  ctx.fila={tarea_id:'456',periodo_desde:'2025-12-31T12:00:00Z',periodo_hasta:'2026-01-01T12:00:00Z',solicitado_en:'2026-01-01T12:02:00Z',estado:'preparando',saldo_al:'2026-01-02T12:00:00Z',saldo_disponible:75};
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({id:456,user_id:123,currency_id:'CLP',is_test:false,begin_date:'2025-12-31T03:00:00Z',end_date:'2026-01-02T02:59:59Z',generation_date:'2026-01-01T12:02:00Z',last_modified:'2026-01-01T12:03:00Z',status:'processed',file_name:'prueba.csv'})).mockResolvedValueOnce(new Response('DATE,RECORD_TYPE,NET_CREDIT_AMOUNT,NET_DEBIT_AMOUNT\n2025-12-31T03:00:00Z,initial_available_balance,100,0\n2026-01-02T02:59:59Z,total,100,0'));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'verificado',saldo:75});
+  expect(ctx.updates.some(v=>'saldo_disponible' in v||'saldo_al' in v||'reporte_id' in v)).toBe(false);
+ });
 });
