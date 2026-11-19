@@ -36,15 +36,18 @@ async function configurarColumnas(){
  for(const k of ['file_name_prefix','frequency','execute_after_withdrawal','include_withdrawal_at_end','check_available_balance','compensate_detail','separator','display_timezone','report_translation','notification_email_list','sftp_info','webhook'])if(k in config)preferencias[k]=(raw as Record<string,unknown>)[k];
  await reporteJSON(`${BASE}/config`,{method:'PUT',body:JSON.stringify(preferencias)});
 }
-function validarMeta(raw:unknown,collector:string,hasta:string){
+function validarMeta(raw:unknown,collector:string,desde:string,hasta:string,tarea:string){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new ReporteMPInvalido('METADATA_INVALIDA');
  const m=raw as Record<string,unknown>;
+ if(idMercadoPago(m.id)!==tarea)throw new ReporteMPInvalido('REPORTE_TAREA_NO_COINCIDE');
  if(!idMercadoPago(m.user_id))throw new ReporteMPInvalido('REPORTE_SIN_TITULAR');
  if(idMercadoPago(m.user_id)!==collector)throw new ReporteMPInvalido('REPORTE_NO_COINCIDE');
  if(m.currency_id!=='CLP')throw new ReporteMPInvalido(`REPORTE_MONEDA_${typeof m.currency_id==='string'&&/^[A-Z]{3}$/.test(m.currency_id)?m.currency_id:'NO_INFORMADA'}`);
  if(m.is_test!==false)throw new ReporteMPInvalido('REPORTE_SIN_CONFIRMAR_PRODUCCION');
- if(typeof m.end_date!=='string'||!Number.isFinite(Date.parse(m.end_date)))throw new ReporteMPInvalido('REPORTE_SIN_CORTE');
- if(Math.abs(Date.parse(m.end_date)-Date.parse(hasta))>1000)throw new ReporteMPInvalido(`REPORTE_CORTE_${new Date(m.end_date).toISOString()}`);
+ if(typeof m.end_date!=='string'||!Number.isFinite(Date.parse(m.end_date))||typeof m.begin_date!=='string'||!Number.isFinite(Date.parse(m.begin_date)))throw new ReporteMPInvalido('REPORTE_SIN_PERIODO');
+ // Mercado Pago normaliza la selección a días completos de la cuenta.
+ const dia=(f:string)=>new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(f));
+ if(dia(m.begin_date)!==dia(desde)||dia(m.end_date)!==dia(hasta)||Date.parse(m.begin_date)>=Date.parse(m.end_date))throw new ReporteMPInvalido('REPORTE_PERIODO_NO_COINCIDE');
  return m;
 }
 export async function actualizarSaldoPorReporte(tenant:string){
@@ -61,16 +64,21 @@ export async function actualizarSaldoPorReporte(tenant:string){
   const {data:r,error}=await db.from('mercadopago_saldos').select('*').eq('tenant_id',tenant).single();
   if(error||!r)throw new ReporteMPInvalido('REGISTRO_NO_DISPONIBLE');
   if(r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
-   const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_hasta);
+   const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_desde,r.periodo_hasta,r.tarea_id);
    if(['pending','processing','created','scheduled'].includes(String(meta.status)))return;
    if(meta.status!=='processed')throw new ReporteMPInvalido('GENERACION_FALLIDA');
+   const actualizado=typeof meta.last_modified==='string'?Date.parse(meta.last_modified):NaN;
+   const generado=typeof meta.generation_date==='string'?Date.parse(meta.generation_date):NaN;
+   if(!Number.isFinite(generado)||!Number.isFinite(actualizado)||actualizado<generado||actualizado>Date.now()||generado<Date.parse(r.solicitado_en)-60000)throw new ReporteMPInvalido('FECHA_GENERACION_INVALIDA');
+   // Un período abierto tiene saldo de instantánea, nunca un cierre futuro.
+   const corte=new Date(Math.min(Date.parse(String(meta.end_date)),actualizado)).toISOString();
    if(typeof meta.file_name!=='string'||!/^[-A-Za-z0-9_.]+\.csv$/i.test(meta.file_name))throw new ReporteMPInvalido('ARCHIVO_NO_CSV');
    const resp=await fetch(`https://api.mercadopago.com${BASE}/${encodeURIComponent(meta.file_name)}`,{headers:{Authorization:`Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
    if(!resp.ok)throw new ErrorMercadoPago(`DESCARGA_HTTP_${resp.status}`);
    if(Number(resp.headers.get('content-length')??0)>5_000_000)throw new ReporteMPInvalido('ARCHIVO_GRANDE');
    const texto=await resp.text();
-   const saldo=saldoDeReporteCSV(texto,String(meta.currency_id));
-   await guardar({estado:'verificado',saldo_disponible:saldo,saldo_al:meta.end_date,verificado_en:new Date().toISOString(),reporte_id:String(meta.report_id??meta.id),error_codigo:null});
+   const saldo=saldoDeReporteCSV(texto,String(meta.currency_id),corte);
+   await guardar({estado:'verificado',saldo_disponible:saldo,saldo_al:corte,verificado_en:new Date().toISOString(),reporte_id:String(meta.report_id??meta.id),error_codigo:null});
    return {estado:'verificado',saldo};
   }
   // Nueva instantánea cada 15 minutos; las recargas no generan reportes duplicados.

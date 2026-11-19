@@ -46,10 +46,20 @@ describe('reportes oficiales y configuración',()=>{
   expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);
  });
  it('no importa reportes de otra cuenta y conserva el saldo previo',async()=>{
-  ctx.fila={tarea_id:'456',periodo_hasta:'2026-01-01T12:00:00Z',estado:'preparando'};
-  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({user_id:999,currency_id:'CLP',is_test:false,end_date:ctx.fila.periodo_hasta,status:'processed'}));
+  ctx.fila={tarea_id:'456',periodo_desde:'2025-12-31T12:00:00Z',periodo_hasta:'2026-01-01T12:00:00Z',estado:'preparando'};
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({id:456,user_id:999,currency_id:'CLP',is_test:false,end_date:ctx.fila.periodo_hasta,status:'processed'}));
   vi.stubGlobal('fetch',fetcher);
   expect(await actualizarSaldoPorReporte('tenant')).toMatchObject({estado:'error',codigo:'REPORTE_NO_COINCIDE'});
   expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);
+ });
+ it('acepta normalización a días completos y fecha el saldo con la generación, sin un cierre futuro',async()=>{
+  vi.useFakeTimers();vi.setSystemTime(new Date('2026-01-01T16:00:00Z'));
+  try{
+   ctx.fila={tarea_id:'456',periodo_desde:'2025-12-31T12:00:00Z',periodo_hasta:'2026-01-01T12:00:00Z',solicitado_en:'2026-01-01T12:02:00Z',estado:'error'};
+   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({id:456,user_id:123,currency_id:'CLP',is_test:false,begin_date:'2025-12-31T03:00:00Z',end_date:'2026-01-02T02:59:59Z',generation_date:'2026-01-01T12:02:00Z',last_modified:'2026-01-01T12:03:00Z',status:'processed',file_name:'prueba.csv'})).mockResolvedValueOnce(new Response('DATE,RECORD_TYPE,NET_CREDIT_AMOUNT,NET_DEBIT_AMOUNT\n2025-12-31T03:00:00Z,initial_available_balance,100,0\n2026-01-01T12:01:00Z,release,0,100\n2026-01-02T02:59:59Z,total,100,100'));
+   vi.stubGlobal('fetch',fetcher);
+   expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'verificado',saldo:0});
+   expect(ctx.updates).toContainEqual(expect.objectContaining({saldo_disponible:0,saldo_al:'2026-01-01T12:03:00.000Z'}));
+  }finally{vi.useRealTimers();}
  });
 });

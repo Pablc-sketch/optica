@@ -28,7 +28,7 @@ function centavos(texto:string):bigint|null{
  if(n>BigInt(Number.MAX_SAFE_INTEGER)||n< -BigInt(Number.MAX_SAFE_INTEGER))throw new ReporteMPInvalido('IMPORTE_FUERA_RANGO');
  return n;
 }
-export function saldoDeReporteCSV(texto:string,monedaReporte:string){
+export function saldoDeReporteCSV(texto:string,monedaReporte:string,hastaMovimientos?:string){
  if(monedaReporte!=='CLP')throw new ReporteMPInvalido('MONEDA_NO_CONFIRMADA');
  const [encabezado,...datos]=filasCSV(texto);
  if(!encabezado||!datos.length)throw new ReporteMPInvalido('REPORTE_VACIO');
@@ -45,6 +45,7 @@ export function saldoDeReporteCSV(texto:string,monedaReporte:string){
   // available_balance es informativo (pre/post retiro); no se suma como ingreso.
   if(tipo==='available_balance')continue;
   if(!['initial_available_balance','release','total'].includes(tipo))throw new ReporteMPInvalido('TIPO_NO_RECONOCIDO');
+  if(tipo==='release'&&hastaMovimientos){const fecha=Date.parse(get('DATE'));if(!Number.isFinite(fecha)||fecha>Date.parse(hastaMovimientos))throw new ReporteMPInvalido('MOVIMIENTO_POSTERIOR_CORTE');}
   const credito=centavos(get('NET_CREDIT_AMOUNT'));const debito=centavos(get('NET_DEBIT_AMOUNT'));
   if(credito===null&&debito===null)throw new ReporteMPInvalido('SIN_IMPORTE');
   if((credito??BigInt(0))<BigInt(0)||(debito??BigInt(0))<BigInt(0))throw new ReporteMPInvalido('NETO_NEGATIVO');
