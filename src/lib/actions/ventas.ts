@@ -11,6 +11,7 @@ import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { rangoParaPosicion } from "@/lib/cristales";
 import { normalizarVenta, ubicacionDeCupo, type ArmazonPedido, type CristalPedido, type ItemPedido } from "@/lib/venta-normalizar";
+import { verificarVoucherConProveedor } from '@/lib/verificar-voucher-proveedor';
 import { validarVoucher } from "@/lib/voucher";
 
 // Lo que manda el punto de venta, online u offline (es el mismo contrato:
@@ -62,6 +63,8 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   }
   const voucher = validarVoucher(input.medioPago, input.abonoInicial, input.numeroVoucher);
   if (voucher.error) return { ok: false, error: voucher.error };
+  const verificacion = await verificarVoucherConProveedor(tenantId,input.medioPago,input.abonoInicial,voucher.numero);
+  if(verificacion)return {ok:false,error:verificacion};
   const normal = normalizarVenta(input.cristales ?? [], input.armazones ?? [], input.items ?? []);
   if (!normal.ok) return normal;
   const { cristales, marcoDeCupo, items } = normal.venta;
@@ -391,9 +394,9 @@ export async function cobrarSaldo(input: {
   medioPago: string;
   numeroVoucher?: string | null;
 }): Promise<{ ok: boolean; aplicado?: number; error?: string }> {
-  let supabase;
+  let supabase, tenantId;
   try {
-    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+    ({ supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
   } catch (e) {
     if (e instanceof SinPermiso) return { ok: false, error: e.message };
     throw e;
@@ -403,6 +406,8 @@ export async function cobrarSaldo(input: {
   if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
   const voucher = validarVoucher(input.medioPago, input.monto, input.numeroVoucher);
   if (voucher.error) return { ok: false, error: voucher.error };
+  const verificacion=await verificarVoucherConProveedor(tenantId,input.medioPago,input.monto,voucher.numero);
+  if(verificacion)return {ok:false,error:verificacion};
   const { data, error } = await supabase.rpc("registrar_abono_con_voucher", {
     p_id: input.operacionId,
     p_venta_id: input.ventaId,

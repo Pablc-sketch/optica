@@ -25,12 +25,23 @@ export async function registrarMovimientoCaja(_: ResultadoCaja, f: FormData): Pr
       return { error: 'Revisa la fecha, el origen y la descripción.' };
     const gastoId = tipo === 'devolucion' ? String(f.get('gasto_id') ?? '') : null;
     if (tipo === 'devolucion') {
-      const { data: gasto, error } = await supabase.from('gastos_globales').select('id').eq('tenant_id',tenantId).eq('id',gastoId).eq('caja','personal').maybeSingle();
+      const { data: gasto, error } = await supabase.from('gastos_globales').select('id,monto_estimado').eq('tenant_id',tenantId).eq('id',gastoId).eq('caja','personal').maybeSingle();
       if (error || !gasto) return { error: 'Gasto personal no disponible.' };
+      if(gasto.monto_estimado)return {error:'Confirma primero el importe exacto del gasto personal.'};
     }
     const { error } = await supabase.from('caja_movimientos').insert({ id, tenant_id: tenantId, tipo, caja, fecha, monto, descripcion, gasto_id: gastoId });
     if (error && error.code !== '23505') return { error: tipo === 'devolucion' ? 'No se pudo guardar: revisa el saldo pendiente y la fecha del gasto.' : 'No se pudo guardar el movimiento. Vuelve a intentar.' };
   }
   for (const ruta of ['/','/caja','/reportes']) revalidatePath(ruta);
   redirect('/caja?guardado=1');
+}
+
+export async function confirmarImportePersonal(f:FormData){
+ const {supabase,tenantId}=await requerirPerfil({roles:['admin'],suscripcion:true});
+ const id=String(f.get('gasto_id')??'');const monto=montoCaja(f.get('monto'));
+ if(!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id)||monto===null)throw new Error('Revisa el importe exacto del comprobante.');
+ const {error}=await supabase.from('gastos_globales').update({monto,monto_estimado:false}).eq('id',id).eq('tenant_id',tenantId).eq('caja','personal').eq('monto_estimado',true);
+ if(error)throw new Error('No se pudo confirmar el importe. Revisa las devoluciones registradas.');
+ for(const ruta of ['/caja','/gastos','/pagos','/reportes'])revalidatePath(ruta);
+ redirect('/caja?ver=cuadrar&guardado=1#reintegros');
 }

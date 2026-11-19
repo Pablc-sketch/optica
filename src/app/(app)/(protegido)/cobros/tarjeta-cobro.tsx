@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { cobrarSaldo, entregarVenta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { formatearMonto, montoANumero } from "@/lib/formato";
+import CobrarPoint from '@/components/cobrar-point';
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 
@@ -102,6 +103,7 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
         </div>
       </div>
 
+      {fila.saldo>0 && <CobrarPoint ventaId={fila.ventaId} saldo={fila.saldo}/>}
       <div className="mt-3 flex flex-wrap gap-2">
         {fila.saldo > 0 && !abierto && (
           <button

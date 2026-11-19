@@ -25,16 +25,16 @@ describe('Cotizador visible del tecnólogo',()=>{
  });
 });
 describe('Evaluación de rentabilidad',()=>{
- const props={titulo:'Salida',fijosRegistrados:100000,equiposRegistrados:0,esSalidaNoviembre:true,perfiles:[{id:'ar',nombre:'Monofocal · Orgánico Antirreflejo',precio:38000,costo:3975,origen:'stock'}],recargosMarcos:tarifas,debito:2.13,credito:2.96,historica:2.02208,comisionVenta:10};
+ const props={titulo:'Salida',fijosRegistrados:100000,perfiles:[{id:'ar',nombre:'Monofocal · Orgánico Antirreflejo',precio:38000,costo:3975,origen:'stock'}],recargosMarcos:tarifas,debito:2.13,credito:2.96,historica:2.02208,comisionVenta:10};
  it('no inventa viáticos y avisa que faltan completar',()=>{
   const html=renderToStaticMarkup(<SimuladorSalida {...props}/>);
-  expect(html).toContain('Presupuesto incompleto');expect(html).toContain('Resultado parcial');
-  expect(html).not.toContain('1.100.000');expect(html).toContain('2.13%');expect(html).toContain('2.96%');expect(html).toContain('3.975');
+  expect(html).toContain('Gastos por revisar');expect(html).toContain('Ganancia provisional');
+  expect(html).not.toContain('1.100.000');expect(html).toContain('2,13%');expect(html).toContain('2,96%');expect(html).toContain('3.975');
  });
- it('agrega solo equipos faltantes a los fijos ya registrados',()=>{
+ it('usa solo costos registrados sin inventar equipos ni fechas',()=>{
   const html=renderToStaticMarkup(<SimuladorSalida {...props}/>);
-  expect(html).toContain('400.000');
-  const conEquipos=renderToStaticMarkup(<SimuladorSalida {...props} fijosRegistrados={400000} equiposRegistrados={300000}/>);
+  expect(html).toContain('100.000');expect(html).not.toContain('400.000');
+  const conEquipos=renderToStaticMarkup(<SimuladorSalida {...props} fijosRegistrados={400000}/>);
   expect(conEquipos).toContain('400.000');expect(conEquipos).not.toContain('700.000');
  });
  it('sin catálogo no entrega resultado ficticio',()=>expect(renderToStaticMarkup(<SimuladorSalida {...props} perfiles={[]}/>)).toContain('Falta el catálogo'));

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
+import CobrarPoint from '@/components/cobrar-point';
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher } from "@/lib/voucher";
 
@@ -30,7 +31,7 @@ export default function AbonoForm({
   const operacionId = useRef<string | null>(null);
 
   return (
-    <form
+    <div><CobrarPoint ventaId={ventaId} saldo={saldo}/><form
       onSubmit={async (evento) => {
         evento.preventDefault();
         const formulario = evento.currentTarget;
@@ -95,6 +96,6 @@ export default function AbonoForm({
         {guardando ? "Guardando…" : compacto ? "Cobrar" : "Abonar"}
       </button>
       </fieldset>
-    </form>
+    </form></div>
   );
 }
