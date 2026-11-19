@@ -123,12 +123,14 @@ export async function diagnosticarSaldoPorReporte(tenant:string){
  resultado.is_test=typeof m.is_test==='boolean'?m.is_test:null;
  resultado.file_name=typeof m.file_name==='string'&&/^[-A-Za-z0-9_.]+\.csv$/i.test(m.file_name)?m.file_name:null;
  const lista=await reporteJSON(`${BASE}/list`);
- const filas=Array.isArray(lista)?lista:[];
+ const filas=Array.isArray(lista)?lista:lista&&typeof lista==='object'&&Array.isArray((lista as {results?:unknown}).results)?(lista as {results:unknown[]}).results:[];
+ resultado.lista_campos=lista&&typeof lista==='object'&&!Array.isArray(lista)?Object.keys(lista).slice(0,20):null;
  resultado.lista=filas.filter(v=>v&&typeof v==='object'&&idMercadoPago((v as Record<string,unknown>).id)===r.tarea_id).map(v=>{const f=v as Record<string,unknown>;return {id:idMercadoPago(f.id),status:typeof f.status==='string'?f.status.slice(0,100):null,file_name:typeof f.file_name==='string'?f.file_name.slice(0,150):null,report_id:idMercadoPago(f.report_id)};});
  if(typeof m.begin_date==='string'&&typeof m.end_date==='string'){
   const q=new URLSearchParams({begin_date:new Date(m.begin_date).toISOString().replace(/\.\d{3}Z$/,'Z'),end_date:new Date(m.end_date).toISOString().replace(/\.\d{3}Z$/,'Z'),format:'CSV',currency_id:'CLP',limit:'30'});
   const busqueda=await reporteJSON(`${BASE}/search?${q}`) as {results?:Record<string,unknown>[]};
   resultado.busqueda=(busqueda.results??[]).slice(0,5).map(f=>({titular_coincide:idMercadoPago(f.user_id)===r.collector_id,id:idMercadoPago(f.id),status:f.status,file_name:f.file_name,begin_date:f.begin_date,end_date:f.end_date,date_created:f.date_created}));
  }
+ try{await reporteJSON(`/users/${r.collector_id}/mercadopago_account/balance`);resultado.consulta_directa='HTTP_200';}catch(e){resultado.consulta_directa=e instanceof ErrorMercadoPago?e.codigo:'NO_DISPONIBLE';}
  return resultado;
 }

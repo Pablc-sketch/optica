@@ -38,6 +38,18 @@ describe('reportes oficiales y configuración',()=>{
   expect(enviado.columns).toContainEqual({key:'NET_DEBIT_AMOUNT'});
   expect(enviado).not.toHaveProperty('scheduled');
  });
+ it('permite solicitar un cierre anterior sin darle una fecha actual al saldo histórico',async()=>{
+  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-19T18:00:00Z'));
+  try{
+   ctx.fila={tarea_id:'456',estado:'preparando'};
+   const columnas=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'].map(key=>({key}));
+   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns:columnas})).mockResolvedValueOnce(json({id:789},202));
+   vi.stubGlobal('fetch',fetcher);
+   expect(await actualizarSaldoPorReporte('tenant',{cierreAnterior:true})).toEqual({estado:'preparando'});
+   expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({begin_date:'2026-10-20T03:00:00Z',end_date:'2026-11-19T02:59:59Z'});
+   expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);
+  }finally{vi.useRealTimers();}
+ });
  it('no convierte rechazo de configuración en saldo cero ni crea un reporte',async()=>{
   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({error:'not_found'},404)).mockResolvedValueOnce(json({error:'invalid_execute_after_withdrawal'},400));
   vi.stubGlobal('fetch',fetcher);
