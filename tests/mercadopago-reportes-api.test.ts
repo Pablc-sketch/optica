@@ -81,4 +81,10 @@ describe('reportes oficiales y configuración',()=>{
   expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'verificado',saldo:75});
   expect(ctx.updates.some(v=>'saldo_disponible' in v||'saldo_al' in v||'reporte_id' in v)).toBe(false);
  });
+ it('mantiene el saldo anterior mientras Mercado Pago toma el reporte para procesarlo',async()=>{
+  ctx.fila={tarea_id:'456',periodo_desde:'2025-12-31T12:00:00Z',periodo_hasta:'2026-01-01T12:00:00Z',estado:'error',saldo_al:'2025-12-31T12:00:00Z',saldo_disponible:75};
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({id:456,user_id:123,currency_id:'CLP',is_test:false,begin_date:'2025-12-31T03:00:00Z',end_date:'2026-01-02T02:59:59Z',status:'taken'}));
+  vi.stubGlobal('fetch',fetcher);await actualizarSaldoPorReporte('tenant');
+  expect(ctx.updates).toContainEqual({estado:'preparando',error_codigo:null});expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);expect(fetcher).toHaveBeenCalledTimes(2);
+ });
 });

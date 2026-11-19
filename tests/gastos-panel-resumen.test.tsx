@@ -28,7 +28,7 @@ beforeEach(()=>{
   tablas.operativos={data:[operativo('a','Norte','2026-11-01',20000),operativo('b','Sur','2026-11-02',70000)],error:null};
   tablas.tenants={data:{comision_debito_pct:0,comision_credito_pct:0},error:null};
   tablas.ventas={data:[{id:'va',operativo_id:'a',total:100000,pagos_abonos:[],venta_items:[]},{id:'vb',operativo_id:'b',total:300000,pagos_abonos:[],venta_items:[]}],error:null};
-  exigirRolPagina.mockResolvedValue({supabase:{from:(t:string)=>consulta(t)}});
+  exigirRolPagina.mockResolvedValue({tenantId:'tenant-test',supabase:{from:(t:string)=>consulta(t)}});
   cargarCatalogoParaCotizar.mockResolvedValue({filas:[],recargosMarcos:null,catalogo:[]});
 });
 describe('resumen de gastos y navegación de rentabilidad',()=>{
@@ -81,5 +81,16 @@ describe('resumen de gastos y navegación de rentabilidad',()=>{
     const html=await pantalla();
     expect(html).toContain('No se pudieron cargar todos los gastos');
     expect(html).not.toContain('Resumen de gastos');expect(html).not.toContain('LISTADO_GASTOS');
+  });
+  it('muestra la deuda personal aparte de la utilidad y descuenta solo devoluciones de ese gasto',async()=>{
+    tablas.gastos_globales={data:[{id:'personal',operativo_id:null,fecha:'2026-11-01',descripcion:'Compra personal de prueba',nota:'Marcos y bandejas para operativos. Detalle por confirmar.',monto:200000,categoria:'compra_inventario',caja:'personal',monto_estimado:true}],error:null};
+    tablas.caja_movimientos={data:[{id:'d1',gasto_id:'personal',monto:25000},{id:'d2',gasto_id:'otro',monto:70000}],error:null};
+    const html=await pantalla({op:'a'});
+    expect(html).toContain('Dinero personal por devolver');expect(html).toContain('$-175.000');expect(html).toContain('Nota de la compra');expect(html).toContain('Marcos y bandejas');expect(html).toContain('Importe aproximado');
+    expect(resumen(html)).toContain('80.000');expect(resumen(html)).not.toContain('175.000');
+  });
+  it('oculta cifras si no puede leer las devoluciones personales',async()=>{
+    tablas.caja_movimientos={data:null,error:{message:'fallo de lectura'}};
+    const html=await pantalla();expect(html).toContain('No se pudieron cargar todos los gastos');expect(html).not.toContain('Resumen de gastos');
   });
 });

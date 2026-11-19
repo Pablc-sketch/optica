@@ -50,9 +50,10 @@ export async function crearGastoGlobal(formData: FormData) {
 
   const fecha = String(formData.get("fecha") ?? "").trim();
   const descripcion = String(formData.get("descripcion") ?? "").trim();
+  const nota = String(formData.get("nota") ?? "").trim();
   const monto = montoCaja(formData.get("monto"));
   const categoria = String(formData.get("categoria") ?? "");
-  if (!fechaValidaDocumento(fecha) || fecha > hoyEnChile() || !descripcion || descripcion.length > 250 || monto === null) throw new Error("Revisa la fecha, descripción y monto del gasto.");
+  if (!fechaValidaDocumento(fecha) || fecha > hoyEnChile() || !descripcion || descripcion.length > 250 || nota.length>1000 || monto === null) throw new Error("Revisa la fecha, descripción y monto del gasto.");
   const fuente = String(formData.get("caja") ?? "");
   if (!["digital", "efectivo", "personal"].includes(fuente)) throw new Error("Elige de dónde salió el dinero.");
   const id = String(formData.get("id") ?? "");
@@ -63,6 +64,7 @@ export async function crearGastoGlobal(formData: FormData) {
     tenant_id: tenantId,
     fecha,
     descripcion,
+    nota,
     monto,
     categoria: (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
     medio_pago: parsearMedioPago(formData.get("medio_pago")),
@@ -75,6 +77,7 @@ export async function crearGastoGlobal(formData: FormData) {
   revalidatePath("/reportes");
   revalidatePath("/");
   revalidatePath("/caja");
+  if (fuente === 'personal' || formData.get('volver_gastos') === '1') redirect('/gastos?guardado=1#adelantos-personales');
   if (formData.get("volver_caja") === "1") redirect("/caja?guardado=1");
 }
 

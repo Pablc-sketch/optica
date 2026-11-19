@@ -33,7 +33,7 @@ export async function registrarMovimientoCaja(_: ResultadoCaja, f: FormData): Pr
     if (error && error.code !== '23505') return { error: tipo === 'devolucion' ? 'No se pudo guardar: revisa el saldo pendiente y la fecha del gasto.' : 'No se pudo guardar el movimiento. Vuelve a intentar.' };
   }
   for (const ruta of ['/','/caja','/reportes']) revalidatePath(ruta);
-  redirect('/caja?guardado=1');
+  redirect(f.get('volver_gastos')==='1'?'/gastos?guardado=1#adelantos-personales':'/caja?guardado=1');
 }
 
 export async function confirmarImportePersonal(f:FormData){
@@ -43,5 +43,15 @@ export async function confirmarImportePersonal(f:FormData){
  const {error}=await supabase.from('gastos_globales').update({monto,monto_estimado:false}).eq('id',id).eq('tenant_id',tenantId).eq('caja','personal').eq('monto_estimado',true);
  if(error)throw new Error('No se pudo confirmar el importe. Revisa las devoluciones registradas.');
  for(const ruta of ['/caja','/gastos','/pagos','/reportes'])revalidatePath(ruta);
- redirect('/caja?ver=cuadrar&guardado=1#reintegros');
+ redirect(f.get('volver_gastos')==='1'?'/gastos?guardado=1#adelantos-personales':'/caja?ver=cuadrar&guardado=1#reintegros');
+}
+
+export async function guardarNotaGasto(f:FormData){
+ const {supabase,tenantId}=await requerirPerfil({roles:['admin'],suscripcion:true});
+ const id=String(f.get('gasto_id')??'');const nota=String(f.get('nota')??'').trim();
+ if(!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id)||nota.length>1000)throw new Error('Revisa la nota del gasto.');
+ const {data,error}=await supabase.from('gastos_globales').update({nota}).eq('id',id).eq('tenant_id',tenantId).select('id').maybeSingle();
+ if(error||!data)throw new Error('No se pudo guardar la nota del gasto.');
+ revalidatePath('/gastos');revalidatePath('/caja');
+ redirect('/gastos?guardado=1#adelantos-personales');
 }

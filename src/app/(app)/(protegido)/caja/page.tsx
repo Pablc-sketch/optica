@@ -9,12 +9,12 @@ import { clp } from '@/lib/clp';
 import { hoyEnChile, fechaLegible } from '@/lib/fechas';
 import {etiquetasReparto} from '@/lib/etiquetas-reparto';
 import { pendientePersonal } from '@/lib/caja-fuentes';
-import { confirmarImportePersonal } from '@/lib/actions/caja';
 import { crearGastoGlobal }  from '@/lib/actions/gastos';
 import {leerEstadoCuenta} from '@/lib/cuenta-mercadopago';
 import {efectivoDesdeConteo,prioridadCaja} from '@/lib/caja-verificada';
 import ActualizarCajaMercadoPago from '@/components/actualizar-caja-mercadopago';
 import CuentaBancaria from '@/components/cuenta-bancaria';
+import SaldoCaja from '@/components/saldo-caja';
 import CajaFormulario from '@/components/caja-formulario';
 import { resumirCaja } from '@/lib/caja';
 import CajaHistorial from '@/components/caja-historial';
@@ -69,13 +69,12 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
     <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-4">{vistas.map(([clave,nombre]) => <Link key={clave} href={`/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-3 text-center font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>
     {(vista==='movimientos'||vista==='pendientes') && <form action="/caja" className="flex flex-wrap items-end gap-2"><input type="hidden" name="ver" value={vista} /><label className="min-w-0 flex-1 text-sm">Operativo<select name="operativo" defaultValue={operativoId} className={campo}><option value="">Todos los operativos</option>{[...(operativos.data ?? [])].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(o=><option key={o.id} value={o.id}>{o.nombre} · {fechaLegible(o.fecha)}</option>)}</select></label><button className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Ver</button></form>}
     {params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>}
-    {!error&&deudaPersonal>0&&<section className="rounded-2xl border border-brand/30 bg-amber-50 p-5"><h2 className="text-lg font-bold">Primero devolver el dinero personal</h2><p className="mt-2 text-3xl font-bold tabular-nums">{clp(deudaPersonal)}</p>{personales.some(g=>g.monto_estimado)&&<p className="mt-2 text-sm font-semibold">Incluye importes aproximados: confirma el comprobante antes de devolverlos.</p>}<p className="mt-2 text-sm">La óptica debe este dinero por compras pagadas de bolsillo. No es sueldo ni un nuevo gasto al devolverlo. El reparto y el ahorro quedan pendientes hasta saldarlo.</p><Link href="/caja?ver=cuadrar#reintegros" className="mt-3 inline-block font-semibold underline">Revisar y registrar devoluciones</Link></section>}
+
     {error ? <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">No se pudo leer toda la caja. Recarga antes de registrar movimientos.</p> : <>
       {vista==='resumen' && <>
-      <div className="grid items-start gap-4 xl:grid-cols-3">
-        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-sm font-semibold text-tinta-suave">Efectivo desde último conteo</h2><p className={`mt-3 text-3xl font-bold tabular-nums ${efectivo<0?'text-red-700':'text-tinta'}`}>{efectivoVerificado===null?'Por contar':clp(efectivoVerificado)}</p><p className="mt-2 text-xs text-tinta-suave">Conteo más movimientos posteriores · libro histórico {clp(efectivo)}</p>{ultimoConteo ? <p className="mt-3 text-sm">Último conteo: <b>{clp(ultimoConteo.contado)}</b><span className={`block ${ultimoConteo.contado===ultimoConteo.esperado?'text-emerald-800':'text-red-700'}`}>Diferencia entonces: {clp(ultimoConteo.contado-ultimoConteo.esperado)}</span></p> : <p className="mt-3 text-sm text-amber-900">Por contar</p>}</section>
-        <CuentaBancaria tenantId={tenantId} cuenta={cuentaProveedor} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito??0)+(t?.entro_credito??0),transferencias:(t?.entro_digital??0)-(t?.entro_debito??0)-(t?.entro_credito??0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}}/>
-        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-sm font-semibold">Liquidez para repartir</h2><p className="mt-3 text-3xl font-bold tabular-nums">{deudaPersonal>0?clp(0):prioridad.paraRepartir===null?'Por verificar':clp(Math.max(0,prioridad.paraRepartir-p.total-p.ahorro))}</p><p className="mt-3 text-sm text-tinta-suave">{deudaPersonal>0?'Primero se devuelven los gastos personales. Luego se revisan costos, sueldos y ahorro.':prioridad.total===null?'Falta confirmar el saldo bancario; el libro de movimientos no demuestra dinero disponible.':'Saldo de la fuente bancaria al corte mostrado, menos compromisos registrados.'}</p></section>
+      <div className="grid items-start gap-4 xl:grid-cols-[2fr_1fr]">
+        <SaldoCaja saldo={cuentaProveedor.saldo} efectivo={efectivoVerificado}/>
+        <section className="rounded-2xl border border-tinta/20 bg-white p-5 sm:p-6"><h2 className="text-lg font-bold">Disponible para repartir</h2><p className="mt-4 text-3xl font-bold tabular-nums">{deudaPersonal>0?clp(0):prioridad.paraRepartir===null?'Por verificar':clp(Math.max(0,prioridad.paraRepartir-p.total-p.ahorro))}</p><p className="mt-3 text-base leading-relaxed text-tinta-suave">{deudaPersonal>0?'Primero se devuelve el dinero personal. Después se revisan costos, sueldos y ahorro.':prioridad.total===null?'Falta verificar el banco o contar el efectivo.':'Saldo de caja menos compromisos registrados.'}</p>{deudaPersonal>0&&<Link href="/gastos#adelantos-personales" className="mt-4 inline-block min-h-11 rounded-xl border border-tinta/25 px-4 py-3 font-semibold">Ver devolución pendiente</Link>}</section>
       </div>
       <nav aria-label="Acciones de caja" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Link href="/cobros" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">+ Cobrar venta</Link>
@@ -115,6 +114,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
         <details className="mt-2"><summary className="cursor-pointer py-2 font-semibold">Agregar gasto general ya pagado</summary>
           <form action={crearGastoGlobal} className="mt-3 grid gap-3"><input type="hidden" name="volver_caja" value="1" /><input type="hidden" name="id" value={randomUUID()} />
             <label className="text-sm">Qué se pagó<input name="descripcion" placeholder="Arriendo del equipo, bandejas…" maxLength={250} required className={campo} /></label>
+            <label className="text-sm">Nota de la compra<textarea name="nota" rows={3} maxLength={1000} placeholder="Qué se compró, cantidades y para qué se usará" className={campo}/></label>
             <div className="grid grid-cols-2 gap-3"><label className="text-sm">Fecha<input type="date" name="fecha" defaultValue={fecha} max={fecha} required className={campo} /></label><label className="text-sm">Monto<input name="monto" type="number" min="1" step="1" required className={campo} /></label></div>
             <label className="text-sm">De dónde salió<select name="caja" required defaultValue="" className={campo}><option value="" disabled>Elige el origen</option><option value="digital">{piloto ? 'Cuenta bancaria' : 'Cuenta bancaria (Mercado Pago)'}</option><option value="efectivo">Efectivo de la óptica</option><option value="personal">{piloto ? 'Fondo personal' : `Dinero personal de ${nombres.pablo}`}</option></select></label>
             <label className="text-sm">Categoría<select name="categoria" className={campo}><option value="otro">Otro gasto</option><option value="arriendo">Arriendo</option><option value="compra_inventario">Inventario / equipamiento</option></select></label>
@@ -144,19 +144,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       </section>
       <CuentaBancaria tenantId={tenantId} cuenta={cuentaProveedor} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito ?? 0)+(t?.entro_credito ?? 0),transferencias:(t?.entro_digital ?? 0)-(t?.entro_debito ?? 0)-(t?.entro_credito ?? 0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}} />
       <Link href="/caja?ver=movimientos" className="rounded-xl bg-white p-4 text-center font-semibold">Revisar movimientos y diferencias →</Link>
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
-        <details id="reintegros" open className="mt-2 scroll-mt-5"><summary className="cursor-pointer py-2 font-semibold">Gastos personales por devolver · {clp(deudaPersonal)}</summary>
-          {personales.length === 0 ? <p className="mt-2 text-sm">Sin gastos personales pendientes registrados.</p> : personales.map(g => <div key={g.id} className="mt-3 border-t pt-3"><p className="font-semibold">{g.descripcion} · {clp(g.pendiente)}</p>
-            {g.monto_estimado&&<form action={confirmarImportePersonal} className="my-3 space-y-2 rounded-xl bg-amber-50 p-3"><p className="text-sm font-semibold">Importe aproximado pendiente de confirmar</p><input type="hidden" name="gasto_id" value={g.id}/><label className="block text-sm">Total exacto del comprobante<input type="number" name="monto" min={1} step={1} defaultValue={g.monto} required className={campo}/></label><BotonEnviar className="rounded-xl border bg-white px-3 py-2 font-semibold">Confirmar importe exacto</BotonEnviar></form>}<p className="mb-2 text-sm text-tinta-suave">{fechaLegible(g.fecha)}{piloto ? ' · Fondo personal' : ` · pagado personalmente por ${nombres.pablo}`}</p>
-            {!g.monto_estimado&&<CajaFormulario texto="Registrar devolución ya realizada"><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="tipo" value="devolucion" /><input type="hidden" name="gasto_id" value={g.id} /><input type="hidden" name="descripcion" value={`Devolución personal: ${g.descripcion}`.slice(0,250)} />
-              <label className="text-sm">Monto devuelto<input type="number" name="monto" min="1" max={g.pendiente} step="1" required className={campo} /></label>
-              <label className="text-sm">Fecha<input type="date" name="fecha" defaultValue={fecha} min={g.fecha} max={fecha} required className={campo} /></label>
-              <label className="text-sm">Se devolvió desde<select name="caja" className={campo}><option value="digital">Cuenta bancaria (Mercado Pago)</option><option value="efectivo">Efectivo</option></select></label>
-            </CajaFormulario>}
-          </div>)}
-        </details>
-
-      </section>
+      <Link href="/gastos#adelantos-personales" className="block rounded-2xl border border-tinta/20 bg-white p-5 text-base font-semibold">Gastos personales y devoluciones →</Link>
       </>}
       {vista==='resumen' && <>
 

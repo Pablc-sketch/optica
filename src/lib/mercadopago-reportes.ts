@@ -66,7 +66,7 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
   if(error||!r)throw new ReporteMPInvalido('REGISTRO_NO_DISPONIBLE');
   if(!opciones.cierreAnterior&&r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
    const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_desde,r.periodo_hasta,r.tarea_id);
-   if(['pending','processing','created','scheduled','data-ready'].includes(String(meta.status))){await guardar({estado:'preparando',error_codigo:null});return;}
+   if(['pending','taken','processing','created','scheduled','data-ready'].includes(String(meta.status))){await guardar({estado:'preparando',error_codigo:null});return;}
    if(meta.status!=='processed')throw new ReporteMPInvalido(`GENERACION_${typeof meta.status==='string'&&/^[a-z_]{1,35}$/.test(meta.status)?meta.status:'ESTADO_INVALIDO'}`);
    const actualizado=typeof meta.last_modified==='string'?Date.parse(meta.last_modified):NaN;
    const generado=typeof meta.generation_date==='string'?Date.parse(meta.generation_date):NaN;

@@ -74,7 +74,11 @@ describe('panel financiero de Caja',()=>{
     expect(s).not.toContain('230.000');
   });
   it('sin saldo externo no presenta el saldo calculado como liquidez',async()=>{leerEstadoCuenta.mockResolvedValue({saldo:{estado:'no_habilitado'},estado:'error',ultimaCorrecta:null,errorCodigo:'PAGOS_HTTP_401'});const s=await html();expect(s).toContain('Por verificar');expect(s).not.toContain('230.000');});
-  it('prioriza y señala la deuda personal aproximada antes del reparto',async()=>{tablas.gastos_globales={data:[{id:'g',fecha:'2026-11-01',descripcion:'Compra de prueba',monto:150000,caja:'personal',monto_estimado:true}],error:null};const s=await html('cuadrar');expect(s).toContain('Primero devolver el dinero personal');expect(s).toContain('Importe aproximado pendiente de confirmar');expect(s).not.toContain('Registrar devolución ya realizada');});
+  it('envía las devoluciones a Gastos y conserva la prioridad sin restar la deuda de caja',async()=>{
+    tablas.gastos_globales={data:[{id:'g',fecha:'2026-11-01',descripcion:'Compra de prueba',monto:150000,caja:'personal',monto_estimado:true}],error:null};
+    const cuadrar=await html('cuadrar');expect(cuadrar).toContain('/gastos#adelantos-personales');expect(cuadrar).not.toContain('Compra de prueba');
+    const resumen=await html();expect(resumen).toContain('300.000');expect(resumen).toContain('Primero se devuelve el dinero personal');expect(resumen).not.toContain('230.000');
+  });
   it('el historial por operativo excluye traslados globales y otros operativos',()=>{
     const s=renderToStaticMarkup(<CajaHistorial operativoId="a" operativos={[{id:'a',nombre:'Norte'}]} cobros={[{id:'c1',fecha:'2026-11-04',monto:15000,medio_pago:'efectivo',venta_id:'v1',operativo_id:'a'},{id:'c2',fecha:'2026-11-04',monto:80000,medio_pago:'efectivo',venta_id:'v2',operativo_id:'b'}]} gastos={[]} retiros={[]} traslados={[{id:'t1',fecha:'2026-11-04',monto:90000,caja:'digital',tipo:'deposito',descripcion:'TRASLADO_GLOBAL'}]} />);
     expect(s).toContain('15.000');

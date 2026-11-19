@@ -11,23 +11,27 @@ import { fechaValidaDocumento } from '@/lib/fecha-documentos';
 import GastosPanel from '@/components/gastos-panel';
 import SimuladorSalida from '@/components/simulador-salida';
 import { clp } from '@/lib/clp';
+import {pendientePersonal} from '@/lib/caja-fuentes';
+import GastosPersonales from '@/components/gastos-personales';
 
 export default async function Gastos({searchParams}:{searchParams:Promise<{op?:string;desde?:string;hasta?:string;ver?:string}>}) {
-  const {supabase}=await exigirRolPagina(['admin']);
+  const {supabase,tenantId}=await exigirRolPagina(['admin']);
   const filtros=await searchParams;
   const rentabilidad=filtros.ver==="rentabilidad";
   const desde=fechaValidaDocumento(filtros.desde??'') ? filtros.desde! : '';
   const hasta=fechaValidaDocumento(filtros.hasta??'') ? filtros.hasta! : '';
-  const [ops,ventas,gastos,asignaciones,tenant,recetas,impuestosPagos]=await Promise.all([
+  const [ops,ventas,gastos,asignaciones,tenant,recetas,impuestosPagos,devoluciones]=await Promise.all([
     leerTodas((a,b)=>supabase.from('operativos').select('*').order('id').range(a,b)),
     leerTodas((a,b)=>supabase.from('ventas').select(`id,operativo_id,total,pagos_abonos(monto,medio_pago),venta_items(cantidad,precio_unitario,descuento,descripcion,cristal_slot,ordenes_trabajo:ot_id(costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2),productos:producto_id(costo,categoria))`).eq('anulada',false).order('id').range(a,b)),
-    leerTodas((a,b)=>supabase.from('gastos_globales').select('id,operativo_id,fecha,descripcion,monto,categoria,caja').order('id').range(a,b)),
+    leerTodas((a,b)=>supabase.from('gastos_globales').select('id,operativo_id,fecha,descripcion,monto,categoria,caja,nota,monto_estimado').eq('tenant_id',tenantId).order('id').range(a,b)),
     leerTodas((a,b)=>supabase.from('gastos_asignaciones').select('id,gasto_id,operativo_id,clave,monto,anulado_en').order('id').range(a,b)),
     supabase.from('tenants').select('comision_debito_pct,comision_credito_pct').single(),
     leerTodas((a,b)=>supabase.from('recetas').select('id,paciente_id,operativo_id').order('id').range(a,b)),
     leerTodas((a,b)=>supabase.from('impuestos_pagos').select('gasto_id').is('anulado_en',null).order('id').range(a,b)),
+    leerTodas((a,b)=>supabase.from('caja_movimientos').select('id,gasto_id,monto').eq('tenant_id',tenantId).eq('tipo','devolucion').order('id').range(a,b)),
   ]);
-  if (ops.error||ventas.error||gastos.error||asignaciones.error||tenant.error||recetas.error||impuestosPagos.error) return <p role="alert" className="rounded-xl bg-red-50 p-5">No se pudieron cargar todos los gastos. Recarga antes de registrar pagos.</p>;
+  if (ops.error||ventas.error||gastos.error||asignaciones.error||tenant.error||recetas.error||impuestosPagos.error||devoluciones.error) return <p role="alert" className="rounded-xl bg-red-50 p-5">No se pudieron cargar todos los gastos. Recarga antes de registrar pagos.</p>;
+  const personales=(gastos.data??[]).filter(g=>g.caja==='personal').map(g=>({...g,pendiente:pendientePersonal(g.monto,(devoluciones.data??[]).filter(d=>d.gasto_id===g.id))})).filter(g=>g.pendiente>0).sort((a,b)=>a.fecha.localeCompare(b.fecha));
   const lista=(ops.data??[]).filter(o=>(!filtros.op||o.id===filtros.op)&&(!desde||o.fecha>=desde)&&(!hasta||o.fecha<=hasta)).sort((a,b)=>a.fecha.localeCompare(b.fecha));
   const ids=new Set(lista.map(o=>o.id));
   const filas=lista.map(o=>{
@@ -73,6 +77,7 @@ export default async function Gastos({searchParams}:{searchParams:Promise<{op?:s
       <Link href={enlace(false)} aria-current={!rentabilidad?'page':undefined} className={`rounded-xl px-5 py-3 text-sm font-semibold ${!rentabilidad?'bg-tinta text-white':'text-tinta-suave'}`}>Gastos</Link>
       <Link href={enlace(true)} aria-current={rentabilidad?'page':undefined} className={`rounded-xl px-5 py-3 text-sm font-semibold ${rentabilidad?'bg-tinta text-white':'text-tinta-suave'}`}>Simular ganancias</Link>
     </nav>
+    {!rentabilidad&&<GastosPersonales gastos={personales} hoy={hoyEnChile()}/>}
     <details className="rounded-2xl border border-tinta/10 bg-white p-4" open={filtroActivo}>
       <summary className="cursor-pointer text-sm font-semibold">Filtrar por sede o fechas{filtroActivo?' · activo':''}</summary>
       <form className="mt-4 grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto_auto]">
@@ -88,7 +93,7 @@ export default async function Gastos({searchParams}:{searchParams:Promise<{op?:s
     {!rentabilidad&&<>
       <section className="grid gap-3 sm:grid-cols-3" aria-label="Resumen de gastos">
         <div className="rounded-2xl border border-tinta/10 bg-white p-5"><h2 className="text-sm text-tinta-suave">Costos totales</h2><b className="mt-2 block text-2xl tabular-nums">{clp(costosTotales)}</b><p className="mt-2 text-sm text-tinta-suave">De ventas por {clp(vendido)}</p></div>
-        <div className="rounded-2xl border border-tinta/10 bg-white p-5"><h2 className="text-sm text-tinta-suave">Por pagar</h2><b className="mt-2 block text-2xl tabular-nums text-brand">{clp(pendiente)}</b><p className="mt-2 text-sm text-tinta-suave">Costos pendientes de las sedes</p></div>
+        <div className="rounded-2xl border border-tinta/20 bg-white p-5"><h2 className="text-sm font-semibold text-tinta-suave">Costos de sedes por pagar</h2><b className="mt-2 block text-3xl tabular-nums text-tinta">{clp(pendiente)}</b><p className="mt-2 text-sm text-tinta-suave">Laboratorio y operación</p></div>
         <div className={`rounded-2xl border p-5 ${utilidad<0?'border-red-200 bg-red-50':'border-accent/20 bg-accent/10'}`}><h2 className="text-sm">Ganancia operativa</h2><b className={`mt-2 block text-2xl tabular-nums ${utilidad<0?'text-red-800':'text-accent-dark'}`}>{clp(utilidad)}</b><p className="mt-2 text-sm">Margen {margen===null?'sin ventas':`${margen.toLocaleString('es-CL',{maximumFractionDigits:1})}%`} · antes de IVA</p></div>
       </section>
       <details className="rounded-xl px-1 text-sm text-tinta-suave"><summary className="cursor-pointer">Cómo se calcula el margen</summary><div className="mt-3 space-y-2 rounded-2xl border border-tinta/10 bg-white p-4">
@@ -96,7 +101,7 @@ export default async function Gastos({searchParams}:{searchParams:Promise<{op?:s
         <p>Antes de IVA, impuesto a la renta, ahorro y reparto. La compra de stock afecta caja; aquí se descuenta su consumo. Pagar o vincular un gasto salda la deuda sin restar el costo otra vez.</p>
         <div className="flex flex-wrap gap-4"><span>Costos de sedes: {clp(costosTotales-overhead)}</span><span>Generales adicionales: {clp(overhead)}</span><Link href="/impuestos" className="font-semibold underline">Ver IVA mensual</Link></div>
       </div></details>
-      <GastosPanel key={`${filtros.op??''}:${desde}:${hasta}`} filas={filas} gastos={gastos.data??[]} asignaciones={asignaciones.data??[]} hoy={hoyEnChile()} generales={generales} gastosSii={gastosSii} />
+      <GastosPanel key={`${filtros.op??''}:${desde}:${hasta}`} filas={filas} gastos={gastos.data??[]} asignaciones={asignaciones.data??[]} hoy={hoyEnChile()} generales={generales.filter(g=>g.caja!=='personal')} gastosSii={gastosSii} />
     </>}
     {rentabilidad&&cotizar&&<SimuladorSalida key={`presupuesto:${desde}:${hasta}:${filtros.op??''}`} titulo="Simular ganancias" fijosRegistrados={filas.reduce((s,o)=>s+Object.values(o.importes).reduce((a,b)=>a+b,0),0)+overhead} perfiles={perfiles} recargosMarcos={cotizar.recargosMarcos} debito={debito} credito={credito} historica={historica} comisionVenta={ventasSeleccionadas.length?Math.max(...ventasSeleccionadas):10}/>}
   </div>;
