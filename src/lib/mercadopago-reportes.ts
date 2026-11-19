@@ -65,7 +65,7 @@ export async function actualizarSaldoPorReporte(tenant:string){
   if(error||!r)throw new ReporteMPInvalido('REGISTRO_NO_DISPONIBLE');
   if(r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
    const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_desde,r.periodo_hasta,r.tarea_id);
-   if(['pending','processing','created','scheduled'].includes(String(meta.status)))return;
+   if(['pending','processing','created','scheduled','data-ready'].includes(String(meta.status))){await guardar({estado:'preparando',error_codigo:null});return;}
    if(meta.status!=='processed')throw new ReporteMPInvalido(`GENERACION_${typeof meta.status==='string'&&/^[a-z_]{1,35}$/.test(meta.status)?meta.status:'ESTADO_INVALIDO'}`);
    const actualizado=typeof meta.last_modified==='string'?Date.parse(meta.last_modified):NaN;
    const generado=typeof meta.generation_date==='string'?Date.parse(meta.generation_date):NaN;
@@ -121,5 +121,13 @@ export async function diagnosticarSaldoPorReporte(tenant:string){
  for(const k of ['begin_date','end_date','generation_date','last_modified'])resultado[k]=typeof m[k]==='string'&&Number.isFinite(Date.parse(String(m[k])))?new Date(String(m[k])).toISOString():null;
  resultado.is_test=typeof m.is_test==='boolean'?m.is_test:null;
  resultado.file_name=typeof m.file_name==='string'&&/^[-A-Za-z0-9_.]+\.csv$/i.test(m.file_name)?m.file_name:null;
+ const lista=await reporteJSON(`${BASE}/list`);
+ const filas=Array.isArray(lista)?lista:[];
+ resultado.lista=filas.filter(v=>v&&typeof v==='object'&&idMercadoPago((v as Record<string,unknown>).id)===r.tarea_id).map(v=>{const f=v as Record<string,unknown>;return {id:idMercadoPago(f.id),status:typeof f.status==='string'?f.status.slice(0,100):null,file_name:typeof f.file_name==='string'?f.file_name.slice(0,150):null,report_id:idMercadoPago(f.report_id)};});
+ if(typeof m.begin_date==='string'&&typeof m.end_date==='string'){
+  const q=new URLSearchParams({begin_date:new Date(m.begin_date).toISOString().replace(/\.\d{3}Z$/,'Z'),end_date:new Date(m.end_date).toISOString().replace(/\.\d{3}Z$/,'Z'),format:'CSV',currency_id:'CLP',limit:'30'});
+  const busqueda=await reporteJSON(`${BASE}/search?${q}`) as {results?:Record<string,unknown>[]};
+  resultado.busqueda=(busqueda.results??[]).slice(0,5).map(f=>({titular_coincide:idMercadoPago(f.user_id)===r.collector_id,id:idMercadoPago(f.id),status:f.status,file_name:f.file_name,begin_date:f.begin_date,end_date:f.end_date,date_created:f.date_created}));
+ }
  return resultado;
 }
