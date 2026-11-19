@@ -1,0 +1,51 @@
+import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
+vi.mock('server-only',()=>({}));
+const ctx=vi.hoisted(()=>({fila:{} as Record<string,unknown>,updates:[] as Record<string,unknown>[]}));
+vi.mock('../src/lib/mercadopago-sync',()=>({mercadoPagoConfigurado:()=>true}));
+vi.mock('../src/lib/supabase/admin',()=>({createAdminClient:()=>({
+ rpc:async()=>({data:true}),
+ from:(tabla:string)=>({
+  select:()=>({eq:()=>({single:async()=>({data:tabla==='mercadopago_sync'?{collector_id:'123'}:ctx.fila})})}),
+  update:(v:Record<string,unknown>)=>({eq:()=>({eq:async()=>{ctx.updates.push(v);return {error:null};}})})
+ })
+})}));
+import {actualizarSaldoPorReporte} from '../src/lib/mercadopago-reportes';
+const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status});
+beforeEach(()=>{ctx.fila={};ctx.updates=[];vi.stubEnv('MERCADOPAGO_ACCESS_TOKEN','ficticio-servidor');});
+afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
+describe('reportes oficiales y configuración',()=>{
+ it('crea configuración completa sin activar envíos ni reportes programados',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({error:'not_found'},404)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({id:456},202));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'preparando'});
+  const config=JSON.parse(fetcher.mock.calls[2][1].body);
+  expect(config).toMatchObject({execute_after_withdrawal:false,include_withdrawal_at_end:true,frequency:{hour:0,type:'monthly',value:1}});
+  expect(config).not.toHaveProperty('notification_email_list');
+  expect(config).not.toHaveProperty('scheduled');
+  expect(ctx.updates).toContainEqual({tarea_id:'456'});
+ });
+ it('conserva preferencias existentes al agregar columnas necesarias',async()=>{
+  const config={columns:[{key:'SOURCE_ID'}],file_name_prefix:'propio',frequency:{hour:8,value:1,type:'daily'},execute_after_withdrawal:true,include_withdrawal_at_end:false,notification_email_list:['ejemplo@example.com'],scheduled:true};
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json(config)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({id:456},202));
+  vi.stubGlobal('fetch',fetcher);await actualizarSaldoPorReporte('tenant');
+  const enviado=JSON.parse(fetcher.mock.calls[2][1].body);
+  expect(enviado).toMatchObject({file_name_prefix:'propio',frequency:config.frequency,execute_after_withdrawal:true,notification_email_list:config.notification_email_list});
+  expect(enviado.columns).toContainEqual({key:'SOURCE_ID'});
+  expect(enviado.columns).toContainEqual({key:'NET_DEBIT_AMOUNT'});
+  expect(enviado).not.toHaveProperty('scheduled');
+ });
+ it('no convierte rechazo de configuración en saldo cero ni crea un reporte',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({error:'not_found'},404)).mockResolvedValueOnce(json({error:'invalid_execute_after_withdrawal'},400));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await actualizarSaldoPorReporte('tenant')).toMatchObject({estado:'error',codigo:'CONFIG_POST_HTTP_400_invalid_execute_after_withdrawal'});
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);
+ });
+ it('no importa reportes de otra cuenta y conserva el saldo previo',async()=>{
+  ctx.fila={tarea_id:'456',periodo_hasta:'2026-01-01T12:00:00Z',estado:'preparando'};
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({user_id:999,currency_id:'CLP',is_test:false,end_date:ctx.fila.periodo_hasta,status:'processed'}));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await actualizarSaldoPorReporte('tenant')).toMatchObject({estado:'error',codigo:'REPORTE_NO_COINCIDE'});
+  expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);
+ });
+});

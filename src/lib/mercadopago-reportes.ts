@@ -25,14 +25,16 @@ async function reporteJSON(path:string,init:RequestInit={}){
 async function configurarColumnas(){
  let raw:unknown;
  try{raw=await reporteJSON(`${BASE}/config`);}catch(e){if(!(e instanceof ErrorReporteAPI)||!(e.status===404||e.status===400&&/not_found|config_not|no_config/i.test(e.proveedor)))throw e;}
- if(!raw){await reporteJSON(`${BASE}/config`,{method:'POST',body:JSON.stringify({file_name_prefix:'lentia-saldo',columns:COLUMNAS.map(key=>({key}))})});return;}
+ if(!raw){await reporteJSON(`${BASE}/config`,{method:'POST',body:JSON.stringify({file_name_prefix:'lentia-saldo',columns:COLUMNAS.map(key=>({key})),frequency:{hour:0,type:'monthly',value:1},execute_after_withdrawal:false,include_withdrawal_at_end:true,check_available_balance:false,compensate_detail:false,separator:';',display_timezone:'GMT-03',report_translation:'es'})});return;}
  const config=raw as {columns?:{key?:unknown}[]};
  if(!Array.isArray(config.columns))throw new ReporteMPInvalido('CONFIGURACION_INVALIDA');
  const columnas=config.columns.filter(c=>typeof c.key==='string').map(c=>({key:String(c.key)}));
  if(COLUMNAS.every(k=>columnas.some(c=>c.key===k)))return;
  for(const k of COLUMNAS)if(!columnas.some(c=>c.key===k))columnas.push({key:k});
  // Conserva el resto de preferencias y las columnas existentes del titular.
- await reporteJSON(`${BASE}/config`,{method:'PUT',body:JSON.stringify({columns:columnas})});
+ const preferencias:Record<string,unknown>={columns:columnas};
+ for(const k of ['file_name_prefix','frequency','execute_after_withdrawal','include_withdrawal_at_end','check_available_balance','compensate_detail','separator','display_timezone','report_translation','notification_email_list','sftp_info','webhook'])if(k in config)preferencias[k]=(raw as Record<string,unknown>)[k];
+ await reporteJSON(`${BASE}/config`,{method:'PUT',body:JSON.stringify(preferencias)});
 }
 function validarMeta(raw:unknown,collector:string,hasta:string){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new ReporteMPInvalido('METADATA_INVALIDA');
