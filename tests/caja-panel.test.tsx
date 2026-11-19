@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ReactNode } from 'react';
-const { tablas, exigirRolPagina, cargarPendientes } = vi.hoisted(() => ({ tablas: {} as Record<string, { data: unknown; error: null | { message:string } }>, exigirRolPagina:vi.fn(), cargarPendientes:vi.fn() }));
+const { tablas, exigirRolPagina, cargarPendientes, leerEstadoCuenta } = vi.hoisted(() => ({ tablas: {} as Record<string, { data: unknown; error: null | { message:string } }>, exigirRolPagina:vi.fn(), cargarPendientes:vi.fn(), leerEstadoCuenta:vi.fn() }));
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('@/lib/autorizacion',()=>({exigirRolPagina}));
 vi.mock('@/lib/resumen-pendientes',()=>({cargarPendientes}));
+vi.mock('@/lib/cuenta-mercadopago',()=>({leerEstadoCuenta}));
 vi.mock('@/lib/actions/gastos',()=>({crearGastoGlobal:vi.fn()}));
 vi.mock('@/components/cuenta-bancaria',()=>({default:()=> <section>CUENTA_MERCADO_PAGO</section>}));
 vi.mock('@/components/caja-formulario',()=>({default:({children,texto}:{children:ReactNode;texto?:string})=><div>{children}<button>{texto}</button></div>}));
@@ -21,6 +23,8 @@ beforeEach(()=>{
   vi.clearAllMocks();
   for(const k of Object.keys(tablas)) delete tablas[k];
   tablas.caja_global={data:{entro_efectivo:100000,salio_efectivo:0,entro_digital:200000,entro_debito:0,entro_credito:0,salio_digital:0},error:null};
+  tablas.caja_conteos={data:[{contado:100000,esperado:100000,created_at:'2026-11-01T12:00:00Z'}],error:null};
+  leerEstadoCuenta.mockResolvedValue({saldo:{estado:'disponible',disponible:200000,total:200000,consultadoEn:'2026-11-01T12:00:00Z'},estado:'correcto',ultimaCorrecta:'2026-11-01T12:00:00Z',errorCodigo:null});
   tablas.tenants={data:{comision_debito_pct:0,comision_credito_pct:0},error:null};
   tablas.operativos={data:[{id:'a',nombre:'Operativo Norte',fecha:'2026-11-01'},{id:'b',nombre:'Operativo Sur',fecha:'2026-11-02'}],error:null};
   tablas.ventas={data:[{id:'v1',total:80000,operativo_id:'a',pagos_abonos:[{monto:20000}]},{id:'v2',total:40000,operativo_id:'b',pagos_abonos:[{monto:50000}]}],error:null};
@@ -69,6 +73,8 @@ describe('panel financiero de Caja',()=>{
     expect(s).not.toContain('Guardar gasto');
     expect(s).not.toContain('230.000');
   });
+  it('sin saldo externo no presenta el saldo calculado como liquidez',async()=>{leerEstadoCuenta.mockResolvedValue({saldo:{estado:'no_habilitado'},estado:'error',ultimaCorrecta:null,errorCodigo:'PAGOS_HTTP_401'});const s=await html();expect(s).toContain('Por verificar');expect(s).not.toContain('230.000');});
+  it('prioriza y señala la deuda personal aproximada antes del reparto',async()=>{tablas.gastos_globales={data:[{id:'g',fecha:'2026-11-01',descripcion:'Compra de prueba',monto:150000,caja:'personal',monto_estimado:true}],error:null};const s=await html('cuadrar');expect(s).toContain('Primero devolver el dinero personal');expect(s).toContain('Importe aproximado pendiente de confirmar');expect(s).not.toContain('Registrar devolución ya realizada');});
   it('el historial por operativo excluye traslados globales y otros operativos',()=>{
     const s=renderToStaticMarkup(<CajaHistorial operativoId="a" operativos={[{id:'a',nombre:'Norte'}]} cobros={[{id:'c1',fecha:'2026-11-04',monto:15000,medio_pago:'efectivo',venta_id:'v1',operativo_id:'a'},{id:'c2',fecha:'2026-11-04',monto:80000,medio_pago:'efectivo',venta_id:'v2',operativo_id:'b'}]} gastos={[]} retiros={[]} traslados={[{id:'t1',fecha:'2026-11-04',monto:90000,caja:'digital',tipo:'deposito',descripcion:'TRASLADO_GLOBAL'}]} />);
     expect(s).toContain('15.000');
