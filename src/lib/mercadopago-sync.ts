@@ -55,7 +55,12 @@ export async function sincronizarMercadoPago(tenant: string) {
           const id=idMercadoPago((resumen as Record<string,unknown>)?.id);
           if(!id)throw new PagoMPInvalido('ID');
           fase='DETALLE_PAGO';
-          pago=normalizarPagoMercadoPago(await consultar(`/v1/payments/${id}`),collector!);
+          const detalle=await consultar(`/v1/payments/${id}`);
+          // Search también puede incluir pagos enviados a otro receptor. No
+          // son cobros de la óptica y no deben bloquear el archivo de ingresos.
+          const receptor=idMercadoPago(detalle.collector_id);
+          if(receptor&&receptor!==collector)continue;
+          pago=normalizarPagoMercadoPago(detalle,collector!);
         }
         if(pago)filas.push({...pago,tenant_id:tenant,guardado_en:new Date().toISOString()});
       }

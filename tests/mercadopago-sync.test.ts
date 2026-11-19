@@ -47,6 +47,16 @@ describe('sincronización persistente', () => {
     expect(fetch.mock.calls[2][0]).toContain(`/v1/payments/${pago.id}`);
     expect(rpc.mock.calls.at(-1)?.[1].p_hasta).toBeTruthy();
   });
+  it('no cuenta operaciones de otro receptor ni bloquea los cobros propios',async()=>{
+    const ajeno={...pago,id:888888,collector_id:456};
+    const fetch=vi.fn().mockResolvedValueOnce(respuesta({id:123}))
+      .mockResolvedValueOnce(respuesta({results:[ajeno,pago],paging:{total:2}}))
+      .mockResolvedValueOnce(respuesta(ajeno));
+    vi.stubGlobal('fetch',fetch);
+    expect(await sincronizarMercadoPago('global')).toEqual({estado:'correcto',guardados:1});
+    expect(upsert.mock.calls[0][0]).toHaveLength(1);
+    expect(upsert.mock.calls[0][0][0].collector_id).toBe('123');
+  });
   it('no avanza el checkpoint ante un fallo parcial y deja reintentar', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(respuesta({ id: 123 }))
       .mockResolvedValueOnce(respuesta({ results: [pago], paging: { total: 101 } }))
