@@ -132,5 +132,12 @@ export async function diagnosticarSaldoPorReporte(tenant:string){
   resultado.busqueda=(busqueda.results??[]).slice(0,5).map(f=>({titular_coincide:idMercadoPago(f.user_id)===r.collector_id,id:idMercadoPago(f.id),status:f.status,file_name:f.file_name,begin_date:f.begin_date,end_date:f.end_date,date_created:f.date_created}));
  }
  try{await reporteJSON(`/users/${r.collector_id}/mercadopago_account/balance`);resultado.consulta_directa='HTTP_200';}catch(e){resultado.consulta_directa=e instanceof ErrorMercadoPago?e.codigo:'NO_DISPONIBLE';}
+ try{
+  const principal=await reporteJSON(BASE);
+  const objeto=principal&&typeof principal==='object'?principal as Record<string,unknown>:{};
+  resultado.principal_campos=Array.isArray(principal)?['array']:Object.keys(objeto).slice(0,25);
+  const entradas=Array.isArray(principal)?principal:Array.isArray(objeto.results)?objeto.results:[];
+  resultado.principal=entradas.filter(v=>v&&typeof v==='object'&&idMercadoPago((v as Record<string,unknown>).id)===r.tarea_id).map(v=>{const f=v as Record<string,unknown>;return {id:idMercadoPago(f.id),status:f.status,file_name:f.file_name,report_id:idMercadoPago(f.report_id)};});
+ }catch(e){resultado.principal_error=e instanceof ErrorMercadoPago?e.codigo:'NO_DISPONIBLE';}
  return resultado;
 }
