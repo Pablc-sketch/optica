@@ -9,6 +9,11 @@ export function idMercadoPago(valor: unknown): string | null {
   return /^[0-9]{1,30}$/.test(id) ? id : null;
 }
 
+export function titularMercadoPago(p:Record<string,unknown>){
+ const c=p.collector as {id?:unknown}|undefined;
+ return idMercadoPago(p.collector_id)??idMercadoPago(c?.id);
+}
+
 export class PagoMPInvalido extends Error {
   constructor(public codigo:string){super('Respuesta de pago inválida');}
 }
@@ -20,13 +25,14 @@ export function normalizarPagoMercadoPago(valor: unknown, collector: string): Pa
   if (p.live_mode === false || (typeof p.currency_id === 'string' && p.currency_id !== 'CLP')) return null;
   const id = idMercadoPago(p.id);
   if (!id)throw new PagoMPInvalido('ID');
-  if(idMercadoPago(p.collector_id)!==collector)throw new PagoMPInvalido('TITULAR');
+  if(!titularMercadoPago(p))throw new PagoMPInvalido('TITULAR_AUSENTE');
+  if(titularMercadoPago(p)!==collector)throw new PagoMPInvalido('TITULAR_DISTINTO');
   if(p.live_mode!==true)throw new PagoMPInvalido('MODO');
   if(p.currency_id!=='CLP')throw new PagoMPInvalido('MONEDA');
   if(!Number.isSafeInteger(p.transaction_amount)||(p.transaction_amount as number)<=0)throw new PagoMPInvalido('MONTO');
   if(typeof p.date_created!=='string'||!Number.isFinite(Date.parse(p.date_created)))throw new PagoMPInvalido('FECHA');
   if(typeof p.date_last_updated!=='string'||!Number.isFinite(Date.parse(p.date_last_updated)))throw new PagoMPInvalido('ACTUALIZACION');
-  if (!id || idMercadoPago(p.collector_id) !== collector || p.live_mode !== true || p.currency_id !== 'CLP'
+  if (!id || titularMercadoPago(p) !== collector || p.live_mode !== true || p.currency_id !== 'CLP'
     || !Number.isSafeInteger(p.transaction_amount) || (p.transaction_amount as number) <= 0
     || !Number.isSafeInteger(p.transaction_amount_refunded ?? 0) || (p.transaction_amount_refunded as number) < 0
     || (p.transaction_amount_refunded as number) > (p.transaction_amount as number)

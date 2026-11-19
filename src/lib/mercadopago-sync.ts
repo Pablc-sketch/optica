@@ -2,7 +2,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { consultarApiMP, ErrorMercadoPago } from '@/lib/mercadopago-api';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { idMercadoPago, normalizarPagoMercadoPago, PagoMPInvalido } from '@/lib/mercadopago-datos';
+import { idMercadoPago, normalizarPagoMercadoPago, PagoMPInvalido, titularMercadoPago } from '@/lib/mercadopago-datos';
 
 export function mercadoPagoConfigurado(tenant: string) {
   return Boolean(tenant && process.env.MERCADOPAGO_ACCESS_TOKEN && tenant === process.env.MERCADOPAGO_TENANT_ID);
@@ -58,7 +58,7 @@ export async function sincronizarMercadoPago(tenant: string) {
           const detalle=await consultar(`/v1/payments/${id}`);
           // Search también puede incluir pagos enviados a otro receptor. No
           // son cobros de la óptica y no deben bloquear el archivo de ingresos.
-          const receptor=idMercadoPago(detalle.collector_id);
+          const receptor=titularMercadoPago(detalle);
           if(receptor&&receptor!==collector)continue;
           pago=normalizarPagoMercadoPago(detalle,collector!);
         }

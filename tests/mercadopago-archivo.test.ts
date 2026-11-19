@@ -12,6 +12,7 @@ describe('archivo seguro de operaciones Mercado Pago', () => {
       fecha: '2026-10-30T10:00:00.000Z', actualizado_en_proveedor: '2026-10-30T10:01:00.000Z',
       monto: 19000, monto_devuelto: 0, estado: 'approved', medio_pago: 'debito' });
   });
+  it('acepta el titular explícito anidado del proveedor sin inferirlo',()=>{const {collector_id,...sinTitularPlano}=pago;expect(normalizarPagoMercadoPago({...sinTitularPlano,collector:{id:collector_id}},'123')?.collector_id).toBe('123');});
   it('rechaza otra cuenta y no archiva pruebas ni otras monedas', () => {
     expect(() => normalizarPagoMercadoPago(pago, '456')).toThrow();
     expect(normalizarPagoMercadoPago({ ...pago, live_mode: false }, '123')).toBeNull();

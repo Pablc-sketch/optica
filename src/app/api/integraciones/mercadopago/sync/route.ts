@@ -1,4 +1,4 @@
-import {revisarConexionMP} from '@/lib/mercadopago-conexion';
+import {revisarConexionMP,integrarTerminalUnicaMP} from '@/lib/mercadopago-conexion';
 import { timingSafeEqual } from 'node:crypto';
 import { sincronizarOrdenesPoint } from '@/lib/mercadopago-point';
 import { sincronizarMercadoPago } from '@/lib/mercadopago-sync';
@@ -16,6 +16,8 @@ export async function POST(request: Request) {
   const tenant = process.env.MERCADOPAGO_TENANT_ID;
   if (!tenant) return Response.json({ error: 'Sin configurar' }, { status: 503 });
   try {
+    const opciones:unknown=await request.json().catch(()=>({}));
+    if(opciones&&typeof opciones==='object'&&(opciones as {integrar_point?:unknown}).integrar_point===true)await integrarTerminalUnicaMP(tenant);
     const [archivo, point] = await Promise.allSettled([sincronizarMercadoPago(tenant), sincronizarOrdenesPoint(tenant),revisarConexionMP(tenant)]);
     if(archivo.status==='rejected')throw new Error('Archivo pendiente');
     const resultado = {...archivo.value, point:point.status==='fulfilled'?point.value.revisados:null};
