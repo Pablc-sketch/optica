@@ -2,7 +2,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { consultarApiMP, ErrorMercadoPago } from '@/lib/mercadopago-api';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { idMercadoPago, normalizarPagoMercadoPago } from '@/lib/mercadopago-datos';
+import { idMercadoPago, normalizarPagoMercadoPago, PagoMPInvalido } from '@/lib/mercadopago-datos';
 
 export function mercadoPagoConfigurado(tenant: string) {
   return Boolean(tenant && process.env.MERCADOPAGO_ACCESS_TOKEN && tenant === process.env.MERCADOPAGO_TENANT_ID);
@@ -45,8 +45,20 @@ export async function sincronizarMercadoPago(tenant: string) {
       const paging = json.paging as { total?: unknown } | undefined;
       if (!Array.isArray(json.results) || !Number.isSafeInteger(paging?.total) || (paging!.total as number) < 0) throw new Error('Página de pagos inválida');
       fase = 'FORMATO_PAGOS';
-      const filas = json.results.map(p => normalizarPagoMercadoPago(p, collector!)).filter(p => p !== null)
-        .map(p => ({ ...p, tenant_id: tenant, guardado_en: new Date().toISOString() }));
+      const filas=[];
+      for(const resumen of json.results){
+        let pago;
+        try{pago=normalizarPagoMercadoPago(resumen,collector!);}
+        catch{
+          // Search puede entregar un resumen incompleto. Se consulta el pago
+          // individual; nunca completar datos monetarios por suposición.
+          const id=idMercadoPago((resumen as Record<string,unknown>)?.id);
+          if(!id)throw new PagoMPInvalido('ID');
+          fase='DETALLE_PAGO';
+          pago=normalizarPagoMercadoPago(await consultar(`/v1/payments/${id}`),collector!);
+        }
+        if(pago)filas.push({...pago,tenant_id:tenant,guardado_en:new Date().toISOString()});
+      }
       fase = 'GUARDAR_PAGOS';
       if (filas.length) {
         const { error } = await db.from('mercadopago_pagos').upsert(filas, { onConflict: 'tenant_id,pago_id' });
@@ -66,7 +78,7 @@ export async function sincronizarMercadoPago(tenant: string) {
     if (errorFin || !fin) throw new Error('No se pudo confirmar la sincronización');
     return { estado: 'correcto' as const, guardados };
   } catch (e) {
-    const codigo = `${fase}_${e instanceof ErrorMercadoPago ? e.codigo : 'ERROR'}`;
+    const codigo = `${fase}_${e instanceof ErrorMercadoPago || e instanceof PagoMPInvalido ? e.codigo : 'ERROR'}`;
     await db.from('mercadopago_sync').update({error_codigo:codigo}).eq('tenant_id',tenant).eq('run_id',run);
     await db.rpc('mercadopago_finalizar_sync', { p_tenant: tenant, p_run: run, p_collector: null, p_hasta: null });
     throw new Error('No se pudo sincronizar Mercado Pago. Los pagos guardados se conservan; se reintentará automáticamente.');

@@ -39,6 +39,14 @@ describe('sincronización persistente', () => {
     expect(from.mock.calls.every(([tabla]) => ['mercadopago_sync', 'mercadopago_pagos'].includes(tabla))).toBe(true);
     expect(rpc.mock.calls.at(-1)?.[1].p_hasta).toBeTruthy();
   });
+  it('consulta el detalle individual si search devuelve campos incompletos',async()=>{
+    const fetch=vi.fn().mockResolvedValueOnce(respuesta({id:123}))
+      .mockResolvedValueOnce(respuesta({results:[{id:pago.id}],paging:{total:1}}))
+      .mockResolvedValueOnce(respuesta(pago));vi.stubGlobal('fetch',fetch);
+    expect(await sincronizarMercadoPago('global')).toEqual({estado:'correcto',guardados:1});
+    expect(fetch.mock.calls[2][0]).toContain(`/v1/payments/${pago.id}`);
+    expect(rpc.mock.calls.at(-1)?.[1].p_hasta).toBeTruthy();
+  });
   it('no avanza el checkpoint ante un fallo parcial y deja reintentar', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(respuesta({ id: 123 }))
       .mockResolvedValueOnce(respuesta({ results: [pago], paging: { total: 101 } }))

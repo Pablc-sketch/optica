@@ -9,12 +9,23 @@ export function idMercadoPago(valor: unknown): string | null {
   return /^[0-9]{1,30}$/.test(id) ? id : null;
 }
 
+export class PagoMPInvalido extends Error {
+  constructor(public codigo:string){super('Respuesta de pago inválida');}
+}
+
 // Lista explícita: no persistimos RUT, correo, tarjeta, token ni el JSON completo.
 export function normalizarPagoMercadoPago(valor: unknown, collector: string): PagoMercadoPago | null {
   if (!valor || typeof valor !== 'object') throw new Error('Respuesta de pago inválida');
   const p = valor as Record<string, unknown>;
   if (p.live_mode === false || (typeof p.currency_id === 'string' && p.currency_id !== 'CLP')) return null;
   const id = idMercadoPago(p.id);
+  if (!id)throw new PagoMPInvalido('ID');
+  if(idMercadoPago(p.collector_id)!==collector)throw new PagoMPInvalido('TITULAR');
+  if(p.live_mode!==true)throw new PagoMPInvalido('MODO');
+  if(p.currency_id!=='CLP')throw new PagoMPInvalido('MONEDA');
+  if(!Number.isSafeInteger(p.transaction_amount)||(p.transaction_amount as number)<=0)throw new PagoMPInvalido('MONTO');
+  if(typeof p.date_created!=='string'||!Number.isFinite(Date.parse(p.date_created)))throw new PagoMPInvalido('FECHA');
+  if(typeof p.date_last_updated!=='string'||!Number.isFinite(Date.parse(p.date_last_updated)))throw new PagoMPInvalido('ACTUALIZACION');
   if (!id || idMercadoPago(p.collector_id) !== collector || p.live_mode !== true || p.currency_id !== 'CLP'
     || !Number.isSafeInteger(p.transaction_amount) || (p.transaction_amount as number) <= 0
     || !Number.isSafeInteger(p.transaction_amount_refunded ?? 0) || (p.transaction_amount_refunded as number) < 0
@@ -22,7 +33,7 @@ export function normalizarPagoMercadoPago(valor: unknown, collector: string): Pa
     || typeof p.status !== 'string' || !/^[a-z_]{1,40}$/.test(p.status)
     || typeof p.date_created !== 'string' || !Number.isFinite(Date.parse(p.date_created))
     || typeof p.date_last_updated !== 'string' || !Number.isFinite(Date.parse(p.date_last_updated))) {
-    throw new Error('Respuesta de pago inválida');
+    throw new PagoMPInvalido('OTROS_CAMPOS');
   }
   return {
     pago_id: id, collector_id: collector, fecha: new Date(p.date_created).toISOString(),
