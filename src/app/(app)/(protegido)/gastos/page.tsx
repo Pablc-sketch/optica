@@ -101,7 +101,7 @@ export default async function Gastos({searchParams}:{searchParams:Promise<{op?:s
         <p>Antes de IVA, impuesto a la renta, ahorro y reparto. La compra de stock afecta caja; aquí se descuenta su consumo. Pagar o vincular un gasto salda la deuda sin restar el costo otra vez.</p>
         <div className="flex flex-wrap gap-4"><span>Costos de sedes: {clp(costosTotales-overhead)}</span><span>Generales adicionales: {clp(overhead)}</span><Link href="/impuestos" className="font-semibold underline">Ver IVA mensual</Link></div>
       </div></details>
-      <GastosPanel key={`${filtros.op??''}:${desde}:${hasta}`} filas={filas} gastos={gastos.data??[]} asignaciones={asignaciones.data??[]} hoy={hoyEnChile()} generales={generales.filter(g=>g.caja!=='personal')} gastosSii={gastosSii} />
+      <GastosPanel key={`${filtros.op??''}:${desde}:${hasta}`} filas={filas} gastos={gastos.data??[]} asignaciones={asignaciones.data??[]} hoy={hoyEnChile()} generales={generales.filter(g=>g.caja!=='personal'||!personales.some(p=>p.id===g.id))} gastosSii={gastosSii} />
     </>}
     {rentabilidad&&cotizar&&<SimuladorSalida key={`presupuesto:${desde}:${hasta}:${filtros.op??''}`} titulo="Simular ganancias" fijosRegistrados={filas.reduce((s,o)=>s+Object.values(o.importes).reduce((a,b)=>a+b,0),0)+overhead} perfiles={perfiles} recargosMarcos={cotizar.recargosMarcos} debito={debito} credito={credito} historica={historica} comisionVenta={ventasSeleccionadas.length?Math.max(...ventasSeleccionadas):10}/>}
   </div>;
