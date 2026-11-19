@@ -22,6 +22,10 @@ describe('reportes oficiales y configuración',()=>{
   expect(config).toMatchObject({execute_after_withdrawal:false,include_withdrawal_at_end:true,frequency:{hour:0,type:'monthly',value:1}});
   expect(config).not.toHaveProperty('notification_email_list');
   expect(config).not.toHaveProperty('scheduled');
+  const periodo=JSON.parse(fetcher.mock.calls[3][1].body);
+  expect(periodo.begin_date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  expect(periodo.end_date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  expect(Date.parse(periodo.end_date)-Date.parse(periodo.begin_date)).toBe(86400000);
   expect(ctx.updates).toContainEqual({tarea_id:'456'});
  });
  it('conserva preferencias existentes al agregar columnas necesarias',async()=>{

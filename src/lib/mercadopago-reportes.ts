@@ -73,8 +73,9 @@ export async function actualizarSaldoPorReporte(tenant:string){
   if(r.solicitado_en&&Date.now()-Date.parse(r.solicitado_en)<15*60000)return;
   await guardar({solicitado_en:new Date().toISOString()});
   await configurarColumnas();
-  const hasta=new Date(Date.now()-120000).toISOString();
-  const desde=new Date(Date.parse(hasta)-86400000).toISOString();
+  // La API de reportes exige UTC a segundos (rechaza fracciones de segundo).
+  const hasta=new Date(Date.now()-120000).toISOString().replace(/\.\d{3}Z$/,'Z');
+  const desde=new Date(Date.parse(hasta)-86400000).toISOString().replace(/\.\d{3}Z$/,'Z');
   await guardar({estado:'preparando',solicitado_en:new Date().toISOString(),periodo_desde:desde,periodo_hasta:hasta,tarea_id:null,error_codigo:null});
   const raw=await reporteJSON(BASE,{method:'POST',body:JSON.stringify({begin_date:desde,end_date:hasta})});
   if(!raw||typeof raw!=='object')throw new ReporteMPInvalido('SOLICITUD_INVALIDA');
