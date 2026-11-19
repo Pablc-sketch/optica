@@ -1,3 +1,4 @@
+import {actualizarSaldoPorReporte} from '@/lib/mercadopago-reportes';
 import {revisarConexionMP,integrarTerminalUnicaMP} from '@/lib/mercadopago-conexion';
 import { timingSafeEqual } from 'node:crypto';
 import { sincronizarOrdenesPoint } from '@/lib/mercadopago-point';
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   try {
     const opciones:unknown=await request.json().catch(()=>({}));
     if(opciones&&typeof opciones==='object'&&(opciones as {integrar_point?:unknown}).integrar_point===true)await integrarTerminalUnicaMP(tenant);
-    const [archivo, point] = await Promise.allSettled([sincronizarMercadoPago(tenant), sincronizarOrdenesPoint(tenant),revisarConexionMP(tenant)]);
+    const [archivo, point] = await Promise.allSettled([sincronizarMercadoPago(tenant), sincronizarOrdenesPoint(tenant),revisarConexionMP(tenant),actualizarSaldoPorReporte(tenant)]);
     if(archivo.status==='rejected')throw new Error('Archivo pendiente');
     const resultado = {...archivo.value, point:point.status==='fulfilled'?point.value.revisados:null};
     return Response.json(resultado, { status: resultado.estado === 'no_configurado' ? 503 : 200 });

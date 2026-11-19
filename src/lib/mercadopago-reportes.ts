@@ -1,0 +1,77 @@
+import 'server-only';
+import {createAdminClient} from '@/lib/supabase/admin';
+import {mercadoPagoConfigurado} from '@/lib/mercadopago-sync';
+import {consultarApiMP,ErrorMercadoPago} from '@/lib/mercadopago-api';
+import {idMercadoPago} from '@/lib/mercadopago-datos';
+import {ReporteMPInvalido,saldoDeReporteCSV} from '@/lib/mercadopago-reporte-datos';
+const BASE='/v1/account/release_report';
+const COLUMNAS=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT','BALANCE_AMOUNT','CURRENCY'];
+async function reporteJSON(path:string,init:RequestInit={}){
+ const r=await fetch(`https://api.mercadopago.com${path}`,{...init,headers:{Authorization:`Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`,'Content-Type':'application/json'},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});
+ if(!r.ok||r.status===203)throw new ErrorMercadoPago(`HTTP_${r.status}`);
+ return await r.json() as unknown;
+}
+async function configurarColumnas(){
+ let raw:unknown;
+ try{raw=await reporteJSON(`${BASE}/config`);}catch(e){if(!(e instanceof ErrorMercadoPago)||e.codigo!=='HTTP_404')throw e;}
+ if(!raw){await reporteJSON(`${BASE}/config`,{method:'POST',body:JSON.stringify({file_name_prefix:'lentia-saldo',columns:COLUMNAS.map(key=>({key}))})});return;}
+ const config=raw as {columns?:{key?:unknown}[]};
+ if(!Array.isArray(config.columns))throw new ReporteMPInvalido('CONFIGURACION_INVALIDA');
+ const columnas=config.columns.filter(c=>typeof c.key==='string').map(c=>({key:String(c.key)}));
+ if(COLUMNAS.every(k=>columnas.some(c=>c.key===k)))return;
+ for(const k of COLUMNAS)if(!columnas.some(c=>c.key===k))columnas.push({key:k});
+ // Conserva el resto de preferencias y las columnas existentes del titular.
+ await reporteJSON(`${BASE}/config`,{method:'PUT',body:JSON.stringify({columns:columnas})});
+}
+function validarMeta(raw:unknown,collector:string,hasta:string){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new ReporteMPInvalido('METADATA_INVALIDA');
+ const m=raw as Record<string,unknown>;
+ if(idMercadoPago(m.user_id)!==collector||m.currency_id!=='CLP'||m.is_test!==false
+  ||typeof m.end_date!=='string'||!Number.isFinite(Date.parse(m.end_date))||Math.abs(Date.parse(m.end_date)-Date.parse(hasta))>1000)throw new ReporteMPInvalido('REPORTE_NO_COINCIDE');
+ return m;
+}
+export async function actualizarSaldoPorReporte(tenant:string){
+ if(!mercadoPagoConfigurado(tenant))return;
+ const db=createAdminClient();
+ const {data:sync,error:errSync}=await db.from('mercadopago_sync').select('collector_id').eq('tenant_id',tenant).single();
+ if(errSync||!sync?.collector_id)return;
+ const collector=String(sync.collector_id);
+ const {data:lease,error:errLease}=await db.rpc('mercadopago_reservar_saldo',{p_tenant:tenant,p_collector:collector});
+ if(errLease||!lease)return;
+ const guardar=async(valores:Record<string,unknown>)=>{const {error}=await db.from('mercadopago_saldos').update(valores).eq('tenant_id',tenant).eq('collector_id',collector);if(error)throw new Error('No se pudo guardar el saldo consultado.');};
+ try{
+  if(idMercadoPago((await consultarApiMP('/users/me')).id)!==collector)throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
+  const {data:r,error}=await db.from('mercadopago_saldos').select('*').eq('tenant_id',tenant).single();
+  if(error||!r)throw new ReporteMPInvalido('REGISTRO_NO_DISPONIBLE');
+  if(r.tarea_id&&r.periodo_hasta&&r.estado==='preparando'){
+   const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_hasta);
+   if(['pending','processing','created','scheduled'].includes(String(meta.status)))return;
+   if(meta.status!=='processed')throw new ReporteMPInvalido('GENERACION_FALLIDA');
+   if(typeof meta.file_name!=='string'||!/^[-A-Za-z0-9_.]+\.csv$/i.test(meta.file_name))throw new ReporteMPInvalido('ARCHIVO_NO_CSV');
+   const resp=await fetch(`https://api.mercadopago.com${BASE}/${encodeURIComponent(meta.file_name)}`,{headers:{Authorization:`Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
+   if(!resp.ok)throw new ErrorMercadoPago(`DESCARGA_HTTP_${resp.status}`);
+   if(Number(resp.headers.get('content-length')??0)>5_000_000)throw new ReporteMPInvalido('ARCHIVO_GRANDE');
+   const texto=await resp.text();
+   const saldo=saldoDeReporteCSV(texto,String(meta.currency_id));
+   await guardar({estado:'verificado',saldo_disponible:saldo,saldo_al:meta.end_date,verificado_en:new Date().toISOString(),reporte_id:String(meta.report_id??meta.id),error_codigo:null});
+   return {estado:'verificado',saldo};
+  }
+  // Nueva instantánea cada 15 minutos; las recargas no generan reportes duplicados.
+  if(r.solicitado_en&&Date.now()-Date.parse(r.solicitado_en)<15*60000)return;
+  await guardar({solicitado_en:new Date().toISOString()});
+  await configurarColumnas();
+  const hasta=new Date(Date.now()-120000).toISOString();
+  const desde=new Date(Date.parse(hasta)-86400000).toISOString();
+  await guardar({estado:'preparando',solicitado_en:new Date().toISOString(),periodo_desde:desde,periodo_hasta:hasta,tarea_id:null,error_codigo:null});
+  const raw=await reporteJSON(BASE,{method:'POST',body:JSON.stringify({begin_date:desde,end_date:hasta})});
+  if(!raw||typeof raw!=='object')throw new ReporteMPInvalido('SOLICITUD_INVALIDA');
+  const id=idMercadoPago((raw as Record<string,unknown>).id);
+  if(!id)throw new ReporteMPInvalido('TAREA_NO_IDENTIFICADA');
+  await guardar({tarea_id:id});
+  return {estado:'preparando'};
+ }catch(e){
+  const codigo=e instanceof ErrorMercadoPago||e instanceof ReporteMPInvalido?e.codigo:'CONSULTA_FALLIDA';
+  await guardar({estado:['HTTP_401','HTTP_403'].includes(codigo)?'sin_permiso':'error',error_codigo:codigo});
+  return {estado:'error',codigo};
+ }finally{await guardar({bloqueado_hasta:null});}
+}

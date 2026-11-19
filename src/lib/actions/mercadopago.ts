@@ -1,4 +1,5 @@
 'use server';
+import {actualizarSaldoPorReporte} from '@/lib/mercadopago-reportes';
 import { sincronizarOrdenesPoint } from '@/lib/mercadopago-point';
 import { revalidatePath } from 'next/cache';
 import { requerirPerfil } from '@/lib/autorizacion';
@@ -10,7 +11,7 @@ import type { IdentidadAbonoMercadoPago } from '@/lib/mercadopago-datos';
 export async function actualizarArchivoMercadoPago(): Promise<{ ok: boolean; mensaje: string }> {
   const { tenantId } = await requerirPerfil({ roles: ['admin'], suscripcion: true });
   try {
-    const [archivo]=await Promise.all([sincronizarMercadoPago(tenantId),sincronizarOrdenesPoint(tenantId)]);
+    const [archivo]=await Promise.all([sincronizarMercadoPago(tenantId),sincronizarOrdenesPoint(tenantId),actualizarSaldoPorReporte(tenantId)]);
     const r=archivo;
     revalidatePath('/configuracion/integraciones');
     revalidatePath('/configuracion/integraciones/mercadopago');

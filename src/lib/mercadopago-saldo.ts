@@ -2,6 +2,7 @@ import 'server-only';
 import { idMercadoPago } from '@/lib/mercadopago-datos';
 export type SaldoMercadoPago =
   | { estado: 'disponible'; disponible: number; total: number; consultadoEn: string }
+  | { estado:'reporte'; disponible:number; hasta:string; consultadoEn:string; vigente:boolean }
   | { estado: 'no_habilitado' | 'error' | 'no_configurado' };
 
 // Consulta únicamente el saldo provisto por Mercado Pago. Nunca se calcula
