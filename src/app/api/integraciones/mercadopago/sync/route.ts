@@ -19,7 +19,8 @@ export async function POST(request: Request) {
   try {
     const opciones:unknown=await request.json().catch(()=>({}));
     if(opciones&&typeof opciones==='object'&&(opciones as {integrar_point?:unknown}).integrar_point===true)await integrarTerminalUnicaMP(tenant);
-    const [archivo, point] = await Promise.allSettled([sincronizarMercadoPago(tenant), sincronizarOrdenesPoint(tenant),revisarConexionMP(tenant),actualizarSaldoPorReporte(tenant)]);
+    const cierreAnterior=opciones&&typeof opciones==='object'&&(opciones as {saldo_cierre_anterior?:unknown}).saldo_cierre_anterior===true;
+    const [archivo, point] = await Promise.allSettled([sincronizarMercadoPago(tenant), sincronizarOrdenesPoint(tenant),revisarConexionMP(tenant),actualizarSaldoPorReporte(tenant,{cierreAnterior:Boolean(cierreAnterior)})]);
     if(archivo.status==='rejected')throw new Error('Archivo pendiente');
     const diagnostico=opciones&&typeof opciones==='object'&&(opciones as {diagnosticar_saldo?:unknown}).diagnosticar_saldo===true?await diagnosticarSaldoPorReporte(tenant):undefined;
     const resultado = {...archivo.value, point:point.status==='fulfilled'?point.value.revisados:null,saldo_diagnostico:diagnostico};

@@ -4,6 +4,7 @@ import {mercadoPagoConfigurado} from '@/lib/mercadopago-sync';
 import {consultarApiMP,ErrorMercadoPago} from '@/lib/mercadopago-api';
 import {idMercadoPago} from '@/lib/mercadopago-datos';
 import {ReporteMPInvalido,saldoDeReporteCSV} from '@/lib/mercadopago-reporte-datos';
+import {hoyEnChile,inicioDelDia,restarDias} from '@/lib/fechas';
 const BASE='/v1/account/release_report';
 const COLUMNAS=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'];
 class ErrorReporteAPI extends ErrorMercadoPago {
@@ -50,7 +51,7 @@ function validarMeta(raw:unknown,collector:string,desde:string,hasta:string,tare
  if(dia(m.begin_date)!==dia(desde)||dia(m.end_date)!==dia(hasta)||Date.parse(m.begin_date)>=Date.parse(m.end_date))throw new ReporteMPInvalido('REPORTE_PERIODO_NO_COINCIDE');
  return m;
 }
-export async function actualizarSaldoPorReporte(tenant:string){
+export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAnterior?:boolean}={}){
  if(!mercadoPagoConfigurado(tenant))return;
  const db=createAdminClient();
  const {data:sync,error:errSync}=await db.from('mercadopago_sync').select('collector_id').eq('tenant_id',tenant).single();
@@ -63,7 +64,7 @@ export async function actualizarSaldoPorReporte(tenant:string){
   if(idMercadoPago((await consultarApiMP('/users/me')).id)!==collector)throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
   const {data:r,error}=await db.from('mercadopago_saldos').select('*').eq('tenant_id',tenant).single();
   if(error||!r)throw new ReporteMPInvalido('REGISTRO_NO_DISPONIBLE');
-  if(r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
+  if(!opciones.cierreAnterior&&r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
    const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_desde,r.periodo_hasta,r.tarea_id);
    if(['pending','processing','created','scheduled','data-ready'].includes(String(meta.status))){await guardar({estado:'preparando',error_codigo:null});return;}
    if(meta.status!=='processed')throw new ReporteMPInvalido(`GENERACION_${typeof meta.status==='string'&&/^[a-z_]{1,35}$/.test(meta.status)?meta.status:'ESTADO_INVALIDO'}`);
@@ -82,12 +83,12 @@ export async function actualizarSaldoPorReporte(tenant:string){
    return {estado:'verificado',saldo};
   }
   // Nueva instantánea cada 15 minutos; las recargas no generan reportes duplicados.
-  if(r.solicitado_en&&Date.now()-Date.parse(r.solicitado_en)<15*60000)return;
+  if(!opciones.cierreAnterior&&r.solicitado_en&&Date.now()-Date.parse(r.solicitado_en)<15*60000)return;
   await guardar({solicitado_en:new Date().toISOString()});
   await configurarColumnas();
   // La API de reportes exige UTC a segundos (rechaza fracciones de segundo).
-  const hasta=new Date(Date.now()-120000).toISOString().replace(/\.\d{3}Z$/,'Z');
-  const desde=new Date(Date.parse(hasta)-86400000).toISOString().replace(/\.\d{3}Z$/,'Z');
+  const hasta=new Date(opciones.cierreAnterior?Date.parse(inicioDelDia(hoyEnChile()))-1000:Date.now()-120000).toISOString().replace(/\.\d{3}Z$/,'Z');
+  const desde=(opciones.cierreAnterior?inicioDelDia(restarDias(hoyEnChile(),30)):new Date(Date.parse(hasta)-86400000).toISOString()).replace(/\.\d{3}Z$/,'Z');
   await guardar({estado:'preparando',solicitado_en:new Date().toISOString(),periodo_desde:desde,periodo_hasta:hasta,tarea_id:null,error_codigo:null});
   const raw=await reporteJSON(BASE,{method:'POST',body:JSON.stringify({begin_date:desde,end_date:hasta})});
   if(!raw||typeof raw!=='object')throw new ReporteMPInvalido('SOLICITUD_INVALIDA');
