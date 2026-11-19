@@ -5,15 +5,26 @@ import {consultarApiMP,ErrorMercadoPago} from '@/lib/mercadopago-api';
 import {idMercadoPago} from '@/lib/mercadopago-datos';
 import {ReporteMPInvalido,saldoDeReporteCSV} from '@/lib/mercadopago-reporte-datos';
 const BASE='/v1/account/release_report';
-const COLUMNAS=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT','BALANCE_AMOUNT','CURRENCY'];
+const COLUMNAS=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'];
+class ErrorReporteAPI extends ErrorMercadoPago {
+ constructor(public status:number,etapa:string,public proveedor:string){super(`${etapa}_HTTP_${status}${proveedor?'_'+proveedor:''}`.slice(0,100));}
+}
 async function reporteJSON(path:string,init:RequestInit={}){
  const r=await fetch(`https://api.mercadopago.com${path}`,{...init,headers:{Authorization:`Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`,'Content-Type':'application/json'},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});
- if(!r.ok||r.status===203)throw new ErrorMercadoPago(`HTTP_${r.status}`);
+ if(!r.ok||r.status===203){
+  const body:unknown=await r.json().catch(()=>null);
+  const d=body&&typeof body==='object'?body as Record<string,unknown>:{};
+  const raw=d.error??d.code;
+  let code=typeof raw==='string'&&/^[a-zA-Z0-9_-]{1,55}$/.test(raw)?raw:'';
+  if(!code&&typeof d.message==='string'&&/not found|does not exist|no.*config/i.test(d.message))code='CONFIG_NOT_FOUND';
+  const etapa=path.endsWith('/config')?`CONFIG_${init.method??'GET'}`:'REPORTE';
+  throw new ErrorReporteAPI(r.status,etapa,code);
+ }
  return await r.json() as unknown;
 }
 async function configurarColumnas(){
  let raw:unknown;
- try{raw=await reporteJSON(`${BASE}/config`);}catch(e){if(!(e instanceof ErrorMercadoPago)||e.codigo!=='HTTP_404')throw e;}
+ try{raw=await reporteJSON(`${BASE}/config`);}catch(e){if(!(e instanceof ErrorReporteAPI)||!(e.status===404||e.status===400&&/not_found|config_not|no_config/i.test(e.proveedor)))throw e;}
  if(!raw){await reporteJSON(`${BASE}/config`,{method:'POST',body:JSON.stringify({file_name_prefix:'lentia-saldo',columns:COLUMNAS.map(key=>({key}))})});return;}
  const config=raw as {columns?:{key?:unknown}[]};
  if(!Array.isArray(config.columns))throw new ReporteMPInvalido('CONFIGURACION_INVALIDA');
@@ -71,7 +82,7 @@ export async function actualizarSaldoPorReporte(tenant:string){
   return {estado:'preparando'};
  }catch(e){
   const codigo=e instanceof ErrorMercadoPago||e instanceof ReporteMPInvalido?e.codigo:'CONSULTA_FALLIDA';
-  await guardar({estado:['HTTP_401','HTTP_403'].includes(codigo)?'sin_permiso':'error',error_codigo:codigo});
+  await guardar({estado:/HTTP_(401|403)/.test(codigo)?'sin_permiso':'error',error_codigo:codigo});
   return {estado:'error',codigo};
  }finally{await guardar({bloqueado_hasta:null});}
 }
