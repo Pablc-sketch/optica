@@ -66,7 +66,7 @@ export async function actualizarSaldoPorReporte(tenant:string){
   if(r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
    const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_desde,r.periodo_hasta,r.tarea_id);
    if(['pending','processing','created','scheduled'].includes(String(meta.status)))return;
-   if(meta.status!=='processed')throw new ReporteMPInvalido('GENERACION_FALLIDA');
+   if(meta.status!=='processed')throw new ReporteMPInvalido(`GENERACION_${typeof meta.status==='string'&&/^[a-z_]{1,35}$/.test(meta.status)?meta.status:'ESTADO_INVALIDO'}`);
    const actualizado=typeof meta.last_modified==='string'?Date.parse(meta.last_modified):NaN;
    const generado=typeof meta.generation_date==='string'?Date.parse(meta.generation_date):NaN;
    if(!Number.isFinite(generado)||!Number.isFinite(actualizado)||actualizado<generado||actualizado>Date.now()||generado<Date.parse(r.solicitado_en)-60000)throw new ReporteMPInvalido('FECHA_GENERACION_INVALIDA');
@@ -100,4 +100,23 @@ export async function actualizarSaldoPorReporte(tenant:string){
   await guardar({estado:/HTTP_(401|403)/.test(codigo)?'sin_permiso':'error',error_codigo:codigo});
   return {estado:'error',codigo};
  }finally{await guardar({bloqueado_hasta:null});}
+}
+
+// Diagnóstico de solo lectura para el endpoint interno autenticado. No devuelve
+// credenciales, datos de pagadores ni el contenido del archivo bancario.
+export async function diagnosticarSaldoPorReporte(tenant:string){
+ if(!mercadoPagoConfigurado(tenant))return null;
+ const db=createAdminClient();
+ const {data:r}=await db.from('mercadopago_saldos').select('collector_id,tarea_id').eq('tenant_id',tenant).maybeSingle();
+ if(!r?.tarea_id||idMercadoPago((await consultarApiMP('/users/me')).id)!==r.collector_id)return null;
+ const raw=await reporteJSON(`${BASE}/task/${r.tarea_id}`);
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))return {error:'METADATA_INVALIDA'};
+ const m=raw as Record<string,unknown>;
+ const resultado:Record<string,unknown>={titular_coincide:idMercadoPago(m.user_id)===r.collector_id};
+ for(const k of ['status','currency_id','format'])resultado[k]=typeof m[k]==='string'&&/^[a-zA-Z_]{1,40}$/.test(String(m[k]))?m[k]:null;
+ for(const k of ['id','report_id'])resultado[k]=idMercadoPago(m[k]);
+ for(const k of ['begin_date','end_date','generation_date','last_modified'])resultado[k]=typeof m[k]==='string'&&Number.isFinite(Date.parse(String(m[k])))?new Date(String(m[k])).toISOString():null;
+ resultado.is_test=typeof m.is_test==='boolean'?m.is_test:null;
+ resultado.file_name=typeof m.file_name==='string'&&/^[-A-Za-z0-9_.]+\.csv$/i.test(m.file_name)?m.file_name:null;
+ return resultado;
 }
