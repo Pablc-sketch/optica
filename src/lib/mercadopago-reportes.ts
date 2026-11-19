@@ -113,7 +113,10 @@ export async function diagnosticarSaldoPorReporte(tenant:string){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return {error:'METADATA_INVALIDA'};
  const m=raw as Record<string,unknown>;
  const resultado:Record<string,unknown>={titular_coincide:idMercadoPago(m.user_id)===r.collector_id};
- for(const k of ['status','currency_id','format'])resultado[k]=typeof m[k]==='string'&&/^[a-zA-Z_]{1,40}$/.test(String(m[k]))?m[k]:null;
+ for(const k of ['status','currency_id','format'])resultado[k]=typeof m[k]==='string'?String(m[k]).slice(0,100):null;
+ resultado.status_tipo=typeof m.status;
+ resultado.campos=Object.keys(m).filter(k=>/^[a-z_]{1,40}$/.test(k)).slice(0,40);
+ if(m.status&&typeof m.status==='object')resultado.status_campos=Object.keys(m.status).filter(k=>/^[a-z_]{1,40}$/.test(k)).slice(0,15);
  for(const k of ['id','report_id'])resultado[k]=idMercadoPago(m[k]);
  for(const k of ['begin_date','end_date','generation_date','last_modified'])resultado[k]=typeof m[k]==='string'&&Number.isFinite(Date.parse(String(m[k])))?new Date(String(m[k])).toISOString():null;
  resultado.is_test=typeof m.is_test==='boolean'?m.is_test:null;

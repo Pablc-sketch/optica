@@ -15,6 +15,11 @@ describe('saldo respaldado por reporte oficial',()=>{
  it('rechaza un cierre que no coincide con el reporte',()=>{
   expect(()=>saldoDeReporteCSV(csv(['2026-11-01,initial_available_balance,100,0,100,CLP','2026-11-01,total,100,0,200,CLP']),'CLP')).toThrow('No se pudo verificar');
  });
+ it('no presenta como actuales las liberaciones fechadas después de la instantánea',()=>{
+  const texto=csv(['2026-11-01T03:00:00Z,initial_available_balance,100,0,100,CLP','2026-11-01T18:00:00Z,release,20,0,120,CLP','2026-11-02T02:59:59Z,total,120,0,120,CLP']);
+  expect(()=>saldoDeReporteCSV(texto,'CLP','2026-11-01T16:00:00Z')).toThrow();
+  expect(saldoDeReporteCSV(texto,'CLP','2026-11-01T19:00:00Z')).toBe(120);
+ });
  it('rechaza reportes incompletos, otra moneda y cifras ambiguas',()=>{
   for(const texto of [csv(['2026-11-01,release,1,0,1,CLP']),csv(['2026-11-01,initial_available_balance,1,0,1,USD']),csv(['2026-11-01,initial_available_balance,1.234,0,1,CLP']),csv(['2026-11-01,initial_available_balance,,,,CLP'])])expect(()=>saldoDeReporteCSV(texto,'CLP')).toThrow();
   expect(()=>saldoDeReporteCSV(csv(['2026-11-01,initial_available_balance,100,0,100,CLP']),'USD')).toThrow();
