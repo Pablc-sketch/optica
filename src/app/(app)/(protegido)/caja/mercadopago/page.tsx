@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { exigirRolPagina } from '@/lib/autorizacion';
 import { mercadoPagoConfigurado } from '@/lib/mercadopago-sync';
-import { consultarSaldoMercadoPago } from '@/lib/mercadopago-saldo';
+import { leerEstadoCuenta } from '@/lib/cuenta-mercadopago';
 import { filtrosCajaMercadoPago, estadoPagoMercadoPago } from '@/lib/mercadopago-caja';
 import { ESTADOS_CONCILIACION } from '@/lib/mercadopago-datos';
 import { clp } from '@/lib/clp';
@@ -28,7 +28,7 @@ export default async function CajaMercadoPago({ searchParams }: { searchParams: 
     consulta.range((f.pagina-1)*25,f.pagina*25-1),
     supabase.rpc('mercadopago_resumen_caja',{p_desde:desde,p_hasta:hasta}).single(),
     syncPromesa,
-    Promise.resolve(syncPromesa).then(s => consultarSaldoMercadoPago(tenantId,s.data?.collector_id ?? null)),
+    leerEstadoCuenta(tenantId).then(c=>c.saldo),
   ]);
   const datos = resumen.data as { operaciones: number; cobros: number; por_revisar: number; devuelto: number } | null;
   const hora = (v: string) => new Date(v).toLocaleString('es-CL',{timeZone:'America/Santiago',dateStyle:'short',timeStyle:'short'});
@@ -41,8 +41,8 @@ export default async function CajaMercadoPago({ searchParams }: { searchParams: 
     <section className="rounded-2xl bg-tinta p-5 text-white shadow-sm" aria-label="Saldo de la cuenta">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-sm font-semibold text-white/80">Saldo disponible en la cuenta</h2>
-          {saldo.estado === 'disponible' ? <><p className="mt-1 text-4xl font-bold tabular-nums">{clp(saldo.disponible)}</p>
-            <p className="mt-2 text-xs text-white/75">Consultado {hora(saldo.consultadoEn)} · Total {clp(saldo.total)}</p></>
+          {saldo.estado === 'disponible'||saldo.estado==='reporte' ? <><p className="mt-1 text-4xl font-bold tabular-nums">{clp(saldo.disponible)}</p>
+            <p className="mt-2 text-xs text-white/75">{saldo.estado==='reporte'?`Reporte oficial al corte ${hora(saldo.hasta)} · ${saldo.vigente?'Actualización automática':'Pendiente de un reporte nuevo'}`:`Consultado ${hora(saldo.consultadoEn)} · Total ${clp(saldo.total)}`}</p></>
             : <><p className="mt-2 text-lg font-semibold">{saldo.estado === 'no_habilitado' ? 'Consulta de saldo no habilitada' : saldo.estado === 'no_configurado' ? 'Pendiente de verificar la cuenta' : 'Saldo no disponible en esta consulta'}</p>
               <p className="mt-1 text-sm text-white/80">Consulta el saldo en Mercado Pago. Los cobros guardados aparecen abajo.</p></>}
         </div>

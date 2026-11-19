@@ -44,7 +44,7 @@ function validarMeta(raw:unknown,collector:string,hasta:string){
  if(m.currency_id!=='CLP')throw new ReporteMPInvalido(`REPORTE_MONEDA_${typeof m.currency_id==='string'&&/^[A-Z]{3}$/.test(m.currency_id)?m.currency_id:'NO_INFORMADA'}`);
  if(m.is_test!==false)throw new ReporteMPInvalido('REPORTE_SIN_CONFIRMAR_PRODUCCION');
  if(typeof m.end_date!=='string'||!Number.isFinite(Date.parse(m.end_date)))throw new ReporteMPInvalido('REPORTE_SIN_CORTE');
- if(Math.abs(Date.parse(m.end_date)-Date.parse(hasta))>1000)throw new ReporteMPInvalido('REPORTE_CORTE_NO_COINCIDE');
+ if(Math.abs(Date.parse(m.end_date)-Date.parse(hasta))>1000)throw new ReporteMPInvalido(`REPORTE_CORTE_${new Date(m.end_date).toISOString()}`);
  return m;
 }
 export async function actualizarSaldoPorReporte(tenant:string){
