@@ -26,7 +26,7 @@ import { costoRealCristal, origenCristal as origenDelCristal, precioVentaCristal
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
-type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string };
+type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string; sku?: string|null; recargo_marco?: number|null; stock?: number };
 // Una fila del catálogo de /precios: el precio al que se vende, más el
 // puente hacia la lista del laboratorio para poder calcular el costo real.
 type CostoCristal = {
@@ -97,6 +97,7 @@ type LineaCarrito = {
   // orden en que se hayan ido tocando en pantalla.
   armazonSlot?: number;
   recargoSlot?: number;
+  recargoEspecial?: number;
   nivelMarco?: NivelMarco;
   // El paciente trajo su propio marco: no hay productoId (no sale de
   // nuestro stock, no se descuenta inventario ni se cuenta el costo de
@@ -503,7 +504,7 @@ function SelectorArmazon({
   // El código o modelo del marco (lo que trae la etiqueta), aparte del
   // color: así sale en el pedido sin tener que cargar el marco al inventario.
   const [codigoMarco, setCodigoMarco] = useState("");
-  const [verInventario, setVerInventario] = useState(false);
+  const [verInventario, setVerInventario] = useState(true);
   const descripcion = [
     [tipoMarco, colorMarco.trim().toLowerCase()].filter(Boolean).join(" "),
     codigoMarco.trim() ? `cód. ${codigoMarco.trim().toUpperCase()}` : "",
@@ -514,7 +515,7 @@ function SelectorArmazon({
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
     if (!t) return armazones;
-    return armazones.filter((p) => `${p.marca ?? ""} ${p.nombre}`.toLowerCase().includes(t));
+    return armazones.filter((p) => `${p.marca ?? ""} ${p.nombre} ${p.sku ?? ""}`.toLowerCase().includes(t));
   }, [armazones, busca]);
 
   return (
@@ -627,8 +628,9 @@ function SelectorArmazon({
                 >
                   <span className="flex-1 truncate">
                     {p.marca ? `${p.marca} ` : ""}
-                    {p.nombre}
+                    {p.nombre} {p.sku && <small className="block">{p.sku}</small>}
                   </span>
+                  {p.stock!==undefined && <span className="text-xs">{p.stock<=0 ? `Por encargar (${p.stock})` : `Stock ${p.stock}`}</span>}
                 </button>
               </li>
             ))}
@@ -828,16 +830,18 @@ export default function PuntoDeVenta({
   // armazones dos veces.
   const tieneCristal = lineasCristal.length > 0;
   const productosFiltrados = useMemo(() => {
-    const base = tieneCristal ? productos.filter((p) => p.categoria !== "armazon") : productos;
+    const base = productos.filter(p => p.categoria !== "armazon" || (!tieneCristal && p.precio_venta > 0));
     const t = buscaProducto.trim().toLowerCase();
     if (!t) return base;
-    return base.filter((p) => `${p.marca ?? ""} ${p.nombre}`.toLowerCase().includes(t));
+    return base.filter((p) => `${p.marca ?? ""} ${p.nombre} ${p.sku ?? ""}`.toLowerCase().includes(t));
   }, [productos, buscaProducto, tieneCristal]);
 
   function elegirArmazon(numero: number, producto: Producto | null) {
     const key = `armazon-${numero}`;
     setCarrito((prev) => {
-      const sinEsteSlot = prev.filter((l) => l.key !== key);
+      const anteriorEspecial = prev.some(l => l.key === key && l.recargoEspecial != null);
+      const especial = producto?.recargo_marco;
+      const sinEsteSlot = prev.filter(l => l.key !== key && (!(anteriorEspecial || especial!=null) || l.key !== `premium-${numero}`));
       if (!producto) return sinEsteSlot;
       return [
         ...sinEsteSlot,
@@ -848,7 +852,9 @@ export default function PuntoDeVenta({
           cantidad: 1,
           precioUnitario: 0,
           armazonSlot: numero,
+          recargoEspecial: especial ?? undefined,
         },
+        ...(especial!=null ? [lineaRecargo(numero,"premium",recargosMarcos,prev.find(l=>l.key===`cristal-${numero}`)?.precioUnitario===0,especial)] : []),
       ];
     });
   }
@@ -874,6 +880,7 @@ export default function PuntoDeVenta({
 
   function cambiarNivelMarco(numero:number,nivel:NivelMarco) {
     setCarrito(prev=>{
+      if(prev.find(l=>l.key===`armazon-${numero}`)?.recargoEspecial!=null)return prev;
       const sin=prev.filter(l=>l.key!==`premium-${numero}`);
       if(nivel==='esencial'||prev.find(l=>l.key===`armazon-${numero}`)?.marcoPropio)return sin;
       return [...sin,lineaRecargo(numero,nivel,recargosMarcos,prev.find(l=>l.key===`cristal-${numero}`)?.precioUnitario===0)];
@@ -885,7 +892,7 @@ export default function PuntoDeVenta({
   function describirMarco(numero: number, descripcion: string) {
     const key = `armazon-${numero}`;
     setCarrito((prev) => [
-      ...prev.filter((l) => l.key !== key),
+      ...prev.filter(l => l.key !== key && (l.key !== `premium-${numero}` || !prev.some(m => m.key === key && m.recargoEspecial != null))),
       {
         key,
         descripcion: `Marco ${descripcion}`,
@@ -928,7 +935,7 @@ export default function PuntoDeVenta({
       const sinEstaFila = prev.filter((l) => l.key !== key);
       if (!datos) return sinEstaFila.filter(l=>l.key!==`premium-${numero}`&&l.key!==`armazon-${numero}`);
       const nivel=prev.find(l=>l.key===`premium-${numero}`)?.nivelMarco;
-      const actualizados=nivel?sinEstaFila.map(l=>l.key===`premium-${numero}`?lineaRecargo(numero,nivel,recargosMarcos,!!datos.esRegalo||datos.precioManual===0):l):sinEstaFila;
+      const actualizados=nivel?sinEstaFila.map(l=>l.key===`premium-${numero}`?lineaRecargo(numero,nivel,recargosMarcos,!!datos.esRegalo||datos.precioManual===0,prev.find(m=>m.key===`armazon-${numero}`)?.recargoEspecial):l):sinEstaFila;
       return [
         ...actualizados,
         lineaDeCombo(numero, datos.combo, factorVenta, {
@@ -1443,7 +1450,8 @@ export default function PuntoDeVenta({
                     onMarcarPropio={() => marcarMarcoPropio(numero)}
                     onDescribir={(d) => describirMarco(numero, d)}
                   />
-                  {!marco?.marcoPropio && (
+                  {marco?.recargoEspecial!=null && <p className="rounded-xl bg-amber-50 p-3 font-semibold">Colección Especial · {clp(l.precioUnitario===0?0:l.precioUnitario+marco.recargoEspecial)} el par</p>}
+                  {!marco?.marcoPropio && marco?.recargoEspecial==null && (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label={`Línea de marco par ${numero}`}>
                       {NIVELES_MARCO.filter(n=>recargosMarcos||n.id!=='seleccion').map(n=><button key={n.id} type="button" onClick={()=>cambiarNivelMarco(numero,n.id)} aria-pressed={nivelActual===n.id} className={`rounded-2xl border-2 px-3 py-4 text-left ${nivelActual===n.id?'border-tinta bg-tinta text-white':'border-tinta/20 bg-white text-tinta'}`}>
                         <span className="block text-lg font-bold">{n.nombre}</span>

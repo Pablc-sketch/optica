@@ -23,7 +23,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     supabase.from("pacientes").select("id, nombre, rut", { count: "exact" }).order("nombre").limit(2000),
     supabase
       .from("productos")
-      .select("id, nombre, marca, precio_venta, categoria")
+      .select("id, nombre, marca, precio_venta, categoria, sku, recargo_marco")
       .order("marca")
       .limit(2000),
     supabase
@@ -77,6 +77,11 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     }
   }
 
+  const {data: existencias} = sucursalRes.data
+    ? await supabase.from("inventario").select("producto_id, stock_actual").eq("sucursal_id", sucursalRes.data.id).limit(2000)
+    : {data: []};
+  const stockPorProducto = new Map(existencias?.map(p => [p.producto_id, p.stock_actual]));
+
   const contexto = operativosRes.data?.find(o=>o.id===op);
   const piloto = esPilotoTerreno(perfilRes.data?.tenant_id);
   if (op && !contexto) return <div className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-xl font-bold">Operativo no disponible</h1><p className="mt-1 text-sm">Revisa la agenda antes de registrar esta venta.</p><Link href={piloto ? "/agenda/equipos" : "/operativos"} className="mt-3 inline-block underline">Volver a operativos</Link></div>;
@@ -100,7 +105,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
           operativoInicial={contexto?.id}
           sugerirOperativoPorReceta={!piloto}
           pacientes={pacientesRes.data ?? []}
-          productos={productosRes.data ?? []}
+          productos={(productosRes.data ?? []).map(p => ({...p, stock: stockPorProducto.get(p.id)}))}
           costos={costosRes.data ?? []}
           laboratorios={laboratoriosRes.data ?? []}
           recargosMarcos={leerRecargosMarcos(tenantRes.data?.recargos_marcos)}

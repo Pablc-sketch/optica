@@ -99,6 +99,14 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       }
     : null;
 
+  // Precio de lista de los productos (marcos, accesorios), para dejar a la
+  // vista cuándo se vendieron con descuento o de regalo.
+  const idsProductos = [...new Set(items.map((i) => i.productoId).filter((x): x is string => Boolean(x)))];
+  const { data: productos } = idsProductos.length
+    ? await supabase.from("productos").select("id, precio_venta, recargo_marco").in("id", idsProductos)
+    : { data: [] as { id: string; precio_venta: number; recargo_marco: number|null }[] };
+  if ((productos ?? []).length !== idsProductos.length) return { ok: false, error: "Un producto de la venta no existe." };
+
   // Costo y origen, recalculados acá. Si el catálogo no se puede leer o
   // falta la equivalencia, NO se inventa un costo: la venta se detiene con
   // un mensaje claro (F07).
@@ -111,7 +119,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
     } catch {
       return { ok: false, error: "No se pudo leer el catálogo de precios. Revisa la conexión e intenta de nuevo." };
     }
-    const errorRecargo=validarRecargosVenta(normal.venta,cotizar.recargosMarcos);
+    const errorRecargo=validarRecargosVenta(normal.venta,cotizar.recargosMarcos,new Map((productos??[]).flatMap(p=>p.recargo_marco===null?[]:[[p.id,p.recargo_marco] as const])));
     if(errorRecargo)return {ok:false,error:errorRecargo};
     const { data: tenant } = await supabase
       .from("tenants")
@@ -189,14 +197,6 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       });
     }
   }
-
-  // Precio de lista de los productos (marcos, accesorios), para dejar a la
-  // vista cuándo se vendieron con descuento o de regalo.
-  const idsProductos = [...new Set(items.map((i) => i.productoId).filter((x): x is string => Boolean(x)))];
-  const { data: productos } = idsProductos.length
-    ? await supabase.from("productos").select("id, precio_venta").in("id", idsProductos)
-    : { data: [] as { id: string; precio_venta: number }[] };
-  if ((productos ?? []).length !== idsProductos.length) return { ok: false, error: "Un producto de la venta no existe." };
 
   const { data, error } = await supabase.rpc("registrar_venta_con_voucher", {
     p: {
