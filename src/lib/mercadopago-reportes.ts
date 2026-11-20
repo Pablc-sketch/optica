@@ -53,8 +53,14 @@ export async function silenciarReportesMP(tenant:string){
  if(!mercadoPagoConfigurado(tenant))throw new ReporteMPInvalido('SIN_CONFIGURAR');
  const {data:sync,error}=await createAdminClient().from('mercadopago_sync').select('collector_id').eq('tenant_id',tenant).single();
  if(error||!sync?.collector_id||idMercadoPago((await consultarApiMP('/users/me')).id)!==String(sync.collector_id))throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
- await configurarColumnas();
- return {avisos_reportes:'desactivados',destinatarios:0};
+ try{await configurarColumnas();return {avisos_reportes:'desactivados',destinatarios:0};}
+ catch(e){
+  const codigo=e instanceof ErrorMercadoPago||e instanceof ReporteMPInvalido?e.codigo:'CONSULTA_FALLIDA';
+  const raw=await reporteJSON(`${BASE}/config`).catch(()=>null);
+  const config=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:{};
+  const lista=config.notification_email_list;
+  return {avisos_reportes:'sin_confirmar',codigo,destinatarios:Array.isArray(lista)?lista.length:null,lista_tipo:lista===null?'null':typeof lista,campos:Object.keys(config).filter(k=>/^[a-z_]{1,40}$/.test(k))};
+ }
 }
 function validarMeta(raw:unknown,collector:string,desde:string,hasta:string,tarea:string){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new ReporteMPInvalido('METADATA_INVALIDA');

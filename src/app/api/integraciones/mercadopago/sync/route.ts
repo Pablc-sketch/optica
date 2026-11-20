@@ -1,3 +1,5 @@
+import {ErrorMercadoPago} from '@/lib/mercadopago-api';
+import {ReporteMPInvalido} from '@/lib/mercadopago-reporte-datos';
 import {actualizarSaldoPorReporte,diagnosticarSaldoPorReporte,silenciarReportesMP} from '@/lib/mercadopago-reportes';
 import {revisarConexionMP,integrarTerminalUnicaMP} from '@/lib/mercadopago-conexion';
 import { timingSafeEqual } from 'node:crypto';
@@ -18,7 +20,7 @@ export async function POST(request: Request) {
   if (!tenant) return Response.json({ error: 'Sin configurar' }, { status: 503 });
   try {
     const opciones:unknown=await request.json().catch(()=>({}));
-    if(opciones&&typeof opciones==='object'&&(opciones as {silenciar_reportes?:unknown}).silenciar_reportes===true)return Response.json(await silenciarReportesMP(tenant));
+    if(opciones&&typeof opciones==='object'&&(opciones as {silenciar_reportes?:unknown}).silenciar_reportes===true){const avisos=await silenciarReportesMP(tenant);return Response.json(avisos,{status:avisos.avisos_reportes==='desactivados'?200:503});}
     if(opciones&&typeof opciones==='object'&&(opciones as {integrar_point?:unknown}).integrar_point===true)await integrarTerminalUnicaMP(tenant);
     const cierreAnterior=opciones&&typeof opciones==='object'&&(opciones as {saldo_cierre_anterior?:unknown}).saldo_cierre_anterior===true;
     const [archivo, point] = await Promise.allSettled([sincronizarMercadoPago(tenant), sincronizarOrdenesPoint(tenant),revisarConexionMP(tenant),actualizarSaldoPorReporte(tenant,{cierreAnterior:Boolean(cierreAnterior)})]);
@@ -26,7 +28,8 @@ export async function POST(request: Request) {
     const diagnostico=opciones&&typeof opciones==='object'&&(opciones as {diagnosticar_saldo?:unknown}).diagnosticar_saldo===true?await diagnosticarSaldoPorReporte(tenant):undefined;
     const resultado = {...archivo.value, point:point.status==='fulfilled'?point.value.revisados:null,saldo_diagnostico:diagnostico};
     return Response.json(resultado, { status: resultado.estado === 'no_configurado' ? 503 : 200 });
-  } catch {
-    return Response.json({ error: 'Sincronización pendiente de reintento' }, { status: 503 });
+  } catch(e) {
+    const codigo=e instanceof ErrorMercadoPago||e instanceof ReporteMPInvalido?e.codigo:undefined;
+    return Response.json({ error: 'Sincronización pendiente de reintento',codigo }, { status: 503 });
   }
 }
