@@ -120,7 +120,9 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
   if(idMercadoPago((await consultarApiMP('/users/me')).id)!==collector)throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
   const {data:r,error}=await db.from('mercadopago_saldos').select('*').eq('tenant_id',tenant).single();
   if(error||!r)throw new ReporteMPInvalido('REGISTRO_NO_DISPONIBLE');
-  if(r.error_codigo==='AVISO_REPORTE_NO_DESACTIVADO')return {estado:'error',codigo:r.error_codigo};
+  // Solo para la cuenta cuyo filtro de avisos se verificó en Gmail.
+  const filtroGmailVerificado=process.env.MERCADOPAGO_REPORTES_FILTRO_GMAIL_TENANT===tenant;
+  if(!filtroGmailVerificado&&r.error_codigo==='AVISO_REPORTE_NO_DESACTIVADO')return {estado:'error',codigo:r.error_codigo};
   if(!opciones.cierreAnterior&&r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
    const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_desde,r.periodo_hasta,r.tarea_id);
    if(['pending','taken','processing','created','scheduled','data-ready'].includes(String(meta.status))){await guardar({estado:'preparando',error_codigo:null});return;}
@@ -157,8 +159,10 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
   const id=idMercadoPago((raw as Record<string,unknown>).id);
   if(!id)throw new ReporteMPInvalido('TAREA_NO_IDENTIFICADA');
   await guardar({tarea_id:id});
-  const avisos=avisosDeTarea(raw)??avisosDeTarea(await reporteJSON(`${BASE}/task/${id}`));
-  if(!avisos||avisos.some(Boolean))throw new ReporteMPInvalido('AVISO_REPORTE_NO_DESACTIVADO');
+  if(!filtroGmailVerificado){
+   const avisos=avisosDeTarea(raw)??avisosDeTarea(await reporteJSON(`${BASE}/task/${id}`));
+   if(!avisos||avisos.some(Boolean))throw new ReporteMPInvalido('AVISO_REPORTE_NO_DESACTIVADO');
+  }
   return {estado:'preparando'};
  }catch(e){
   const codigo=e instanceof ErrorMercadoPago||e instanceof ReporteMPInvalido?e.codigo:'CONSULTA_FALLIDA';
