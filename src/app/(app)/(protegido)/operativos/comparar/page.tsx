@@ -1,9 +1,8 @@
-import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { clp } from "@/lib/clp";
 import { fechaLegible } from "@/lib/fechas";
-import { costoDeItems, type ItemConCosto } from "@/lib/costo-venta";
+import { filasRentabilidad, type VentaRentabilidad } from "@/lib/rentabilidad-operativos";
 
 // Ranking de operativos: para decidir dónde conviene repetir (mejor venta,
 // mejor conversión, mejor utilidad) en vez de guiarse por sensación. Mismos
@@ -56,54 +55,8 @@ export default async function CompararOperativos() {
       .not("operativo_id", "is", null),
   ]);
 
-  // Conversión contada por PERSONA, no por receta: alguien puede salir con
-  // dos recetas del mismo operativo (lejos y cerca por separado) y eso no
-  // lo convierte en dos pacientes — contarlo así hundía el porcentaje sin
-  // razón.
-  const examinadosPorOperativo = new Map<string, Set<string>>();
-  for (const r of recetas ?? []) {
-    if (!r.operativo_id || !r.paciente_id) continue;
-    if (!examinadosPorOperativo.has(r.operativo_id)) examinadosPorOperativo.set(r.operativo_id, new Set());
-    examinadosPorOperativo.get(r.operativo_id)!.add(r.paciente_id);
-  }
-  const ventasPorOperativo = new Map<
-    string,
-    { cantidad: number; total: number; costoProductos: number; pagaron: Set<string> }
-  >();
-  for (const v of ventas ?? []) {
-    if (!v.operativo_id) continue;
-    const actual =
-      ventasPorOperativo.get(v.operativo_id) ?? { cantidad: 0, total: 0, costoProductos: 0, pagaron: new Set<string>() };
-    actual.total += v.total;
-    actual.costoProductos += costoDeItems((v.venta_items ?? []) as unknown as ItemConCosto[], (operativos ?? []).find(o => o.id === v.operativo_id)?.costo_marco_unitario ?? undefined);
-    // Una cortesía ($0) es atención, no venta: si cuenta como conversión,
-    // el número dice que se vendió más de lo que de verdad entró en plata.
-    if (v.total > 0) {
-      actual.cantidad += 1;
-      if (v.paciente_id) actual.pagaron.add(v.paciente_id);
-    }
-    ventasPorOperativo.set(v.operativo_id, actual);
-  }
-
-  const filas = (operativos ?? []).map((o) => {
-    const examenes = examinadosPorOperativo.get(o.id)?.size ?? 0;
-    const venta =
-      ventasPorOperativo.get(o.id) ?? { cantidad: 0, total: 0, costoProductos: 0, pagaron: new Set<string>() };
-    // Costo real de lo vendido en este operativo, no solo sus propios
-    // gastos (transporte, arriendo, etc) — si no, "utilidad" quedaba igual
-    // a "vendido".
-    const costos = gastosDeOperativo(o) + venta.costoProductos;
-    const conversion = examenes > 0 ? (venta.pagaron.size / examenes) * 100 : 0;
-    return {
-      ...o,
-      examenes,
-      ventasCantidad: venta.cantidad,
-      vendido: venta.total,
-      costos,
-      utilidad: venta.total - costos,
-      conversion,
-    };
-  });
+  // Mismo cálculo que usa el asistente de IA (src/lib/rentabilidad-operativos.ts).
+  const filas = filasRentabilidad(operativos ?? [], recetas ?? [], (ventas ?? []) as VentaRentabilidad[]);
 
   const filasOrdenadas = [...filas].sort((a, b) => b.utilidad - a.utilidad);
 

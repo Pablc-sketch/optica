@@ -1,3 +1,4 @@
+import AgendaWhatsappOperativo from "@/components/agenda-whatsapp-operativo";
 import { leerRecargosMarcos, NIVELES_MARCO, precioParConMarco } from "@/lib/niveles-marco";
 import OperativoTerreno from "@/components/operativo-terreno";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
@@ -1100,6 +1101,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
           </div>
         </form>
       </details>
+
+      <AgendaWhatsappOperativo operativoId={id} />
 
       <section>
         <h2 className="mb-2 font-semibold">Ventas y entregas</h2>

@@ -6,6 +6,7 @@ import { cerrarSesion } from "@/lib/actions/auth";
 import EstadoSync from "@/components/estado-sync";
 import Icono from "@/components/icono";
 import NavLinks from "@/components/nav-links";
+import AsistenteIA from "@/components/asistente-ia";
 import BarraCarga from "@/components/barra-carga";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { menuParaRol } from "@/lib/navegacion";
@@ -153,6 +154,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
       </main>
       </div>
+      {perfil.rol === "admin" && <AsistenteIA />}
     </div>
   );
 }

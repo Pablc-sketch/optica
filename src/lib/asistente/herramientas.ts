@@ -1,0 +1,177 @@
+import "server-only";
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema";
+import { evaluarPunto, resumirPorGrupo, type FilaRentabilidad } from "@/lib/rentabilidad-operativos";
+import { contarCitas, leerRentabilidad, type OperativoIA } from "@/lib/asistente/datos";
+
+// Herramientas de SOLO LECTURA del asistente. Cada una trabaja con la sesión
+// del usuario y su óptica: no hay forma de pedir datos de otra óptica, y
+// nada aquí escribe en la base.
+
+export const TIPOS_VENUE: Record<string, string> = {
+  condominio: "Condominio", junta_vecinos: "Junta de vecinos", apr: "APR", colegio: "Colegio",
+  sala_cuna: "Sala cuna", supermercado: "Supermercado", otro: "Otro",
+};
+
+const normalizar = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+function resumenOperativo(f: FilaRentabilidad<OperativoIA>, citas: Map<string, number>) {
+  return {
+    id: f.id,
+    nombre: f.nombre,
+    fecha: f.fecha,
+    fecha_fin: f.fecha_fin,
+    estado: f.estado,
+    tipo_lugar: f.tipo_venue ? TIPOS_VENUE[f.tipo_venue] ?? f.tipo_venue : null,
+    comuna: f.comuna,
+    examinados: f.examenes,
+    meta_examenes: f.meta_examenes,
+    ventas: f.ventasCantidad,
+    vendido: f.vendido,
+    gastos_operativo: f.gastos,
+    costo_cristales_y_marcos: f.costoProductos,
+    utilidad: f.utilidad,
+    conversion_pct: Math.round(f.conversion * 10) / 10,
+    horas_agendadas_whatsapp: citas.get(f.id) ?? 0,
+  };
+}
+
+export function crearHerramientas(supabase: SupabaseClient, tenantId: string, hoy: string) {
+  // Una sola lectura por pregunta, compartida entre herramientas.
+  let cache: Promise<{ filas: FilaRentabilidad<OperativoIA>[]; citas: Map<string, number> }> | null = null;
+  const datos = () =>
+    (cache ??= Promise.all([leerRentabilidad(supabase, tenantId), contarCitas(supabase, tenantId)]).then(([filas, citas]) => ({ filas, citas })));
+
+  const listar = betaTool({
+    name: "listar_operativos",
+    description:
+      "Lista los operativos de la óptica con sus números (examinados, ventas, vendido, gastos, costo de cristales y marcos, utilidad, conversión) ordenados por fecha descendente. Úsala para ver el historial, los próximos operativos o buscar uno por nombre o comuna.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        desde: { type: "string", description: "Fecha mínima AAAA-MM-DD (opcional)" },
+        hasta: { type: "string", description: "Fecha máxima AAAA-MM-DD (opcional)" },
+        texto: { type: "string", description: "Parte del nombre, comuna o tipo de lugar (opcional)" },
+        incluir_cancelados: { type: "boolean" },
+        limite: { type: "integer", minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const { filas, citas } = await datos();
+      const t = input.texto ? normalizar(input.texto) : "";
+      const lista = filas
+        .filter((f) => input.incluir_cancelados || f.estado !== "cancelado")
+        .filter((f) => !input.desde || f.fecha >= input.desde)
+        .filter((f) => !input.hasta || f.fecha <= input.hasta)
+        .filter((f) => !t || normalizar([f.nombre, f.comuna, f.tipo_venue && TIPOS_VENUE[f.tipo_venue]].filter(Boolean).join(" ")).includes(t))
+        .slice(0, input.limite ?? 40)
+        .map((f) => resumenOperativo(f, citas));
+      return JSON.stringify({ hoy, total: lista.length, operativos: lista });
+    },
+  });
+
+  const detalle = betaTool({
+    name: "detalle_operativo",
+    description:
+      "Desglose completo de un operativo por id: gastos por categoría (transporte, arriendo, viáticos, ayudante, equipos, hospedaje, comida, peajes, otros), costo de cristales y marcos, ventas, utilidad, conversión, ticket promedio y horas agendadas por WhatsApp.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "id del operativo (de listar_operativos)" } },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    run: async ({ id }) => {
+      const { filas, citas } = await datos();
+      const f = filas.find((x) => x.id === id);
+      if (!f) return JSON.stringify({ error: "No existe un operativo con ese id en esta óptica." });
+      return JSON.stringify({
+        ...resumenOperativo(f, citas),
+        direccion: f.direccion,
+        horario: f.hora_inicio ? `${f.hora_inicio.slice(0, 5)}-${(f.hora_fin ?? "").slice(0, 5)}` : null,
+        ticket_promedio: f.ventasCantidad > 0 ? Math.round(f.vendido / f.ventasCantidad) : null,
+        gastos_detalle: {
+          transporte: f.costo_transporte, arriendo: f.costo_arriendo, viaticos: f.costo_viaticos,
+          ayudante: f.costo_ayudante ?? 0, equipos: f.costo_equipos ?? 0, hospedaje: f.costo_hospedaje ?? 0,
+          comida: f.costo_comida ?? 0, peajes: f.costo_peajes ?? 0, otros: f.costo_otros,
+        },
+      });
+    },
+  });
+
+  const comparar = betaTool({
+    name: "comparar_lugares",
+    description:
+      "Agrupa los operativos ya realizados por tipo de lugar, comuna o nombre del lugar y entrega totales y promedios (utilidad promedio, conversión, ticket promedio). Úsala para saber qué lugares o comunas convienen.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agrupar_por: { type: "string", enum: ["tipo_lugar", "comuna", "nombre"] },
+        desde: { type: "string", description: "Fecha mínima AAAA-MM-DD (opcional)" },
+      },
+      required: ["agrupar_por"],
+      additionalProperties: false,
+    },
+    run: async ({ agrupar_por, desde }) => {
+      const { filas } = await datos();
+      const base = filas.filter((f) => f.estado !== "cancelado" && f.fecha <= hoy && (!desde || f.fecha >= desde));
+      const grupoDe =
+        agrupar_por === "comuna"
+          ? (f: FilaRentabilidad) => f.comuna ?? ""
+          : agrupar_por === "nombre"
+            ? (f: FilaRentabilidad) => f.nombre.trim()
+            : (f: FilaRentabilidad) => (f.tipo_venue ? TIPOS_VENUE[f.tipo_venue] ?? f.tipo_venue : "");
+      return JSON.stringify({ grupos: resumirPorGrupo(base, grupoDe).slice(0, 40) });
+    },
+  });
+
+  const evaluar = betaTool({
+    name: "evaluar_punto",
+    description:
+      "Proyecta si un punto (lugar nuevo o repetido) sería rentable usando el historial real de la óptica: examinados por día, conversión, ticket y margen de cristales/marcos de operativos parecidos, menos los gastos estimados que indiques. Entrega utilidad esperada, escenarios bajo/esperado/alto y examinados necesarios para no perder plata. Los cálculos los hace el sistema; no los rehagas.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dias: { type: "integer", minimum: 1, maximum: 30 },
+        tipo_lugar: { type: "string", enum: Object.keys(TIPOS_VENUE), description: "Para comparar solo con lugares de ese tipo (opcional)" },
+        comuna: { type: "string", description: "Para comparar solo con esa comuna (opcional)" },
+        nombre_lugar: { type: "string", description: "Para usar solo operativos anteriores en ese mismo lugar (opcional)" },
+        examenes_esperados: { type: "integer", minimum: 1, description: "Si el usuario sabe cuántas personas espera (opcional)" },
+        costo_transporte: { type: "integer", minimum: 0 },
+        costo_arriendo: { type: "integer", minimum: 0 },
+        costo_viaticos: { type: "integer", minimum: 0 },
+        costo_personal: { type: "integer", minimum: 0 },
+        costo_equipos: { type: "integer", minimum: 0 },
+        costo_otros: { type: "integer", minimum: 0 },
+      },
+      required: ["dias"],
+      additionalProperties: false,
+    },
+    run: async (i) => {
+      const { filas } = await datos();
+      const pasados = filas.filter((f) => f.estado !== "cancelado" && f.fecha <= hoy);
+      // Del filtro más parecido al más general, usando el primero con al
+      // menos 2 operativos con examinados.
+      const candidatos: [string, FilaRentabilidad<OperativoIA>[]][] = [];
+      if (i.nombre_lugar) candidatos.push([`mismo lugar «${i.nombre_lugar}»`, pasados.filter((f) => normalizar(f.nombre).includes(normalizar(i.nombre_lugar!)))]);
+      if (i.comuna && i.tipo_lugar) candidatos.push([`${TIPOS_VENUE[i.tipo_lugar]} en ${i.comuna}`, pasados.filter((f) => f.tipo_venue === i.tipo_lugar && normalizar(f.comuna ?? "") === normalizar(i.comuna!))]);
+      if (i.comuna) candidatos.push([`comuna ${i.comuna}`, pasados.filter((f) => normalizar(f.comuna ?? "") === normalizar(i.comuna!))]);
+      if (i.tipo_lugar) candidatos.push([`lugares tipo ${TIPOS_VENUE[i.tipo_lugar]}`, pasados.filter((f) => f.tipo_venue === i.tipo_lugar)]);
+      candidatos.push(["todos los operativos de la óptica", pasados]);
+      const [criterio, base] = candidatos.find(([, b]) => b.filter((f) => f.examenes > 0).length >= 2) ?? candidatos[candidatos.length - 1];
+      return JSON.stringify(
+        evaluarPunto(base, {
+          dias: i.dias,
+          examenesEsperados: i.examenes_esperados ?? null,
+          costos: {
+            transporte: i.costo_transporte, arriendo: i.costo_arriendo, viaticos: i.costo_viaticos,
+            personal: i.costo_personal, equipos: i.costo_equipos, otros: i.costo_otros,
+          },
+        }, criterio)
+      );
+    },
+  });
+
+  return [listar, detalle, comparar, evaluar] as const;
+}
