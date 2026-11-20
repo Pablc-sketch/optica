@@ -1,6 +1,6 @@
 import {ErrorMercadoPago} from '@/lib/mercadopago-api';
 import {ReporteMPInvalido} from '@/lib/mercadopago-reporte-datos';
-import {actualizarSaldoPorReporte,diagnosticarSaldoPorReporte,silenciarReportesMP} from '@/lib/mercadopago-reportes';
+import {actualizarSaldoPorReporte,diagnosticarSaldoPorReporte,silenciarReportesMP,diagnosticarAvisosMP} from '@/lib/mercadopago-reportes';
 import {revisarConexionMP,integrarTerminalUnicaMP} from '@/lib/mercadopago-conexion';
 import { timingSafeEqual } from 'node:crypto';
 import { sincronizarOrdenesPoint } from '@/lib/mercadopago-point';
@@ -20,6 +20,7 @@ export async function POST(request: Request) {
   if (!tenant) return Response.json({ error: 'Sin configurar' }, { status: 503 });
   try {
     const opciones:unknown=await request.json().catch(()=>({}));
+    if(opciones&&typeof opciones==='object'&&(opciones as {diagnosticar_avisos?:unknown}).diagnosticar_avisos===true){const tarea=(opciones as {tarea_diagnostico?:unknown}).tarea_diagnostico;return Response.json(await diagnosticarAvisosMP(tenant,typeof tarea==='string'?tarea:undefined));}
     if(opciones&&typeof opciones==='object'&&(opciones as {silenciar_reportes?:unknown}).silenciar_reportes===true){const avisos=await silenciarReportesMP(tenant);return Response.json(avisos,{status:'preferencias_reportes' in avisos?200:503});}
     if(opciones&&typeof opciones==='object'&&(opciones as {integrar_point?:unknown}).integrar_point===true)await integrarTerminalUnicaMP(tenant);
     const cierreAnterior=opciones&&typeof opciones==='object'&&(opciones as {saldo_cierre_anterior?:unknown}).saldo_cierre_anterior===true;

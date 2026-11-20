@@ -64,6 +64,28 @@ export async function silenciarReportesMP(tenant:string){
   return {avisos_reportes:'sin_confirmar',codigo,destinatarios:Array.isArray(lista)?lista.length:null,lista_tipo:lista===null?'null':typeof lista,campos:Object.keys(config).filter(k=>/^[a-z_]{1,40}$/.test(k))};
  }
 }
+// Solo lectura: no configura, solicita reportes ni modifica la caja.
+export async function diagnosticarAvisosMP(tenant:string,tarea?:string){
+ if(!mercadoPagoConfigurado(tenant))throw new ReporteMPInvalido('SIN_CONFIGURAR');
+ const {data:sync,error}=await createAdminClient().from('mercadopago_sync').select('collector_id').eq('tenant_id',tenant).single();
+ const collector=String(sync?.collector_id??'');
+ if(error||!collector||idMercadoPago((await consultarApiMP('/users/me')).id)!==collector)throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
+ const config=await reporteJSON(`${BASE}/config`) as Record<string,unknown>;
+ const lista=config.notification_email_list;
+ const resultado:Record<string,unknown>={solo_lectura:true,destinatarios_adicionales:Array.isArray(lista)?lista.length:null,lista_informada:lista!==undefined,programados:config.scheduled===true};
+ if(tarea){
+  if(!/^\d{1,30}$/.test(tarea))throw new ReporteMPInvalido('TAREA_NO_IDENTIFICADA');
+  const m=await reporteJSON(`${BASE}/task/${tarea}`) as Record<string,unknown>;
+  if(idMercadoPago(m.user_id)!==collector)throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
+  const gestion=m.internal_management;
+  const filas=Array.isArray(gestion)?gestion:gestion&&typeof gestion==='object'?[gestion]:[];
+  resultado.gestion_tipo=gestion===null?'null':Array.isArray(gestion)?'array':typeof gestion;
+  resultado.gestion=filas.map(v=>{const f=v&&typeof v==='object'?v as Record<string,unknown>:{};return {campos:Object.keys(f).filter(k=>/^[a-z_]{1,40}$/.test(k)),notify:typeof f.notify==='boolean'?f.notify:null,is_visible:typeof f.is_visible==='boolean'?f.is_visible:null,use_exact_time:typeof f.use_exact_time==='boolean'?f.use_exact_time:null};});
+  resultado.tarea_estado=typeof m.status==='string'?m.status.slice(0,40):null;
+ }
+ try{const raw=await reporteJSON(`/users/${collector}/mercadopago_account/balance`) as Record<string,unknown>;resultado.saldo_directo=idMercadoPago(raw.user_id)===collector&&raw.currency_id==='CLP'&&typeof raw.available_balance==='number'&&Number.isFinite(raw.available_balance)?{disponible:raw.available_balance,moneda:'CLP'}:'RESPUESTA_INVALIDA';}catch(e){resultado.saldo_directo=e instanceof ErrorMercadoPago?e.codigo:'NO_DISPONIBLE';}
+ return resultado;
+}
 function avisosDeTarea(raw:unknown):boolean[]|null{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return null;
  const gestion=(raw as Record<string,unknown>).internal_management;

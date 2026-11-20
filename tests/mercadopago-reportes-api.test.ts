@@ -9,11 +9,21 @@ vi.mock('../src/lib/supabase/admin',()=>({createAdminClient:()=>({
   update:(v:Record<string,unknown>)=>({eq:()=>({eq:async()=>{ctx.updates.push(v);return {error:null};}})})
  })
 })}));
-import {actualizarSaldoPorReporte,silenciarReportesMP} from '../src/lib/mercadopago-reportes';
+import {actualizarSaldoPorReporte,silenciarReportesMP,diagnosticarAvisosMP} from '../src/lib/mercadopago-reportes';
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status});
 beforeEach(()=>{ctx.fila={};ctx.updates=[];vi.stubEnv('MERCADOPAGO_ACCESS_TOKEN','ficticio-servidor');});
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
 describe('reportes oficiales y configuración',()=>{
+ it('diagnostica los avisos solo con GET sin generar reportes ni actualizar caja',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({scheduled:false})).mockResolvedValueOnce(json({id:456,user_id:123,internal_management:{notify:true,is_visible:true},status:'processed'})).mockResolvedValueOnce(json({error:'ForbiddenApiError'},403));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await diagnosticarAvisosMP('tenant','456')).toMatchObject({solo_lectura:true,lista_informada:false,gestion:[{notify:true}],saldo_directo:'REPORTE_HTTP_403_ForbiddenApiError'});
+  expect(fetcher.mock.calls.every(c=>!c[1]?.method||c[1].method==='GET')).toBe(true);expect(ctx.updates).toEqual([]);
+ });
+ it('el diagnóstico no muestra avisos de un reporte ajeno',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({id:456,user_id:999,internal_management:{notify:false}}));
+  vi.stubGlobal('fetch',fetcher);await expect(diagnosticarAvisosMP('tenant','456')).rejects.toThrow();expect(ctx.updates).toEqual([]);
+ });
  it('crea configuración completa sin activar envíos ni reportes programados',async()=>{
   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({error:'not_found'},404)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({notification_email_list:[]})).mockResolvedValueOnce(json({id:456,internal_management:{notify:false}},202));
   vi.stubGlobal('fetch',fetcher);
