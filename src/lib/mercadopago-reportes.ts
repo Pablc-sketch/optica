@@ -23,10 +23,10 @@ async function reporteJSON(path:string,init:RequestInit={}){
  }
  return await r.json() as unknown;
 }
-function avisosDesactivados(raw:unknown){
+function avisosDesactivados(raw:unknown,permitirAusente=false){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return false;
  const lista=(raw as Record<string,unknown>).notification_email_list;
- return Array.isArray(lista)&&lista.length===0;
+ return Array.isArray(lista)?lista.length===0:permitirAusente&&lista===undefined;
 }
 async function configurarColumnas(){
  let raw:unknown;
@@ -45,7 +45,9 @@ async function configurarColumnas(){
   await reporteJSON(`${BASE}/config`,{method:'PUT',body:JSON.stringify(preferencias)});
  }
  // No genera otro reporte si el proveedor no confirma que los avisos están apagados.
- if(!avisosDesactivados(await reporteJSON(`${BASE}/config`)))throw new ReporteMPInvalido('AVISOS_DE_REPORTE_ACTIVOS');
+ // La API omite notification_email_list cuando la lista guardada está vacía.
+ // Solo se acepta esa omisión después de un POST/PUT explícito con [].
+ if(!avisosDesactivados(await reporteJSON(`${BASE}/config`),true))throw new ReporteMPInvalido('AVISOS_DE_REPORTE_ACTIVOS');
 }
 
 // Mantenimiento interno autenticado: no genera reportes ni expone destinatarios.
@@ -151,6 +153,7 @@ export async function diagnosticarSaldoPorReporte(tenant:string){
  for(const k of ['id','report_id'])resultado[k]=idMercadoPago(m[k]);
  for(const k of ['begin_date','end_date','generation_date','last_modified'])resultado[k]=typeof m[k]==='string'&&Number.isFinite(Date.parse(String(m[k])))?new Date(String(m[k])).toISOString():null;
  resultado.is_test=typeof m.is_test==='boolean'?m.is_test:null;
+ resultado.avisos_tarea=Array.isArray(m.internal_management)?m.internal_management.map(v=>v&&typeof v==='object'&&typeof (v as Record<string,unknown>).notify==='boolean'?(v as Record<string,unknown>).notify:null):null;
  resultado.file_name=typeof m.file_name==='string'&&/^[-A-Za-z0-9_.]+\.csv$/i.test(m.file_name)?m.file_name:null;
  const lista=await reporteJSON(`${BASE}/list`);
  const filas=Array.isArray(lista)?lista:lista&&typeof lista==='object'&&Array.isArray((lista as {results?:unknown}).results)?(lista as {results:unknown[]}).results:[];

@@ -47,6 +47,15 @@ describe('reportes oficiales y configuración',()=>{
   expect(fetcher).toHaveBeenCalledTimes(4);
   expect(ctx.updates).toEqual([]);
  });
+ it('acepta que Mercado Pago omita la lista vacía solo después de guardarla explícitamente',async()=>{
+  const columns=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'].map(key=>({key}));
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns})).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({columns}));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await silenciarReportesMP('tenant')).toEqual({avisos_reportes:'desactivados',destinatarios:0});
+  expect(fetcher.mock.calls[2][1].method).toBe('PUT');
+  expect(JSON.parse(fetcher.mock.calls[2][1].body).notification_email_list).toEqual([]);
+  expect(fetcher).toHaveBeenCalledTimes(4);
+ });
  it('no genera un reporte si Mercado Pago conserva destinatarios después del cambio',async()=>{
   const columns=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'].map(key=>({key}));
   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns,notification_email_list:['ejemplo@example.com']})).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({columns,notification_email_list:['ejemplo@example.com']}));
