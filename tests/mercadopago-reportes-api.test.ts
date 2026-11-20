@@ -9,20 +9,20 @@ vi.mock('../src/lib/supabase/admin',()=>({createAdminClient:()=>({
   update:(v:Record<string,unknown>)=>({eq:()=>({eq:async()=>{ctx.updates.push(v);return {error:null};}})})
  })
 })}));
-import {actualizarSaldoPorReporte} from '../src/lib/mercadopago-reportes';
+import {actualizarSaldoPorReporte,silenciarReportesMP} from '../src/lib/mercadopago-reportes';
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status});
 beforeEach(()=>{ctx.fila={};ctx.updates=[];vi.stubEnv('MERCADOPAGO_ACCESS_TOKEN','ficticio-servidor');});
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
 describe('reportes oficiales y configuración',()=>{
  it('crea configuración completa sin activar envíos ni reportes programados',async()=>{
-  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({error:'not_found'},404)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({id:456},202));
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({error:'not_found'},404)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({notification_email_list:[]})).mockResolvedValueOnce(json({id:456},202));
   vi.stubGlobal('fetch',fetcher);
   expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'preparando'});
   const config=JSON.parse(fetcher.mock.calls[2][1].body);
   expect(config).toMatchObject({execute_after_withdrawal:false,include_withdrawal_at_end:true,frequency:{hour:0,type:'monthly',value:1}});
-  expect(config).not.toHaveProperty('notification_email_list');
+  expect(config.notification_email_list).toEqual([]);
   expect(config).not.toHaveProperty('scheduled');
-  const periodo=JSON.parse(fetcher.mock.calls[3][1].body);
+  const periodo=JSON.parse(fetcher.mock.calls[4][1].body);
   expect(periodo.begin_date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   expect(periodo.end_date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   expect(Date.parse(periodo.end_date)-Date.parse(periodo.begin_date)).toBe(86400000);
@@ -30,20 +30,42 @@ describe('reportes oficiales y configuración',()=>{
  });
  it('conserva preferencias existentes al agregar columnas necesarias',async()=>{
   const config={columns:[{key:'SOURCE_ID'}],file_name_prefix:'propio',frequency:{hour:8,value:1,type:'daily'},execute_after_withdrawal:true,include_withdrawal_at_end:false,notification_email_list:['ejemplo@example.com'],scheduled:true};
-  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json(config)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({id:456},202));
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json(config)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({notification_email_list:[]})).mockResolvedValueOnce(json({id:456},202));
   vi.stubGlobal('fetch',fetcher);await actualizarSaldoPorReporte('tenant');
   const enviado=JSON.parse(fetcher.mock.calls[2][1].body);
-  expect(enviado).toMatchObject({file_name_prefix:'propio',frequency:config.frequency,execute_after_withdrawal:true,notification_email_list:config.notification_email_list});
+  expect(enviado).toMatchObject({file_name_prefix:'propio',frequency:config.frequency,execute_after_withdrawal:true,notification_email_list:[]});
   expect(enviado.columns).toContainEqual({key:'SOURCE_ID'});
   expect(enviado.columns).toContainEqual({key:'NET_DEBIT_AMOUNT'});
   expect(enviado).not.toHaveProperty('scheduled');
+ });
+ it('elimina destinatarios aunque las columnas ya estén completas',async()=>{
+  const columns=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'].map(key=>({key}));
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns,notification_email_list:['ejemplo@example.com']})).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({columns,notification_email_list:[]}));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await silenciarReportesMP('tenant')).toEqual({avisos_reportes:'desactivados',destinatarios:0});
+  expect(JSON.parse(fetcher.mock.calls[2][1].body).notification_email_list).toEqual([]);
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(ctx.updates).toEqual([]);
+ });
+ it('no genera un reporte si Mercado Pago conserva destinatarios después del cambio',async()=>{
+  const columns=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'].map(key=>({key}));
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns,notification_email_list:['ejemplo@example.com']})).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({columns,notification_email_list:['ejemplo@example.com']}));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'error',codigo:'AVISOS_DE_REPORTE_ACTIVOS'});
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);
+ });
+ it('no cambia avisos de una cuenta distinta a la empresa',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:999}));vi.stubGlobal('fetch',fetcher);
+  await expect(silenciarReportesMP('tenant')).rejects.toThrow();
+  expect(fetcher).toHaveBeenCalledTimes(1);
  });
  it('permite solicitar un cierre anterior sin darle una fecha actual al saldo histórico',async()=>{
   vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-19T18:00:00Z'));
   try{
    ctx.fila={tarea_id:'456',estado:'preparando'};
    const columnas=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'].map(key=>({key}));
-   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns:columnas})).mockResolvedValueOnce(json({id:789},202));
+   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns:columnas,notification_email_list:[]})).mockResolvedValueOnce(json({id:789},202));
    vi.stubGlobal('fetch',fetcher);
    expect(await actualizarSaldoPorReporte('tenant',{cierreAnterior:true})).toEqual({estado:'preparando'});
    expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({begin_date:'2026-10-20T03:00:00Z',end_date:'2026-11-19T02:59:59Z'});

@@ -1,4 +1,4 @@
-import {actualizarSaldoPorReporte,diagnosticarSaldoPorReporte} from '@/lib/mercadopago-reportes';
+import {actualizarSaldoPorReporte,diagnosticarSaldoPorReporte,silenciarReportesMP} from '@/lib/mercadopago-reportes';
 import {revisarConexionMP,integrarTerminalUnicaMP} from '@/lib/mercadopago-conexion';
 import { timingSafeEqual } from 'node:crypto';
 import { sincronizarOrdenesPoint } from '@/lib/mercadopago-point';
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
   if (!tenant) return Response.json({ error: 'Sin configurar' }, { status: 503 });
   try {
     const opciones:unknown=await request.json().catch(()=>({}));
+    if(opciones&&typeof opciones==='object'&&(opciones as {silenciar_reportes?:unknown}).silenciar_reportes===true)return Response.json(await silenciarReportesMP(tenant));
     if(opciones&&typeof opciones==='object'&&(opciones as {integrar_point?:unknown}).integrar_point===true)await integrarTerminalUnicaMP(tenant);
     const cierreAnterior=opciones&&typeof opciones==='object'&&(opciones as {saldo_cierre_anterior?:unknown}).saldo_cierre_anterior===true;
     const [archivo, point] = await Promise.allSettled([sincronizarMercadoPago(tenant), sincronizarOrdenesPoint(tenant),revisarConexionMP(tenant),actualizarSaldoPorReporte(tenant,{cierreAnterior:Boolean(cierreAnterior)})]);
