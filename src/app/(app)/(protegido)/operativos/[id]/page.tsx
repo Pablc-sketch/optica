@@ -11,6 +11,7 @@ import { formatearTelefono, telefonoParaWhatsapp } from "@/lib/formato";
 import { nombreCristal, rangoParaPosicion } from "@/lib/cristales";
 import EnviarWhatsapp, { type DestinatarioWsp } from "./enviar-whatsapp";
 import RecordarEntrega from "./recordar-entrega";
+import Inscritos from "./inscritos";
 import ContactosOperativo from "../contactos-operativo";
 import { fechaConDia, fechaLegible, horaCorta, hoyEnChile } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
@@ -156,6 +157,10 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const operativo = operativoRes.data;
   if (!operativo) notFound();
 
+  const { data: rol } = await supabase.rpc("jwt_rol");
+  const inscritos = rol === "admin" || rol === "ventas"
+    ? await supabase.from("inscritos_operativo").select("id,nombre,telefono,llego").eq("operativo_id", id).order("nombre")
+    : null;
   const recetas = recetasRes.data ?? [];
   const ventas = ventasRes.data ?? [];
   // Lo que ya se le adelantó a cada persona contra este operativo, para
@@ -912,6 +917,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         </div>
       </details>
 
+      {inscritos && (inscritos.error
+        ? <p role="status" className="text-sm">No se pudo cargar la lista de inscritos.</p>
+        : <Inscritos operativoId={id} nombre={operativo.nombre}
+            fecha={operativo.fecha ? fechaLegible(operativo.fecha) : ""}
+            direccion={operativo.direccion ?? ""} lista={inscritos.data ?? []} />)}
       <RecordarEntrega
         operativo={{
           id: operativo.id,
