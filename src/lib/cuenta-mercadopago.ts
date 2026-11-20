@@ -11,7 +11,8 @@ export async function leerEstadoCuenta(tenantId:string):Promise<EstadoCuenta>{
  const {data:reporte,error:errorReporte}=await db.from('mercadopago_saldos').select('estado,saldo_disponible,saldo_al,verificado_en,error_codigo,collector_id').eq('tenant_id',tenantId).maybeSingle();
  if(!errorReporte&&saldo.estado!=='disponible'&&reporte?.saldo_disponible!==null&&reporte?.saldo_disponible!==undefined&&reporte.saldo_al&&reporte.verificado_en&&reporte.collector_id===data?.collector_id){
   const importe=Number(reporte.saldo_disponible);const corte=Date.parse(reporte.saldo_al);
-  if(Number.isFinite(importe)&&Number.isFinite(corte)&&corte<=Date.now())saldo={estado:'reporte',disponible:importe,hasta:reporte.saldo_al,consultadoEn:reporte.verificado_en,vigente:Date.now()-corte<20*60000};
+  const reportesPausados=reporte.error_codigo==='AVISO_REPORTE_NO_DESACTIVADO';
+  if(Number.isFinite(importe)&&Number.isFinite(corte)&&corte<=Date.now())saldo={estado:'reporte',disponible:importe,hasta:reporte.saldo_al,consultadoEn:reporte.verificado_en,vigente:!reportesPausados&&Date.now()-corte<20*60000,reportesPausados};
  }
  return {saldo,reporteEstado:reporte?.estado,reporteError:reporte?.error_codigo,ultimaCorrecta:data?.ultima_correcta??null,estado:data?.estado??'pendiente',errorCodigo:data?.error_codigo??null,point:data?.capacidades?.point};
 }

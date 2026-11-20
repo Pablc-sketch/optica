@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   if (!tenant) return Response.json({ error: 'Sin configurar' }, { status: 503 });
   try {
     const opciones:unknown=await request.json().catch(()=>({}));
-    if(opciones&&typeof opciones==='object'&&(opciones as {silenciar_reportes?:unknown}).silenciar_reportes===true){const avisos=await silenciarReportesMP(tenant);return Response.json(avisos,{status:avisos.avisos_reportes==='desactivados'?200:503});}
+    if(opciones&&typeof opciones==='object'&&(opciones as {silenciar_reportes?:unknown}).silenciar_reportes===true){const avisos=await silenciarReportesMP(tenant);return Response.json(avisos,{status:'preferencias_reportes' in avisos?200:503});}
     if(opciones&&typeof opciones==='object'&&(opciones as {integrar_point?:unknown}).integrar_point===true)await integrarTerminalUnicaMP(tenant);
     const cierreAnterior=opciones&&typeof opciones==='object'&&(opciones as {saldo_cierre_anterior?:unknown}).saldo_cierre_anterior===true;
     const [archivo, point] = await Promise.allSettled([sincronizarMercadoPago(tenant), sincronizarOrdenesPoint(tenant),revisarConexionMP(tenant),actualizarSaldoPorReporte(tenant,{cierreAnterior:Boolean(cierreAnterior)})]);

@@ -13,6 +13,10 @@ describe('comparación de la cuenta bancaria',()=>{
   const s=renderToStaticMarkup(await CuentaBancaria({tenantId:'prueba',registrado,cuenta:{...base,saldo:{estado:'reporte',disponible:500,hasta:'2026-11-01T12:00:00Z',consultadoEn:'2026-11-01T12:05:00Z',vigente:false}}}));
   expect(s).toContain('Saldo al corte');expect(s).toContain('45.500');expect(s).toContain('Este saldo es anterior');expect(s).toContain('no confirma por sí sola todos los movimientos');
  });
+ it('conserva el saldo y ofrece consultar el banco cuando los reportes están pausados',async()=>{
+  const s=renderToStaticMarkup(await CuentaBancaria({tenantId:'prueba',cuenta:{...base,reporteEstado:'error',reporteError:'AVISO_REPORTE_NO_DESACTIVADO',saldo:{estado:'reporte',disponible:425,hasta:'2026-11-20T02:12:12Z',consultadoEn:'2026-11-20T02:15:00Z',vigente:false,reportesPausados:true}}}));
+  expect(s).toContain('$425');expect(s).toContain('Reportes pausados');expect(s).toContain('Ver saldo en Mercado Pago');expect(s).not.toContain('Se está solicitando');expect(s).not.toContain('AVISO_REPORTE_NO_DESACTIVADO');
+ });
  it('no inventa una diferencia cuando el saldo real no está disponible',async()=>{
   const s=renderToStaticMarkup(await CuentaBancaria({tenantId:'prueba',registrado,cuenta:{...base,saldo:{estado:'no_habilitado'}}}));
   expect(s).toContain('Saldo bancario no disponible');expect(s).not.toContain('Diferencia por revisar');

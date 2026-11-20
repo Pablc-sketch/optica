@@ -42,7 +42,7 @@ export default async function CajaMercadoPago({ searchParams }: { searchParams: 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-sm font-semibold text-white/80">Saldo disponible en la cuenta</h2>
           {saldo.estado === 'disponible'||saldo.estado==='reporte' ? <><p className="mt-1 text-4xl font-bold tabular-nums">{clp(saldo.disponible)}</p>
-            <p className="mt-2 text-xs text-white/75">{saldo.estado==='reporte'?`Reporte oficial al corte ${hora(saldo.hasta)} · ${saldo.vigente?'Actualización automática':'Pendiente de un reporte nuevo'}`:`Consultado ${hora(saldo.consultadoEn)} · Total ${clp(saldo.total)}`}</p></>
+            <p className="mt-2 text-xs text-white/75">{saldo.estado==='reporte'?`Reporte oficial al corte ${hora(saldo.hasta)} · ${saldo.reportesPausados?'Reportes pausados para evitar correos repetidos':saldo.vigente?'Actualización automática':'Pendiente de un reporte nuevo'}`:`Consultado ${hora(saldo.consultadoEn)} · Total ${clp(saldo.total)}`}</p></>
             : <><p className="mt-2 text-lg font-semibold">{saldo.estado === 'no_habilitado' ? 'Consulta de saldo no habilitada' : saldo.estado === 'no_configurado' ? 'Pendiente de verificar la cuenta' : 'Saldo no disponible en esta consulta'}</p>
               <p className="mt-1 text-sm text-white/80">Consulta el saldo en Mercado Pago. Los cobros guardados aparecen abajo.</p></>}
         </div>
