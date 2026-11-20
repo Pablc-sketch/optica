@@ -15,7 +15,7 @@ beforeEach(()=>{ctx.fila={};ctx.updates=[];vi.stubEnv('MERCADOPAGO_ACCESS_TOKEN'
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
 describe('reportes oficiales y configuración',()=>{
  it('crea configuración completa sin activar envíos ni reportes programados',async()=>{
-  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({error:'not_found'},404)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({notification_email_list:[]})).mockResolvedValueOnce(json({id:456},202));
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({error:'not_found'},404)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({notification_email_list:[]})).mockResolvedValueOnce(json({id:456,internal_management:{notify:false}},202));
   vi.stubGlobal('fetch',fetcher);
   expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'preparando'});
   const config=JSON.parse(fetcher.mock.calls[2][1].body);
@@ -23,6 +23,7 @@ describe('reportes oficiales y configuración',()=>{
   expect(config.notification_email_list).toEqual([]);
   expect(config).not.toHaveProperty('scheduled');
   const periodo=JSON.parse(fetcher.mock.calls[4][1].body);
+  expect(periodo.internal_management).toEqual({notify:false});
   expect(periodo.begin_date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   expect(periodo.end_date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   expect(Date.parse(periodo.end_date)-Date.parse(periodo.begin_date)).toBe(86400000);
@@ -30,7 +31,7 @@ describe('reportes oficiales y configuración',()=>{
  });
  it('conserva preferencias existentes al agregar columnas necesarias',async()=>{
   const config={columns:[{key:'SOURCE_ID'}],file_name_prefix:'propio',frequency:{hour:8,value:1,type:'daily'},execute_after_withdrawal:true,include_withdrawal_at_end:false,notification_email_list:['ejemplo@example.com'],scheduled:true};
-  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json(config)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({notification_email_list:[]})).mockResolvedValueOnce(json({id:456},202));
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json(config)).mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({notification_email_list:[]})).mockResolvedValueOnce(json({id:456,internal_management:{notify:false}},202));
   vi.stubGlobal('fetch',fetcher);await actualizarSaldoPorReporte('tenant');
   const enviado=JSON.parse(fetcher.mock.calls[2][1].body);
   expect(enviado).toMatchObject({file_name_prefix:'propio',frequency:config.frequency,execute_after_withdrawal:true,notification_email_list:[]});
@@ -74,10 +75,10 @@ describe('reportes oficiales y configuración',()=>{
   try{
    ctx.fila={tarea_id:'456',estado:'preparando'};
    const columnas=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'].map(key=>({key}));
-   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns:columnas,notification_email_list:[]})).mockResolvedValueOnce(json({id:789},202));
+   const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns:columnas,notification_email_list:[]})).mockResolvedValueOnce(json({id:789,internal_management:{notify:false}},202));
    vi.stubGlobal('fetch',fetcher);
    expect(await actualizarSaldoPorReporte('tenant',{cierreAnterior:true})).toEqual({estado:'preparando'});
-   expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({begin_date:'2026-10-20T03:00:00Z',end_date:'2026-11-19T02:59:59Z'});
+   expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({begin_date:'2026-10-20T03:00:00Z',end_date:'2026-11-19T02:59:59Z',internal_management:{notify:false}});
    expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);
   }finally{vi.useRealTimers();}
  });
@@ -87,6 +88,16 @@ describe('reportes oficiales y configuración',()=>{
   expect(await actualizarSaldoPorReporte('tenant')).toMatchObject({estado:'error',codigo:'CONFIG_POST_HTTP_400_invalid_execute_after_withdrawal'});
   expect(fetcher).toHaveBeenCalledTimes(3);
   expect(ctx.updates.some(v=>'saldo_disponible' in v)).toBe(false);
+ });
+ it('detiene nuevas solicitudes si el proveedor ignora la desactivación del aviso al titular',async()=>{
+  const columns=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'].map(key=>({key}));
+  const fetcher=vi.fn().mockResolvedValueOnce(json({id:123})).mockResolvedValueOnce(json({columns,notification_email_list:[]})).mockResolvedValueOnce(json({id:456,internal_management:{notify:true}},202));
+  vi.stubGlobal('fetch',fetcher);
+  expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'error',codigo:'AVISO_REPORTE_NO_DESACTIVADO'});
+  ctx.fila={error_codigo:'AVISO_REPORTE_NO_DESACTIVADO'};
+  fetcher.mockResolvedValueOnce(json({id:123}));
+  expect(await actualizarSaldoPorReporte('tenant')).toEqual({estado:'error',codigo:'AVISO_REPORTE_NO_DESACTIVADO'});
+  expect(fetcher).toHaveBeenCalledTimes(4);
  });
  it('no importa reportes de otra cuenta y conserva el saldo previo',async()=>{
   ctx.fila={tarea_id:'456',periodo_desde:'2025-12-31T12:00:00Z',periodo_hasta:'2026-01-01T12:00:00Z',estado:'preparando'};

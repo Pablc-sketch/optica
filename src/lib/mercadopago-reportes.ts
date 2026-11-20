@@ -64,6 +64,13 @@ export async function silenciarReportesMP(tenant:string){
   return {avisos_reportes:'sin_confirmar',codigo,destinatarios:Array.isArray(lista)?lista.length:null,lista_tipo:lista===null?'null':typeof lista,campos:Object.keys(config).filter(k=>/^[a-z_]{1,40}$/.test(k))};
  }
 }
+function avisosDeTarea(raw:unknown):boolean[]|null{
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))return null;
+ const gestion=(raw as Record<string,unknown>).internal_management;
+ const filas=Array.isArray(gestion)?gestion:gestion&&typeof gestion==='object'?[gestion]:[];
+ if(!filas.length||filas.some(v=>!v||typeof v!=='object'||typeof (v as Record<string,unknown>).notify!=='boolean'))return null;
+ return filas.map(v=>(v as {notify:boolean}).notify);
+}
 function validarMeta(raw:unknown,collector:string,desde:string,hasta:string,tarea:string){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new ReporteMPInvalido('METADATA_INVALIDA');
  const m=raw as Record<string,unknown>;
@@ -91,6 +98,7 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
   if(idMercadoPago((await consultarApiMP('/users/me')).id)!==collector)throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
   const {data:r,error}=await db.from('mercadopago_saldos').select('*').eq('tenant_id',tenant).single();
   if(error||!r)throw new ReporteMPInvalido('REGISTRO_NO_DISPONIBLE');
+  if(r.error_codigo==='AVISO_REPORTE_NO_DESACTIVADO')return {estado:'error',codigo:r.error_codigo};
   if(!opciones.cierreAnterior&&r.tarea_id&&r.periodo_hasta&&r.estado!=='verificado'){
    const meta=validarMeta(await reporteJSON(`${BASE}/task/${r.tarea_id}`),collector,r.periodo_desde,r.periodo_hasta,r.tarea_id);
    if(['pending','taken','processing','created','scheduled','data-ready'].includes(String(meta.status))){await guardar({estado:'preparando',error_codigo:null});return;}
@@ -122,11 +130,13 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
   const hasta=new Date(opciones.cierreAnterior?Date.parse(inicioDelDia(hoyEnChile()))-1000:Date.now()-120000).toISOString().replace(/\.\d{3}Z$/,'Z');
   const desde=(opciones.cierreAnterior?inicioDelDia(restarDias(hoyEnChile(),30)):new Date(Date.parse(hasta)-86400000).toISOString()).replace(/\.\d{3}Z$/,'Z');
   await guardar({estado:'preparando',solicitado_en:new Date().toISOString(),periodo_desde:desde,periodo_hasta:hasta,tarea_id:null,error_codigo:null});
-  const raw=await reporteJSON(BASE,{method:'POST',body:JSON.stringify({begin_date:desde,end_date:hasta})});
+  const raw=await reporteJSON(BASE,{method:'POST',body:JSON.stringify({begin_date:desde,end_date:hasta,internal_management:{notify:false}})});
   if(!raw||typeof raw!=='object')throw new ReporteMPInvalido('SOLICITUD_INVALIDA');
   const id=idMercadoPago((raw as Record<string,unknown>).id);
   if(!id)throw new ReporteMPInvalido('TAREA_NO_IDENTIFICADA');
   await guardar({tarea_id:id});
+  const avisos=avisosDeTarea(raw)??avisosDeTarea(await reporteJSON(`${BASE}/task/${id}`));
+  if(!avisos||avisos.some(Boolean))throw new ReporteMPInvalido('AVISO_REPORTE_NO_DESACTIVADO');
   return {estado:'preparando'};
  }catch(e){
   const codigo=e instanceof ErrorMercadoPago||e instanceof ReporteMPInvalido?e.codigo:'CONSULTA_FALLIDA';
@@ -153,7 +163,7 @@ export async function diagnosticarSaldoPorReporte(tenant:string){
  for(const k of ['id','report_id'])resultado[k]=idMercadoPago(m[k]);
  for(const k of ['begin_date','end_date','generation_date','last_modified'])resultado[k]=typeof m[k]==='string'&&Number.isFinite(Date.parse(String(m[k])))?new Date(String(m[k])).toISOString():null;
  resultado.is_test=typeof m.is_test==='boolean'?m.is_test:null;
- resultado.avisos_tarea=Array.isArray(m.internal_management)?m.internal_management.map(v=>v&&typeof v==='object'&&typeof (v as Record<string,unknown>).notify==='boolean'?(v as Record<string,unknown>).notify:null):null;
+ resultado.avisos_tarea=avisosDeTarea(m);
  resultado.file_name=typeof m.file_name==='string'&&/^[-A-Za-z0-9_.]+\.csv$/i.test(m.file_name)?m.file_name:null;
  const lista=await reporteJSON(`${BASE}/list`);
  const filas=Array.isArray(lista)?lista:lista&&typeof lista==='object'&&Array.isArray((lista as {results?:unknown}).results)?(lista as {results:unknown[]}).results:[];
