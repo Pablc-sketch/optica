@@ -92,6 +92,10 @@ export default function LoginPage() {
             <Link href="/registro" className="font-semibold text-brand hover:underline">
               Crea tu cuenta
             </Link>
+            {" · "}
+            <Link href="/conoce" className="font-semibold text-brand hover:underline">
+              Conoce la plataforma
+            </Link>
           </p>
         </form>
       </div>

@@ -11,6 +11,7 @@ export async function proxy(request: NextRequest) {
   const rutaMarca = request.nextUrl.pathname;
   // Este único endpoint valida su propio secreto de servicio, sin cookies.
   if (rutaMarca === '/api/integraciones/mercadopago/sync') return NextResponse.next();
+  if (rutaMarca === "/conoce") return NextResponse.next();
   if (rutaMarca === "/optica-global" || rutaMarca === "/optica-global/opengraph-image") {
     return NextResponse.next();
   }
