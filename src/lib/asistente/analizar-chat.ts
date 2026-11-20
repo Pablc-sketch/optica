@@ -15,7 +15,8 @@ export async function analizarChat(
   client: Anthropic,
   operativos: OperativoParaChat[],
   mensajes: MensajeParaIA[],
-  nombrePerfil: string | null
+  nombrePerfil: string | null,
+  notas: string[] = []
 ): Promise<Sugerencia | null> {
   const r = await client.beta.messages.parse({
     model: MODELO_IA,
@@ -24,7 +25,7 @@ export async function analizarChat(
     fallbacks: "default",
     output_config: { effort: "low", format: betaJSONSchemaOutputFormat(ESQUEMA_SUGERENCIA) },
     system: SISTEMA_BANDEJA,
-    messages: [{ role: "user", content: entradaParaIA(operativos, mensajes, nombrePerfil) }],
+    messages: [{ role: "user", content: entradaParaIA(operativos, mensajes, nombrePerfil, notas) }],
   });
   if (r.stop_reason === "refusal") return null;
   return validarSugerencia(r.parsed_output, new Set(operativos.map((o) => o.id)));

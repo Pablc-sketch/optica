@@ -5,6 +5,7 @@ import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema";
 import { evaluarPunto, resumirPorGrupo, type FilaRentabilidad } from "@/lib/rentabilidad-operativos";
 import { contarInscritos, leerBases, leerRentabilidad, operativosConContacto, type OperativoIA } from "@/lib/asistente/datos";
 import { estimarCombustible, pendientesDeOperativos, promediosPropios, REFERENCIA_CHILE } from "@/lib/pendientes-operativos";
+import { CAMPOS_EDITABLES, COSTOS, validarCambios, type Cambios, type Propuesta } from "@/lib/cambios-operativo";
 
 // Herramientas de SOLO LECTURA del asistente. Cada una trabaja con la sesión
 // del usuario y su óptica: no hay forma de pedir datos de otra óptica, y
@@ -38,7 +39,32 @@ function resumenOperativo(f: FilaRentabilidad<OperativoIA>, inscritos: Map<strin
   };
 }
 
-export function crearHerramientas(supabase: SupabaseClient, tenantId: string, hoy: string) {
+const MAX_NOTAS = 100;
+
+// Esquema de los cambios que la IA puede proponer (solo esos campos).
+const ESQUEMA_CAMBIOS = {
+  type: "object",
+  properties: Object.fromEntries(
+    CAMPOS_EDITABLES.map((c) => [
+      c,
+      (COSTOS as readonly string[]).includes(c) || c === "meta_examenes"
+        ? { type: "integer", minimum: 0 }
+        : c === "estado"
+          ? { type: "string", enum: ["planificado", "realizado", "cancelado"] }
+          : c === "hora_inicio" || c === "hora_fin"
+            ? { type: "string", description: "HH:MM" }
+            : { type: "string" },
+    ])
+  ),
+  additionalProperties: false,
+} as const;
+
+export function crearHerramientas(
+  supabase: SupabaseClient,
+  tenantId: string,
+  hoy: string,
+  opciones: { propuestas?: Propuesta[]; usuarioId?: string } = {}
+) {
   // Una sola lectura por pregunta, compartida entre herramientas.
   let cache: Promise<{ filas: FilaRentabilidad<OperativoIA>[]; citas: Map<string, number> }> | null = null;
   const datos = () =>
@@ -217,5 +243,57 @@ export function crearHerramientas(supabase: SupabaseClient, tenantId: string, ho
     run: async (i) => JSON.stringify(estimarCombustible(i)),
   });
 
-  return [listar, detalle, comparar, evaluar, pendientes, costos, combustible] as const;
+  const proponer = betaTool({
+    name: "proponer_cambio_operativo",
+    description:
+      "Prepara un cambio a un operativo (dirección, comuna, horario, meta, sectores, estado, nombre o costos) cuando el usuario lo pide o da el dato que faltaba. NO lo aplica: aparece en el chat con un botón «Aplicar» que el administrador debe presionar. Fechas, equipo y ventas no se cambian por acá.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operativo_id: { type: "string" },
+        cambios: ESQUEMA_CAMBIOS as unknown as { type: "object" },
+        motivo: { type: "string", description: "Frase corta: qué se cambia y por qué" },
+      },
+      required: ["operativo_id", "cambios", "motivo"],
+      additionalProperties: false,
+    },
+    run: async (i) => {
+      if (!opciones.propuestas) return JSON.stringify({ error: "En esta conversación no se pueden preparar cambios." });
+      if (opciones.propuestas.length >= 5) return JSON.stringify({ error: "Máximo 5 cambios por respuesta." });
+      const { filas } = await datos();
+      const f = filas.find((x) => x.id === i.operativo_id);
+      if (!f) return JSON.stringify({ error: "No existe un operativo con ese id en esta óptica." });
+      const v = validarCambios(i.cambios);
+      if ("error" in v) return JSON.stringify({ error: v.error });
+      const actual = f as unknown as Record<string, unknown>;
+      const antes: Cambios = {};
+      for (const k of Object.keys(v.cambios)) {
+        const a = actual[k];
+        antes[k as keyof Cambios] = typeof a === "string" && /^hora_/.test(k) ? a.slice(0, 5) : (a as string | number | null) ?? null;
+      }
+      opciones.propuestas.push({ operativo_id: f.id, operativo: f.nombre, cambios: v.cambios, antes, motivo: String(i.motivo).slice(0, 200) });
+      return JSON.stringify({ ok: true, aviso: "Cambio preparado. El administrador debe presionar «Aplicar» en el chat para guardarlo." });
+    },
+  });
+
+  const recordar = betaTool({
+    name: "recordar",
+    description:
+      "Guarda una nota permanente sobre cómo trabaja esta óptica, cuando el usuario pide que la recuerdes o corrige algo que debes saber siempre (ej. «Labrador es un sector de Talagante», «los equipos se arriendan a $52.000 por día»). Solo datos del negocio, nunca de pacientes.",
+    inputSchema: {
+      type: "object",
+      properties: { texto: { type: "string", minLength: 3, maxLength: 300 } },
+      required: ["texto"],
+      additionalProperties: false,
+    },
+    run: async ({ texto }) => {
+      if (!opciones.usuarioId) return JSON.stringify({ error: "No disponible." });
+      const n = await supabase.from("ia_conocimiento").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId);
+      if ((n.count ?? 0) >= MAX_NOTAS) return JSON.stringify({ error: `Ya hay ${MAX_NOTAS} notas; borra algunas en Configuración → Lo que sabe la IA.` });
+      const r = await supabase.from("ia_conocimiento").insert({ tenant_id: tenantId, texto: texto.trim().slice(0, 300), origen: "manual", creado_por: opciones.usuarioId });
+      return JSON.stringify(r.error ? { error: "No se pudo guardar la nota." } : { ok: true });
+    },
+  });
+
+  return [listar, detalle, comparar, evaluar, pendientes, costos, combustible, proponer, recordar] as const;
 }

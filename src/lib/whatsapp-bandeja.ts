@@ -58,7 +58,7 @@ function rango(o: OperativoParaChat) {
 
 // Lo que se manda a la IA: operativos próximos y los últimos mensajes. Sin
 // el teléfono de la persona.
-export function entradaParaIA(operativos: OperativoParaChat[], mensajes: MensajeParaIA[], nombrePerfil: string | null): string {
+export function entradaParaIA(operativos: OperativoParaChat[], mensajes: MensajeParaIA[], nombrePerfil: string | null, notas: string[] = []): string {
   const ops = operativos.map((o) =>
     [`id=${o.id}`, o.nombre, rango(o), o.comuna && `comuna ${o.comuna}`, o.direccion && `dirección ${o.direccion}`, o.sectores && `sectores: ${o.sectores}`]
       .filter(Boolean)
@@ -68,6 +68,7 @@ export function entradaParaIA(operativos: OperativoParaChat[], mensajes: Mensaje
     .slice(-MAX_MENSAJES_IA)
     .map((m) => `[${m.enviado_en.slice(0, 16).replace("T", " ")}] ${m.direccion === "entrante" ? "PERSONA" : "ÓPTICA"}: ${m.texto.replace(/\s+/g, " ").slice(0, 1000)}`);
   return [
+    ...(notas.length ? ["LO QUE LA ÓPTICA TE ENSEÑÓ (úsalo para reconocer sectores):", ...notas.map((n) => `- ${n}`), ""] : []),
     "OPERATIVOS PRÓXIMOS:",
     ops.length ? ops.join("\n") : "(no hay operativos próximos)",
     "",
@@ -111,4 +112,16 @@ export function normalizarTelefonoChile(v: string): string | null {
   if (/^\d{8}$/.test(d)) return "569" + d;
   if (/^\d{8,15}$/.test(d)) return d;
   return null;
+}
+
+const normal = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+
+// Lo que la IA aprende cuando el administrador confirma: el sector que dijo
+// la persona corresponde a ese lugar. Devuelve null si ya lo sabía.
+export function notaAprendida(sector: string | null, operativo: { nombre: string; comuna: string | null }, notas: string[]): string | null {
+  if (!sector || normal(sector).length < 3) return null;
+  const s = normal(sector);
+  if (normal(operativo.nombre).includes(s)) return null;
+  if (notas.some((n) => normal(n).includes(`«${s}»`) || normal(n).startsWith(s + " "))) return null;
+  return `«${sector.trim().slice(0, 80)}» corresponde a operativos en «${operativo.nombre.slice(0, 100)}»${operativo.comuna ? ` (${operativo.comuna})` : ""}.`;
 }

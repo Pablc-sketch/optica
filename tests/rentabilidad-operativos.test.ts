@@ -82,10 +82,11 @@ describe("conversación del asistente", () => {
     expect(contextoDePagina(42)).toBeNull();
   });
 
-  it("el prompt prohíbe datos de pacientes y escribir en Lentia", () => {
-    const p = promptSistema("Óptica Ficticia", "1-1-2030");
+  it("el prompt prohíbe datos de pacientes, exige «Aplicar» para cambios e incluye lo aprendido", () => {
+    const p = promptSistema("Óptica Ficticia", "1-1-2030", ["Labrador es un sector de Talagante"]);
     expect(p).toContain("Óptica Ficticia");
     expect(p).toMatch(/No tienes ni pides datos de pacientes/);
-    expect(p).toMatch(/No puedes crear, cambiar ni borrar/);
+    expect(p).toMatch(/NO queda guardado hasta que el usuario presione «Aplicar»/);
+    expect(p).toContain("- Labrador es un sector de Talagante");
   });
 });

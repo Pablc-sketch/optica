@@ -53,7 +53,7 @@ export async function leerRentabilidad(supabase: SupabaseClient, tenantId: strin
 // Cuántas personas inscritas (vigentes) tiene cada operativo (solo el número).
 export async function contarInscritos(supabase: SupabaseClient, tenantId: string): Promise<Map<string, number>> {
   const r = await leerTodas<{ operativo_id: string }>((a, b) =>
-    supabase.from("inscritos_operativo").select("id, operativo_id").eq("tenant_id", tenantId).neq("estado", "cancelado").order("id").range(a, b) as never
+    supabase.from("inscritos_operativo").select("id, operativo_id").eq("tenant_id", tenantId).in("estado", ["inscrito", "asistio"]).order("id").range(a, b) as never
   );
   const m = new Map<string, number>();
   // Si la tabla aún no existe (migración pendiente) se sigue sin inscritos.

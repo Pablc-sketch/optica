@@ -3,7 +3,7 @@ import CabeceraPagina from "@/components/cabecera-pagina";
 import FormularioAgenda from "@/components/formulario-agenda";
 import AnalizarChats from "./analizar";
 import { exigirRolPagina } from "@/lib/autorizacion";
-import { descartarChat, inscribirDesdeChat } from "@/lib/actions/whatsapp";
+import { confirmarPreinscrito, descartarChat, inscribirDesdeChat } from "@/lib/actions/whatsapp";
 import { necesitaAnalisis, type Sugerencia } from "@/lib/whatsapp-bandeja";
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 
@@ -30,7 +30,8 @@ const hora = (iso: string) =>
 export default async function Bandeja({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
   const { ver } = await searchParams;
-  const vista = ver === "inscritos" || ver === "descartados" ? ver : "pendientes";
+  const vista = ver === "inscritos" || ver === "descartados" || ver === "por_confirmar" ? ver : "pendientes";
+  if (vista === "por_confirmar") return <PorConfirmar />;
   const estado = vista === "inscritos" ? "inscrito" : vista === "descartados" ? "descartado" : "pendiente";
   const hoy = hoyEnChile();
   const [numeroRes, chatsRes, opsRes] = await Promise.all([
@@ -67,12 +68,7 @@ export default async function Bandeja({ searchParams }: { searchParams: Promise<
         </p>
       )}
 
-      <nav className="flex gap-2 text-sm">
-        {(["pendientes", "inscritos", "descartados"] as const).map((v) => (
-          <Link key={v} href={v === "pendientes" ? "/whatsapp" : `/whatsapp?ver=${v}`}
-            className={`rounded-full px-3 py-1.5 font-semibold capitalize ${vista === v ? "bg-brand text-white" : "border bg-white"}`}>{v}</Link>
-        ))}
-      </nav>
+      <Pestanas vista={vista} />
 
       {vista === "pendientes" && porAnalizar > 0 && <AnalizarChats cantidad={porAnalizar} />}
       {chats.length === 0 && <p className="rounded-2xl bg-white p-4 text-sm text-tinta-suave shadow-sm">No hay chats {vista}.</p>}
@@ -135,6 +131,87 @@ export default async function Bandeja({ searchParams }: { searchParams: Promise<
                 </FormularioAgenda>
               </>
             )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+const PESTANAS = [["por_confirmar", "Por confirmar"], ["pendientes", "Pendientes"], ["inscritos", "Inscritos"], ["descartados", "Descartados"]] as const;
+function Pestanas({ vista }: { vista: string }) {
+  return (
+    <nav className="flex flex-wrap gap-2 text-sm">
+      {PESTANAS.map(([v, t]) => (
+        <Link key={v} href={v === "pendientes" ? "/whatsapp" : `/whatsapp?ver=${v}`}
+          className={`rounded-full px-3 py-1.5 font-semibold ${vista === v ? "bg-brand text-white" : "border bg-white"}`}>{t}</Link>
+      ))}
+    </nav>
+  );
+}
+
+type Preinscrito = { id: string; nombre: string; telefono: string; edad: number | null; sector: string | null; motivo: string | null; operativo_id: string; creado_en: string };
+
+// Las personas que la IA anotó sola desde WhatsApp: ¿son de esa sede?
+async function PorConfirmar() {
+  const { supabase, tenantId } = await exigirRolPagina(["admin"]);
+  const hoy = hoyEnChile();
+  const [preRes, opsRes] = await Promise.all([
+    supabase.from("inscritos_operativo").select("id, nombre, telefono, edad, sector, motivo, operativo_id, creado_en")
+      .eq("tenant_id", tenantId).eq("estado", "por_confirmar").order("creado_en").limit(50),
+    supabase.from("operativos").select("id, nombre, fecha, comuna").eq("tenant_id", tenantId).eq("estado", "planificado")
+      .or(`fecha.gte.${hoy},fecha_fin.gte.${hoy}`).order("fecha").limit(40),
+  ]);
+  if (preRes.error || opsRes.error) return <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">La bandeja de WhatsApp aún no está activada en la base de datos.</p>;
+  const pre = (preRes.data ?? []) as Preinscrito[];
+  const operativos = (opsRes.data ?? []) as Operativo[];
+  const msjRes = pre.length
+    ? await supabase.from("whatsapp_mensajes").select("telefono, direccion, texto, enviado_en").eq("tenant_id", tenantId)
+        .in("telefono", pre.map((p) => p.telefono)).order("enviado_en", { ascending: false }).limit(pre.length * 6)
+    : { data: [] as Mensaje[] };
+  const mensajes = (msjRes.data ?? []) as Mensaje[];
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <CabeceraPagina seccion="Atención" titulo="WhatsApp" />
+      <Pestanas vista="por_confirmar" />
+      <p className="text-sm text-tinta-suave">La IA leyó tus chats y anotó a estas personas en el operativo de la sede que dijeron. Confirma o corrige.</p>
+      {pre.length === 0 && <p className="rounded-2xl bg-white p-4 text-sm text-tinta-suave shadow-sm">No hay personas por confirmar.</p>}
+      {pre.map((p) => {
+        const op = operativos.find((o) => o.id === p.operativo_id);
+        const ultimos = mensajes.filter((m) => m.telefono === p.telefono).slice(0, 4).reverse();
+        return (
+          <article key={p.id} className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+            <h2 className="font-bold">
+              ¿{p.nombre} es de {op ? `«${op.nombre}»` : "ese operativo"}?{" "}
+              <a href={`https://wa.me/${p.telefono}`} target="_blank" rel="noopener noreferrer" className="text-sm font-normal text-brand-dark underline">+{p.telefono}</a>
+            </h2>
+            <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-950">
+              {p.sector ? `Dijo «${p.sector}». ` : ""}{p.motivo}
+            </p>
+            <div className="space-y-1 text-sm">
+              {ultimos.map((m, i) => (
+                <p key={i} className={m.direccion === "entrante" ? "mr-10 rounded-xl bg-crema-claro px-3 py-1.5" : "ml-10 rounded-xl bg-emerald-50 px-3 py-1.5 text-right"}>{m.texto || "…"}</p>
+              ))}
+            </div>
+            <FormularioAgenda accion={confirmarPreinscrito} etiqueta="Sí, inscribir">
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="respuesta" value="si" />
+              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_5.5rem]">
+                <label className="text-sm">Operativo
+                  <select name="operativo_id" defaultValue={p.operativo_id} className="w-full rounded-xl border bg-white px-2 py-2.5">
+                    {!op && <option value={p.operativo_id}>(operativo anterior)</option>}
+                    {operativos.map((o) => <option key={o.id} value={o.id}>{fechaLegible(o.fecha)} · {o.nombre}{o.comuna ? ` (${o.comuna})` : ""}</option>)}
+                  </select>
+                </label>
+                <label className="text-sm">Nombre<input name="nombre" defaultValue={p.nombre} required maxLength={80} className="w-full rounded-xl border px-3 py-2.5" /></label>
+                <label className="text-sm">Edad<input name="edad" type="number" min={0} max={120} defaultValue={p.edad ?? ""} className="w-full rounded-xl border px-3 py-2.5" /></label>
+              </div>
+            </FormularioAgenda>
+            <FormularioAgenda accion={confirmarPreinscrito} etiqueta="No es de esa sede">
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="respuesta" value="no" />
+            </FormularioAgenda>
           </article>
         );
       })}

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { MensajeChat } from "@/lib/whatsapp-cloud";
+import { revisarChatAutomatico } from "@/lib/whatsapp-automatico";
 
 // Guarda la copia de los mensajes de WhatsApp en la bandeja de cada óptica.
 // La óptica sale del número de Meta que recibió el mensaje.
@@ -12,11 +13,16 @@ export const DIAS_RETENCION = 180;
 export async function guardarMensajes(mensajes: MensajeChat[]) {
   const db = createAdminClient();
   const tenants = new Map<string, string | null>();
+  const automaticos = new Set<string>();
+  // Último mensaje reciente de cada persona, para la revisión automática.
+  const porRevisar = new Map<string, { tenant: string; telefono: string; wamid: string; en: string }>();
+  const reciente = Date.now() - 2 * 86400000;
   for (const m of mensajes.slice(0, 500)) {
     try {
       if (!tenants.has(m.phoneNumberId)) {
-        const n = await db.from("whatsapp_numeros").select("tenant_id, activo").eq("phone_number_id", m.phoneNumberId).maybeSingle();
+        const n = await db.from("whatsapp_numeros").select("tenant_id, activo, automatico").eq("phone_number_id", m.phoneNumberId).maybeSingle();
         tenants.set(m.phoneNumberId, n.data?.activo ? (n.data.tenant_id as string) : null);
+        if (n.data?.activo && n.data.automatico) automaticos.add(n.data.tenant_id as string);
       }
       const tenant = tenants.get(m.phoneNumberId);
       if (!tenant) continue;
@@ -41,10 +47,20 @@ export async function guardarMensajes(mensajes: MensajeChat[]) {
         { onConflict: "wamid", ignoreDuplicates: true }
       );
       if (r.error) throw new Error(r.error.message);
+      if (m.direccion === "entrante" && automaticos.has(tenant) && Date.parse(m.enviadoEn) > reciente) {
+        const clave = `${tenant}:${m.telefono}`;
+        const previo = porRevisar.get(clave);
+        if (!previo || m.enviadoEn >= previo.en) porRevisar.set(clave, { tenant, telefono: m.telefono, wamid: m.wamid, en: m.enviadoEn });
+      }
     } catch (e) {
       console.error("whatsapp: no se pudo guardar un mensaje", e instanceof Error ? e.message : "error");
     }
   }
+  // Revisión automática con IA (preinscribe «por confirmar», nunca responde).
+  await Promise.allSettled([...porRevisar.values()].slice(0, 10).map((x) =>
+    revisarChatAutomatico(db, x.tenant, x.telefono, x.wamid).catch((e) =>
+      console.error("whatsapp: revisión automática falló", e instanceof Error ? e.message : "error"))
+  ));
   // Limpieza de vez en cuando.
   if (Math.random() < 0.02) {
     const limite = new Date(Date.now() - DIAS_RETENCION * 86400000).toISOString();

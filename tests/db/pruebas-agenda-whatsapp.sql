@@ -137,4 +137,39 @@ select pruebas.igual(public.registrar_pregunta_asistente()::text, 'true', 'El to
 select pruebas.igual((select count(*)::text from public.uso_asistente), '1', 'B solo ve su propio uso');
 reset role;
 
+-- ---------------------------------------------------------------------
+-- Preinscripción automática (llave de servicio) y confirmación
+-- ---------------------------------------------------------------------
+select pruebas.igual(public.registrar_consulta_ia_servicio('00000000-0000-0000-0000-00000000000b', 1)::text, 'true', 'La revisión automática cuenta en el tope de la óptica');
+insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad, estado, origen, sector, motivo) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Rosa', '56922223333', 54, 'por_confirmar', 'whatsapp', 'Labrador', 'Labrador coincide');
+select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, estado) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Rosa', '56922223333', 'por_confirmar')$$, '23505', 'No se preinscribe dos veces a la misma persona');
+set role authenticated;
+select pruebas.falla($$select public.registrar_consulta_ia_servicio('00000000-0000-0000-0000-00000000000a', 1)$$, '42501', 'Un usuario no puede gastar el cupo de otra óptica');
+select pruebas.como('00000000-0000-0000-0000-0000000000a1');
+update public.inscritos_operativo set estado = 'inscrito', edad = 55 where telefono = '56922223333' and estado = 'por_confirmar';
+select pruebas.igual((select estado || ',' || edad from public.inscritos_operativo where telefono = '56922223333'), 'inscrito,55', 'El administrador confirma (y corrige) la preinscripción');
+
+-- ---------------------------------------------------------------------
+-- Lo que la IA aprende y el historial de cambios
+-- ---------------------------------------------------------------------
+insert into public.ia_conocimiento (tenant_id, texto, origen, creado_por) values
+  ('00000000-0000-0000-0000-00000000000a', '«El Rosario» corresponde a operativos en «Junta Labrador» (Talagante).', 'aprendido', '00000000-0000-0000-0000-0000000000a1');
+select pruebas.falla($$insert into public.ia_conocimiento (tenant_id, texto) values ('00000000-0000-0000-0000-00000000000b', 'nota ajena')$$, '42501', 'No se escribe en la memoria de otra óptica');
+select pruebas.falla($$update public.ia_conocimiento set texto = 'cambiada'$$, '42501', 'Las notas no se editan (se borran y se crean)');
+update public.operativos set direccion = 'Sede Labrador s/n' where id = '00000000-0000-0000-0000-0000000001a1';
+insert into public.asistente_cambios (tenant_id, operativo_id, usuario_id, antes, despues) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000000a1', '{"direccion": null}', '{"direccion": "Sede Labrador s/n"}');
+select pruebas.falla($$insert into public.asistente_cambios (tenant_id, operativo_id, usuario_id, antes, despues) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000000a2', '{}', '{}')$$, '42501', 'El historial queda a nombre de quien hizo el cambio');
+select pruebas.falla($$delete from public.asistente_cambios$$, '42501', 'El historial de cambios no se borra');
+select pruebas.como('00000000-0000-0000-0000-0000000000a2');
+select pruebas.igual((select count(*)::text from public.ia_conocimiento), '0', 'Ventas no ve la memoria de la IA');
+select pruebas.falla($$insert into public.ia_conocimiento (tenant_id, texto) values ('00000000-0000-0000-0000-00000000000a', 'nota de ventas')$$, '42501', 'Solo el administrador le enseña a la IA');
+select pruebas.como('00000000-0000-0000-0000-0000000000b1');
+select pruebas.igual((select count(*)::text from public.ia_conocimiento), '0', 'B no ve lo que aprendió la IA de A');
+select pruebas.igual((select count(*)::text from public.asistente_cambios), '0', 'B no ve el historial de A');
+delete from public.ia_conocimiento;
+reset role;
+select pruebas.igual((select count(*)::text from public.ia_conocimiento), '1', 'B no puede borrar la memoria de A');
+
 do $$ begin raise notice 'OK  FIN: inscritos, bandeja de WhatsApp, aislamiento y tope del asistente'; end $$;

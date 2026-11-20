@@ -3,6 +3,7 @@ import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { crearHerramientas } from "@/lib/asistente/herramientas";
 import { contextoDePagina, promptSistema, validarConversacion } from "@/lib/asistente/conversacion";
 import { fechaConDia, hoyEnChile } from "@/lib/fechas";
+import type { Propuesta } from "@/lib/cambios-operativo";
 
 // Asistente de IA de Lentia (Claude). Solo administradores. Cada pregunta
 // se responde con la sesión del usuario: la IA solo puede leer, con las
@@ -34,7 +35,12 @@ export async function POST(request: Request) {
   if (cupo.error) return Response.json({ error: "No se pudo verificar el uso del asistente. Reintenta." }, { status: 503 });
   if (cupo.data !== true) return Response.json({ error: "Se alcanzó el máximo de preguntas de hoy. Mañana se renueva." }, { status: 429 });
 
-  const tenant = await ctx.supabase.from("tenants").select("nombre_comercial").eq("id", ctx.tenantId).single();
+  const [tenant, notasRes] = await Promise.all([
+    ctx.supabase.from("tenants").select("nombre_comercial").eq("id", ctx.tenantId).single(),
+    // Lo que la óptica le enseñó a la IA (si la tabla aún no existe, sin notas).
+    ctx.supabase.from("ia_conocimiento").select("texto").eq("tenant_id", ctx.tenantId).order("creado_en", { ascending: false }).limit(60),
+  ]);
+  const notas = (notasRes.data ?? []).map((n: { texto: string }) => n.texto).reverse();
   const hoy = hoyEnChile();
   const contexto = contextoDePagina(cuerpo?.ruta);
   const historial: Anthropic.Beta.BetaMessageParam[] = mensajes.map((m) => ({
@@ -45,7 +51,10 @@ export async function POST(request: Request) {
   if (contexto) historial.push({ role: "system", content: contexto });
 
   const client = new Anthropic({ maxRetries: 1, timeout: 100_000 });
-  const herramientas = crearHerramientas(ctx.supabase, ctx.tenantId, hoy);
+  // Cambios que la IA prepare: se devuelven al navegador para que el
+  // administrador los aplique con un botón (nada se guarda solo).
+  const propuestas: Propuesta[] = [];
+  const herramientas = crearHerramientas(ctx.supabase, ctx.tenantId, hoy, { propuestas, usuarioId: ctx.user.id });
   // Búsqueda web (precio del combustible, hospedaje, etc.) en servidores de
   // Anthropic. Solo recibe lo que la IA busca, nunca datos de la óptica.
   const busqueda = { type: "web_search_20260209" as const, name: "web_search" as const, max_uses: 3,
@@ -59,7 +68,7 @@ export async function POST(request: Request) {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       cache_control: { type: "ephemeral" },
-      system: promptSistema(tenant.data?.nombre_comercial || "la óptica", fechaConDia(hoy)),
+      system: promptSistema(tenant.data?.nombre_comercial || "la óptica", fechaConDia(hoy), notas),
       tools: conWeb ? [...herramientas, busqueda] : [...herramientas],
       messages: historial,
     });
@@ -72,6 +81,7 @@ export async function POST(request: Request) {
       // Si la búsqueda web no está habilitada en la cuenta de Claude, se
       // responde igual sin ella.
       if (!(conWeb && e instanceof Anthropic.BadRequestError)) throw e;
+      propuestas.length = 0;
       final = await preguntar(false);
     }
     if (final.stop_reason === "refusal") {
@@ -83,7 +93,7 @@ export async function POST(request: Request) {
       .join("")
       .trim();
     if (!texto) return Response.json({ error: "El asistente no alcanzó a responder. Prueba con una pregunta más acotada." }, { status: 502 });
-    return Response.json({ texto: texto.slice(0, 20000) });
+    return Response.json({ texto: texto.slice(0, 20000), propuestas });
   } catch (e) {
     // No se devuelve el detalle del proveedor: puede traer datos internos.
     if (e instanceof Anthropic.AuthenticationError) return Response.json({ error: "La clave de Claude no es válida. Revísala en Vercel." }, { status: 503 });

@@ -6,7 +6,7 @@ import { requerirPerfil, SinPermiso, type Rol } from "@/lib/autorizacion";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { datosDelNumero, whatsappConfigurado } from "@/lib/whatsapp-cloud";
 import { analizarChat } from "@/lib/asistente/analizar-chat";
-import { necesitaAnalisis, normalizarTelefonoChile, type MensajeParaIA, type OperativoParaChat } from "@/lib/whatsapp-bandeja";
+import { necesitaAnalisis, normalizarTelefonoChile, notaAprendida, type MensajeParaIA, type OperativoParaChat, type Sugerencia } from "@/lib/whatsapp-bandeja";
 import { hoyEnChile } from "@/lib/fechas";
 import type { ResultadoAgenda } from "@/lib/actions/agenda-terreno";
 
@@ -96,6 +96,8 @@ export async function analizarChats(datos?: FormData): Promise<ResultadoAgenda &
       .order("fecha").limit(40);
     if (opsRes.error) return { error: "No se pudieron leer los operativos." };
     const operativos = (opsRes.data ?? []) as OperativoParaChat[];
+    const notasRes = await supabase.from("ia_conocimiento").select("texto").eq("tenant_id", tenantId).order("creado_en", { ascending: false }).limit(60);
+    const notas = (notasRes.data ?? []).map((n: { texto: string }) => n.texto).reverse();
 
     const client = new Anthropic({ maxRetries: 1, timeout: 60_000 });
     const resultados = await Promise.allSettled(lote.map(async (c) => {
@@ -103,7 +105,7 @@ export async function analizarChats(datos?: FormData): Promise<ResultadoAgenda &
         .eq("tenant_id", tenantId).eq("telefono", c.telefono).order("enviado_en", { ascending: false }).limit(30);
       if (m.error) throw new Error("mensajes");
       const mensajes = ((m.data ?? []) as MensajeParaIA[]).reverse();
-      const sugerencia = await analizarChat(client, operativos, mensajes, c.nombre_perfil);
+      const sugerencia = await analizarChat(client, operativos, mensajes, c.nombre_perfil, notas);
       const u = await supabase.from("whatsapp_chats").update({ sugerencia, analizado_en: new Date().toISOString() })
         .eq("tenant_id", tenantId).eq("telefono", c.telefono);
       if (u.error) throw new Error("guardar");
@@ -132,10 +134,69 @@ export async function inscribirDesdeChat(datos: FormData): Promise<ResultadoAgen
       tenant_id: tenantId, operativo_id: operativo, nombre, telefono, edad, origen: "whatsapp", creado_por: user.id,
     });
     if (r.error) return { error: r.error.code === "23505" ? "Ese teléfono ya está inscrito en ese operativo." : "No se pudo inscribir." };
-    await supabase.from("whatsapp_chats").update({ estado: "inscrito" }).eq("tenant_id", tenantId).eq("telefono", telefono);
+    const chat = await supabase.from("whatsapp_chats").update({ estado: "inscrito" }).eq("tenant_id", tenantId).eq("telefono", telefono)
+      .select("sugerencia").maybeSingle();
+    await aprender(supabase, tenantId, user.id, (chat.data?.sugerencia as Sugerencia | null)?.sector ?? null, operativo);
     revalidatePath("/whatsapp");
     revalidatePath(`/operativos/${operativo}`);
     return { mensaje: `${nombre} inscrito` };
+  });
+}
+
+// La IA aprende: el sector que dijo la persona corresponde a ese lugar.
+// Así reconoce sola a los próximos que digan lo mismo.
+async function aprender(supabase: Awaited<ReturnType<typeof requerirPerfil>>["supabase"], tenantId: string, usuario: string, sector: string | null, operativoId: string) {
+  if (!sector) return;
+  const [op, notas] = await Promise.all([
+    supabase.from("operativos").select("nombre, comuna").eq("id", operativoId).eq("tenant_id", tenantId).maybeSingle(),
+    supabase.from("ia_conocimiento").select("texto").eq("tenant_id", tenantId).limit(200),
+  ]);
+  if (!op.data) return;
+  const nota = notaAprendida(sector, op.data, (notas.data ?? []).map((n: { texto: string }) => n.texto));
+  if (nota) await supabase.from("ia_conocimiento").insert({ tenant_id: tenantId, texto: nota, origen: "aprendido", creado_por: usuario });
+}
+
+// Respuesta a «¿es de esa sede?» para una persona que la IA dejó por
+// confirmar. Sí: queda inscrita (con lo que se haya corregido). No: se quita
+// y el chat vuelve a la bandeja.
+export async function confirmarPreinscrito(datos: FormData): Promise<ResultadoAgenda> {
+  return conPerfil(["admin"], async ({ supabase, tenantId, user }) => {
+    const id = String(datos.get("id") ?? "");
+    const si = datos.get("respuesta") === "si";
+    if (!UUID.test(id)) return { error: "No válido." };
+    const pre = await supabase.from("inscritos_operativo").select("telefono, operativo_id, sector, nombre, edad")
+      .eq("id", id).eq("tenant_id", tenantId).eq("estado", "por_confirmar").maybeSingle();
+    if (pre.error || !pre.data) return { error: "Ya fue respondida." };
+    if (!si) {
+      await supabase.from("inscritos_operativo").update({ estado: "cancelado" }).eq("id", id).eq("tenant_id", tenantId);
+      revalidatePath("/whatsapp");
+      revalidatePath(`/operativos/${pre.data.operativo_id}`);
+      return { mensaje: "Quitada. El chat sigue en la bandeja." };
+    }
+    const operativo = String(datos.get("operativo_id") ?? pre.data.operativo_id);
+    const nombre = String(datos.get("nombre") ?? pre.data.nombre).replace(/\s+/g, " ").trim();
+    const edad = datos.has("edad") ? edadDe(datos.get("edad")) : pre.data.edad;
+    if (!UUID.test(operativo)) return { error: "Elige el operativo." };
+    if (nombre.length < 2 || nombre.length > 80) return { error: "Escribe el nombre." };
+    if (edad === undefined) return { error: "La edad debe ser un número entre 0 y 120." };
+    const r = await supabase.from("inscritos_operativo").update({ estado: "inscrito", operativo_id: operativo, nombre, edad })
+      .eq("id", id).eq("tenant_id", tenantId).select("id").single();
+    if (r.error) return { error: r.error.code === "23505" ? "Ese teléfono ya está inscrito en ese operativo." : "No se pudo confirmar." };
+    await supabase.from("whatsapp_chats").update({ estado: "inscrito" }).eq("tenant_id", tenantId).eq("telefono", pre.data.telefono);
+    await aprender(supabase, tenantId, user.id, pre.data.sector, operativo);
+    revalidatePath("/whatsapp");
+    revalidatePath(`/operativos/${operativo}`);
+    return { mensaje: `${nombre} inscrito` };
+  });
+}
+
+export async function cambiarAutomatico(datos: FormData): Promise<ResultadoAgenda> {
+  return conPerfil(["admin"], async ({ tenantId }) => {
+    const automatico = datos.get("automatico") === "on";
+    const r = await createAdminClient().from("whatsapp_numeros").update({ automatico }).eq("tenant_id", tenantId).select("tenant_id").single();
+    if (r.error) return { error: "No se pudo cambiar." };
+    revalidatePath("/configuracion/integraciones");
+    return { mensaje: automatico ? "La IA revisará sola los chats nuevos" : "Revisión automática apagada" };
   });
 }
 

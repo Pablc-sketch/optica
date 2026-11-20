@@ -13,6 +13,7 @@ function supabaseFalso(tablas: Record<string, unknown[]>) {
         eq: (columna: string, valor: unknown) => (filtros.push({ tabla, columna, valor }), q),
         not: () => q,
         neq: () => q,
+        in: () => q,
         order: () => q,
         range: async () => ({ data: tablas[tabla] ?? [], error: null }),
         limit: async () => ({ data: tablas[tabla] ?? [], error: null }),

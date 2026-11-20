@@ -1,12 +1,22 @@
 import FormularioAgenda from "@/components/formulario-agenda";
 import { createClient } from "@/lib/supabase/server";
-import { cambiarInscrito, guardarSectores, inscribirManual } from "@/lib/actions/whatsapp";
+import { cambiarInscrito, confirmarPreinscrito, guardarSectores, inscribirManual } from "@/lib/actions/whatsapp";
 
 // Personas inscritas en un operativo (desde la bandeja de WhatsApp o a
 // mano), y los sectores que cubre, que la IA usa para reconocer a quién
 // corresponde cada chat.
 
-type Inscrito = { id: string; nombre: string; telefono: string; edad: number | null; estado: string; origen: string };
+type Inscrito = { id: string; nombre: string; telefono: string; edad: number | null; estado: string; origen: string; sector: string | null; motivo: string | null };
+
+function Respuesta({ id, si }: { id: string; si: boolean }) {
+  return (
+    <form action={async (d) => { "use server"; await confirmarPreinscrito(d); }}>
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="respuesta" value={si ? "si" : "no"} />
+      <button className={`rounded-lg px-2 py-1 text-xs font-semibold ${si ? "bg-emerald-700 text-white" : "border text-red-800"}`}>{si ? "Sí, inscribir" : "No"}</button>
+    </form>
+  );
+}
 
 function Boton({ id, estado, texto, clase }: { id: string; estado: string; texto: string; clase: string }) {
   return (
@@ -22,7 +32,7 @@ export default async function InscritosOperativo({ operativoId }: { operativoId:
   const supabase = await createClient();
   const [opRes, inscritosRes, rolRes] = await Promise.all([
     supabase.from("operativos").select("sectores, meta_examenes, estado").eq("id", operativoId).maybeSingle(),
-    supabase.from("inscritos_operativo").select("id, nombre, telefono, edad, estado, origen").eq("operativo_id", operativoId)
+    supabase.from("inscritos_operativo").select("id, nombre, telefono, edad, estado, origen, sector, motivo").eq("operativo_id", operativoId)
       .neq("estado", "cancelado").order("creado_en"),
     supabase.rpc("jwt_rol"),
   ]);
@@ -31,7 +41,8 @@ export default async function InscritosOperativo({ operativoId }: { operativoId:
   const op = opRes.data;
   const inscritos = (inscritosRes.data ?? []) as Inscrito[];
   const esAdmin = rolRes.data === "admin";
-  const vigentes = inscritos.length;
+  const porConfirmar = inscritos.filter((i) => i.estado === "por_confirmar");
+  const vigentes = inscritos.length - porConfirmar.length;
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm">
@@ -42,11 +53,26 @@ export default async function InscritosOperativo({ operativoId }: { operativoId:
         </span>
       </div>
 
-      {inscritos.length === 0 ? (
+      {porConfirmar.length > 0 && (
+        <ul className="mt-3 space-y-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-950">
+          <li className="font-semibold">La IA anotó desde WhatsApp. ¿Son de esta sede?</li>
+          {porConfirmar.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="min-w-0 flex-1">
+                <b>{p.nombre}</b>{p.edad !== null ? `, ${p.edad} años` : ""}{p.sector ? ` · dijo «${p.sector}»` : ""}
+                {p.motivo && <span className="block text-xs">{p.motivo}</span>}
+              </span>
+              {esAdmin && <span className="flex gap-2"><Respuesta id={p.id} si /><Respuesta id={p.id} si={false} /></span>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {vigentes === 0 ? (
         <p className="mt-2 text-sm text-tinta-suave">Todavía no hay personas inscritas.</p>
       ) : (
         <ul className="mt-3 divide-y divide-tinta/10 text-sm">
-          {inscritos.map((p) => (
+          {inscritos.filter((p) => p.estado !== "por_confirmar").map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
               <span className={`min-w-0 flex-1 font-medium ${p.estado === "asistio" ? "text-emerald-800" : ""}`}>
                 {p.nombre}{p.edad !== null ? `, ${p.edad} años` : ""}
