@@ -17,10 +17,11 @@ export type OperativoIA = OperativoRentabilidad & {
   hora_inicio: string | null;
   hora_fin: string | null;
   meta_examenes: number | null;
+  sectores: string | null;
 };
 
 const COLUMNAS =
-  "id, nombre, tipo_venue, fecha, fecha_fin, estado, direccion, comuna, region, hora_inicio, hora_fin, meta_examenes, " +
+  "id, nombre, tipo_venue, fecha, fecha_fin, estado, direccion, comuna, region, hora_inicio, hora_fin, meta_examenes, sectores, " +
   "costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_hospedaje, costo_comida, costo_peajes, costo_marco_unitario";
 
 export async function leerRentabilidad(supabase: SupabaseClient, tenantId: string): Promise<FilaRentabilidad<OperativoIA>[]> {
@@ -49,13 +50,27 @@ export async function leerRentabilidad(supabase: SupabaseClient, tenantId: strin
   return filasRentabilidad(ops.data ?? [], recetas.data ?? [], ventas.data ?? []);
 }
 
-// Cuántas horas tomadas tiene cada operativo (solo el número).
-export async function contarCitas(supabase: SupabaseClient, tenantId: string): Promise<Map<string, number>> {
+// Cuántas personas inscritas (vigentes) tiene cada operativo (solo el número).
+export async function contarInscritos(supabase: SupabaseClient, tenantId: string): Promise<Map<string, number>> {
   const r = await leerTodas<{ operativo_id: string }>((a, b) =>
-    supabase.from("citas_operativo").select("id, operativo_id").eq("tenant_id", tenantId).eq("estado", "agendada").order("id").range(a, b) as never
+    supabase.from("inscritos_operativo").select("id, operativo_id").eq("tenant_id", tenantId).neq("estado", "cancelado").order("id").range(a, b) as never
   );
   const m = new Map<string, number>();
-  // Si la tabla aún no existe (migración pendiente) el asistente sigue sin citas.
+  // Si la tabla aún no existe (migración pendiente) se sigue sin inscritos.
   for (const c of r.data ?? []) m.set(c.operativo_id, (m.get(c.operativo_id) ?? 0) + 1);
   return m;
+}
+
+// Operativos que tienen al menos un contacto (dirigente) anotado.
+export async function operativosConContacto(supabase: SupabaseClient, tenantId: string): Promise<Set<string>> {
+  const r = await leerTodas<{ operativo_id: string }>((a, b) =>
+    supabase.from("contactos_operativo").select("id, operativo_id").eq("tenant_id", tenantId).order("id").range(a, b) as never
+  );
+  return new Set((r.data ?? []).map((c) => c.operativo_id));
+}
+
+// Direcciones de las sucursales: desde dónde sale el equipo.
+export async function leerBases(supabase: SupabaseClient, tenantId: string): Promise<string[]> {
+  const r = await supabase.from("sucursales").select("nombre, direccion").eq("tenant_id", tenantId).limit(10);
+  return (r.data ?? []).map((x: { nombre: string; direccion: string | null }) => [x.nombre, x.direccion].filter(Boolean).join(": "));
 }

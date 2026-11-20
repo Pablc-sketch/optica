@@ -45,26 +45,42 @@ export async function POST(request: Request) {
   if (contexto) historial.push({ role: "system", content: contexto });
 
   const client = new Anthropic({ maxRetries: 1, timeout: 100_000 });
-  try {
-    const final = await client.beta.messages.toolRunner({
+  const herramientas = crearHerramientas(ctx.supabase, ctx.tenantId, hoy);
+  // Búsqueda web (precio del combustible, hospedaje, etc.) en servidores de
+  // Anthropic. Solo recibe lo que la IA busca, nunca datos de la óptica.
+  const busqueda = { type: "web_search_20260209" as const, name: "web_search" as const, max_uses: 3,
+    user_location: { type: "approximate" as const, country: "CL", timezone: "America/Santiago" } };
+  const preguntar = (conWeb: boolean) =>
+    client.beta.messages.toolRunner({
       model: MODELO,
       max_tokens: 16000,
-      max_iterations: 8,
+      max_iterations: 10,
       output_config: { effort: "medium" },
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       cache_control: { type: "ephemeral" },
       system: promptSistema(tenant.data?.nombre_comercial || "la óptica", fechaConDia(hoy)),
-      tools: [...crearHerramientas(ctx.supabase, ctx.tenantId, hoy)],
+      tools: conWeb ? [...herramientas, busqueda] : [...herramientas],
       messages: historial,
     });
+  const conWeb = process.env.ASISTENTE_BUSQUEDA_WEB !== "0";
+  try {
+    let final;
+    try {
+      final = await preguntar(conWeb);
+    } catch (e) {
+      // Si la búsqueda web no está habilitada en la cuenta de Claude, se
+      // responde igual sin ella.
+      if (!(conWeb && e instanceof Anthropic.BadRequestError)) throw e;
+      final = await preguntar(false);
+    }
     if (final.stop_reason === "refusal") {
       return Response.json({ texto: "No puedo ayudar con esa pregunta. Prueba preguntando por tus operativos o su rentabilidad." });
     }
     const texto = final.content
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
       .map((b) => b.text)
-      .join("\n")
+      .join("")
       .trim();
     if (!texto) return Response.json({ error: "El asistente no alcanzó a responder. Prueba con una pregunta más acotada." }, { status: 502 });
     return Response.json({ texto: texto.slice(0, 20000) });

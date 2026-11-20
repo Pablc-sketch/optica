@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { MensajeChat } from "@/lib/asistente/conversacion";
 
@@ -9,11 +10,13 @@ import type { MensajeChat } from "@/lib/asistente/conversacion";
 // sesión o recargar se borra, y nunca se guarda en Lentia.
 
 const SUGERENCIAS = [
-  "¿Cuáles fueron mis 5 operativos más rentables?",
-  "¿Qué tipo de lugar y qué comuna me conviene más?",
-  "¿Sería rentable una junta de vecinos de 1 día con $40.000 de transporte y $52.000 de equipos?",
-  "¿Cuántas personas hay agendadas por WhatsApp en los próximos operativos?",
+  "¿Qué les falta a mis próximos operativos?",
+  "¿Cuánto debería presupuestar para un operativo de 2 días en Pichilemu, con 3 personas?",
+  "¿Sería rentable una junta de vecinos de 1 día en Talagante?",
+  "¿Cuáles fueron mis 5 operativos más rentables y qué comuna me conviene más?",
 ];
+
+type Pendiente = { operativo_id: string; nombre: string; fecha: string; problemas: string[] };
 
 export default function AsistenteIA() {
   const ruta = usePathname();
@@ -23,6 +26,15 @@ export default function AsistenteIA() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const final = useRef<HTMLDivElement>(null);
+  const [pendientes, setPendientes] = useState<Pendiente[] | null>(null);
+
+  // Lo que falta en los operativos (reglas fijas, sin gastar IA).
+  useEffect(() => {
+    fetch("/api/asistente/pendientes")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { pendientes?: Pendiente[] } | null) => setPendientes(d?.pendientes ?? null))
+      .catch(() => setPendientes(null));
+  }, [abierto]);
 
   useEffect(() => {
     final.current?.scrollIntoView({ block: "end" });
@@ -70,6 +82,11 @@ export default function AsistenteIA() {
         className="fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-full bg-brand px-4 py-3 font-semibold text-white shadow-lg hover:bg-brand-dark print:hidden"
       >
         <span aria-hidden>✦</span> Asistente
+        {pendientes && pendientes.length > 0 && (
+          <span className="rounded-full bg-amber-400 px-2 text-xs font-bold text-amber-950" aria-label={`${pendientes.length} operativos con pendientes`}>
+            {pendientes.length}
+          </span>
+        )}
       </button>
     );
   }
@@ -82,7 +99,7 @@ export default function AsistenteIA() {
       <header className="flex items-center justify-between border-b px-4 py-3">
         <div>
           <h2 className="font-bold">✦ Asistente</h2>
-          <p className="text-xs text-tinta-suave">Analiza tus operativos. Solo ve datos de tu óptica, sin pacientes.</p>
+          <p className="text-xs text-tinta-suave">Operativos, costos y pendientes. Solo datos de tu óptica, sin pacientes.</p>
         </div>
         <div className="flex gap-1">
           {mensajes.length > 0 && (
@@ -97,6 +114,20 @@ export default function AsistenteIA() {
       </header>
 
       <div className="min-h-40 flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm">
+        {mensajes.length === 0 && pendientes && pendientes.length > 0 && (
+          <details className="rounded-xl bg-amber-50 px-3 py-2 text-amber-950" open>
+            <summary className="cursor-pointer font-semibold">Pendientes en {pendientes.length} operativo{pendientes.length === 1 ? "" : "s"}</summary>
+            <ul className="mt-2 space-y-2">
+              {pendientes.slice(0, 8).map((p) => (
+                <li key={p.operativo_id}>
+                  <Link href={`/operativos/${p.operativo_id}`} className="font-semibold underline" onClick={() => setAbierto(false)}>{p.nombre}</Link>
+                  <span className="text-xs"> · {p.fecha.split("-").reverse().join("-")}</span>
+                  <ul className="ml-4 list-disc text-xs">{p.problemas.map((x) => <li key={x}>{x}</li>)}</ul>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         {mensajes.length === 0 && (
           <div className="space-y-2">
             <p className="text-tinta-suave">Pregunta, por ejemplo:</p>

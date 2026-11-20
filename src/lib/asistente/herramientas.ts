@@ -3,7 +3,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema";
 import { evaluarPunto, resumirPorGrupo, type FilaRentabilidad } from "@/lib/rentabilidad-operativos";
-import { contarCitas, leerRentabilidad, type OperativoIA } from "@/lib/asistente/datos";
+import { contarInscritos, leerBases, leerRentabilidad, operativosConContacto, type OperativoIA } from "@/lib/asistente/datos";
+import { estimarCombustible, pendientesDeOperativos, promediosPropios, REFERENCIA_CHILE } from "@/lib/pendientes-operativos";
 
 // Herramientas de SOLO LECTURA del asistente. Cada una trabaja con la sesión
 // del usuario y su óptica: no hay forma de pedir datos de otra óptica, y
@@ -16,7 +17,7 @@ export const TIPOS_VENUE: Record<string, string> = {
 
 const normalizar = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 
-function resumenOperativo(f: FilaRentabilidad<OperativoIA>, citas: Map<string, number>) {
+function resumenOperativo(f: FilaRentabilidad<OperativoIA>, inscritos: Map<string, number>) {
   return {
     id: f.id,
     nombre: f.nombre,
@@ -33,7 +34,7 @@ function resumenOperativo(f: FilaRentabilidad<OperativoIA>, citas: Map<string, n
     costo_cristales_y_marcos: f.costoProductos,
     utilidad: f.utilidad,
     conversion_pct: Math.round(f.conversion * 10) / 10,
-    horas_agendadas_whatsapp: citas.get(f.id) ?? 0,
+    inscritos: inscritos.get(f.id) ?? 0,
   };
 }
 
@@ -41,7 +42,7 @@ export function crearHerramientas(supabase: SupabaseClient, tenantId: string, ho
   // Una sola lectura por pregunta, compartida entre herramientas.
   let cache: Promise<{ filas: FilaRentabilidad<OperativoIA>[]; citas: Map<string, number> }> | null = null;
   const datos = () =>
-    (cache ??= Promise.all([leerRentabilidad(supabase, tenantId), contarCitas(supabase, tenantId)]).then(([filas, citas]) => ({ filas, citas })));
+    (cache ??= Promise.all([leerRentabilidad(supabase, tenantId), contarInscritos(supabase, tenantId)]).then(([filas, citas]) => ({ filas, citas })));
 
   const listar = betaTool({
     name: "listar_operativos",
@@ -75,7 +76,7 @@ export function crearHerramientas(supabase: SupabaseClient, tenantId: string, ho
   const detalle = betaTool({
     name: "detalle_operativo",
     description:
-      "Desglose completo de un operativo por id: gastos por categoría (transporte, arriendo, viáticos, ayudante, equipos, hospedaje, comida, peajes, otros), costo de cristales y marcos, ventas, utilidad, conversión, ticket promedio y horas agendadas por WhatsApp.",
+      "Desglose completo de un operativo por id: gastos por categoría (transporte, arriendo, viáticos, ayudante, equipos, hospedaje, comida, peajes, otros), costo de cristales y marcos, ventas, utilidad, conversión, ticket promedio y personas inscritas.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "id del operativo (de listar_operativos)" } },
@@ -89,6 +90,7 @@ export function crearHerramientas(supabase: SupabaseClient, tenantId: string, ho
       return JSON.stringify({
         ...resumenOperativo(f, citas),
         direccion: f.direccion,
+        sectores: f.sectores,
         horario: f.hora_inicio ? `${f.hora_inicio.slice(0, 5)}-${(f.hora_fin ?? "").slice(0, 5)}` : null,
         ticket_promedio: f.ventasCantidad > 0 ? Math.round(f.vendido / f.ventasCantidad) : null,
         gastos_detalle: {
@@ -173,5 +175,47 @@ export function crearHerramientas(supabase: SupabaseClient, tenantId: string, ho
     },
   });
 
-  return [listar, detalle, comparar, evaluar] as const;
+  const pendientes = betaTool({
+    name: "revisar_pendientes",
+    description:
+      "Revisa qué les falta a los operativos: ubicación, horario, gente inscrita, costos (transporte, hospedaje en operativos de varios días), contacto del lugar, y operativos pasados sin cerrar o sin costos. Úsala cuando pregunten qué falta, qué está incompleto o qué hay que hacer.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    run: async () => {
+      const [{ filas, citas }, contactos] = await Promise.all([datos(), operativosConContacto(supabase, tenantId)]);
+      const lista = pendientesDeOperativos(filas, citas, hoy, contactos);
+      return JSON.stringify({ hoy, operativos_con_pendientes: lista.length, pendientes: lista.slice(0, 40) });
+    },
+  });
+
+  const costos = betaTool({
+    name: "costos_referencia_chile",
+    description:
+      "Datos para presupuestar un operativo en Chile: lo que esta óptica ha gastado por día en cada categoría (transporte, viáticos, comida, hospedaje, equipos, arriendo, ayudante, peajes) en el último año, desde dónde sale el equipo (sucursales) y valores de respaldo aproximados de Chile (combustible, rendimiento, colación, hospedaje). Prefiere siempre el historial propio; para el precio actual del combustible usa la búsqueda web si está disponible.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    run: async () => {
+      const [{ filas }, bases] = await Promise.all([datos(), leerBases(supabase, tenantId)]);
+      return JSON.stringify({ hoy, historial_propio_por_dia: promediosPropios(filas, hoy), bases, respaldo_chile: REFERENCIA_CHILE });
+    },
+  });
+
+  const combustible = betaTool({
+    name: "estimar_combustible",
+    description:
+      "Calcula el gasto en combustible de un operativo: kilómetros de ida desde la base, días, precio por litro y rendimiento del vehículo. Si el equipo duerme en el lugar, es un solo viaje ida y vuelta; si no, uno por día. Usa esta herramienta en vez de hacer la cuenta tú.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        km_ida: { type: "number", minimum: 0, maximum: 3000 },
+        dias: { type: "integer", minimum: 1, maximum: 30 },
+        precio_litro: { type: "number", minimum: 300, maximum: 5000 },
+        rendimiento_km_litro: { type: "number", minimum: 3, maximum: 30 },
+        se_aloja: { type: "boolean" },
+      },
+      required: ["km_ida", "dias", "precio_litro", "rendimiento_km_litro"],
+      additionalProperties: false,
+    },
+    run: async (i) => JSON.stringify(estimarCombustible(i)),
+  });
+
+  return [listar, detalle, comparar, evaluar, pendientes, costos, combustible] as const;
 }

@@ -10,6 +10,7 @@ const ENLACES: EnlaceMenu[] = [
   { href: '/operativos/agenda', label: 'Calendario', principal: true, movil: true },
   { href: '/pacientes', label: 'Pacientes' },
   { href: '/operativos', label: 'Operativos' },
+  { href: '/whatsapp', label: 'WhatsApp' },
   { href: '/ot', label: 'Órdenes' },
   { href: '/inventario', label: 'Inventario' },
   { href: '/laboratorio', label: 'Laboratorio' },

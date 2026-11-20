@@ -28,9 +28,9 @@ export default async function Integraciones() {
       </div> : <a href="https://www.mercadopago.cl/developers/panel/app" target="_blank" rel="noopener noreferrer" className="mt-3 inline-block rounded-xl border px-4 py-2 text-sm font-semibold">Vincular cuenta ↗</a>}
     </section>
     <section className="rounded-2xl bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-bold">WhatsApp para agendar</h2>
-      <p className="mt-1 text-sm text-tinta-suave">{numero ? `${numero.telefono_visible ?? 'Número conectado'} · ${numero.activo ? 'las personas pueden tomar hora en los operativos abiertos' : 'en pausa'}` : 'Las personas escriben al WhatsApp de la óptica y toman hora en los operativos que abras.'}</p>
-      {numero && <div className="mt-3"><FormularioAgenda accion={pausarWhatsapp} etiqueta={numero.activo ? 'Pausar' : 'Reanudar'}>
+      <h2 className="text-lg font-bold">WhatsApp Business</h2>
+      <p className="mt-1 text-sm text-tinta-suave">{numero ? `${numero.telefono_visible ?? 'Número conectado'} · ${numero.activo ? 'Lentia lee los chats y la IA propone a qué operativo inscribir' : 'en pausa'}` : 'Lentia lee los chats de tu WhatsApp Business (tú sigues respondiendo desde el teléfono) y la IA propone a qué operativo inscribir a cada persona. Lentia nunca envía mensajes.'}</p>
+      {numero && <div className="mt-3 flex flex-wrap items-center gap-3"><Link href="/whatsapp" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white">Abrir bandeja</Link><FormularioAgenda accion={pausarWhatsapp} etiqueta={numero.activo ? 'Pausar' : 'Reanudar'}>
         {!numero.activo && <input type="hidden" name="activo" value="on" />}
       </FormularioAgenda></div>}
       {superadmin ? <details className="mt-3 text-sm" open={!numero}><summary className="cursor-pointer font-semibold">{numero ? 'Cambiar número' : 'Conectar número'}</summary>

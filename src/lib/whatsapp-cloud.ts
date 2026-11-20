@@ -2,9 +2,11 @@ import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-// WhatsApp Cloud API (Meta). Lentia tiene UNA app de Meta; cada óptica
-// conecta su número y se identifica por su phone_number_id.
-//   WHATSAPP_ACCESS_TOKEN  token de usuario del sistema con acceso a los números
+// WhatsApp Cloud API (Meta), en coexistencia con la app WhatsApp Business:
+// la óptica sigue respondiendo desde su teléfono y Lentia recibe una copia
+// de cada mensaje (entrantes y los que la óptica envía). Lentia NUNCA envía
+// mensajes.
+//   WHATSAPP_ACCESS_TOKEN  token con acceso a los números conectados
 //   WHATSAPP_APP_SECRET    para comprobar que el aviso viene de Meta
 //   WHATSAPP_VERIFY_TOKEN  texto que se pega en Meta al registrar el webhook
 
@@ -29,18 +31,6 @@ export function tokenVerificacionValido(recibido: string | null, esperado = proc
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export async function enviarTexto(phoneNumberId: string, para: string, texto: string): Promise<boolean> {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  if (!token) return false;
-  const r = await fetch(`https://graph.facebook.com/${VERSION}/${encodeURIComponent(phoneNumberId)}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", to: para, type: "text", text: { body: texto.slice(0, 4000) } }),
-    signal: AbortSignal.timeout(15000),
-  }).catch(() => null);
-  return Boolean(r?.ok);
-}
-
 // Comprueba que el token de Lentia puede usar ese número y devuelve cómo se ve.
 export async function datosDelNumero(phoneNumberId: string): Promise<{ telefono: string; nombre: string } | null> {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -54,29 +44,102 @@ export async function datosDelNumero(phoneNumberId: string): Promise<{ telefono:
   return d?.display_phone_number ? { telefono: d.display_phone_number.slice(0, 30), nombre: (d.verified_name ?? "").slice(0, 100) } : null;
 }
 
-// Lo que importa de un aviso de Meta: mensajes de texto entrantes.
-export type MensajeEntrante = { phoneNumberId: string; de: string; wamid: string; texto: string };
+// ---------------------------------------------------------------------------
+// Lectura de avisos
+// ---------------------------------------------------------------------------
+export type MensajeChat = {
+  phoneNumberId: string;
+  // Teléfono de la PERSONA (no el de la óptica), en ambos sentidos.
+  telefono: string;
+  nombrePerfil: string | null;
+  wamid: string;
+  direccion: "entrante" | "saliente";
+  texto: string;
+  enviadoEn: string;
+};
 
-export function mensajesDelAviso(aviso: unknown): MensajeEntrante[] {
-  const out: MensajeEntrante[] = [];
-  const entradas = (aviso as { entry?: unknown })?.entry;
-  if (!Array.isArray(entradas)) return out;
-  for (const e of entradas) {
-    const cambios = (e as { changes?: unknown })?.changes;
-    if (!Array.isArray(cambios)) continue;
-    for (const c of cambios) {
-      const v = (c as { field?: unknown; value?: Record<string, unknown> })?.field === "messages" ? (c as { value?: Record<string, unknown> }).value : undefined;
-      const phoneNumberId = (v?.metadata as { phone_number_id?: unknown } | undefined)?.phone_number_id;
-      if (typeof phoneNumberId !== "string" || !Array.isArray(v?.messages)) continue;
-      for (const m of v.messages as Record<string, unknown>[]) {
-        const texto =
-          m.type === "text" ? (m.text as { body?: unknown })?.body
-          : m.type === "interactive" ? ((m.interactive as { list_reply?: { title?: unknown }; button_reply?: { title?: unknown } })?.list_reply?.title
-            ?? (m.interactive as { button_reply?: { title?: unknown } })?.button_reply?.title)
-          : m.type === "button" ? (m.button as { text?: unknown })?.text
-          : undefined;
-        if (typeof m.from === "string" && typeof m.id === "string") {
-          out.push({ phoneNumberId, de: m.from, wamid: m.id, texto: typeof texto === "string" ? texto.slice(0, 1000) : "" });
+type Obj = Record<string, unknown>;
+const obj = (v: unknown): Obj => (v && typeof v === "object" ? (v as Obj) : {});
+const lista = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const DESCRIPCION_TIPO: Record<string, string> = {
+  image: "[foto]", audio: "[audio]", video: "[video]", document: "[documento]", sticker: "[sticker]",
+  location: "[ubicación]", contacts: "[contacto]", reaction: "[reacción]",
+};
+
+function textoDe(m: Obj): string {
+  const tipo = String(m.type ?? "");
+  if (tipo === "text") return String(obj(m.text).body ?? "");
+  if (tipo === "interactive") {
+    const i = obj(m.interactive);
+    return String(obj(i.list_reply).title ?? obj(i.button_reply).title ?? "");
+  }
+  if (tipo === "button") return String(obj(m.button).text ?? "");
+  if (tipo === "location") {
+    const l = obj(m.location);
+    return ["[ubicación]", l.name, l.address].filter(Boolean).join(" ");
+  }
+  const caption = obj(m[tipo]).caption;
+  return [DESCRIPCION_TIPO[tipo] ?? `[${tipo || "mensaje"}]`, typeof caption === "string" ? caption : ""].filter(Boolean).join(" ");
+}
+
+function fechaDe(ts: unknown): string {
+  const n = Number(ts);
+  return Number.isFinite(n) && n > 1e9 ? new Date(n * 1000).toISOString() : new Date().toISOString();
+}
+
+function mensaje(phoneNumberId: string, m: Obj, direccion: "entrante" | "saliente", telefono: unknown, nombres: Map<string, string>): MensajeChat | null {
+  if (typeof telefono !== "string" || !/^[0-9]{8,15}$/.test(telefono) || typeof m.id !== "string") return null;
+  return {
+    phoneNumberId,
+    telefono,
+    nombrePerfil: nombres.get(telefono) ?? null,
+    wamid: m.id.slice(0, 200),
+    direccion,
+    texto: textoDe(m).slice(0, 4000),
+    enviadoEn: fechaDe(m.timestamp),
+  };
+}
+
+// Junta los mensajes de un aviso de Meta:
+//  - messages: lo que escriben las personas,
+//  - smb_message_echoes: lo que la óptica responde desde la app,
+//  - history: mensajes anteriores compartidos al conectar el número.
+export function mensajesDelAviso(aviso: unknown): MensajeChat[] {
+  const out: MensajeChat[] = [];
+  for (const e of lista(obj(aviso).entry)) {
+    for (const c of lista(obj(e).changes)) {
+      const campo = obj(c).field;
+      const v = obj(obj(c).value);
+      const phoneNumberId = obj(v.metadata).phone_number_id;
+      if (typeof phoneNumberId !== "string") continue;
+      const nombres = new Map<string, string>();
+      for (const k of lista(v.contacts)) {
+        const wa = obj(k).wa_id;
+        const nombre = obj(obj(k).profile).name;
+        if (typeof wa === "string" && typeof nombre === "string") nombres.set(wa, nombre.slice(0, 100));
+      }
+      const empresa = String(obj(v.metadata).display_phone_number ?? "").replace(/\D/g, "");
+      if (campo === "messages") {
+        for (const m of lista(v.messages)) {
+          const x = mensaje(phoneNumberId, obj(m), "entrante", obj(m).from, nombres);
+          if (x) out.push(x);
+        }
+      } else if (campo === "smb_message_echoes") {
+        for (const m of lista(v.message_echoes)) {
+          const x = mensaje(phoneNumberId, obj(m), "saliente", obj(m).to, nombres);
+          if (x) out.push(x);
+        }
+      } else if (campo === "history") {
+        for (const h of lista(v.history)) {
+          for (const t of lista(obj(h).threads)) {
+            const persona = obj(t).id;
+            for (const m of lista(obj(t).messages)) {
+              const de = String(obj(m).from ?? "");
+              const saliente = de !== persona || (empresa !== "" && de === empresa);
+              const x = mensaje(phoneNumberId, obj(m), saliente ? "saliente" : "entrante", persona, nombres);
+              if (x) out.push(x);
+            }
+          }
         }
       }
     }

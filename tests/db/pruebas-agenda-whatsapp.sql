@@ -1,4 +1,4 @@
--- Pruebas de la agenda por WhatsApp y del tope del asistente.
+-- Pruebas de inscritos, bandeja de WhatsApp y tope del asistente.
 -- Solo datos ficticios. Se corren con tests/db/probar.sh sobre una base
 -- recién creada por tests/db/rehacer.sh.
 \set ON_ERROR_STOP 1
@@ -45,96 +45,96 @@ insert into public.users (id, tenant_id, nombre, email, rol) values
   ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-00000000000a', 'Admin A', 'admin-a@ejemplo.invalid', 'admin'),
   ('00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-00000000000a', 'Ventas A', 'ventas-a@ejemplo.invalid', 'ventas'),
   ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-00000000000b', 'Admin B', 'admin-b@ejemplo.invalid', 'admin');
+insert into public.operativos (id, tenant_id, nombre, fecha, comuna, sectores, estado) values
+  ('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-00000000000a', 'Junta Labrador', '2030-05-10', 'Talagante', 'Labrador, Villa El Rosario', 'planificado'),
+  ('00000000-0000-0000-0000-0000000001b1', '00000000-0000-0000-0000-00000000000b', 'Operativo B', '2030-05-10', 'Maipú', null, 'planificado');
 
--- Operativos ficticios de A: abierto (2 bloques de 30 min, 2 cupos), de 2
--- días, cerrado, pasado y cancelado. Uno de B.
-insert into public.operativos (id, tenant_id, nombre, fecha, fecha_fin, hora_inicio, hora_fin, estado, agenda_whatsapp, cupos_por_bloque, minutos_bloque) values
-  ('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-00000000000a', 'Abierto A', '2030-05-10', null, '10:00', '11:00', 'planificado', true, 2, 30),
-  ('00000000-0000-0000-0000-0000000001a2', '00000000-0000-0000-0000-00000000000a', 'Dos días A', '2030-05-11', '2030-05-12', '09:00', '10:00', 'planificado', true, 1, 60),
-  ('00000000-0000-0000-0000-0000000001a3', '00000000-0000-0000-0000-00000000000a', 'Cerrado A', '2030-05-13', null, '10:00', '11:00', 'planificado', false, 2, 30),
-  ('00000000-0000-0000-0000-0000000001a4', '00000000-0000-0000-0000-00000000000a', 'Pasado A', '2020-05-10', null, '10:00', '11:00', 'planificado', true, 2, 30),
-  ('00000000-0000-0000-0000-0000000001a5', '00000000-0000-0000-0000-00000000000a', 'Cancelado A', '2030-05-14', null, '10:00', '11:00', 'cancelado', true, 2, 30),
-  ('00000000-0000-0000-0000-0000000001a6', '00000000-0000-0000-0000-00000000000a', 'Simultáneo A', '2030-05-15', null, '10:00', '10:30', 'planificado', true, 1, 30),
-  ('00000000-0000-0000-0000-0000000001b1', '00000000-0000-0000-0000-00000000000b', 'Abierto B', '2030-05-10', null, '10:00', '11:00', 'planificado', true, 2, 30);
-
--- ---------------------------------------------------------------------
--- 1. Horas disponibles
--- ---------------------------------------------------------------------
-select pruebas.igual((select string_agg(hora::text || ':' || libres, ',' order by hora) from public.horas_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1')),
-  '10:00:00:2,10:30:00:2', 'Bloques de 30 minutos con su cupo');
-select pruebas.igual((select string_agg(fecha::text, ',' order by fecha) from public.horas_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a2')),
-  '2030-05-11,2030-05-12', 'Operativo de dos días ofrece horas ambos días');
-select pruebas.igual((select count(*)::text from public.horas_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a3')), '0', 'Operativo cerrado a WhatsApp no ofrece horas');
-select pruebas.igual((select count(*)::text from public.horas_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a4')), '0', 'Operativo pasado no ofrece horas');
-select pruebas.igual((select count(*)::text from public.horas_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a5')), '0', 'Operativo cancelado no ofrece horas');
-select pruebas.igual((select string_agg(nombre, ',' order by fecha) from public.operativos_whatsapp('00000000-0000-0000-0000-00000000000a')),
-  'Abierto A,Dos días A,Simultáneo A', 'El menú lista solo operativos abiertos, futuros y de esta óptica');
-
--- ---------------------------------------------------------------------
--- 2. Agendar: cupo, duplicados, horas inválidas
--- ---------------------------------------------------------------------
-select pruebas.igual((public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:00', 'Persona Uno', '56900000001'))->>'ok', 'true', 'Agenda una hora');
-select pruebas.igual((public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:30', 'Persona Uno', '56900000001'))->>'error', 'duplicada', 'Mismo teléfono no toma dos horas en el operativo');
-select pruebas.igual((public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:00', 'Persona Dos', '56900000002'))->>'ok', 'true', 'Segunda persona en el mismo bloque');
-select pruebas.igual((public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:00', 'Persona Tres', '56900000003'))->>'error', 'sin_cupo', 'Bloque lleno no acepta más');
-select pruebas.igual((select string_agg(hora::text || ':' || libres, ',') from public.horas_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1')),
-  '10:30:00:2', 'El bloque lleno deja de ofrecerse');
-select pruebas.igual((public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:15', 'Persona Tres', '56900000003'))->>'error', 'sin_cupo', 'Hora fuera de la grilla se rechaza');
-select pruebas.igual((public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a4', '2020-05-10', '10:00', 'Persona Tres', '56900000003'))->>'error', 'sin_cupo', 'Operativo pasado se rechaza');
-select pruebas.falla($$select public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:30', 'X', '56900000004')$$, '23514', 'Nombre demasiado corto se rechaza');
-
--- ---------------------------------------------------------------------
--- 3. Aislamiento: la óptica sale del número que recibió el mensaje
--- ---------------------------------------------------------------------
-select pruebas.igual((public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:30', 'Intruso', '56900000009'))->>'error', 'operativo', 'El número de B no puede agendar en operativos de A');
-select pruebas.igual((select count(*)::text from public.horas_whatsapp('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000001a1')), '0', 'B no ve horas de A');
-select pruebas.igual((select count(*)::text from public.citas_whatsapp_de('00000000-0000-0000-0000-00000000000b', '56900000001')), '0', 'B no ve las horas que la persona tomó en A');
-select pruebas.igual((select count(*)::text from public.citas_whatsapp_de('00000000-0000-0000-0000-00000000000a', '56900000001')), '1', 'La persona ve su hora en A');
-select pruebas.igual(public.cancelar_cita_whatsapp('00000000-0000-0000-0000-00000000000b', (select id from public.citas_operativo where telefono = '56900000001'), '56900000001')::text, 'false', 'B no puede anular horas de A');
-select pruebas.igual(public.cancelar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', (select id from public.citas_operativo where telefono = '56900000001'), '56900000002')::text, 'false', 'Otro teléfono no puede anular la hora');
-select pruebas.igual(public.cancelar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', (select id from public.citas_operativo where telefono = '56900000001'), '56900000001')::text, 'true', 'La persona anula su propia hora');
-select pruebas.igual((select string_agg(hora::text || ':' || libres, ',' order by hora) from public.horas_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1')),
-  '10:00:00:1,10:30:00:2', 'Al anular, el cupo vuelve a quedar libre');
-select pruebas.igual((public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:30', 'Persona Uno', '56900000001'))->>'ok', 'true', 'Después de anular puede volver a agendar');
+-- El webhook (llave de servicio) guarda chats de cada óptica.
 insert into public.whatsapp_numeros (tenant_id, phone_number_id) values ('00000000-0000-0000-0000-00000000000a', '1000000001');
 select pruebas.falla($$insert into public.whatsapp_numeros (tenant_id, phone_number_id) values ('00000000-0000-0000-0000-00000000000b', '1000000001')$$, '23505', 'Un número de WhatsApp no puede atender a dos ópticas');
+insert into public.whatsapp_chats (tenant_id, telefono, nombre_perfil, ultimo_entrante_en) values
+  ('00000000-0000-0000-0000-00000000000a', '56911112222', 'Rosa', now()),
+  ('00000000-0000-0000-0000-00000000000b', '56955556666', 'Otro', now());
+insert into public.whatsapp_mensajes (tenant_id, telefono, wamid, direccion, texto, enviado_en) values
+  ('00000000-0000-0000-0000-00000000000a', '56911112222', 'wamid.1', 'entrante', 'Soy de Labrador', now()),
+  ('00000000-0000-0000-0000-00000000000a', '56911112222', 'wamid.2', 'saliente', '¿Nombre y edad?', now()),
+  ('00000000-0000-0000-0000-00000000000b', '56955556666', 'wamid.3', 'entrante', 'Hola', now());
+select pruebas.falla($$insert into public.whatsapp_mensajes (tenant_id, telefono, wamid, direccion, enviado_en) values ('00000000-0000-0000-0000-00000000000a', '56911112222', 'wamid.1', 'entrante', now())$$, '23505', 'Un aviso repetido de Meta no duplica el mensaje');
+select pruebas.falla($$insert into public.whatsapp_mensajes (tenant_id, telefono, wamid, direccion, enviado_en) values ('00000000-0000-0000-0000-00000000000b', '56911112222', 'wamid.9', 'entrante', now())$$, '23503', 'Un mensaje no puede colgar del chat de otra óptica');
 
 -- ---------------------------------------------------------------------
--- 4. Permisos desde la app (usuarios con sesión y anónimos)
+-- Anónimos: nada
 -- ---------------------------------------------------------------------
 set role anon;
-select pruebas.falla($$select public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:30', 'Anónimo', '56900000010')$$, '42501', 'Anónimo no puede agendar directo');
-select pruebas.igual((select count(*)::text from public.citas_operativo), '0', 'Anónimo no ve citas');
-select pruebas.falla($$select * from public.whatsapp_conversaciones$$, '42501', 'Anónimo no puede leer conversaciones');
+select pruebas.falla($$select * from public.whatsapp_mensajes$$, '42501', 'Anónimo no lee mensajes');
+select pruebas.falla($$select * from public.whatsapp_chats$$, '42501', 'Anónimo no lee chats');
+select pruebas.falla($$select * from public.inscritos_operativo$$, '42501', 'Anónimo no lee inscritos');
 reset role;
 
+-- ---------------------------------------------------------------------
+-- Administrador de A
+-- ---------------------------------------------------------------------
 set role authenticated;
-select pruebas.como('00000000-0000-0000-0000-0000000000b1');
-select pruebas.falla($$select public.agendar_cita_whatsapp('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', '2030-05-10', '10:30', 'Usuario', '56900000011')$$, '42501', 'Un usuario no puede llamar las funciones del webhook');
-select pruebas.falla($$select * from public.whatsapp_conversaciones$$, '42501', 'Un usuario no puede leer conversaciones');
-select pruebas.falla($$insert into public.citas_operativo (tenant_id, operativo_id, fecha, hora, nombre, telefono) values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000001b1', '2030-05-10', '10:00', 'Directo', '56900000012')$$, '42501', 'Nadie inserta citas saltándose el cupo');
-select pruebas.falla($$insert into public.whatsapp_numeros (tenant_id, phone_number_id) values ('00000000-0000-0000-0000-00000000000b', '2000000002')$$, '42501', 'Una óptica no se anota un número por su cuenta');
-select pruebas.igual((select count(*)::text from public.citas_operativo), '0', 'B no ve citas de A');
-select pruebas.igual((select count(*)::text from public.whatsapp_numeros), '0', 'B no ve el número de A');
-update public.citas_operativo set estado = 'asistio';
+select pruebas.como('00000000-0000-0000-0000-0000000000a1');
+select pruebas.igual((select string_agg(texto, ' / ' order by wamid) from public.whatsapp_mensajes), 'Soy de Labrador / ¿Nombre y edad?', 'A lee solo sus chats');
+select pruebas.igual((select count(*)::text from public.whatsapp_chats), '1', 'A ve solo sus chats');
+select pruebas.falla($$insert into public.whatsapp_mensajes (tenant_id, telefono, wamid, direccion, enviado_en) values ('00000000-0000-0000-0000-00000000000a', '56911112222', 'wamid.x', 'entrante', now())$$, '42501', 'Nadie escribe mensajes desde la app (solo el webhook)');
+select pruebas.falla($$update public.whatsapp_chats set telefono = '56900000000'$$, '42501', 'No se puede cambiar el teléfono de un chat');
+select pruebas.falla($$insert into public.whatsapp_numeros (tenant_id, phone_number_id) values ('00000000-0000-0000-0000-00000000000a', '2000000002')$$, '42501', 'Una óptica no se anota un número por su cuenta');
+update public.whatsapp_chats set sugerencia = '{"operativo_id": "00000000-0000-0000-0000-0000000001a1"}', analizado_en = now() where telefono = '56911112222';
+select pruebas.igual((select sugerencia->>'operativo_id' from public.whatsapp_chats where telefono = '56911112222'), '00000000-0000-0000-0000-0000000001a1', 'Se guarda la sugerencia de la IA');
+update public.whatsapp_chats set estado = 'inscrito' where telefono = '56955556666';
+insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad, origen) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Marta Soto', '56911112222', 67, 'whatsapp');
+select pruebas.igual((select nombre || ',' || edad from public.inscritos_operativo), 'Marta Soto,67', 'Inscribe con nombre, teléfono y edad');
+select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Marta Soto', '56911112222')$$, '23505', 'El mismo teléfono no queda dos veces en el operativo');
+select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Otra', '56900000001', 150)$$, '23514', 'Edad imposible se rechaza');
+select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001b1', 'Cruce', '56900000002')$$, '23503', 'No se inscribe en un operativo de otra óptica');
+select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000001b1', 'Cruce', '56900000002')$$, '42501', 'No se inscribe a nombre de otra óptica');
+update public.inscritos_operativo set estado = 'cancelado';
+insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Marta Soto', '56911112222');
+select pruebas.igual((select count(*)::text from public.inscritos_operativo), '2', 'Si se quitó, puede volver a inscribirse');
+select pruebas.falla($$delete from public.inscritos_operativo$$, '42501', 'Los inscritos no se borran (quedan como cancelados)');
+
+-- Ventas de A: ve e inscribe, pero no lee WhatsApp.
 select pruebas.como('00000000-0000-0000-0000-0000000000a2');
-select pruebas.igual((select count(*)::text from public.citas_operativo where estado = 'agendada'), '2', 'Ventas de A ve las horas de su óptica (B no las cambió)');
-update public.citas_operativo set estado = 'asistio' where telefono = '56900000002';
-select pruebas.igual((select estado from public.citas_operativo where telefono = '56900000002'), 'asistio', 'El equipo de A marca quién llegó');
+select pruebas.igual((select count(*)::text from public.inscritos_operativo where estado <> 'cancelado'), '1', 'Ventas ve los inscritos de su óptica');
+insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Juan Pérez', '56900000003', 45);
+select pruebas.igual((select count(*)::text from public.whatsapp_mensajes), '0', 'Ventas no lee los chats de WhatsApp');
+select pruebas.igual((select count(*)::text from public.whatsapp_chats), '0', 'Ventas no ve la bandeja');
+
+-- Administrador de B: nada de A.
+select pruebas.como('00000000-0000-0000-0000-0000000000b1');
+select pruebas.igual((select count(*)::text from public.inscritos_operativo), '0', 'B no ve inscritos de A');
+select pruebas.igual((select string_agg(texto, ',') from public.whatsapp_mensajes), 'Hola', 'B lee solo sus mensajes');
+update public.whatsapp_chats set estado = 'descartado' where telefono = '56911112222';
+update public.inscritos_operativo set estado = 'asistio';
+reset role;
+select pruebas.igual((select estado from public.whatsapp_chats where telefono = '56911112222'), 'pendiente', 'B no puede cambiar chats de A');
+select pruebas.igual((select estado from public.whatsapp_chats where telefono = '56955556666'), 'pendiente', 'A no pudo cambiar el chat de B');
+select pruebas.igual((select count(*)::text from public.inscritos_operativo where estado = 'asistio'), '0', 'B no puede cambiar inscritos de A');
 
 -- ---------------------------------------------------------------------
--- 5. Tope diario del asistente de IA
+-- Tope diario del asistente de IA
 -- ---------------------------------------------------------------------
+set role authenticated;
+select pruebas.como('00000000-0000-0000-0000-0000000000a2');
 select pruebas.igual(public.registrar_pregunta_asistente()::text, 'false', 'Ventas no usa el asistente');
 select pruebas.como('00000000-0000-0000-0000-0000000000a1');
 select pruebas.igual(public.registrar_pregunta_asistente()::text, 'true', 'El administrador puede preguntar');
+select pruebas.igual(public.registrar_pregunta_asistente(8)::text, 'true', 'Revisar 8 chats cuenta 8 consultas');
+select pruebas.igual((select preguntas::text from public.uso_asistente), '9', 'Se suman las consultas del día');
+select pruebas.igual(public.registrar_pregunta_asistente(50)::text, 'false', 'No se aceptan lotes de más de 20');
 reset role;
-update public.uso_asistente set preguntas = 150 where tenant_id = '00000000-0000-0000-0000-00000000000a';
+update public.uso_asistente set preguntas = 200 where tenant_id = '00000000-0000-0000-0000-00000000000a';
 set role authenticated;
-select pruebas.igual(public.registrar_pregunta_asistente()::text, 'false', 'Pasadas 150 preguntas del día se detiene');
+select pruebas.igual(public.registrar_pregunta_asistente()::text, 'false', 'Pasadas 200 consultas del día se detiene');
+select pruebas.falla($$update public.uso_asistente set preguntas = 0$$, '42501', 'El contador no se puede borrar desde la app');
 select pruebas.como('00000000-0000-0000-0000-0000000000b1');
 select pruebas.igual(public.registrar_pregunta_asistente()::text, 'true', 'El tope de A no afecta a B');
 select pruebas.igual((select count(*)::text from public.uso_asistente), '1', 'B solo ve su propio uso');
 reset role;
 
-do $$ begin raise notice 'OK  FIN: agenda por WhatsApp, permisos, aislamiento y tope del asistente'; end $$;
+do $$ begin raise notice 'OK  FIN: inscritos, bandeja de WhatsApp, aislamiento y tope del asistente'; end $$;
