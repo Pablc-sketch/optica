@@ -71,7 +71,7 @@ export default async function Gastos({searchParams}:{searchParams:Promise<{op?:s
   return <div className="mx-auto max-w-6xl space-y-5 pb-8">
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-3xl font-bold">Gastos y ganancias</h1><p className="mt-1 text-sm text-tinta-suave">{periodo}</p></div>
-      <Link href="/caja" className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold">Ver caja</Link>
+      <div className="flex flex-wrap gap-2"><Link href="/caja?ver=movimientos#nuevo-gasto" className="rounded-xl bg-tinta px-4 py-3 text-sm font-semibold text-white">Registrar gasto</Link><Link href="/caja" className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold">Ver caja</Link></div>
     </header>
     <nav className="inline-flex max-w-full gap-1 rounded-2xl border border-tinta/10 bg-white p-1" aria-label="Gastos y rentabilidad">
       <Link href={enlace(false)} aria-current={!rentabilidad?'page':undefined} className={`rounded-xl px-5 py-3 text-sm font-semibold ${!rentabilidad?'bg-tinta text-white':'text-tinta-suave'}`}>Gastos</Link>

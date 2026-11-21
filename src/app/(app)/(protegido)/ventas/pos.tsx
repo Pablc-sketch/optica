@@ -7,7 +7,7 @@ import { coincidePaciente } from "@/lib/buscar-paciente";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 import { encolarVenta } from "@/lib/offline/outbox";
-import { NIVELES_MARCO, precioParConMarco, type NivelMarco, type RecargosMarcos } from "@/lib/niveles-marco";
+import { nivelesMarcoDisponibles, precioParConMarco, type NivelMarco, type RecargosMarcos } from "@/lib/niveles-marco";
 import { lineaRecargo } from "@/lib/recargos-venta";
 import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
@@ -1452,11 +1452,11 @@ export default function PuntoDeVenta({
                   />
                   {marco?.recargoEspecial!=null && <p className="rounded-xl bg-amber-50 p-3 font-semibold">Colección Especial · {clp(l.precioUnitario===0?0:l.precioUnitario+marco.recargoEspecial)} el par</p>}
                   {!marco?.marcoPropio && marco?.recargoEspecial==null && (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label={`Línea de marco par ${numero}`}>
-                      {NIVELES_MARCO.filter(n=>recargosMarcos||n.id!=='seleccion').map(n=><button key={n.id} type="button" onClick={()=>cambiarNivelMarco(numero,n.id)} aria-pressed={nivelActual===n.id} className={`rounded-2xl border-2 px-3 py-4 text-left ${nivelActual===n.id?'border-tinta bg-tinta text-white':'border-tinta/20 bg-white text-tinta'}`}>
+                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label={`Línea de marco par ${numero}`}>
+                      {nivelesMarcoDisponibles(recargosMarcos).map(n=><button key={n.id} type="button" onClick={()=>cambiarNivelMarco(numero,n.id)} aria-pressed={nivelActual===n.id} className={`rounded-2xl border-2 px-3 py-4 text-left ${nivelActual===n.id?'border-tinta bg-tinta text-white':'border-tinta/20 bg-white text-tinta'}`}>
                         <span className="block text-lg font-bold">{n.nombre}</span>
                         <span className="block text-xl font-bold tabular-nums">{clp(l.precioUnitario===0?0:precioParConMarco(l.precioUnitario,n.id,recargosMarcos))}</span>
-                        <span className="block text-xs">{l.precioUnitario===0?'Cortesía completa':n.id==='esencial'?'Marco sin recargo':'Mismo cristal · otra línea de marco'}</span>
+                        <span className="block text-xs">{l.precioUnitario===0?'Cortesía completa':n.id==='esencial'?'Marco sin recargo':'Recargo incluido'}</span>
                       </button>)}
                     </div>
                   )}

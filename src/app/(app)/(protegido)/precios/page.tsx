@@ -1,4 +1,4 @@
-import { leerRecargosMarcos, NIVELES_MARCO, precioParConMarco } from "@/lib/niveles-marco";
+import { leerRecargosMarcos, nivelesMarcoDisponibles, precioParConMarco } from "@/lib/niveles-marco";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { exigirRolPagina } from "@/lib/autorizacion";
@@ -81,7 +81,7 @@ export default async function PreciosPage({
         </p>
       </div>
 
-      {recargos&&<section className="rounded-2xl bg-white p-4"><h2 className="text-lg font-bold">Tres líneas de marco, un mismo cristal</h2><p className="my-2 text-sm">Los precios de cristales corresponden a Esencial. Selección suma {clp(recargos.seleccion)} y Premium suma {clp(recargos.premium)} por par. Se aplica igual en venta, receta y cotización. IVA incluido.</p><div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="text-left">Ejemplo AR de stock con precio de cristales $38.000</caption><thead><tr>{NIVELES_MARCO.map(n=><th key={n.id} className="p-3">{n.nombre}</th>)}</tr></thead><tbody><tr>{NIVELES_MARCO.map(n=><td key={n.id} className="p-3 font-bold">{clp(precioParConMarco(38000,n.id,recargos))}</td>)}</tr></tbody></table></div></section>}
+      {recargos&&<section className="rounded-2xl bg-white p-4"><h2 className="text-lg font-bold">Precios por línea de marco</h2><p className="my-2 text-sm">Los precios de cristales corresponden a Esencial. Selección suma {clp(recargos.seleccion)} y Premium suma {clp(recargos.premium)} por par. {recargos.especial!==undefined&&<> Colección Especial suma {clp(recargos.especial)}.</>} IVA incluido.</p><div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="text-left">Ejemplo AR de stock con precio de cristales $38.000</caption><thead><tr>{nivelesMarcoDisponibles(recargos).map(n=><th key={n.id} className="p-3">{n.nombre}</th>)}</tr></thead><tbody><tr>{nivelesMarcoDisponibles(recargos).map(n=><td key={n.id} className="p-3 font-bold">{clp(precioParConMarco(38000,n.id,recargos))}</td>)}</tr></tbody></table></div></section>}
       <div className="flex flex-wrap items-center gap-2">
         <Link
           href="/precios"

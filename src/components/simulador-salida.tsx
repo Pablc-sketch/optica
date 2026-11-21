@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { NIVELES_MARCO, type RecargosMarcos } from '@/lib/niveles-marco';
+import { nivelesMarcoDisponibles, type RecargosMarcos } from '@/lib/niveles-marco';
 import { aportePorPar, resumirSimulacion, type PerfilPrecio } from '@/lib/rentabilidad-precios';
 import { clp } from '@/lib/clp';
 
@@ -18,9 +18,9 @@ type Props = {
 
 export default function SimuladorSalida({ titulo, fijosRegistrados, perfiles, recargosMarcos, debito, credito, historica, comisionVenta }: Props) {
   const [perfilId, setPerfilId] = useState(perfiles.find(p => p.nombre === 'Monofocal · Orgánico Antirreflejo')?.id ?? perfiles[0]?.id ?? '');
-  const [cantidades, setCantidades] = useState({ esencial: 20, seleccion: 20, premium: 10 });
+  const [cantidades, setCantidades] = useState({ esencial: 20, seleccion: 20, premium: 10, especial: 0 });
   const [fijos, setFijos] = useState({ registrados: fijosRegistrados, combustible: 0, peajes: 0, hospedaje: 0, comida: 0, sedes: 0, otros: 0 });
-  const [marcos, setMarcos] = useState({ esencial: 6000, seleccion: 6000, premium: 6000 });
+  const [marcos, setMarcos] = useState({ esencial: 6000, seleccion: 6000, premium: 6000, especial: 20000 });
   const [costos, setCostos] = useState({ estuche: 1000, vendedora: comisionVenta });
   const [medio, setMedio] = useState(historica === null ? 'debito' : 'historico');
   const [completo, setCompleto] = useState(false);
@@ -29,7 +29,7 @@ export default function SimuladorSalida({ titulo, fijosRegistrados, perfiles, re
   if (!perfil) return <p role="alert" className="rounded-2xl border bg-white p-5">Falta el catálogo para simular ganancias. Revisa Precios.</p>;
 
   const tasa = medio === 'historico' ? (historica ?? debito) : medio === 'debito' ? debito : medio === 'credito' ? credito : 0;
-  const niveles = NIVELES_MARCO.filter(n => recargosMarcos || n.id !== 'seleccion');
+  const niveles = nivelesMarcoDisponibles(recargosMarcos);
   const calculos = niveles.map(n => ({ ...n, cantidad: cantidades[n.id], ...aportePorPar(perfil, n.id, recargosMarcos, marcos[n.id], costos.estuche, costos.vendedora, tasa) }));
   const totalFijos = Object.values(fijos).reduce((s, n) => s + n, 0);
   const r = resumirSimulacion(calculos, totalFijos, objetivo);

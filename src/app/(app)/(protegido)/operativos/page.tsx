@@ -196,14 +196,14 @@ export default async function OperativosPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <CabeceraPagina seccion="En terreno" titulo="Operativos" />
         <div className="flex flex-wrap gap-2">
-          <Link href="/operativos/agenda" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
-            Calendario
+          <Link href="/operativos/agenda" className="rounded-xl bg-sky-900 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-800">
+            Abrir calendario
           </Link>
           <Link href="/operativos/contactos" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
-            📇 Dirigentes
+            Dirigentes
           </Link>
           <Link href="/operativos/comparar" className="rounded-xl border-2 border-tinta/15 bg-white px-3.5 py-2 text-sm font-semibold hover:bg-crema">
-            📊 Comparar
+            Comparar
           </Link>
         </div>
       </div>

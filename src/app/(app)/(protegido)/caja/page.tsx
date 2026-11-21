@@ -64,8 +64,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
   const nombres=etiquetasReparto(tenant.data?.reparto_etiquetas);
   const filas = [[nombres.pablo,p.personas.pablo],[nombres.madre,p.personas.madre],[nombres.isadora,p.personas.isadora],['Laboratorio',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos],['SII declarado por pagar',pendientes.impuestosPendientes??0]] as const;
   return <div className="flex flex-col gap-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><CabeceraPagina seccion="Operación" titulo="Caja" /><ActualizarCajaMercadoPago/></div>
-    <Link href="/impuestos" className="rounded-xl bg-tinta p-4 text-center font-semibold text-white">SII mensual · registrar pagos y ver saldo acumulado →</Link>
+    <div className="flex flex-wrap items-center justify-between gap-3"><CabeceraPagina seccion="Operación" titulo="Caja" /><div className="flex flex-wrap items-center gap-3"><ActualizarCajaMercadoPago/><Link href="/impuestos" className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold">SII mensual</Link></div></div>
     <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-4">{vistas.map(([clave,nombre]) => <Link key={clave} href={`/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-3 text-center font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>
     {(vista==='movimientos'||vista==='pendientes') && <form action="/caja" className="flex flex-wrap items-end gap-2"><input type="hidden" name="ver" value={vista} /><label className="min-w-0 flex-1 text-sm">Operativo<select name="operativo" defaultValue={operativoId} className={campo}><option value="">Todos los operativos</option>{[...(operativos.data ?? [])].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(o=><option key={o.id} value={o.id}>{o.nombre} · {fechaLegible(o.fecha)}</option>)}</select></label><button className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Ver</button></form>}
     {params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>}
@@ -78,7 +77,7 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
       </div>
       <nav aria-label="Acciones de caja" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Link href="/cobros" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">+ Cobrar venta</Link>
-        <Link href="/gastos" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">Gastos · saldar pendientes</Link>
+        <Link href="/gastos" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">Ver gastos</Link>
         <Link href={piloto ? "/agenda/equipos" : "/pagos"} className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">{piloto ? 'Gastos por operativo' : 'Registrar pago'}</Link>
         <Link href="/caja?ver=movimientos#traspasos" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">Transferir entre cuentas</Link>
       </nav>
