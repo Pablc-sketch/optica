@@ -143,7 +143,7 @@ export default async function ConfiguracionPage() {
   return (
     <div className="flex flex-col gap-6">
       <CabeceraPagina seccion="Administración" titulo="Configuración" />
-      <div className="flex flex-wrap gap-2"><Link href="/precios" className="rounded-xl border px-4 py-3">Precios</Link><Link href="/configuracion/integraciones" className="rounded-xl border px-4 py-3">Integraciones</Link><Link href="/suscripcion" className="rounded-xl border px-4 py-3">Suscripción</Link></div>
+      <div className="flex flex-wrap gap-2"><Link href="/precios" className="rounded-xl border px-4 py-3">Precios</Link><Link href="/configuracion/integraciones" className="rounded-xl border px-4 py-3">Integraciones</Link><Link href="/configuracion/ia" className="rounded-xl border px-4 py-3">Lo que sabe la IA</Link><Link href="/suscripcion" className="rounded-xl border px-4 py-3">Suscripción</Link></div>
       {perfilProfesional}
 
       <section className="flex flex-col gap-3">

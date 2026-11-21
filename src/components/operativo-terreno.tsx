@@ -1,3 +1,4 @@
+import InscritosOperativo from '@/components/inscritos-operativo';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { exigirRolPagina } from '@/lib/autorizacion';
@@ -46,6 +47,7 @@ export default async function OperativoTerreno({id}:{id:string}) {
         </div>
       </FormularioAgenda>
     </section>
+    <InscritosOperativo operativoId={id}/>
     <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Cambiar estado</summary>
       <div className="mt-3"><FormularioAgenda accion={actualizarJornada} etiqueta="Guardar estado">
         <input name="id" type="hidden" value={id}/>
