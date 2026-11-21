@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { analizarChat } from "@/lib/asistente/analizar-chat";
-import { type MensajeParaIA, type OperativoParaChat, type Sugerencia } from "@/lib/whatsapp-bandeja";
+import { clavePersona, type MensajeParaIA, type OperativoParaChat, type PersonaChat, type Sugerencia } from "@/lib/whatsapp-bandeja";
 import { hoyEnChile } from "@/lib/fechas";
 
 // Revisión automática de un chat de WhatsApp, sin que el administrador abra
@@ -19,10 +19,15 @@ import { hoyEnChile } from "@/lib/fechas";
 export const ESPERA_MS = 20_000;
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function debePreinscribir(s: Sugerencia | null, nombrePerfil: string | null): { nombre: string } | null {
-  if (!s || !s.quiere_atenderse || !s.operativo_id || s.confianza === "baja") return null;
-  const nombre = (s.nombre ?? nombrePerfil ?? "").replace(/\s+/g, " ").trim();
-  return nombre.length >= 2 ? { nombre: nombre.slice(0, 80) } : null;
+// Personas a dejar por confirmar. Un mismo WhatsApp puede inscribir a
+// varias; si no dijo ningún nombre, se usa el nombre de perfil. Se saltan
+// las que ya están anotadas con este teléfono en ese operativo.
+export function debePreinscribir(s: Sugerencia | null, nombrePerfil: string | null, yaAnotados: string[] = []): PersonaChat[] {
+  if (!s || !s.quiere_atenderse || !s.operativo_id || s.confianza === "baja") return [];
+  const perfil = (nombrePerfil ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const personas = s.personas.length ? s.personas : perfil.length >= 2 ? [{ nombre: perfil, edad: null }] : [];
+  const ya = new Set(yaAnotados.map(clavePersona));
+  return personas.filter((p) => !ya.has(clavePersona(p.nombre)));
 }
 
 export async function revisarChatAutomatico(db: SupabaseClient, tenant: string, telefono: string, wamid: string, espera = ESPERA_MS) {
@@ -35,7 +40,8 @@ export async function revisarChatAutomatico(db: SupabaseClient, tenant: string, 
   if (ultimo.data?.wamid !== wamid) return;
 
   const chat = await db.from("whatsapp_chats").select("nombre_perfil, estado").eq("tenant_id", tenant).eq("telefono", telefono).maybeSingle();
-  if (!chat.data || chat.data.estado !== "pendiente") return;
+  // Un chat ya inscrito puede sumar más personas (la mamá, los hijos…).
+  if (!chat.data || chat.data.estado === "descartado") return;
 
   const hoy = hoyEnChile();
   const opsRes = await db.from("operativos").select("id, nombre, fecha, fecha_fin, comuna, direccion, sectores")
@@ -43,10 +49,10 @@ export async function revisarChatAutomatico(db: SupabaseClient, tenant: string, 
   const operativos = (opsRes.data ?? []) as OperativoParaChat[];
   if (opsRes.error || operativos.length === 0) return;
 
-  // Si ya está anotada en un operativo próximo, no se vuelve a proponer.
-  const ya = await db.from("inscritos_operativo").select("id").eq("tenant_id", tenant).eq("telefono", telefono)
-    .neq("estado", "cancelado").in("operativo_id", operativos.map((o) => o.id)).limit(1);
-  if ((ya.data ?? []).length > 0) return;
+  // Quiénes ya están anotados con este teléfono en los operativos próximos.
+  const ya = await db.from("inscritos_operativo").select("nombre, operativo_id").eq("tenant_id", tenant).eq("telefono", telefono)
+    .neq("estado", "cancelado").in("operativo_id", operativos.map((o) => o.id)).limit(50);
+  const anotados = (ya.data ?? []) as { nombre: string; operativo_id: string }[];
 
   const cupo = await db.rpc("registrar_consulta_ia_servicio", { p_tenant: tenant, p_cantidad: 1 });
   if (cupo.error || cupo.data !== true) return;
@@ -63,15 +69,22 @@ export async function revisarChatAutomatico(db: SupabaseClient, tenant: string, 
   const sugerencia = await analizarChat(client, operativos, mensajes, chat.data.nombre_perfil, notas);
   await db.from("whatsapp_chats").update({ sugerencia, analizado_en: new Date().toISOString() }).eq("tenant_id", tenant).eq("telefono", telefono);
 
-  const pre = debePreinscribir(sugerencia, chat.data.nombre_perfil);
-  if (!pre || !sugerencia?.operativo_id) return;
-  const r = await db.from("inscritos_operativo").insert({
-    tenant_id: tenant, operativo_id: sugerencia.operativo_id, nombre: pre.nombre, telefono, edad: sugerencia.edad,
-    estado: "por_confirmar", origen: "whatsapp", sector: sugerencia.sector, motivo: sugerencia.motivo,
-  });
-  if (r.error) return; // duplicado u otro: queda en la bandeja como sugerencia
-  const op = operativos.find((o) => o.id === sugerencia.operativo_id)!;
-  await avisarPorCorreo(db, tenant, `${pre.nombre}${sugerencia.edad !== null ? ` (${sugerencia.edad} años)` : ""}`, op, sugerencia);
+  if (!sugerencia?.operativo_id) return;
+  const opId = sugerencia.operativo_id;
+  const nuevas = debePreinscribir(sugerencia, chat.data.nombre_perfil, anotados.filter((a) => a.operativo_id === opId).map((a) => a.nombre));
+  // Todas con el teléfono de ESTE chat.
+  const guardadas: PersonaChat[] = [];
+  for (const p of nuevas) {
+    const r = await db.from("inscritos_operativo").insert({
+      tenant_id: tenant, operativo_id: opId, nombre: p.nombre, telefono, edad: p.edad,
+      estado: "por_confirmar", origen: "whatsapp", sector: sugerencia.sector, motivo: sugerencia.motivo,
+    });
+    if (!r.error) guardadas.push(p); // duplicado u otro: se salta
+  }
+  if (guardadas.length === 0) return;
+  const op = operativos.find((o) => o.id === opId)!;
+  const quienes = guardadas.map((p) => `${p.nombre}${p.edad !== null ? ` (${p.edad} años)` : ""}`).join(", ");
+  await avisarPorCorreo(db, tenant, quienes, op, sugerencia);
 }
 
 // Correo al administrador: quién, qué dijo y a qué operativo; sin teléfono.
@@ -88,8 +101,8 @@ async function avisarPorCorreo(db: SupabaseClient, tenant: string, persona: stri
     from: process.env.RESEND_FROM_EMAIL || "Lentia <onboarding@resend.dev>",
     to: para,
     subject: `Por confirmar: ${persona} → ${op.nombre}`,
-    html: `<p><b>${esc(persona)}</b> escribió por WhatsApp${s.sector ? ` y dice que es de <b>${esc(s.sector)}</b>` : ""}.</p>
-<p>Lentia la dejó preinscrita en <b>${esc(op.nombre)}</b> (${esc(op.fecha)}). ${esc(s.motivo)}</p>
+    html: `<p>Por WhatsApp pidieron hora para <b>${esc(persona)}</b>${s.sector ? `, del sector <b>${esc(s.sector)}</b>` : ""}.</p>
+<p>Lentia dejó preinscrito en <b>${esc(op.nombre)}</b> (${esc(op.fecha)}). ${esc(s.motivo)}</p>
 <p><a href="${url}">¿Es de esa sede? Confirmar o rechazar en Lentia</a></p>`,
     });
   } catch {

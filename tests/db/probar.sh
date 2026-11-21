@@ -2,7 +2,7 @@
 # Pruebas de base de datos con datos ficticios, en un Postgres local:
 #   1. rehace la base desde todas las migraciones (tests/db/rehacer.sh),
 #   2. pruebas-agenda-whatsapp.sql (inscritos, bandeja, permisos, aislamiento, tope IA),
-#   3. dos inscripciones simultáneas del mismo teléfono: queda una sola.
+#   3. dos inscripciones simultáneas de la misma persona: queda una sola.
 # Uso: tests/db/probar.sh [puerto] [carpeta-del-socket]
 set -euo pipefail
 PUERTO="${1:-54329}"; CARPETA="${2:-/var/tmp/pgtest}"
@@ -14,8 +14,8 @@ salida=$($P -f tests/db/pruebas-agenda-whatsapp.sql 2>&1 | sed 's/^psql:[^:]*:[0
 echo "$salida" | grep -E "OK|FALLO|ERROR" | sed 's/^NOTICE:  //'
 if echo "$salida" | grep -qE "FALLO|ERROR"; then echo "✗ Fallaron pruebas de base de datos"; exit 1; fi
 
-# Dos personas inscriben a la vez el mismo teléfono en el mismo operativo:
-# debe quedar una sola inscripción.
+# Dos personas inscriben a la vez a la misma persona (mismo nombre y
+# teléfono) en el mismo operativo: debe quedar una sola inscripción.
 inscribir() {
   cat <<SQL
 begin;
@@ -25,13 +25,13 @@ select pg_sleep($2);
 commit;
 SQL
 }
-inscribir "Primera Vez" 2 | $P > /tmp/lentia-w1.log 2>&1 &
+inscribir "Persona Repetida" 2 | $P > /tmp/lentia-w1.log 2>&1 &
 sleep 0.5
-inscribir "Segunda Vez" 0 | $P > /tmp/lentia-w2.log 2>&1 || true
+inscribir "persona repetida" 0 | $P > /tmp/lentia-w2.log 2>&1 || true
 wait
 n=$($P -At -c "select count(*) from public.inscritos_operativo where telefono = '56900000777' and estado <> 'cancelado'")
 if [ "$n" = "1" ] && grep -q "duplicate key" /tmp/lentia-w2.log; then
-  echo "OK  Dos inscripciones simultáneas del mismo teléfono: quedó una sola"
+  echo "OK  Dos inscripciones simultáneas de la misma persona: quedó una sola"
 else
   echo "✗ Simultáneo: quedaron $n inscripciones"; cat /tmp/lentia-w1.log /tmp/lentia-w2.log; exit 1
 fi

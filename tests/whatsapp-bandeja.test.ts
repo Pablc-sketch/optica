@@ -27,22 +27,24 @@ describe("bandeja de WhatsApp", () => {
 
   it("valida la sugerencia: el operativo debe existir y la edad ser razonable", () => {
     const ids = new Set(OPS.map((o) => o.id));
-    const ok = validarSugerencia({ quiere_atenderse: true, sector: "Labrador", operativo_id: "op-talagante", nombre: "Marta Soto", edad: 67, confianza: "alta", motivo: "Labrador está en los sectores" }, ids);
-    expect(ok).toEqual({ quiere_atenderse: true, sector: "Labrador", operativo_id: "op-talagante", nombre: "Marta Soto", edad: 67, confianza: "alta", motivo: "Labrador está en los sectores" });
-    const inventado = validarSugerencia({ quiere_atenderse: true, sector: null, operativo_id: "op-de-otra-optica", nombre: null, edad: 300, confianza: "alta", motivo: "x" }, ids);
-    expect(inventado).toMatchObject({ operativo_id: null, edad: null, confianza: "baja" });
+    const ok = validarSugerencia({ quiere_atenderse: true, sector: "Labrador", operativo_id: "op-talagante",
+      personas: [{ nombre: "Marta Soto", edad: 67 }, { nombre: "Tomás  Soto", edad: 9 }, { nombre: "marta soto", edad: 67 }], confianza: "alta", motivo: "Labrador está en los sectores" }, ids);
+    expect(ok).toEqual({ quiere_atenderse: true, sector: "Labrador", operativo_id: "op-talagante",
+      personas: [{ nombre: "Marta Soto", edad: 67 }, { nombre: "Tomás Soto", edad: 9 }], confianza: "alta", motivo: "Labrador está en los sectores" });
+    const inventado = validarSugerencia({ quiere_atenderse: true, sector: null, operativo_id: "op-de-otra-optica", personas: [{ nombre: "X", edad: 300 }, { nombre: "Ana", edad: 300 }], confianza: "alta", motivo: "x" }, ids);
+    expect(inventado).toMatchObject({ operativo_id: null, personas: [{ nombre: "Ana", edad: null }], confianza: "baja" });
     expect(validarSugerencia("texto", ids)).toBeNull();
   });
 
   it("analiza un chat con Claude (simulado) y valida la respuesta", async () => {
     const parse = vi.fn(async () => ({
       stop_reason: "end_turn",
-      parsed_output: { quiere_atenderse: true, sector: "Labrador", operativo_id: "op-talagante", nombre: "Marta Soto", edad: 67, confianza: "alta", motivo: "Coincide con Labrador" },
+      parsed_output: { quiere_atenderse: true, sector: "Labrador", operativo_id: "op-talagante", personas: [{ nombre: "Marta Soto", edad: 67 }], confianza: "alta", motivo: "Coincide con Labrador" },
     }));
     const client = { beta: { messages: { parse } } };
     const s = await analizarChat(client as never, OPS, MENSAJES, "Rosa");
     expect(s?.operativo_id).toBe("op-talagante");
-    expect(s?.edad).toBe(67);
+    expect(s?.personas).toEqual([{ nombre: "Marta Soto", edad: 67 }]);
     const pedido = (parse.mock.calls[0] as unknown[])[0] as { model: string; messages: { content: string }[]; output_config: { format: unknown } };
     expect(pedido.model).toBe("claude-opus-5-5");
     expect(pedido.output_config.format).toBeTruthy();

@@ -99,7 +99,7 @@ export default async function Bandeja({ searchParams }: { searchParams: Promise<
               <>
                 {s ? (
                   <p className={`rounded-xl px-3 py-2 text-sm ${sugerido ? "bg-sky-50 text-sky-950" : "bg-amber-50 text-amber-950"}`}>
-                    <b>IA:</b> {s.sector ? `Sector «${s.sector}». ` : ""}
+                    <b>IA:</b> {s.personas?.length ? `${s.personas.map((p) => p.nombre + (p.edad !== null ? ` (${p.edad})` : "")).join(", ")}. ` : ""}{s.sector ? `Sector «${s.sector}». ` : ""}
                     {sugerido ? `Corresponde a ${sugerido.nombre} (${fechaLegible(sugerido.fecha)}). ` : s.quiere_atenderse ? "Sin operativo claro. " : "No parece querer atenderse. "}
                     {s.motivo} <span className="text-xs">· confianza {s.confianza}</span>
                   </p>
@@ -109,22 +109,25 @@ export default async function Bandeja({ searchParams }: { searchParams: Promise<
 
                 <FormularioAgenda accion={inscribirDesdeChat} etiqueta="Inscribir">
                   <input type="hidden" name="telefono" value={c.telefono} />
-                  <div className="grid gap-2 sm:grid-cols-[1fr_1fr_5.5rem]">
-                    <label className="text-sm">Operativo
-                      <select name="operativo_id" defaultValue={sugerido?.id ?? ""} required className="w-full rounded-xl border bg-white px-2 py-2.5">
-                        <option value="" disabled>Elegir…</option>
-                        {operativos.map((o) => (
-                          <option key={o.id} value={o.id}>{fechaLegible(o.fecha)} · {o.nombre}{o.comuna ? ` (${o.comuna})` : ""}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="text-sm">Nombre
-                      <input name="nombre" defaultValue={s?.nombre ?? c.nombre_perfil ?? ""} required maxLength={80} className="w-full rounded-xl border px-3 py-2.5" />
-                    </label>
-                    <label className="text-sm">Edad
-                      <input name="edad" type="number" min={0} max={120} defaultValue={s?.edad ?? ""} className="w-full rounded-xl border px-3 py-2.5" />
-                    </label>
-                  </div>
+                  <label className="block text-sm">Operativo
+                    <select name="operativo_id" defaultValue={sugerido?.id ?? ""} required className="w-full rounded-xl border bg-white px-2 py-2.5">
+                      <option value="" disabled>Elegir…</option>
+                      {operativos.map((o) => (
+                        <option key={o.id} value={o.id}>{fechaLegible(o.fecha)} · {o.nombre}{o.comuna ? ` (${o.comuna})` : ""}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="text-xs text-tinta-suave">Todas quedan con el teléfono +{c.telefono}. Deja vacías las filas que sobren.</p>
+                  {filasPersonas(s, c.nombre_perfil).map((p, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_5.5rem] gap-2">
+                      <label className="text-sm">{i === 0 ? "Nombre" : <span className="sr-only">Nombre</span>}
+                        <input name={`nombre_${i}`} defaultValue={p.nombre} required={i === 0} maxLength={80} className="w-full rounded-xl border px-3 py-2.5" />
+                      </label>
+                      <label className="text-sm">{i === 0 ? "Edad" : <span className="sr-only">Edad</span>}
+                        <input name={`edad_${i}`} type="number" min={0} max={120} defaultValue={p.edad ?? ""} className="w-full rounded-xl border px-3 py-2.5" />
+                      </label>
+                    </div>
+                  ))}
                 </FormularioAgenda>
                 <FormularioAgenda accion={descartarChat} etiqueta="No es para operativo">
                   <input type="hidden" name="telefono" value={c.telefono} />
@@ -136,6 +139,13 @@ export default async function Bandeja({ searchParams }: { searchParams: Promise<
       })}
     </div>
   );
+}
+
+// Filas para inscribir: las personas que vio la IA (o el nombre de perfil)
+// y dos vacías más, porque un mismo WhatsApp puede inscribir a varias.
+function filasPersonas(s: Sugerencia | null, perfil: string | null): { nombre: string; edad: number | null }[] {
+  const vistas = s?.personas?.length ? s.personas : [{ nombre: perfil ?? "", edad: null }];
+  return [...vistas, { nombre: "", edad: null }, { nombre: "", edad: null }].slice(0, 8);
 }
 
 const PESTANAS = [["por_confirmar", "Por confirmar"], ["pendientes", "Pendientes"], ["inscritos", "Inscritos"], ["descartados", "Descartados"]] as const;

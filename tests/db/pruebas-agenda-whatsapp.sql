@@ -87,14 +87,18 @@ update public.whatsapp_chats set estado = 'inscrito' where telefono = '569555566
 insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad, origen) values
   ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Marta Soto', '56911112222', 67, 'whatsapp');
 select pruebas.igual((select nombre || ',' || edad from public.inscritos_operativo), 'Marta Soto,67', 'Inscribe con nombre, teléfono y edad');
-select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Marta Soto', '56911112222')$$, '23505', 'El mismo teléfono no queda dos veces en el operativo');
+select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', ' marta soto ', '56911112222')$$, '23505', 'La misma persona (nombre y teléfono) no queda dos veces en el operativo');
+insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad, origen) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Tomás Soto', '56911112222', 9, 'whatsapp');
+select pruebas.igual((select count(*)::text from public.inscritos_operativo where telefono = '56911112222'), '2', 'Un mismo WhatsApp inscribe a varias personas con su teléfono');
+update public.inscritos_operativo set estado = 'cancelado' where nombre = 'Tomás Soto';
 select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Otra', '56900000001', 150)$$, '23514', 'Edad imposible se rechaza');
 select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001b1', 'Cruce', '56900000002')$$, '23503', 'No se inscribe en un operativo de otra óptica');
 select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000001b1', 'Cruce', '56900000002')$$, '42501', 'No se inscribe a nombre de otra óptica');
 update public.inscritos_operativo set estado = 'cancelado';
 insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values
   ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Marta Soto', '56911112222');
-select pruebas.igual((select count(*)::text from public.inscritos_operativo), '2', 'Si se quitó, puede volver a inscribirse');
+select pruebas.igual((select count(*)::text from public.inscritos_operativo where nombre = 'Marta Soto'), '2', 'Si se quitó, puede volver a inscribirse');
 select pruebas.falla($$delete from public.inscritos_operativo$$, '42501', 'Los inscritos no se borran (quedan como cancelados)');
 
 -- Ventas de A: ve e inscribe, pero no lee WhatsApp.
@@ -144,11 +148,13 @@ select pruebas.igual(public.registrar_consulta_ia_servicio('00000000-0000-0000-0
 insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad, estado, origen, sector, motivo) values
   ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Rosa', '56922223333', 54, 'por_confirmar', 'whatsapp', 'Labrador', 'Labrador coincide');
 select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, estado) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Rosa', '56922223333', 'por_confirmar')$$, '23505', 'No se preinscribe dos veces a la misma persona');
+insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, estado, origen) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Mamá de Rosa', '56922223333', 'por_confirmar', 'whatsapp');
 set role authenticated;
 select pruebas.falla($$select public.registrar_consulta_ia_servicio('00000000-0000-0000-0000-00000000000a', 1)$$, '42501', 'Un usuario no puede gastar el cupo de otra óptica');
 select pruebas.como('00000000-0000-0000-0000-0000000000a1');
-update public.inscritos_operativo set estado = 'inscrito', edad = 55 where telefono = '56922223333' and estado = 'por_confirmar';
-select pruebas.igual((select estado || ',' || edad from public.inscritos_operativo where telefono = '56922223333'), 'inscrito,55', 'El administrador confirma (y corrige) la preinscripción');
+update public.inscritos_operativo set estado = 'inscrito', edad = 55 where telefono = '56922223333' and nombre = 'Rosa' and estado = 'por_confirmar';
+select pruebas.igual((select estado || ',' || edad from public.inscritos_operativo where telefono = '56922223333' and nombre = 'Rosa'), 'inscrito,55', 'El administrador confirma (y corrige) la preinscripción');
 
 -- ---------------------------------------------------------------------
 -- Lo que la IA aprende y el historial de cambios

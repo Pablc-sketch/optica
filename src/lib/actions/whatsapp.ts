@@ -120,26 +120,34 @@ export async function analizarChats(datos?: FormData): Promise<ResultadoAgenda &
   }
 }
 
-// Confirmar la sugerencia (o corregirla) e inscribir a la persona.
+// Confirmar la sugerencia (o corregirla) e inscribir. Un mismo WhatsApp
+// puede inscribir a varias personas (filas nombre_N / edad_N): todas con
+// el teléfono de ese chat.
 export async function inscribirDesdeChat(datos: FormData): Promise<ResultadoAgenda> {
   return conPerfil(["admin"], async ({ supabase, tenantId, user }) => {
     const telefono = String(datos.get("telefono") ?? "");
     const operativo = String(datos.get("operativo_id") ?? "");
-    const nombre = String(datos.get("nombre") ?? "").replace(/\s+/g, " ").trim();
-    const edad = edadDe(datos.get("edad"));
     if (!TELEFONO.test(telefono) || !UUID.test(operativo)) return { error: "Elige el operativo." };
-    if (nombre.length < 2 || nombre.length > 80) return { error: "Escribe el nombre de la persona." };
-    if (edad === undefined) return { error: "La edad debe ser un número entre 0 y 120." };
-    const r = await supabase.from("inscritos_operativo").insert({
-      tenant_id: tenantId, operativo_id: operativo, nombre, telefono, edad, origen: "whatsapp", creado_por: user.id,
-    });
-    if (r.error) return { error: r.error.code === "23505" ? "Ese teléfono ya está inscrito en ese operativo." : "No se pudo inscribir." };
+    const personas: { nombre: string; edad: number | null }[] = [];
+    for (let i = 0; i < 8; i++) {
+      const nombre = String(datos.get(`nombre_${i}`) ?? "").replace(/\s+/g, " ").trim();
+      if (!nombre) continue;
+      const edad = edadDe(datos.get(`edad_${i}`));
+      if (nombre.length < 2 || nombre.length > 80) return { error: `Revisa el nombre «${nombre}».` };
+      if (edad === undefined) return { error: `La edad de ${nombre} debe ser un número entre 0 y 120.` };
+      personas.push({ nombre, edad });
+    }
+    if (personas.length === 0) return { error: "Escribe el nombre de al menos una persona." };
+    const r = await supabase.from("inscritos_operativo").insert(personas.map((p) => ({
+      tenant_id: tenantId, operativo_id: operativo, nombre: p.nombre, telefono, edad: p.edad, origen: "whatsapp", creado_por: user.id,
+    })));
+    if (r.error) return { error: r.error.code === "23505" ? "Alguna de esas personas ya está inscrita en ese operativo." : "No se pudo inscribir." };
     const chat = await supabase.from("whatsapp_chats").update({ estado: "inscrito" }).eq("tenant_id", tenantId).eq("telefono", telefono)
       .select("sugerencia").maybeSingle();
     await aprender(supabase, tenantId, user.id, (chat.data?.sugerencia as Sugerencia | null)?.sector ?? null, operativo);
     revalidatePath("/whatsapp");
     revalidatePath(`/operativos/${operativo}`);
-    return { mensaje: `${nombre} inscrito` };
+    return { mensaje: personas.length === 1 ? `${personas[0].nombre} inscrito` : `${personas.length} personas inscritas` };
   });
 }
 
@@ -181,7 +189,7 @@ export async function confirmarPreinscrito(datos: FormData): Promise<ResultadoAg
     if (edad === undefined) return { error: "La edad debe ser un número entre 0 y 120." };
     const r = await supabase.from("inscritos_operativo").update({ estado: "inscrito", operativo_id: operativo, nombre, edad })
       .eq("id", id).eq("tenant_id", tenantId).select("id").single();
-    if (r.error) return { error: r.error.code === "23505" ? "Ese teléfono ya está inscrito en ese operativo." : "No se pudo confirmar." };
+    if (r.error) return { error: r.error.code === "23505" ? "Esa persona ya está inscrita en ese operativo." : "No se pudo confirmar." };
     await supabase.from("whatsapp_chats").update({ estado: "inscrito" }).eq("tenant_id", tenantId).eq("telefono", pre.data.telefono);
     await aprender(supabase, tenantId, user.id, pre.data.sector, operativo);
     revalidatePath("/whatsapp");
@@ -225,7 +233,7 @@ export async function inscribirManual(datos: FormData): Promise<ResultadoAgenda>
     if (!telefono) return { error: "Revisa el teléfono (ej. 9 1234 5678)." };
     if (edad === undefined) return { error: "La edad debe ser un número entre 0 y 120." };
     const r = await supabase.from("inscritos_operativo").insert({ tenant_id: tenantId, operativo_id: operativo, nombre, telefono, edad, origen: "manual", creado_por: user.id });
-    if (r.error) return { error: r.error.code === "23505" ? "Ese teléfono ya está inscrito en este operativo." : "No se pudo inscribir." };
+    if (r.error) return { error: r.error.code === "23505" ? "Esa persona ya está inscrita en este operativo (mismo nombre y teléfono)." : "No se pudo inscribir." };
     revalidatePath(`/operativos/${operativo}`);
     return { mensaje: `${nombre} inscrito` };
   });

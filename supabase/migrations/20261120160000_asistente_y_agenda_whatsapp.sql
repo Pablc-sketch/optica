@@ -97,8 +97,10 @@ create table public.inscritos_operativo (
   foreign key (tenant_id, operativo_id) references public.operativos (tenant_id, id) on delete cascade
 );
 create index inscritos_operativo_por_operativo on public.inscritos_operativo (operativo_id) where estado <> 'cancelado';
--- Un teléfono no queda dos veces vigente en el mismo operativo.
-create unique index inscritos_operativo_un_telefono on public.inscritos_operativo (operativo_id, telefono) where estado <> 'cancelado';
+-- Un mismo WhatsApp puede inscribir a varias personas (mamá, hijos…): todas
+-- quedan con el teléfono de ese chat. Lo que no se repite es la misma
+-- persona (mismo teléfono y nombre) en el mismo operativo.
+create unique index inscritos_operativo_una_persona on public.inscritos_operativo (operativo_id, telefono, lower(btrim(nombre))) where estado <> 'cancelado';
 alter table public.inscritos_operativo enable row level security;
 create policy inscritos_operativo_lectura on public.inscritos_operativo
   for select to authenticated using (tenant_id = (select public.jwt_tenant_id()));
