@@ -14,8 +14,8 @@ export async function GET() {
       leerRentabilidad(supabase, tenantId),
       contarInscritos(supabase, tenantId),
       operativosConContacto(supabase, tenantId),
-      // Personas que la IA anotó desde WhatsApp y esperan un sí o un no.
-      supabase.from("inscritos_operativo").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("estado", "por_confirmar"),
+      // Inscripciones de WhatsApp que esperan «Aprobar».
+      supabase.from("whatsapp_sugerencias").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("estado", "pendiente"),
     ]);
     return Response.json({
       pendientes: pendientesDeOperativos(filas, inscritos, hoyEnChile(), contactos).slice(0, 30),

@@ -1,22 +1,13 @@
 import FormularioAgenda from "@/components/formulario-agenda";
 import { createClient } from "@/lib/supabase/server";
-import { cambiarInscrito, confirmarPreinscrito, guardarSectores, inscribirManual } from "@/lib/actions/whatsapp";
+import Link from "next/link";
+import { cambiarInscrito, guardarSectores, inscribirManual } from "@/lib/actions/whatsapp";
 
 // Personas inscritas en un operativo (desde la bandeja de WhatsApp o a
 // mano), y los sectores que cubre, que la IA usa para reconocer a quién
 // corresponde cada chat.
 
 type Inscrito = { id: string; nombre: string; telefono: string; edad: number | null; estado: string; llego: boolean; origen: string; sector: string | null; motivo: string | null };
-
-function Respuesta({ id, si }: { id: string; si: boolean }) {
-  return (
-    <form action={async (d) => { "use server"; await confirmarPreinscrito(d); }}>
-      <input type="hidden" name="id" value={id} />
-      <input type="hidden" name="respuesta" value={si ? "si" : "no"} />
-      <button className={`rounded-lg px-2 py-1 text-xs font-semibold ${si ? "bg-emerald-700 text-white" : "border text-red-800"}`}>{si ? "Sí, inscribir" : "No"}</button>
-    </form>
-  );
-}
 
 function Boton({ id, accion, texto, clase }: { id: string; accion: string; texto: string; clase: string }) {
   return (
@@ -30,11 +21,12 @@ function Boton({ id, accion, texto, clase }: { id: string; accion: string; texto
 
 export default async function InscritosOperativo({ operativoId }: { operativoId: string }) {
   const supabase = await createClient();
-  const [opRes, inscritosRes, rolRes] = await Promise.all([
+  const [opRes, inscritosRes, rolRes, sugRes] = await Promise.all([
     supabase.from("operativos").select("sectores, meta_examenes, estado").eq("id", operativoId).maybeSingle(),
     supabase.from("inscritos_operativo").select("id, nombre, telefono, edad, estado, llego, origen, sector, motivo").eq("operativo_id", operativoId)
-      .neq("estado", "cancelado").order("creado_en"),
+      .eq("estado", "inscrito").order("creado_en"),
     supabase.rpc("jwt_rol"),
+    supabase.from("whatsapp_sugerencias").select("id", { count: "exact", head: true }).eq("operativo_id", operativoId).eq("estado", "pendiente"),
   ]);
   // Si la migración aún no está aplicada, la sección no aparece.
   if (opRes.error || !opRes.data || inscritosRes.error) return null;
@@ -43,44 +35,36 @@ export default async function InscritosOperativo({ operativoId }: { operativoId:
   const esAdmin = rolRes.data === "admin";
   // Los inscritos los ve quien atiende el operativo: administrador y ventas.
   if (!esAdmin && rolRes.data !== "ventas") return null;
-  const porConfirmar = inscritos.filter((i) => i.estado === "por_confirmar");
-  const vigentes = inscritos.length - porConfirmar.length;
+  // Solo entran a esta lista las inscripciones aprobadas.
+  const vigentes = inscritos.length;
+  const pendientesWhatsapp = sugRes.count ?? 0;
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-bold">Inscritos</h2>
+        <h2 className="font-bold">Inscritos · lista para llamar</h2>
         <span className="text-sm text-tinta-suave">
           {vigentes}{op.meta_examenes ? ` de ${op.meta_examenes} (meta)` : ""} · {inscritos.filter((i) => i.llego).length} llegaron
         </span>
       </div>
 
-      {porConfirmar.length > 0 && (
-        <ul className="mt-3 space-y-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-950">
-          <li className="font-semibold">La IA anotó desde WhatsApp. ¿Son de esta sede?</li>
-          {porConfirmar.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="min-w-0 flex-1">
-                <b>{p.nombre}</b>{p.edad !== null ? `, ${p.edad} años` : ""}{p.sector ? ` · dijo «${p.sector}»` : ""}
-                {p.motivo && <span className="block text-xs">{p.motivo}</span>}
-              </span>
-              {esAdmin && <span className="flex gap-2"><Respuesta id={p.id} si /><Respuesta id={p.id} si={false} /></span>}
-            </li>
-          ))}
-        </ul>
+      {pendientesWhatsapp > 0 && esAdmin && (
+        <Link href="/whatsapp" className="mt-3 block rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950 underline">
+          {pendientesWhatsapp} inscripción{pendientesWhatsapp === 1 ? "" : "es"} de WhatsApp por confirmar para este operativo →
+        </Link>
       )}
 
       {vigentes === 0 ? (
         <p className="mt-2 text-sm text-tinta-suave">Todavía no hay personas inscritas.</p>
       ) : (
         <ul className="mt-3 divide-y divide-tinta/10 text-sm">
-          {inscritos.filter((p) => p.estado !== "por_confirmar").map((p) => (
+          {inscritos.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
               <span className={`min-w-0 flex-1 font-medium ${p.llego ? "text-emerald-800" : ""}`}>
                 {p.nombre}{p.edad !== null ? `, ${p.edad} años` : ""}
                 {p.origen === "whatsapp" && <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-900">WhatsApp</span>}
               </span>
-              <a href={`https://wa.me/${p.telefono}`} target="_blank" rel="noopener noreferrer" className="text-brand-dark underline">+{p.telefono}</a>
+              <a href={`tel:+${p.telefono}`} className="text-brand-dark underline">+{p.telefono}</a>
               {p.llego ? (
                 <span className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-emerald-800">Llegó</span>

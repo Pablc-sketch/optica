@@ -2,70 +2,66 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { MensajeChat } from "@/lib/whatsapp-cloud";
-import { revisarChatAutomatico } from "@/lib/whatsapp-automatico";
+import { sugerenciaDeMensaje, type OperativoProximo } from "@/lib/whatsapp-inscripcion";
+import { hoyEnChile } from "@/lib/fechas";
 
-// Guarda la copia de los mensajes de WhatsApp en la bandeja de cada óptica.
-// La óptica sale del número de Meta que recibió el mensaje.
+// Guarda la copia de los mensajes de WhatsApp y, si un mensaje es una
+// inscripción, deja la sugerencia «por confirmar». La óptica sale del número
+// de Meta que recibió el mensaje. La detección es con reglas, aquí mismo:
+// nada del chat sale de Lentia. Cada mensaje se guarda una sola vez aunque
+// Meta reenvíe el aviso (la base lo garantiza en registrar_mensaje_whatsapp).
 
 // Los chats se guardan 6 meses; después se borran solos.
 export const DIAS_RETENCION = 180;
 
-export async function guardarMensajes(mensajes: MensajeChat[]) {
-  const db = createAdminClient();
-  const tenants = new Map<string, string | null>();
-  const automaticos = new Set<string>();
-  // Último mensaje reciente de cada persona, para la revisión automática.
-  const porRevisar = new Map<string, { tenant: string; telefono: string; wamid: string; en: string }>();
-  const reciente = Date.now() - 2 * 86400000;
+type Db = ReturnType<typeof createAdminClient>;
+
+async function operativosProximos(db: Db, tenant: string): Promise<OperativoProximo[]> {
+  const hoy = hoyEnChile();
+  const r = await db.from("operativos").select("id, nombre, fecha, fecha_fin, comuna, direccion, sectores")
+    .eq("tenant_id", tenant).eq("estado", "planificado").or(`fecha.gte.${hoy},fecha_fin.gte.${hoy}`)
+    .order("fecha").order("id").limit(60);
+  if (r.error) throw new Error(r.error.message);
+  return (r.data ?? []) as OperativoProximo[];
+}
+
+export async function guardarMensajes(mensajes: MensajeChat[], db: Db = createAdminClient()): Promise<string[]> {
+  const resultados: string[] = [];
+  // Óptica y operativos próximos de cada número (se leen una vez por aviso).
+  const porNumero = new Map<string, { tenant: string; ops: OperativoProximo[] } | null>();
   for (const m of mensajes.slice(0, 500)) {
     try {
-      if (!tenants.has(m.phoneNumberId)) {
-        const n = await db.from("whatsapp_numeros").select("tenant_id, activo, automatico").eq("phone_number_id", m.phoneNumberId).maybeSingle();
-        tenants.set(m.phoneNumberId, n.data?.activo ? (n.data.tenant_id as string) : null);
-        if (n.data?.activo && n.data.automatico) automaticos.add(n.data.tenant_id as string);
+      if (!porNumero.has(m.phoneNumberId)) {
+        const n = await db.from("whatsapp_numeros").select("tenant_id, activo").eq("phone_number_id", m.phoneNumberId).maybeSingle();
+        const tenant = n.data?.activo ? (n.data.tenant_id as string) : null;
+        porNumero.set(m.phoneNumberId, tenant ? { tenant, ops: await operativosProximos(db, tenant) } : null);
       }
-      const tenant = tenants.get(m.phoneNumberId);
-      if (!tenant) continue;
-      // El chat primero (el mensaje lo referencia). Fechas solo hacia adelante.
-      const actual = await db.from("whatsapp_chats").select("ultimo_mensaje_en, ultimo_entrante_en, nombre_perfil, estado")
-        .eq("tenant_id", tenant).eq("telefono", m.telefono).maybeSingle();
-      const posterior = (a: string | null | undefined) => (!a || m.enviadoEn > a ? m.enviadoEn : a);
-      const chat = {
-        tenant_id: tenant,
-        telefono: m.telefono,
-        nombre_perfil: m.nombrePerfil ?? actual.data?.nombre_perfil ?? null,
-        ultimo_mensaje_en: posterior(actual.data?.ultimo_mensaje_en),
-        ultimo_entrante_en: m.direccion === "entrante" ? posterior(actual.data?.ultimo_entrante_en) : actual.data?.ultimo_entrante_en ?? null,
-        // Si una persona ya descartada vuelve a escribir, vuelve a la bandeja.
-        estado: actual.data?.estado === "descartado" && m.direccion === "entrante" ? "pendiente" : actual.data?.estado ?? "pendiente",
-      };
-      const c = await db.from("whatsapp_chats").upsert(chat);
-      if (c.error) throw new Error(c.error.message);
-      // wamid único: si Meta reintenta el aviso, no se duplica.
-      const r = await db.from("whatsapp_mensajes").upsert(
-        { tenant_id: tenant, telefono: m.telefono, wamid: m.wamid, direccion: m.direccion, texto: m.texto, enviado_en: m.enviadoEn },
-        { onConflict: "wamid", ignoreDuplicates: true }
-      );
+      const numero = porNumero.get(m.phoneNumberId);
+      if (!numero) { resultados.push("sin_numero"); continue; }
+      const sugerencia = m.direccion === "entrante" ? sugerenciaDeMensaje(m.texto, m.nombrePerfil, numero.ops) : null;
+      const r = await db.rpc("registrar_mensaje_whatsapp", {
+        p_phone_number_id: m.phoneNumberId,
+        p_telefono: m.telefono,
+        p_nombre_perfil: m.nombrePerfil,
+        p_wamid: m.wamid,
+        p_direccion: m.direccion,
+        p_texto: m.texto,
+        p_enviado_en: m.enviadoEn,
+        p_sugerencia: sugerencia,
+      });
       if (r.error) throw new Error(r.error.message);
-      if (m.direccion === "entrante" && automaticos.has(tenant) && Date.parse(m.enviadoEn) > reciente) {
-        const clave = `${tenant}:${m.telefono}`;
-        const previo = porRevisar.get(clave);
-        if (!previo || m.enviadoEn >= previo.en) porRevisar.set(clave, { tenant, telefono: m.telefono, wamid: m.wamid, en: m.enviadoEn });
-      }
+      resultados.push(String(r.data));
     } catch (e) {
+      resultados.push("error");
       console.error("whatsapp: no se pudo guardar un mensaje", e instanceof Error ? e.message : "error");
     }
   }
-  // Revisión automática con IA (preinscribe «por confirmar», nunca responde).
-  await Promise.allSettled([...porRevisar.values()].slice(0, 10).map((x) =>
-    revisarChatAutomatico(db, x.tenant, x.telefono, x.wamid).catch((e) =>
-      console.error("whatsapp: revisión automática falló", e instanceof Error ? e.message : "error"))
-  ));
   // Limpieza de vez en cuando.
   if (Math.random() < 0.02) {
     const limite = new Date(Date.now() - DIAS_RETENCION * 86400000).toISOString();
-    for (const t of new Set([...tenants.values()].filter((x): x is string => Boolean(x)))) {
-      await db.from("whatsapp_mensajes").delete().eq("tenant_id", t).lt("enviado_en", limite);
+    for (const x of porNumero.values()) {
+      if (x) await db.from("whatsapp_mensajes").delete().eq("tenant_id", x.tenant).lt("enviado_en", limite);
     }
   }
+  return resultados;
 }

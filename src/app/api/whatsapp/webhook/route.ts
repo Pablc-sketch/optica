@@ -4,14 +4,15 @@ import { guardarMensajes } from "@/lib/whatsapp-guardar";
 
 // Webhook de WhatsApp Cloud API. Meta avisa acá cada mensaje que entra al
 // WhatsApp Business de una óptica conectada y cada respuesta que la óptica
-// envía desde su app. Lentia GUARDA una copia para la bandeja y la IA puede
-// dejar preinscripciones «por confirmar»; nunca responde nada.
+// envía desde su app (coexistencia). Lentia guarda una copia y, si es una
+// inscripción, deja una sugerencia «por confirmar» (reglas locales, sin IA).
+// Nunca responde ni llama.
 //  - GET: Meta comprueba el webhook al registrarlo (hub.verify_token).
 //  - POST: solo con la firma de Meta. La óptica sale del número que recibió
 //    el mensaje (whatsapp_numeros), nunca del contenido.
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const p = new URL(request.url).searchParams;

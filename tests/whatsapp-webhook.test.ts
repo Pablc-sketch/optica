@@ -77,16 +77,17 @@ describe("webhook de WhatsApp (solo lectura)", () => {
     expect(firmaValida(cuerpo, firmar(cuerpo), "")).toBe(false);
   });
 
-  it("lee mensajes entrantes, respuestas de la óptica (eco) e historial", () => {
+  it("lee mensajes nuevos y respuestas de la óptica (eco); ignora historial y agenda", () => {
     expect(mensajesDelAviso(entrante)).toEqual([{
       phoneNumberId: "1234567890", telefono: "56911112222", nombrePerfil: "Rosa", wamid: "wamid.A",
       direccion: "entrante", texto: "Hola, soy de Labrador, ¿cuándo van?", enviadoEn: new Date(1900000000 * 1000).toISOString(),
     }]);
     expect(mensajesDelAviso(eco)).toMatchObject([{ telefono: "56911112222", direccion: "saliente", texto: "El sábado en la sede" }]);
-    expect(mensajesDelAviso(historial)).toMatchObject([
-      { telefono: "56933334444", direccion: "entrante", texto: "Quiero hora para mi mamá" },
-      { telefono: "56933334444", direccion: "saliente", texto: "[foto] afiche" },
-    ]);
+    // El historial y la agenda NO se importan.
+    expect(mensajesDelAviso(historial)).toEqual([]);
+    expect(mensajesDelAviso({ entry: [{ changes: [{ field: "smb_app_state_sync", value: { metadata: { phone_number_id: "1234567890" }, state_sync: [{ contact: { phone_number: "56900000000" } }] } }] }] })).toEqual([]);
+    // Sin teléfono (solo identificador de usuario de Meta) no hay a quién llamar: se salta.
+    expect(mensajesDelAviso({ entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "1234567890" }, messages: [{ user_id: "CL.123", id: "wamid.Z", type: "text", text: { body: "hola" } }] } }] }] })).toEqual([]);
     // Avisos de estado (entregado/leído) no son mensajes.
     expect(mensajesDelAviso({ entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "1" }, statuses: [{}] } }] }] })).toEqual([]);
     expect(mensajesDelAviso(null)).toEqual([]);

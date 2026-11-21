@@ -3,17 +3,31 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 // WhatsApp Cloud API (Meta), en coexistencia con la app WhatsApp Business:
-// la óptica sigue respondiendo desde su teléfono y Lentia recibe una copia
-// de cada mensaje (entrantes y los que la óptica envía). Lentia NUNCA envía
-// mensajes.
-//   WHATSAPP_ACCESS_TOKEN  token con acceso a los números conectados
-//   WHATSAPP_APP_SECRET    para comprobar que el aviso viene de Meta
-//   WHATSAPP_VERIFY_TOKEN  texto que se pega en Meta al registrar el webhook
+// la óptica sigue usando su WhatsApp Business en el celular y Lentia recibe
+// una copia de los mensajes nuevos. Lentia NUNCA envía mensajes ni llama.
+// Variables (se cargan en Vercel, nunca en el código ni por chat):
+//   NEXT_PUBLIC_META_APP_ID     identificador de la app de Meta (público)
+//   NEXT_PUBLIC_META_CONFIG_ID  configuración de «Facebook Login for Business» (pública)
+//   WHATSAPP_APP_SECRET         secreto de la app: firma de avisos y canje del código
+//   WHATSAPP_VERIFY_TOKEN       texto que se pega en Meta al registrar el webhook
+//   WHATSAPP_ACCESS_TOKEN       (opcional) solo para conectar un número a mano
 
-const VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v23.0";
+export const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v27.0";
+const VERSION = GRAPH_VERSION;
 
+// Lo necesario para recibir avisos de Meta.
+export function webhookConfigurado(): boolean {
+  return Boolean(process.env.WHATSAPP_APP_SECRET && process.env.WHATSAPP_VERIFY_TOKEN);
+}
+
+// Lo necesario para el alta oficial (Embedded Signup) desde Lentia.
+export function altaMetaConfigurada(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_META_APP_ID && process.env.NEXT_PUBLIC_META_CONFIG_ID && webhookConfigurado());
+}
+
+// Conexión manual con un token de sistema (camino alternativo).
 export function whatsappConfigurado(): boolean {
-  return Boolean(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_APP_SECRET && process.env.WHATSAPP_VERIFY_TOKEN);
+  return Boolean(process.env.WHATSAPP_ACCESS_TOKEN && webhookConfigurado());
 }
 
 // Meta firma el cuerpo con el secreto de la app: X-Hub-Signature-256.
@@ -31,9 +45,8 @@ export function tokenVerificacionValido(recibido: string | null, esperado = proc
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-// Comprueba que el token de Lentia puede usar ese número y devuelve cómo se ve.
-export async function datosDelNumero(phoneNumberId: string): Promise<{ telefono: string; nombre: string } | null> {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+// Comprueba que el token puede usar ese número y devuelve cómo se ve.
+export async function datosDelNumero(phoneNumberId: string, token = process.env.WHATSAPP_ACCESS_TOKEN): Promise<{ telefono: string; nombre: string } | null> {
   if (!token || !/^[0-9]{5,30}$/.test(phoneNumberId)) return null;
   const r = await fetch(`https://graph.facebook.com/${VERSION}/${phoneNumberId}?fields=display_phone_number,verified_name`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -42,6 +55,41 @@ export async function datosDelNumero(phoneNumberId: string): Promise<{ telefono:
   if (!r?.ok) return null;
   const d = (await r.json().catch(() => null)) as { display_phone_number?: string; verified_name?: string } | null;
   return d?.display_phone_number ? { telefono: d.display_phone_number.slice(0, 30), nombre: (d.verified_name ?? "").slice(0, 100) } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Alta oficial (Embedded Signup v5, coexistencia). Pasos de servidor según
+// Meta: canjear el código por un token del negocio y suscribir la app a la
+// cuenta de WhatsApp (subscribed_apps). NO se llama a /register (el número
+// ya está registrado en la app) ni a smb_app_data (no se importan contactos
+// ni historial). El token no se guarda: solo se usa en este momento.
+// ---------------------------------------------------------------------------
+const ID_META = /^[0-9]{5,30}$/;
+
+export async function canjearCodigo(code: string): Promise<string | null> {
+  const appId = process.env.NEXT_PUBLIC_META_APP_ID;
+  const secreto = process.env.WHATSAPP_APP_SECRET;
+  if (!appId || !secreto || !code || code.length > 2000) return null;
+  const url = new URL(`https://graph.facebook.com/${VERSION}/oauth/access_token`);
+  url.searchParams.set("client_id", appId);
+  url.searchParams.set("client_secret", secreto);
+  url.searchParams.set("code", code);
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) }).catch(() => null);
+  if (!r?.ok) return null;
+  const d = (await r.json().catch(() => null)) as { access_token?: unknown } | null;
+  return typeof d?.access_token === "string" ? d.access_token : null;
+}
+
+export async function suscribirCuenta(wabaId: string, token: string): Promise<boolean> {
+  if (!ID_META.test(wabaId)) return false;
+  const r = await fetch(`https://graph.facebook.com/${VERSION}/${wabaId}/subscribed_apps`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15000),
+  }).catch(() => null);
+  if (!r?.ok) return false;
+  const d = (await r.json().catch(() => null)) as { success?: unknown } | null;
+  return d?.success === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,10 +148,13 @@ function mensaje(phoneNumberId: string, m: Obj, direccion: "entrante" | "salient
   };
 }
 
-// Junta los mensajes de un aviso de Meta:
+// Junta los mensajes NUEVOS de un aviso de Meta:
 //  - messages: lo que escriben las personas,
-//  - smb_message_echoes: lo que la óptica responde desde la app,
-//  - history: mensajes anteriores compartidos al conectar el número.
+//  - smb_message_echoes: lo que la óptica responde desde la app.
+// «history» y «smb_app_state_sync» (historial y agenda) se ignoran a
+// propósito: Lentia no importa el historial ni los contactos. Mensajes sin
+// número de teléfono (solo identificador de usuario de Meta) se saltan:
+// sin teléfono no hay a quién llamar.
 export function mensajesDelAviso(aviso: unknown): MensajeChat[] {
   const out: MensajeChat[] = [];
   for (const e of lista(obj(aviso).entry)) {
@@ -118,7 +169,6 @@ export function mensajesDelAviso(aviso: unknown): MensajeChat[] {
         const nombre = obj(obj(k).profile).name;
         if (typeof wa === "string" && typeof nombre === "string") nombres.set(wa, nombre.slice(0, 100));
       }
-      const empresa = String(obj(v.metadata).display_phone_number ?? "").replace(/\D/g, "");
       if (campo === "messages") {
         for (const m of lista(v.messages)) {
           const x = mensaje(phoneNumberId, obj(m), "entrante", obj(m).from, nombres);
@@ -128,18 +178,6 @@ export function mensajesDelAviso(aviso: unknown): MensajeChat[] {
         for (const m of lista(v.message_echoes)) {
           const x = mensaje(phoneNumberId, obj(m), "saliente", obj(m).to, nombres);
           if (x) out.push(x);
-        }
-      } else if (campo === "history") {
-        for (const h of lista(v.history)) {
-          for (const t of lista(obj(h).threads)) {
-            const persona = obj(t).id;
-            for (const m of lista(obj(t).messages)) {
-              const de = String(obj(m).from ?? "");
-              const saliente = de !== persona || (empresa !== "" && de === empresa);
-              const x = mensaje(phoneNumberId, obj(m), saliente ? "saliente" : "entrante", persona, nombres);
-              if (x) out.push(x);
-            }
-          }
         }
       }
     }

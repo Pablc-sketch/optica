@@ -1,57 +1,75 @@
 import Link from "next/link";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import FormularioAgenda from "@/components/formulario-agenda";
-import AnalizarChats from "./analizar";
 import { exigirRolPagina } from "@/lib/autorizacion";
-import { confirmarPreinscrito, descartarChat, inscribirDesdeChat } from "@/lib/actions/whatsapp";
-import { necesitaAnalisis, type Sugerencia } from "@/lib/whatsapp-bandeja";
-import { fechaLegible, hoyEnChile } from "@/lib/fechas";
+import { aprobarSugerencia, descartarSugerencia } from "@/lib/actions/whatsapp";
+import { fechaConDia, hoyEnChile } from "@/lib/fechas";
 
-// Bandeja de WhatsApp. Lentia no responde: la óptica sigue contestando
-// desde su teléfono. Acá la IA lee cada chat, dice de qué sector es la
-// persona y a qué operativo corresponde, y el administrador inscribe con
-// un clic (nombre, teléfono y edad).
+// WhatsApp de la óptica. Lentia no responde ni llama: tú sigues usando tu
+// WhatsApp Business en el celular. Lentia recibe los mensajes nuevos y,
+// cuando alguien pide inscribirse, deja una sugerencia «por confirmar».
+// Solo al pulsar «Aprobar» la persona entra a la lista para llamar del
+// operativo. La detección es con reglas dentro de Lentia: los chats no se
+// mandan a servicios de IA.
 
-type Chat = {
-  telefono: string;
-  nombre_perfil: string | null;
-  ultimo_mensaje_en: string;
-  ultimo_entrante_en: string | null;
-  analizado_en: string | null;
-  estado: string;
-  sugerencia: Sugerencia | null;
+type Sugerencia = {
+  id: string; telefono: string; operativo_id: string | null; candidatos: string[]; nombre: string | null;
+  nombre_origen: string | null; lugar: string | null; estado: string; actualizado_en: string; resuelto_en: string | null;
 };
+type Operativo = { id: string; nombre: string; fecha: string; fecha_fin: string | null; comuna: string | null };
 type Mensaje = { telefono: string; direccion: string; texto: string; enviado_en: string };
-type Operativo = { id: string; nombre: string; fecha: string; comuna: string | null };
+type Chat = { telefono: string; nombre_perfil: string | null; ultimo_mensaje_en: string };
+
+const VISTAS = [["por_confirmar", "Por confirmar"], ["aprobadas", "Aprobadas"], ["descartadas", "Descartadas"], ["chats", "Chats"]] as const;
+type Vista = (typeof VISTAS)[number][0];
 
 const hora = (iso: string) =>
   new Date(iso).toLocaleString("es-CL", { timeZone: "America/Santiago", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-export default async function Bandeja({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
+// «Junta Labrador · 28-11-2026 (sábado) (Talagante)»: sede y fecha para elegir.
+function textoOperativo(o: Operativo): string {
+  const dias = o.fecha_fin && o.fecha_fin !== o.fecha ? `${fechaConDia(o.fecha)} al ${fechaConDia(o.fecha_fin)}` : fechaConDia(o.fecha);
+  return `${o.nombre} · ${dias}${o.comuna ? ` (${o.comuna})` : ""}`;
+}
+
+function addDias(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export default async function WhatsApp({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
   const { ver } = await searchParams;
-  const vista = ver === "inscritos" || ver === "descartados" || ver === "por_confirmar" ? ver : "pendientes";
-  if (vista === "por_confirmar") return <PorConfirmar />;
-  const estado = vista === "inscritos" ? "inscrito" : vista === "descartados" ? "descartado" : "pendiente";
+  const vista: Vista = VISTAS.some(([v]) => v === ver) ? (ver as Vista) : "por_confirmar";
   const hoy = hoyEnChile();
-  const [numeroRes, chatsRes, opsRes] = await Promise.all([
-    supabase.from("whatsapp_numeros").select("telefono_visible, activo").maybeSingle(),
-    supabase.from("whatsapp_chats").select("telefono, nombre_perfil, ultimo_mensaje_en, ultimo_entrante_en, analizado_en, estado, sugerencia")
-      .eq("tenant_id", tenantId).eq("estado", estado).order("ultimo_mensaje_en", { ascending: false }).limit(50),
-    supabase.from("operativos").select("id, nombre, fecha, comuna").eq("tenant_id", tenantId).eq("estado", "planificado")
-      .or(`fecha.gte.${hoy},fecha_fin.gte.${hoy}`).order("fecha").limit(40),
+  const estado = vista === "aprobadas" ? "aprobada" : vista === "descartadas" ? "descartada" : "pendiente";
+
+  const [numeroRes, sugRes, opsRes, chatsRes] = await Promise.all([
+    supabase.from("whatsapp_numeros").select("telefono_visible, activo, automatico, coexistencia").maybeSingle(),
+    supabase.from("whatsapp_sugerencias").select("id, telefono, operativo_id, candidatos, nombre, nombre_origen, lugar, estado, actualizado_en, resuelto_en")
+      .eq("tenant_id", tenantId).eq("estado", estado).order(estado === "pendiente" ? "creado_en" : "resuelto_en", { ascending: estado === "pendiente" }).limit(50),
+    supabase.from("operativos").select("id, nombre, fecha, fecha_fin, comuna").eq("tenant_id", tenantId)
+      .in("estado", vista === "por_confirmar" ? ["planificado"] : ["planificado", "realizado", "cancelado"])
+      .gte("fecha", vista === "por_confirmar" ? addDias(hoy, -31) : "2000-01-01").order("fecha").limit(200),
+    vista === "chats"
+      ? supabase.from("whatsapp_chats").select("telefono, nombre_perfil, ultimo_mensaje_en").eq("tenant_id", tenantId).order("ultimo_mensaje_en", { ascending: false }).limit(50)
+      : Promise.resolve({ data: [] as Chat[], error: null }),
   ]);
-  if (chatsRes.error || opsRes.error) {
+  if (sugRes.error || opsRes.error || chatsRes.error) {
     return <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">La bandeja de WhatsApp aún no está activada en la base de datos.</p>;
   }
-  const chats = (chatsRes.data ?? []) as Chat[];
+  const sugerencias = (sugRes.data ?? []) as Sugerencia[];
   const operativos = (opsRes.data ?? []) as Operativo[];
-  const mensajesRes = chats.length
+  const proximos = operativos.filter((o) => (o.fecha_fin && o.fecha_fin > o.fecha ? o.fecha_fin : o.fecha) >= hoy);
+  const chats = (chatsRes.data ?? []) as Chat[];
+  const telefonos = [...new Set([...sugerencias.map((s) => s.telefono), ...chats.map((c) => c.telefono)])];
+  const mensajesRes = telefonos.length
     ? await supabase.from("whatsapp_mensajes").select("telefono, direccion, texto, enviado_en").eq("tenant_id", tenantId)
-        .in("telefono", chats.map((c) => c.telefono)).order("enviado_en", { ascending: false }).limit(chats.length * 8)
+        .in("telefono", telefonos).order("enviado_en", { ascending: false }).limit(telefonos.length * 4)
     : { data: [] as Mensaje[] };
   const mensajes = (mensajesRes.data ?? []) as Mensaje[];
-  const porAnalizar = vista === "pendientes" ? chats.filter(necesitaAnalisis).length : 0;
+  const ultimos = (tel: string, n: number) => mensajes.filter((m) => m.telefono === tel).slice(0, n).reverse();
   const numero = numeroRes.data;
 
   return (
@@ -59,172 +77,109 @@ export default async function Bandeja({ searchParams }: { searchParams: Promise<
       <CabeceraPagina seccion="Atención" titulo="WhatsApp" />
       {!numero ? (
         <p className="rounded-2xl bg-crema-claro p-4 text-sm">
-          Aún no está conectado el WhatsApp Business de la óptica. <Link href="/configuracion/integraciones" className="font-semibold underline">Ver cómo conectarlo</Link>
+          Tu WhatsApp Business aún no está conectado. <Link href="/configuracion/integraciones" className="font-semibold underline">Conectarlo</Link>
         </p>
       ) : (
         <p className="text-sm text-tinta-suave">
-          {numero.telefono_visible} · Lentia solo lee: respondes tú desde tu WhatsApp. La IA propone el operativo y tú confirmas.
-          {!numero.activo && <b className="text-amber-900"> En pausa.</b>}
+          {numero.telefono_visible} · Sigues respondiendo desde tu celular; Lentia no envía mensajes ni llama.
+          {!numero.activo && <b className="text-amber-900"> Recepción en pausa.</b>}
+          {numero.activo && !numero.automatico && <b className="text-amber-900"> Sugerencias automáticas apagadas.</b>}
         </p>
       )}
 
-      <Pestanas vista={vista} />
+      <nav className="flex flex-wrap gap-2 text-sm">
+        {VISTAS.map(([v, t]) => (
+          <Link key={v} href={v === "por_confirmar" ? "/whatsapp" : `/whatsapp?ver=${v}`}
+            className={`rounded-full px-3 py-1.5 font-semibold ${vista === v ? "bg-brand text-white" : "border bg-white"}`}>{t}</Link>
+        ))}
+      </nav>
 
-      {vista === "pendientes" && porAnalizar > 0 && <AnalizarChats cantidad={porAnalizar} />}
-      {chats.length === 0 && <p className="rounded-2xl bg-white p-4 text-sm text-tinta-suave shadow-sm">No hay chats {vista}.</p>}
-
-      {chats.map((c) => {
-        const s = c.sugerencia;
-        const ultimos = mensajes.filter((m) => m.telefono === c.telefono).slice(0, 6).reverse();
-        const sugerido = s?.operativo_id ? operativos.find((o) => o.id === s.operativo_id) : undefined;
-        return (
-          <article key={c.telefono} className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-            <header className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="font-bold">
-                {c.nombre_perfil || "Sin nombre"}{" "}
-                <a href={`https://wa.me/${c.telefono}`} target="_blank" rel="noopener noreferrer" className="text-sm font-normal text-brand-dark underline">+{c.telefono}</a>
-              </h2>
-              <span className="text-xs text-tinta-suave">{hora(c.ultimo_mensaje_en)}</span>
-            </header>
-
-            <div className="space-y-1 text-sm">
-              {ultimos.map((m, i) => (
-                <p key={i} className={m.direccion === "entrante" ? "mr-10 rounded-xl bg-crema-claro px-3 py-1.5" : "ml-10 rounded-xl bg-emerald-50 px-3 py-1.5 text-right"}>
-                  {m.texto || "…"}
-                </p>
+      {vista === "chats" ? (
+        <ul className="space-y-2">
+          {chats.length === 0 && <li className="rounded-2xl bg-white p-4 text-sm text-tinta-suave shadow-sm">Todavía no llegan mensajes.</li>}
+          {chats.map((c) => (
+            <li key={c.telefono} className="rounded-2xl bg-white p-3 text-sm shadow-sm">
+              <p className="font-semibold">{c.nombre_perfil || "Sin nombre"} <a href={`tel:+${c.telefono}`} className="font-normal text-brand-dark underline">+{c.telefono}</a>
+                <span className="float-right text-xs text-tinta-suave">{hora(c.ultimo_mensaje_en)}</span></p>
+              {ultimos(c.telefono, 2).map((m, i) => (
+                <p key={i} className={`mt-1 truncate ${m.direccion === "saliente" ? "text-right text-emerald-900" : ""}`}>{m.texto || "…"}</p>
               ))}
-            </div>
-
-            {vista === "pendientes" && (
-              <>
-                {s ? (
-                  <p className={`rounded-xl px-3 py-2 text-sm ${sugerido ? "bg-sky-50 text-sky-950" : "bg-amber-50 text-amber-950"}`}>
-                    <b>IA:</b> {s.personas?.length ? `${s.personas.map((p) => p.nombre + (p.edad !== null ? ` (${p.edad})` : "")).join(", ")}. ` : ""}{s.sector ? `Sector «${s.sector}». ` : ""}
-                    {sugerido ? `Corresponde a ${sugerido.nombre} (${fechaLegible(sugerido.fecha)}). ` : s.quiere_atenderse ? "Sin operativo claro. " : "No parece querer atenderse. "}
-                    {s.motivo} <span className="text-xs">· confianza {s.confianza}</span>
-                  </p>
-                ) : necesitaAnalisis(c) ? (
-                  <p className="text-xs text-tinta-suave">Pendiente de revisar por la IA.</p>
-                ) : null}
-
-                <FormularioAgenda accion={inscribirDesdeChat} etiqueta="Inscribir">
-                  <input type="hidden" name="telefono" value={c.telefono} />
-                  <label className="block text-sm">Operativo
-                    <select name="operativo_id" defaultValue={sugerido?.id ?? ""} required className="w-full rounded-xl border bg-white px-2 py-2.5">
-                      <option value="" disabled>Elegir…</option>
-                      {operativos.map((o) => (
-                        <option key={o.id} value={o.id}>{fechaLegible(o.fecha)} · {o.nombre}{o.comuna ? ` (${o.comuna})` : ""}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <p className="text-xs text-tinta-suave">Todas quedan con el teléfono +{c.telefono}. Deja vacías las filas que sobren.</p>
-                  {filasPersonas(s, c.nombre_perfil).map((p, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_5.5rem] gap-2">
-                      <label className="text-sm">{i === 0 ? "Nombre" : <span className="sr-only">Nombre</span>}
-                        <input name={`nombre_${i}`} defaultValue={p.nombre} required={i === 0} maxLength={80} className="w-full rounded-xl border px-3 py-2.5" />
-                      </label>
-                      <label className="text-sm">{i === 0 ? "Edad" : <span className="sr-only">Edad</span>}
-                        <input name={`edad_${i}`} type="number" min={0} max={120} defaultValue={p.edad ?? ""} className="w-full rounded-xl border px-3 py-2.5" />
-                      </label>
-                    </div>
-                  ))}
-                </FormularioAgenda>
-                <FormularioAgenda accion={descartarChat} etiqueta="No es para operativo">
-                  <input type="hidden" name="telefono" value={c.telefono} />
-                </FormularioAgenda>
-              </>
-            )}
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-// Filas para inscribir: las personas que vio la IA (o el nombre de perfil)
-// y dos vacías más, porque un mismo WhatsApp puede inscribir a varias.
-function filasPersonas(s: Sugerencia | null, perfil: string | null): { nombre: string; edad: number | null }[] {
-  const vistas = s?.personas?.length ? s.personas : [{ nombre: perfil ?? "", edad: null }];
-  return [...vistas, { nombre: "", edad: null }, { nombre: "", edad: null }].slice(0, 8);
-}
-
-const PESTANAS = [["por_confirmar", "Por confirmar"], ["pendientes", "Pendientes"], ["inscritos", "Inscritos"], ["descartados", "Descartados"]] as const;
-function Pestanas({ vista }: { vista: string }) {
-  return (
-    <nav className="flex flex-wrap gap-2 text-sm">
-      {PESTANAS.map(([v, t]) => (
-        <Link key={v} href={v === "pendientes" ? "/whatsapp" : `/whatsapp?ver=${v}`}
-          className={`rounded-full px-3 py-1.5 font-semibold ${vista === v ? "bg-brand text-white" : "border bg-white"}`}>{t}</Link>
-      ))}
-    </nav>
-  );
-}
-
-type Preinscrito = { id: string; nombre: string; telefono: string; edad: number | null; sector: string | null; motivo: string | null; operativo_id: string; creado_en: string };
-
-// Las personas que la IA anotó sola desde WhatsApp: ¿son de esa sede?
-async function PorConfirmar() {
-  const { supabase, tenantId } = await exigirRolPagina(["admin"]);
-  const hoy = hoyEnChile();
-  const [preRes, opsRes] = await Promise.all([
-    supabase.from("inscritos_operativo").select("id, nombre, telefono, edad, sector, motivo, operativo_id, creado_en")
-      .eq("tenant_id", tenantId).eq("estado", "por_confirmar").order("creado_en").limit(50),
-    supabase.from("operativos").select("id, nombre, fecha, comuna").eq("tenant_id", tenantId).eq("estado", "planificado")
-      .or(`fecha.gte.${hoy},fecha_fin.gte.${hoy}`).order("fecha").limit(40),
-  ]);
-  if (preRes.error || opsRes.error) return <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">La bandeja de WhatsApp aún no está activada en la base de datos.</p>;
-  const pre = (preRes.data ?? []) as Preinscrito[];
-  const operativos = (opsRes.data ?? []) as Operativo[];
-  const msjRes = pre.length
-    ? await supabase.from("whatsapp_mensajes").select("telefono, direccion, texto, enviado_en").eq("tenant_id", tenantId)
-        .in("telefono", pre.map((p) => p.telefono)).order("enviado_en", { ascending: false }).limit(pre.length * 6)
-    : { data: [] as Mensaje[] };
-  const mensajes = (msjRes.data ?? []) as Mensaje[];
-
-  return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      <CabeceraPagina seccion="Atención" titulo="WhatsApp" />
-      <Pestanas vista="por_confirmar" />
-      <p className="text-sm text-tinta-suave">La IA leyó tus chats y anotó a estas personas en el operativo de la sede que dijeron. Confirma o corrige.</p>
-      {pre.length === 0 && <p className="rounded-2xl bg-white p-4 text-sm text-tinta-suave shadow-sm">No hay personas por confirmar.</p>}
-      {pre.map((p) => {
-        const op = operativos.find((o) => o.id === p.operativo_id);
-        const ultimos = mensajes.filter((m) => m.telefono === p.telefono).slice(0, 4).reverse();
-        return (
-          <article key={p.id} className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-            <h2 className="font-bold">
-              ¿{p.nombre} es de {op ? `«${op.nombre}»` : "ese operativo"}?{" "}
-              <a href={`https://wa.me/${p.telefono}`} target="_blank" rel="noopener noreferrer" className="text-sm font-normal text-brand-dark underline">+{p.telefono}</a>
-            </h2>
-            <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-950">
-              {p.sector ? `Dijo «${p.sector}». ` : ""}{p.motivo}
-            </p>
-            <div className="space-y-1 text-sm">
-              {ultimos.map((m, i) => (
-                <p key={i} className={m.direccion === "entrante" ? "mr-10 rounded-xl bg-crema-claro px-3 py-1.5" : "ml-10 rounded-xl bg-emerald-50 px-3 py-1.5 text-right"}>{m.texto || "…"}</p>
-              ))}
-            </div>
-            <FormularioAgenda accion={confirmarPreinscrito} etiqueta="Sí, inscribir">
-              <input type="hidden" name="id" value={p.id} />
-              <input type="hidden" name="respuesta" value="si" />
-              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_5.5rem]">
-                <label className="text-sm">Operativo
-                  <select name="operativo_id" defaultValue={p.operativo_id} className="w-full rounded-xl border bg-white px-2 py-2.5">
-                    {!op && <option value={p.operativo_id}>(operativo anterior)</option>}
-                    {operativos.map((o) => <option key={o.id} value={o.id}>{fechaLegible(o.fecha)} · {o.nombre}{o.comuna ? ` (${o.comuna})` : ""}</option>)}
+            </li>
+          ))}
+        </ul>
+      ) : sugerencias.length === 0 ? (
+        <p className="rounded-2xl bg-white p-4 text-sm text-tinta-suave shadow-sm">
+          {vista === "por_confirmar" ? "No hay inscripciones por confirmar." : "No hay nada aquí todavía."}
+        </p>
+      ) : vista !== "por_confirmar" ? (
+        <ul className="divide-y divide-tinta/10 rounded-2xl bg-white px-4 text-sm shadow-sm">
+          {sugerencias.map((s) => {
+            const op = operativos.find((o) => o.id === s.operativo_id);
+            return (
+              <li key={s.id} className="py-2">
+                <b>{s.nombre || "Sin nombre"}</b> · +{s.telefono}{op ? ` → ${textoOperativo(op)}` : ""}
+                {s.resuelto_en && <span className="block text-xs text-tinta-suave">{hora(s.resuelto_en)}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        sugerencias.map((s) => {
+          const sugerido = s.operativo_id ? proximos.find((o) => o.id === s.operativo_id) : undefined;
+          const posibles = proximos.filter((o) => s.candidatos.includes(o.id));
+          const otros = proximos.filter((o) => !s.candidatos.includes(o.id) && o.id !== sugerido?.id);
+          return (
+            <article key={s.id} data-sugerencia={s.id} className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+              <header className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="font-bold">{s.nombre || "Sin nombre"} · <a href={`tel:+${s.telefono}`} className="font-normal text-brand-dark underline">+{s.telefono}</a></h2>
+                <span className="text-xs text-tinta-suave">{hora(s.actualizado_en)}</span>
+              </header>
+              <p className={`rounded-xl px-3 py-2 text-sm ${sugerido ? "bg-sky-50 text-sky-950" : "bg-amber-50 text-amber-950"}`}>
+                {sugerido
+                  ? <>Operativo: <b>{textoOperativo(sugerido)}</b>{s.lugar ? <> · reconocido por «{s.lugar}»</> : null}</>
+                  : <>Hay duda: {posibles.length > 1 ? "puede ser más de un operativo" : "no dijo la sede"}. Elige el operativo.</>}
+                {s.nombre_origen === "perfil" && <span className="block text-xs">El nombre es el del perfil de WhatsApp; revísalo.</span>}
+              </p>
+              <div className="space-y-1 text-sm">
+                {ultimos(s.telefono, 3).map((m, i) => (
+                  <p key={i} className={m.direccion === "entrante" ? "mr-10 rounded-xl bg-crema-claro px-3 py-1.5" : "ml-10 rounded-xl bg-emerald-50 px-3 py-1.5 text-right"}>{m.texto || "…"}</p>
+                ))}
+              </div>
+              <FormularioAgenda accion={aprobarSugerencia} etiqueta="Aprobar">
+                <input type="hidden" name="id" value={s.id} />
+                <label className="block text-sm">Operativo (sede y fecha)
+                  <select name="operativo_id" defaultValue={sugerido?.id ?? ""} required className="w-full rounded-xl border bg-white px-2 py-2.5">
+                    <option value="" disabled>Elegir…</option>
+                    {sugerido && <option value={sugerido.id}>{textoOperativo(sugerido)}</option>}
+                    {posibles.length > 0 && (
+                      <optgroup label="Posibles">
+                        {posibles.map((o) => <option key={o.id} value={o.id}>{textoOperativo(o)}</option>)}
+                      </optgroup>
+                    )}
+                    <optgroup label="Otros operativos">
+                      {otros.map((o) => <option key={o.id} value={o.id}>{textoOperativo(o)}</option>)}
+                    </optgroup>
                   </select>
                 </label>
-                <label className="text-sm">Nombre<input name="nombre" defaultValue={p.nombre} required maxLength={80} className="w-full rounded-xl border px-3 py-2.5" /></label>
-                <label className="text-sm">Edad<input name="edad" type="number" min={0} max={120} defaultValue={p.edad ?? ""} className="w-full rounded-xl border px-3 py-2.5" /></label>
-              </div>
-            </FormularioAgenda>
-            <FormularioAgenda accion={confirmarPreinscrito} etiqueta="No es de esa sede">
-              <input type="hidden" name="id" value={p.id} />
-              <input type="hidden" name="respuesta" value="no" />
-            </FormularioAgenda>
-          </article>
-        );
-      })}
+                <p className="text-xs text-tinta-suave">Teléfono del chat: +{s.telefono}. Si inscribe a otra persona más, escríbela abajo.</p>
+                {[s.nombre ?? "", ""].map((n, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_5.5rem] gap-2">
+                    <label className="text-sm">{i === 0 ? "Nombre" : "Otra persona (opcional)"}
+                      <input name={`nombre_${i}`} defaultValue={n} required={i === 0} maxLength={80} className="w-full rounded-xl border px-3 py-2.5" />
+                    </label>
+                    <label className="text-sm">Edad
+                      <input name={`edad_${i}`} type="number" min={0} max={120} className="w-full rounded-xl border px-3 py-2.5" />
+                    </label>
+                  </div>
+                ))}
+              </FormularioAgenda>
+              <FormularioAgenda accion={descartarSugerencia} etiqueta="Descartar">
+                <input type="hidden" name="id" value={s.id} />
+              </FormularioAgenda>
+            </article>
+          );
+        })
+      )}
     </div>
   );
 }
