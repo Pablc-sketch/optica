@@ -40,10 +40,12 @@ insert into public.suscripciones (tenant_id, estado, fecha_renovacion) values
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'admin-a@ejemplo.invalid'),
   ('00000000-0000-0000-0000-0000000000a2', 'ventas-a@ejemplo.invalid'),
+  ('00000000-0000-0000-0000-0000000000a3', 'clinico-a@ejemplo.invalid'),
   ('00000000-0000-0000-0000-0000000000b1', 'admin-b@ejemplo.invalid');
 insert into public.users (id, tenant_id, nombre, email, rol) values
   ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-00000000000a', 'Admin A', 'admin-a@ejemplo.invalid', 'admin'),
   ('00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-00000000000a', 'Ventas A', 'ventas-a@ejemplo.invalid', 'ventas'),
+  ('00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-00000000000a', 'Clínico A', 'clinico-a@ejemplo.invalid', 'clinico'),
   ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-00000000000b', 'Admin B', 'admin-b@ejemplo.invalid', 'admin');
 insert into public.operativos (id, tenant_id, nombre, fecha, comuna, sectores, estado) values
   ('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-00000000000a', 'Junta Labrador', '2030-05-10', 'Talagante', 'Labrador, Villa El Rosario', 'planificado'),
@@ -96,29 +98,38 @@ select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operat
 select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001b1', 'Cruce', '56900000002')$$, '23503', 'No se inscribe en un operativo de otra óptica');
 select pruebas.falla($$insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000001b1', 'Cruce', '56900000002')$$, '42501', 'No se inscribe a nombre de otra óptica');
 update public.inscritos_operativo set estado = 'cancelado';
-insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono) values
-  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Marta Soto', '56911112222');
-select pruebas.igual((select count(*)::text from public.inscritos_operativo where nombre = 'Marta Soto'), '2', 'Si se quitó, puede volver a inscribirse');
+update public.inscritos_operativo set estado = 'inscrito' where nombre = 'Marta Soto';
+select pruebas.igual((select estado from public.inscritos_operativo where nombre = 'Marta Soto'), 'inscrito', 'Si se quitó, puede volver a inscribirse');
+update public.inscritos_operativo set llego = true where nombre = 'Marta Soto';
+select pruebas.igual((select llego::text from public.inscritos_operativo where nombre = 'Marta Soto'), 'true', 'Se marca quién llegó');
+select pruebas.falla($$update public.inscritos_operativo set telefono = '56900000000'$$, '42501', 'El teléfono de una inscripción no se cambia');
 select pruebas.falla($$delete from public.inscritos_operativo$$, '42501', 'Los inscritos no se borran (quedan como cancelados)');
 
 -- Ventas de A: ve e inscribe, pero no lee WhatsApp.
 select pruebas.como('00000000-0000-0000-0000-0000000000a2');
 select pruebas.igual((select count(*)::text from public.inscritos_operativo where estado <> 'cancelado'), '1', 'Ventas ve los inscritos de su óptica');
 insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Turista', '14155550100', 30);
+select pruebas.igual((select count(*)::text from public.inscritos_operativo where nombre = 'Turista'), '1', 'Acepta teléfonos de WhatsApp que no son celulares chilenos');
+insert into public.inscritos_operativo (tenant_id, operativo_id, nombre, telefono, edad) values
   ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000001a1', 'Juan Pérez', '56900000003', 45);
 select pruebas.igual((select count(*)::text from public.whatsapp_mensajes), '0', 'Ventas no lee los chats de WhatsApp');
 select pruebas.igual((select count(*)::text from public.whatsapp_chats), '0', 'Ventas no ve la bandeja');
+
+-- Clínico de A: no ve la lista de inscritos (teléfonos).
+select pruebas.como('00000000-0000-0000-0000-0000000000a3');
+select pruebas.igual((select count(*)::text from public.inscritos_operativo), '0', 'Clínico no ve los inscritos');
 
 -- Administrador de B: nada de A.
 select pruebas.como('00000000-0000-0000-0000-0000000000b1');
 select pruebas.igual((select count(*)::text from public.inscritos_operativo), '0', 'B no ve inscritos de A');
 select pruebas.igual((select string_agg(texto, ',') from public.whatsapp_mensajes), 'Hola', 'B lee solo sus mensajes');
 update public.whatsapp_chats set estado = 'descartado' where telefono = '56911112222';
-update public.inscritos_operativo set estado = 'asistio';
+update public.inscritos_operativo set llego = false;
 reset role;
 select pruebas.igual((select estado from public.whatsapp_chats where telefono = '56911112222'), 'pendiente', 'B no puede cambiar chats de A');
 select pruebas.igual((select estado from public.whatsapp_chats where telefono = '56955556666'), 'pendiente', 'A no pudo cambiar el chat de B');
-select pruebas.igual((select count(*)::text from public.inscritos_operativo where estado = 'asistio'), '0', 'B no puede cambiar inscritos de A');
+select pruebas.igual((select count(*)::text from public.inscritos_operativo where llego), '1', 'B no puede cambiar inscritos de A');
 
 -- ---------------------------------------------------------------------
 -- Tope diario del asistente de IA

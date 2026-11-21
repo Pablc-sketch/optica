@@ -9,10 +9,12 @@ import { analizarChat } from "@/lib/asistente/analizar-chat";
 import { necesitaAnalisis, normalizarTelefonoChile, notaAprendida, type MensajeParaIA, type OperativoParaChat, type Sugerencia } from "@/lib/whatsapp-bandeja";
 import { hoyEnChile } from "@/lib/fechas";
 import type { ResultadoAgenda } from "@/lib/actions/agenda-terreno";
+import { inscribir } from "@/lib/inscritos";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TELEFONO = /^[0-9]{8,15}$/;
-const TODOS: Rol[] = ["admin", "clinico", "ventas", "bodega"];
+// Inscritos: quienes atienden el operativo (igual que en la base).
+const EQUIPO: Rol[] = ["admin", "ventas"];
 const POR_VEZ = 8;
 
 async function conPerfil(roles: Rol[], f: (ctx: Awaited<ReturnType<typeof requerirPerfil>>) => Promise<ResultadoAgenda>): Promise<ResultadoAgenda> {
@@ -138,16 +140,18 @@ export async function inscribirDesdeChat(datos: FormData): Promise<ResultadoAgen
       personas.push({ nombre, edad });
     }
     if (personas.length === 0) return { error: "Escribe el nombre de al menos una persona." };
-    const r = await supabase.from("inscritos_operativo").insert(personas.map((p) => ({
-      tenant_id: tenantId, operativo_id: operativo, nombre: p.nombre, telefono, edad: p.edad, origen: "whatsapp", creado_por: user.id,
+    const r = await inscribir(supabase, personas.map((p) => ({
+      tenant_id: tenantId, operativo_id: operativo, nombre: p.nombre, telefono, edad: p.edad, estado: "inscrito" as const, origen: "whatsapp" as const, creado_por: user.id,
     })));
-    if (r.error) return { error: r.error.code === "23505" ? "Alguna de esas personas ya está inscrita en ese operativo." : "No se pudo inscribir." };
+    const fallidas = r.filter((x) => !x.ok);
+    if (fallidas.length === r.length) return { error: fallidas.every((x) => !x.ok && x.repetida) ? "Esas personas ya están inscritas en ese operativo." : "No se pudo inscribir." };
     const chat = await supabase.from("whatsapp_chats").update({ estado: "inscrito" }).eq("tenant_id", tenantId).eq("telefono", telefono)
       .select("sugerencia").maybeSingle();
     await aprender(supabase, tenantId, user.id, (chat.data?.sugerencia as Sugerencia | null)?.sector ?? null, operativo);
     revalidatePath("/whatsapp");
     revalidatePath(`/operativos/${operativo}`);
-    return { mensaje: personas.length === 1 ? `${personas[0].nombre} inscrito` : `${personas.length} personas inscritas` };
+    const listas = r.length - fallidas.length;
+    return { mensaje: `${listas === 1 ? `${r.find((x) => x.ok)!.nombre} inscrito` : `${listas} personas inscritas`}${fallidas.length ? ` (${fallidas.map((x) => x.nombre).join(", ")} ya estaba${fallidas.length > 1 ? "n" : ""})` : ""}` };
   });
 }
 
@@ -223,7 +227,7 @@ export async function descartarChat(datos: FormData): Promise<ResultadoAgenda> {
 // Inscritos en el operativo
 // ---------------------------------------------------------------------------
 export async function inscribirManual(datos: FormData): Promise<ResultadoAgenda> {
-  return conPerfil(TODOS, async ({ supabase, tenantId, user }) => {
+  return conPerfil(EQUIPO, async ({ supabase, tenantId, user }) => {
     const operativo = String(datos.get("operativo_id") ?? "");
     const nombre = String(datos.get("nombre") ?? "").replace(/\s+/g, " ").trim();
     const telefono = normalizarTelefonoChile(String(datos.get("telefono") ?? ""));
@@ -232,19 +236,23 @@ export async function inscribirManual(datos: FormData): Promise<ResultadoAgenda>
     if (nombre.length < 2 || nombre.length > 80) return { error: "Escribe el nombre." };
     if (!telefono) return { error: "Revisa el teléfono (ej. 9 1234 5678)." };
     if (edad === undefined) return { error: "La edad debe ser un número entre 0 y 120." };
-    const r = await supabase.from("inscritos_operativo").insert({ tenant_id: tenantId, operativo_id: operativo, nombre, telefono, edad, origen: "manual", creado_por: user.id });
-    if (r.error) return { error: r.error.code === "23505" ? "Esa persona ya está inscrita en este operativo (mismo nombre y teléfono)." : "No se pudo inscribir." };
+    const [r] = await inscribir(supabase, [{ tenant_id: tenantId, operativo_id: operativo, nombre, telefono, edad, estado: "inscrito", origen: "manual", creado_por: user.id }]);
+    if (!r.ok) return { error: r.repetida ? "Esa persona ya está inscrita en este operativo (mismo nombre y teléfono)." : "No se pudo inscribir." };
     revalidatePath(`/operativos/${operativo}`);
     return { mensaje: `${nombre} inscrito` };
   });
 }
 
+// Llegó / no llegó / quitar / volver a inscribir.
+const ACCIONES: Record<string, Record<string, unknown>> = {
+  llego: { llego: true }, no_llego: { llego: false }, quitar: { estado: "cancelado" }, reactivar: { estado: "inscrito" },
+};
 export async function cambiarInscrito(datos: FormData): Promise<ResultadoAgenda> {
-  return conPerfil(TODOS, async ({ supabase, tenantId }) => {
+  return conPerfil(EQUIPO, async ({ supabase, tenantId }) => {
     const id = String(datos.get("id") ?? "");
-    const estado = String(datos.get("estado") ?? "");
-    if (!UUID.test(id) || !["inscrito", "cancelado", "asistio"].includes(estado)) return { error: "Acción no válida." };
-    const r = await supabase.from("inscritos_operativo").update({ estado }).eq("id", id).eq("tenant_id", tenantId).select("operativo_id").single();
+    const cambio = ACCIONES[String(datos.get("accion") ?? "")];
+    if (!UUID.test(id) || !cambio) return { error: "Acción no válida." };
+    const r = await supabase.from("inscritos_operativo").update(cambio).eq("id", id).eq("tenant_id", tenantId).select("operativo_id").single();
     if (r.error) return { error: r.error.code === "23505" ? "Esa persona ya está inscrita de nuevo en este operativo." : "No se pudo cambiar." };
     revalidatePath(`/operativos/${r.data.operativo_id}`);
     return { mensaje: "Listo" };

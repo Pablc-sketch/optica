@@ -6,7 +6,7 @@ import { cambiarInscrito, confirmarPreinscrito, guardarSectores, inscribirManual
 // mano), y los sectores que cubre, que la IA usa para reconocer a quién
 // corresponde cada chat.
 
-type Inscrito = { id: string; nombre: string; telefono: string; edad: number | null; estado: string; origen: string; sector: string | null; motivo: string | null };
+type Inscrito = { id: string; nombre: string; telefono: string; edad: number | null; estado: string; llego: boolean; origen: string; sector: string | null; motivo: string | null };
 
 function Respuesta({ id, si }: { id: string; si: boolean }) {
   return (
@@ -18,11 +18,11 @@ function Respuesta({ id, si }: { id: string; si: boolean }) {
   );
 }
 
-function Boton({ id, estado, texto, clase }: { id: string; estado: string; texto: string; clase: string }) {
+function Boton({ id, accion, texto, clase }: { id: string; accion: string; texto: string; clase: string }) {
   return (
     <form action={async (d) => { "use server"; await cambiarInscrito(d); }}>
       <input type="hidden" name="id" value={id} />
-      <input type="hidden" name="estado" value={estado} />
+      <input type="hidden" name="accion" value={accion} />
       <button className={`rounded-lg border px-2 py-1 text-xs font-semibold ${clase}`}>{texto}</button>
     </form>
   );
@@ -32,7 +32,7 @@ export default async function InscritosOperativo({ operativoId }: { operativoId:
   const supabase = await createClient();
   const [opRes, inscritosRes, rolRes] = await Promise.all([
     supabase.from("operativos").select("sectores, meta_examenes, estado").eq("id", operativoId).maybeSingle(),
-    supabase.from("inscritos_operativo").select("id, nombre, telefono, edad, estado, origen, sector, motivo").eq("operativo_id", operativoId)
+    supabase.from("inscritos_operativo").select("id, nombre, telefono, edad, estado, llego, origen, sector, motivo").eq("operativo_id", operativoId)
       .neq("estado", "cancelado").order("creado_en"),
     supabase.rpc("jwt_rol"),
   ]);
@@ -41,6 +41,8 @@ export default async function InscritosOperativo({ operativoId }: { operativoId:
   const op = opRes.data;
   const inscritos = (inscritosRes.data ?? []) as Inscrito[];
   const esAdmin = rolRes.data === "admin";
+  // Los inscritos los ve quien atiende el operativo: administrador y ventas.
+  if (!esAdmin && rolRes.data !== "ventas") return null;
   const porConfirmar = inscritos.filter((i) => i.estado === "por_confirmar");
   const vigentes = inscritos.length - porConfirmar.length;
 
@@ -49,7 +51,7 @@ export default async function InscritosOperativo({ operativoId }: { operativoId:
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-bold">Inscritos</h2>
         <span className="text-sm text-tinta-suave">
-          {vigentes}{op.meta_examenes ? ` de ${op.meta_examenes} (meta)` : ""} · {inscritos.filter((i) => i.estado === "asistio").length} llegaron
+          {vigentes}{op.meta_examenes ? ` de ${op.meta_examenes} (meta)` : ""} · {inscritos.filter((i) => i.llego).length} llegaron
         </span>
       </div>
 
@@ -74,18 +76,21 @@ export default async function InscritosOperativo({ operativoId }: { operativoId:
         <ul className="mt-3 divide-y divide-tinta/10 text-sm">
           {inscritos.filter((p) => p.estado !== "por_confirmar").map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-              <span className={`min-w-0 flex-1 font-medium ${p.estado === "asistio" ? "text-emerald-800" : ""}`}>
+              <span className={`min-w-0 flex-1 font-medium ${p.llego ? "text-emerald-800" : ""}`}>
                 {p.nombre}{p.edad !== null ? `, ${p.edad} años` : ""}
                 {p.origen === "whatsapp" && <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-900">WhatsApp</span>}
               </span>
               <a href={`https://wa.me/${p.telefono}`} target="_blank" rel="noopener noreferrer" className="text-brand-dark underline">+{p.telefono}</a>
-              {p.estado === "inscrito" ? (
-                <span className="flex gap-2">
-                  <Boton id={p.id} estado="asistio" texto="Llegó" clase="" />
-                  <Boton id={p.id} estado="cancelado" texto="Quitar" clase="text-red-800" />
+              {p.llego ? (
+                <span className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-emerald-800">Llegó</span>
+                  <Boton id={p.id} accion="no_llego" texto="Deshacer" clase="text-tinta-suave" />
                 </span>
               ) : (
-                <Boton id={p.id} estado="inscrito" texto="Deshacer" clase="text-tinta-suave" />
+                <span className="flex gap-2">
+                  <Boton id={p.id} accion="llego" texto="Llegó" clase="" />
+                  <Boton id={p.id} accion="quitar" texto="Quitar" clase="text-red-800" />
+                </span>
               )}
             </li>
           ))}

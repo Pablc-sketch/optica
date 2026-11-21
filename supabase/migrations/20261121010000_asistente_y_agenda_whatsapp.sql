@@ -80,39 +80,53 @@ grant execute on function public.registrar_consulta_ia_servicio(uuid, integer) t
 -- reconocer a qué operativo corresponde quien escribe («soy de Labrador»).
 alter table public.operativos add column sectores text check (length(sectores) <= 500);
 
-create table public.inscritos_operativo (
+-- La tabla puede existir ya (migración «inscritos_operativo», inscripción
+-- asistida pegando texto): se reutiliza y se amplía, sin borrar nada. Si no
+-- existe, se crea con esa misma forma base.
+create table if not exists public.inscritos_operativo (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references public.tenants (id) on delete cascade,
+  tenant_id uuid not null,
   operativo_id uuid not null,
-  nombre text not null check (length(btrim(nombre)) between 2 and 80),
-  telefono text not null check (telefono ~ '^[0-9]{8,15}$'),
-  edad smallint check (edad between 0 and 120),
-  estado text not null default 'inscrito' check (estado in ('por_confirmar', 'inscrito', 'cancelado', 'asistio')),
-  -- Lo que dijo la persona y por qué la IA eligió el operativo (para confirmar).
-  sector text check (length(sector) <= 100),
-  motivo text check (length(motivo) <= 300),
-  origen text not null default 'manual' check (origen in ('whatsapp', 'manual')),
-  creado_por uuid references public.users (id) on delete set null,
-  creado_en timestamptz not null default now(),
-  foreign key (tenant_id, operativo_id) references public.operativos (tenant_id, id) on delete cascade
+  nombre text not null check (char_length(trim(nombre)) between 1 and 100),
+  telefono text not null,
+  nombre_clave text generated always as (lower(trim(nombre))) stored,
+  llego boolean not null default false,
+  foreign key (tenant_id, operativo_id) references public.operativos (tenant_id, id) on delete restrict,
+  -- Un mismo WhatsApp puede inscribir a varias personas (mamá, hijos…):
+  -- todas con el teléfono de ese chat. Lo que no se repite es la misma
+  -- persona (mismo teléfono y nombre) en el mismo operativo.
+  unique (operativo_id, telefono, nombre_clave)
 );
-create index inscritos_operativo_por_operativo on public.inscritos_operativo (operativo_id) where estado <> 'cancelado';
--- Un mismo WhatsApp puede inscribir a varias personas (mamá, hijos…): todas
--- quedan con el teléfono de ese chat. Lo que no se repite es la misma
--- persona (mismo teléfono y nombre) en el mismo operativo.
-create unique index inscritos_operativo_una_persona on public.inscritos_operativo (operativo_id, telefono, lower(btrim(nombre))) where estado <> 'cancelado';
+alter table public.inscritos_operativo
+  add column if not exists edad smallint check (edad between 0 and 120),
+  -- por_confirmar: la anotó la IA desde WhatsApp y espera el sí del administrador.
+  add column if not exists estado text not null default 'inscrito' check (estado in ('por_confirmar', 'inscrito', 'cancelado')),
+  -- Lo que dijo la persona y por qué la IA eligió el operativo (para confirmar).
+  add column if not exists sector text check (length(sector) <= 100),
+  add column if not exists motivo text check (length(motivo) <= 300),
+  add column if not exists origen text not null default 'manual' check (origen in ('whatsapp', 'manual', 'texto')),
+  add column if not exists creado_por uuid references public.users (id) on delete set null,
+  add column if not exists creado_en timestamptz not null default now();
+-- El teléfono es el del chat de WhatsApp: puede no ser un celular chileno.
+alter table public.inscritos_operativo drop constraint if exists inscritos_operativo_telefono_check;
+alter table public.inscritos_operativo add constraint inscritos_operativo_telefono_check check (telefono ~ '^[0-9]{8,15}$');
+create index if not exists inscritos_operativo_por_operativo on public.inscritos_operativo (operativo_id) where estado <> 'cancelado';
+
 alter table public.inscritos_operativo enable row level security;
-create policy inscritos_operativo_lectura on public.inscritos_operativo
-  for select to authenticated using (tenant_id = (select public.jwt_tenant_id()));
-create policy inscritos_operativo_alta on public.inscritos_operativo
-  for insert to authenticated
-  with check (tenant_id = (select public.jwt_tenant_id()) and (select public.suscripcion_vigente()));
-create policy inscritos_operativo_edicion on public.inscritos_operativo
-  for update to authenticated
-  using (tenant_id = (select public.jwt_tenant_id()) and (select public.suscripcion_vigente()))
-  with check (tenant_id = (select public.jwt_tenant_id()) and (select public.suscripcion_vigente()));
-revoke all on public.inscritos_operativo from anon;
-revoke delete on public.inscritos_operativo from authenticated;
+drop policy if exists inscritos_lectura on public.inscritos_operativo;
+drop policy if exists inscritos_alta on public.inscritos_operativo;
+drop policy if exists inscritos_asistencia on public.inscritos_operativo;
+-- Administrador y ventas (quienes atienden el operativo).
+create policy inscritos_lectura on public.inscritos_operativo for select to authenticated
+  using (tenant_id = (select public.jwt_tenant_id()) and (select public.jwt_rol()) in ('admin', 'ventas'));
+create policy inscritos_alta on public.inscritos_operativo for insert to authenticated
+  with check (tenant_id = (select public.jwt_tenant_id()) and (select public.jwt_rol()) in ('admin', 'ventas') and (select public.suscripcion_vigente()));
+create policy inscritos_asistencia on public.inscritos_operativo for update to authenticated
+  using (tenant_id = (select public.jwt_tenant_id()) and (select public.jwt_rol()) in ('admin', 'ventas') and (select public.suscripcion_vigente()))
+  with check (tenant_id = (select public.jwt_tenant_id()));
+revoke all on public.inscritos_operativo from anon, authenticated;
+grant select, insert on public.inscritos_operativo to authenticated;
+grant update (llego, estado, nombre, edad, operativo_id) on public.inscritos_operativo to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 3. WhatsApp

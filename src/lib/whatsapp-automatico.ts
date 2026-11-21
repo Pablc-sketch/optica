@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { analizarChat } from "@/lib/asistente/analizar-chat";
 import { clavePersona, type MensajeParaIA, type OperativoParaChat, type PersonaChat, type Sugerencia } from "@/lib/whatsapp-bandeja";
 import { hoyEnChile } from "@/lib/fechas";
+import { inscribir } from "@/lib/inscritos";
 
 // Revisión automática de un chat de WhatsApp, sin que el administrador abra
 // Lentia: la IA lee el chat y, si la persona quiere atenderse y dice una
@@ -73,14 +74,12 @@ export async function revisarChatAutomatico(db: SupabaseClient, tenant: string, 
   const opId = sugerencia.operativo_id;
   const nuevas = debePreinscribir(sugerencia, chat.data.nombre_perfil, anotados.filter((a) => a.operativo_id === opId).map((a) => a.nombre));
   // Todas con el teléfono de ESTE chat.
-  const guardadas: PersonaChat[] = [];
-  for (const p of nuevas) {
-    const r = await db.from("inscritos_operativo").insert({
-      tenant_id: tenant, operativo_id: opId, nombre: p.nombre, telefono, edad: p.edad,
-      estado: "por_confirmar", origen: "whatsapp", sector: sugerencia.sector, motivo: sugerencia.motivo,
-    });
-    if (!r.error) guardadas.push(p); // duplicado u otro: se salta
-  }
+  const r = await inscribir(db, nuevas.map((p) => ({
+    tenant_id: tenant, operativo_id: opId, nombre: p.nombre, telefono, edad: p.edad,
+    estado: "por_confirmar" as const, origen: "whatsapp" as const, sector: sugerencia.sector, motivo: sugerencia.motivo,
+  })));
+  // Duplicadas u otros errores se saltan.
+  const guardadas: PersonaChat[] = nuevas.filter((_, i) => r[i].ok);
   if (guardadas.length === 0) return;
   const op = operativos.find((o) => o.id === opId)!;
   const quienes = guardadas.map((p) => `${p.nombre}${p.edad !== null ? ` (${p.edad} años)` : ""}`).join(", ");
