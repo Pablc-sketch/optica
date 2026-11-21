@@ -33,6 +33,21 @@ const OPERATIVO = {
 };
 
 describe("herramientas del asistente", () => {
+  it("ordena por utilidad antes de limitar y excluye planificados de la comparación", async () => {
+    const { cliente } = supabaseFalso({
+      operativos: [
+        { ...OPERATIVO, id: "reciente", fecha: "2026-01-20", costo_transporte: 90000 },
+        { ...OPERATIVO, id: "planificado", fecha: "2026-01-15", estado: "planificado" },
+        OPERATIVO,
+      ],
+    });
+    const [listar, , comparar] = crearHerramientas(cliente as never, TENANT, "2026-02-01");
+    const lista = JSON.parse(await listar.run({ orden: "utilidad", estado: "realizado", limite: 1 }) as string);
+    expect(lista.operativos.map((op: { id: string }) => op.id)).toEqual(["op-a"]);
+    const grupos = JSON.parse(await comparar.run({ agrupar_por: "comuna" }) as string).grupos;
+    expect(grupos).toMatchObject([{ grupo: "Maipú", operativos: 2 }]);
+  });
+
   it("leen solo la óptica de la sesión y no entregan datos de pacientes", async () => {
     const { cliente, filtros } = supabaseFalso({
       operativos: [OPERATIVO],
