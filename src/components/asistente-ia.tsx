@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { MensajeChat } from "@/lib/asistente/conversacion";
+import { MAX_TEXTO, type MensajeChat } from "@/lib/asistente/conversacion";
 import { ETIQUETAS, type Propuesta } from "@/lib/cambios-operativo";
 import { aplicarCambioOperativo } from "@/lib/actions/asistente";
 
@@ -12,11 +12,9 @@ import { aplicarCambioOperativo } from "@/lib/actions/asistente";
 // sesión o recargar se borra, y nunca se guarda en Lentia.
 
 const SUGERENCIAS = [
-  "¿Qué les falta a mis próximos operativos?",
-  "La dirección del operativo de Talagante es Av. Bernardo O'Higgins 1234, Talagante",
-  "¿Cuánto debería presupuestar para un operativo de 2 días en Pichilemu, con 3 personas?",
-  "¿Sería rentable una junta de vecinos de 1 día en Talagante?",
-  "¿Cuáles fueron mis 5 operativos más rentables y qué comuna me conviene más?",
+  { etiqueta: "Próximos pendientes", pregunta: "¿Qué les falta a mis próximos operativos?" },
+  { etiqueta: "Mayor utilidad", pregunta: "¿Cuáles fueron mis 3 operativos realizados con mayor utilidad?" },
+  { etiqueta: "Mejor comuna", pregunta: "¿Qué comuna tiene mejor utilidad promedio por operativo realizado?" },
 ];
 
 type Pendiente = { operativo_id: string; nombre: string; fecha: string; problemas: string[] };
@@ -150,12 +148,11 @@ export default function AsistenteIA() {
       <header className="flex items-center justify-between border-b px-4 py-3">
         <div>
           <h2 className="font-bold">✦ Asistente</h2>
-          <p className="text-xs text-tinta-suave">Operativos, costos y pendientes. Los cambios se guardan solo si tú presionas Aplicar.</p>
         </div>
         <div className="flex gap-1">
           {mensajes.length > 0 && (
-            <button type="button" onClick={() => { setMensajes([]); setPropuestas({}); setError(null); }} className="rounded-lg px-2 py-1 text-sm hover:bg-crema">
-              Nueva
+            <button type="button" disabled={cargando} onClick={() => { setMensajes([]); setPropuestas({}); setError(null); setTexto(""); }} className="rounded-lg px-2 py-1 text-sm hover:bg-crema">
+              Nuevo chat
             </button>
           )}
           <button type="button" aria-label="Cerrar asistente" onClick={() => setAbierto(false)} className="rounded-lg px-2 py-1 text-lg leading-none hover:bg-crema">
@@ -171,7 +168,7 @@ export default function AsistenteIA() {
           </Link>
         )}
         {mensajes.length === 0 && pendientes && pendientes.length > 0 && (
-          <details className="rounded-xl bg-amber-50 px-3 py-2 text-amber-950" open>
+          <details className="rounded-xl bg-amber-50 px-3 py-2 text-amber-950">
             <summary className="cursor-pointer font-semibold">Pendientes en {pendientes.length} operativo{pendientes.length === 1 ? "" : "s"}</summary>
             <ul className="mt-2 space-y-2">
               {pendientes.slice(0, 8).map((p) => (
@@ -185,11 +182,10 @@ export default function AsistenteIA() {
           </details>
         )}
         {mensajes.length === 0 && (
-          <div className="space-y-2">
-            <p className="text-tinta-suave">Pregunta, por ejemplo:</p>
+          <div className="flex flex-wrap gap-2">
             {SUGERENCIAS.map((s) => (
-              <button key={s} type="button" onClick={() => enviar(s)} className="block w-full rounded-xl bg-crema-claro px-3 py-2 text-left hover:bg-crema">
-                {s}
+              <button key={s.etiqueta} type="button" onClick={() => enviar(s.pregunta)} className="rounded-xl bg-crema-claro px-3 py-2 font-medium hover:bg-crema">
+                {s.etiqueta}
               </button>
             ))}
           </div>
@@ -214,7 +210,7 @@ export default function AsistenteIA() {
             ))}
           </div>
         ))}
-        {cargando && <p className="text-tinta-suave" role="status">Revisando tus operativos…</p>}
+        {cargando && <p className="text-tinta-suave" role="status">Consultando…</p>}
         {error && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-red-800">{error}</p>}
         <div ref={final} />
       </div>
@@ -230,13 +226,13 @@ export default function AsistenteIA() {
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               enviar(texto);
             }
           }}
           rows={2}
-          maxLength={4000}
+          maxLength={MAX_TEXTO}
           placeholder="Escribe tu pregunta…"
           aria-label="Pregunta para el asistente"
           className="min-w-0 flex-1 resize-none rounded-xl border px-3 py-2 text-base"

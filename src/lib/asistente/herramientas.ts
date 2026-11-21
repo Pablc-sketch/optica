@@ -73,7 +73,7 @@ export function crearHerramientas(
   const listar = betaTool({
     name: "listar_operativos",
     description:
-      "Lista los operativos de la óptica con sus números (examinados, ventas, vendido, gastos, costo de cristales y marcos, utilidad, conversión) ordenados por fecha descendente. Úsala para ver el historial, los próximos operativos o buscar uno por nombre o comuna.",
+      "Lista los operativos de la óptica con sus números (examinados, ventas, vendido, gastos, costo de cristales y marcos, utilidad, conversión) ordenados por fecha o utilidad descendente. Úsala para ver el historial, los próximos operativos o buscar uno por nombre o comuna.",
     inputSchema: {
       type: "object",
       properties: {
@@ -81,6 +81,8 @@ export function crearHerramientas(
         hasta: { type: "string", description: "Fecha máxima AAAA-MM-DD (opcional)" },
         texto: { type: "string", description: "Parte del nombre, comuna o tipo de lugar (opcional)" },
         incluir_cancelados: { type: "boolean" },
+        estado: { type: "string", enum: ["planificado", "realizado", "cancelado"] },
+        orden: { type: "string", enum: ["fecha", "utilidad"] },
         limite: { type: "integer", minimum: 1, maximum: 100 },
       },
       additionalProperties: false,
@@ -89,10 +91,12 @@ export function crearHerramientas(
       const { filas, citas } = await datos();
       const t = input.texto ? normalizar(input.texto) : "";
       const lista = filas
-        .filter((f) => input.incluir_cancelados || f.estado !== "cancelado")
+        .filter((f) => input.incluir_cancelados || input.estado === "cancelado" || f.estado !== "cancelado")
+        .filter((f) => !input.estado || f.estado === input.estado)
         .filter((f) => !input.desde || f.fecha >= input.desde)
         .filter((f) => !input.hasta || f.fecha <= input.hasta)
         .filter((f) => !t || normalizar([f.nombre, f.comuna, f.tipo_venue && TIPOS_VENUE[f.tipo_venue]].filter(Boolean).join(" ")).includes(t))
+        .sort((a, b) => (input.orden === "utilidad" ? b.utilidad - a.utilidad : 0) || b.fecha.localeCompare(a.fecha))
         .slice(0, input.limite ?? 40)
         .map((f) => resumenOperativo(f, citas));
       return JSON.stringify({ hoy, total: lista.length, operativos: lista });
@@ -143,14 +147,17 @@ export function crearHerramientas(
     },
     run: async ({ agrupar_por, desde }) => {
       const { filas } = await datos();
-      const base = filas.filter((f) => f.estado !== "cancelado" && f.fecha <= hoy && (!desde || f.fecha >= desde));
+      const base = filas.filter((f) => f.estado === "realizado" && f.fecha <= hoy && (!desde || f.fecha >= desde));
       const grupoDe =
         agrupar_por === "comuna"
           ? (f: FilaRentabilidad) => f.comuna ?? ""
           : agrupar_por === "nombre"
             ? (f: FilaRentabilidad) => f.nombre.trim()
             : (f: FilaRentabilidad) => (f.tipo_venue ? TIPOS_VENUE[f.tipo_venue] ?? f.tipo_venue : "");
-      return JSON.stringify({ grupos: resumirPorGrupo(base, grupoDe).slice(0, 40) });
+      const grupos = resumirPorGrupo(base, grupoDe)
+        .sort((a, b) => b.utilidadPromedio - a.utilidadPromedio || b.operativos - a.operativos)
+        .slice(0, 40);
+      return JSON.stringify({ grupos });
     },
   });
 

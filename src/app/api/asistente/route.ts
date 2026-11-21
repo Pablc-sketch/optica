@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { crearHerramientas } from "@/lib/asistente/herramientas";
-import { contextoDePagina, promptSistema, validarConversacion } from "@/lib/asistente/conversacion";
+import { contextoDePagina, MAX_TEXTO, promptSistema, validarConversacion } from "@/lib/asistente/conversacion";
 import { fechaConDia, hoyEnChile } from "@/lib/fechas";
 import type { Propuesta } from "@/lib/cambios-operativo";
 
@@ -47,8 +47,7 @@ export async function POST(request: Request) {
     role: m.rol === "usuario" ? "user" : "assistant",
     content: m.texto,
   }));
-  // Instrucción del sistema a mitad de conversación (no cambia el prefijo cacheado).
-  if (contexto) historial.push({ role: "system", content: contexto });
+
 
   const client = new Anthropic({ maxRetries: 1, timeout: 100_000 });
   // Cambios que la IA prepare: se devuelven al navegador para que el
@@ -68,7 +67,7 @@ export async function POST(request: Request) {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       cache_control: { type: "ephemeral" },
-      system: promptSistema(tenant.data?.nombre_comercial || "la óptica", fechaConDia(hoy), notas),
+      system: [promptSistema(tenant.data?.nombre_comercial || "la óptica", fechaConDia(hoy), notas), contexto].filter(Boolean).join("\n"),
       tools: conWeb ? [...herramientas, busqueda] : [...herramientas],
       messages: historial,
     });
@@ -93,7 +92,7 @@ export async function POST(request: Request) {
       .join("")
       .trim();
     if (!texto) return Response.json({ error: "El asistente no alcanzó a responder. Prueba con una pregunta más acotada." }, { status: 502 });
-    return Response.json({ texto: texto.slice(0, 20000), propuestas });
+    return Response.json({ texto: texto.length > MAX_TEXTO ? texto.slice(0, MAX_TEXTO - 1).replace(/\s+\S*$/, "") + "…" : texto, propuestas });
   } catch (e) {
     // No se devuelve el detalle del proveedor: puede traer datos internos.
     if (e instanceof Anthropic.AuthenticationError) return Response.json({ error: "La clave de Claude no es válida. Revísala en Vercel." }, { status: 503 });
