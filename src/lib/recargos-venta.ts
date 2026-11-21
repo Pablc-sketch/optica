@@ -16,7 +16,7 @@ export function validarRecargosVenta(venta:VentaNormalizada,tarifas:RecargosMarc
     if(especial!==undefined&&marco?.nivelMarco!=='premium')return 'Vuelve a elegir el marco de Colección Especial antes de cobrar.';
     if(!marco?.nivelMarco){if(extras.length)return 'Recargo sin línea de marco.';continue;}
     const nivel=marco.nivelMarco;
-    if(!tarifas&&nivel==='seleccion')return 'Esta óptica no tiene habilitada la línea Selección.';
+    if((!tarifas&&nivel==='seleccion')||(tarifas?.especial===undefined&&nivel==='especial'))return 'Esta línea de marco no está habilitada.';
     const cristal=venta.items.find(i=>i.cristalSlot===c.cupo)!;
     const esperado=marco.marcoPropio||cristal.precioUnitario===0?0:(especial??recargoMarco(nivel,tarifas));
     if(nivel==='esencial'||marco.marcoPropio){if(extras.length)return 'Esencial y marco propio no llevan recargo.';}

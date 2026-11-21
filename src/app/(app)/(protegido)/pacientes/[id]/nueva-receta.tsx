@@ -1,6 +1,6 @@
 "use client";
 
-import { NIVELES_MARCO, precioParConMarco, type RecargosMarcos } from "@/lib/niveles-marco";
+import { nivelesMarcoDisponibles, precioParConMarco, type RecargosMarcos } from "@/lib/niveles-marco";
 import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
@@ -181,7 +181,7 @@ function SelectorLenteConPrecio({
         </span>
         <span className="flex shrink-0 flex-col items-end leading-tight">
           <span className="font-semibold tabular-nums">{o.precio > 0 ? `${recargosMarcos?"Esencial ":""}${clp(o.precio)}` : "sin precio"}</span>
-          {recargosMarcos&&o.precio>0&&NIVELES_MARCO.filter(n=>n.id!=="esencial").map(n=><span key={n.id} className="text-xs tabular-nums">{n.nombre} {clp(precioParConMarco(o.precio,n.id,recargosMarcos))}</span>)}
+          {recargosMarcos&&o.precio>0&&nivelesMarcoDisponibles(recargosMarcos).filter(n=>n.id!=="esencial").map(n=><span key={n.id} className="text-xs tabular-nums">{n.nombre} {clp(precioParConMarco(o.precio,n.id,recargosMarcos))}</span>)}
           {/* Un lente de stock también se puede mandar a tallar: si el
               precio cambia, se muestra el de laboratorio también. */}
           {o.origen === "stock" && hayReceta && o.precioLaboratorio !== o.precio && (
@@ -236,7 +236,7 @@ function SelectorLenteConPrecio({
             <p className="text-2xl font-bold tracking-tight text-brand-dark tabular-nums">
               {sel.precio > 0 ? clp(sel.precio) : "Sin precio (revisa Precios)"}
             </p>
-            {recargosMarcos&&<p className="my-2 text-sm">{NIVELES_MARCO.map(n=>`${n.nombre} ${clp(precioParConMarco(sel.precio,n.id,recargosMarcos))}`).join(" · ")}<br/>Mismo cristal; cambia la línea del marco. Precio por par, IVA incluido.</p>}
+            {recargosMarcos&&<p className="my-2 text-sm">{nivelesMarcoDisponibles(recargosMarcos).map(n=>`${n.nombre} ${clp(precioParConMarco(sel.precio,n.id,recargosMarcos))}`).join(" · ")}<br/>Mismo cristal; cambia la línea del marco. Precio por par, IVA incluido.</p>}
             <p className="text-sm text-tinta-suave">
               {!hayReceta
                 ? "Escribe la receta para saber si sale de stock."

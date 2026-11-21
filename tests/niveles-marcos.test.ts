@@ -8,18 +8,18 @@ const cristal=(slot:number)=>({slot,tipoLente:'Monofocal',rangoReceta:'±2.00 / 
 const normal=(marcos:ArmazonPedido[],items:ItemPedido[])=>normalizarVenta(marcos.map(m=>cristal(m.slot)),marcos,items);
 const ar=(slot:number,nivelMarco:ArmazonPedido['nivelMarco']='seleccion',productoId:string|null=null)=>({slot,nivelMarco,productoId,marcoPropio:false,descripcion:'Acetato rojo'});
 const ci=(slot:number,precioUnitario=38000)=>({descripcion:'Cristales',cantidad:1,precioUnitario,cristalSlot:slot});
-const ex=(slot:number,nivel:'seleccion'|'premium'='seleccion',gift=false)=>({...lineaRecargo(slot,nivel,T,gift),marcoSlot:slot});
+const ex=(slot:number,nivel:'seleccion'|'premium'|'especial'='seleccion',gift=false)=>({...lineaRecargo(slot,nivel,T,gift),marcoSlot:slot});
 function validar(marcos:ArmazonPedido[],items:ItemPedido[]){const n=normal(marcos,items);return n.ok?validarRecargosVenta(n.venta,T):n.error;}
 describe('Precios únicos por cristal y línea de marco',()=>{
  it.each([[38000,49990,59990],[48000,59990,69990],[70000,81990,91990],[75000,86990,96990],[95000,106990,116990],[120000,131990,141990],[150000,161990,171990],[180000,191990,201990],[200000,211990,221990],[220000,231990,241990],[55000,66990,76990],[115000,126990,136990]])('base %i conserva diferencias también en tallados',(base,sel,prem)=>{
-  expect(NIVELES_MARCO.map(n=>precioParConMarco(base,n.id,T))).toEqual([base,sel,prem]);
+  expect(NIVELES_MARCO.map(n=>precioParConMarco(base,n.id,T))).toEqual([base,sel,prem,base+31990]);
  });
  it.each([null,{},[],{esencial:1,seleccion:11990,premium:21990},{esencial:0,seleccion:-1,premium:21990},{esencial:0,seleccion:11990.5,premium:21990},{esencial:0,seleccion:21990,premium:11990},{esencial:0,seleccion:'11990',premium:21990}])('rechaza configuración inválida %j',(v)=>expect(leerRecargosMarcos(v)).toBeNull());
  it('otras ópticas conservan incluido y premium anterior',()=>{expect(precioParConMarco(38000,'esencial',null)).toBe(38000);expect(precioParConMarco(38000,'premium',null)).toBe(48000);});
  it('lee la configuración válida',()=>expect(leerRecargosMarcos(T)).toEqual(T));
 });
 describe('Entradas a venta y validación del servidor',()=>{
- it.each(['seleccion','premium'] as const)('inventario, descrito y solo par 2: %s',nivel=>{
+ it.each(['seleccion','premium','especial'] as const)('inventario, descrito y solo par 2: %s',nivel=>{
    for(const producto of [null,'sku-a']){
     const n=normal([ar(2,nivel,producto)],[ci(2),ex(2,nivel)]);
     expect(n.ok).toBe(true);if(!n.ok)return;

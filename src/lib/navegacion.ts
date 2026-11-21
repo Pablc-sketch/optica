@@ -9,7 +9,7 @@ const ENLACES: EnlaceMenu[] = [
   { href: '/impuestos', label: 'SII mensual' },
   { href: '/operativos/agenda', label: 'Calendario', principal: true, movil: true },
   { href: '/pacientes', label: 'Pacientes' },
-  { href: '/operativos', label: 'Operativos' },
+  { href: '/operativos', label: 'Operativos', principal: true, movil: true },
   { href: '/whatsapp', label: 'WhatsApp' },
   { href: '/ot', label: 'Órdenes' },
   { href: '/inventario', label: 'Inventario' },

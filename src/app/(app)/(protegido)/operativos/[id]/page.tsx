@@ -1,5 +1,5 @@
 import InscritosOperativo from "@/components/inscritos-operativo";
-import { leerRecargosMarcos, NIVELES_MARCO, precioParConMarco } from "@/lib/niveles-marco";
+import { leerRecargosMarcos, nivelesMarcoDisponibles, precioParConMarco } from "@/lib/niveles-marco";
 import OperativoTerreno from "@/components/operativo-terreno";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
@@ -420,7 +420,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       monto: sugerido?.precio,
       valores: {
         lente: sugerido?.nombre ?? "el lente que necesita",
-        precio: sugerido ? (leerRecargosMarcos(tenantRes.data?.recargos_marcos) ? NIVELES_MARCO.map(n=>`${n.nombre} ${clp(precioParConMarco(sugerido.precio,n.id,leerRecargosMarcos(tenantRes.data?.recargos_marcos)) + (sugerido.pares===2 ? precioParConMarco(0,n.id,leerRecargosMarcos(tenantRes.data?.recargos_marcos)):0))}`).join(" / ") : clp(sugerido.precio)) : "(consultar)",
+        precio: sugerido ? (leerRecargosMarcos(tenantRes.data?.recargos_marcos) ? nivelesMarcoDisponibles(leerRecargosMarcos(tenantRes.data?.recargos_marcos)).map(n=>`${n.nombre} ${clp(precioParConMarco(sugerido.precio,n.id,leerRecargosMarcos(tenantRes.data?.recargos_marcos)) + (sugerido.pares===2 ? precioParConMarco(0,n.id,leerRecargosMarcos(tenantRes.data?.recargos_marcos)):0))}`).join(" / ") : clp(sugerido.precio)) : "(consultar)",
         lugar: direccionConLugar ?? operativo.nombre,
         // Mismo día y hora que la entrega real: es cuando el equipo ya va
         // a estar ahí de todas formas, así que invitar a pasar en ese
