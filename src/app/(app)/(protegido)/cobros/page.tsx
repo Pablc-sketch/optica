@@ -1,3 +1,4 @@
+import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -19,8 +20,9 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
 
   const [operativosRes, tenantRes] = await Promise.all([
     supabase.from("operativos").select("id, nombre, fecha").order("fecha", { ascending: false }).limit(30),
-    supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+    supabase.from("tenants").select("id, comision_debito_pct, comision_credito_pct").single(),
   ]);
+  const mercadoPago = mercadoPagoConfigurado(tenantRes.data?.id ?? "");
   const pctDebito = Number(tenantRes.data?.comision_debito_pct ?? 0);
   const pctCredito = Number(tenantRes.data?.comision_credito_pct ?? 0);
   const operativos = operativosRes.data ?? [];
@@ -195,7 +197,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
             </table>
           </details>
 
-          {elegido !== "todos" && <RegistrarConsulta operativoId={elegido === "sin" ? null : elegido} />}
+          {elegido !== "todos" && <RegistrarConsulta mercadoPago={mercadoPago} operativoId={elegido === "sin" ? null : elegido} />}
           {elegido !== "sin" && elegido !== "todos" && (
             <Link
               href={`/operativos/${elegido}/cierre`}
@@ -233,7 +235,7 @@ export default async function Cobros({ searchParams }: { searchParams: Promise<{
           ) : (
             <ul className="flex flex-col gap-3">
               {visibles.map((f) => (
-                <TarjetaCobro key={f.ventaId} fila={f} />
+                <TarjetaCobro key={f.ventaId} fila={f} mercadoPago={mercadoPago} />
               ))}
             </ul>
           )}

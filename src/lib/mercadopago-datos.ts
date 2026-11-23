@@ -62,3 +62,27 @@ export type IdentidadAbonoMercadoPago = {
   venta_id: string; paciente_id: string; paciente_nombre: string; paciente_rut: string;
   monto: number; medio_pago: string; fecha_abono: string;
 };
+
+export type CobroMPDisponible = { id: string; fecha: string };
+
+export function esCobroIntegradoMP(pago: Record<string, unknown>) {
+  return typeof pago.external_reference === 'string' && /^lentia-[\da-f-]{36}$/i.test(pago.external_reference);
+}
+
+export function cobrosMPCoincidentes(filas: unknown[], collector: string, medio: string, monto: number, desde: number, hasta: number): CobroMPDisponible[] {
+  const candidatos = new Map<string, CobroMPDisponible>();
+  for (const fila of filas) {
+    if (!fila || typeof fila !== 'object') continue;
+    const raw = fila as Record<string, unknown>;
+    if (esCobroIntegradoMP(raw)) continue;
+    try {
+      const p = normalizarPagoMercadoPago(raw, collector);
+      if (!p || p.estado !== 'approved' || p.monto_devuelto !== 0 || p.medio_pago !== medio || p.monto !== monto
+        || !/^[0-9]{8,30}$/.test(p.pago_id) || Date.parse(p.fecha) < desde || Date.parse(p.fecha) > hasta) continue;
+      candidatos.set(p.pago_id, { id: p.pago_id, fecha: p.fecha });
+    } catch (error) {
+      if (!(error instanceof PagoMPInvalido)) throw error;
+    }
+  }
+  return [...candidatos.values()].sort((a, b) => b.fecha.localeCompare(a.fecha));
+}

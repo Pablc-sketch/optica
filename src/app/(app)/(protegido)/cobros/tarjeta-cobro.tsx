@@ -7,6 +7,7 @@ import { cobrarSaldo, entregarVenta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { formatearMonto, montoANumero } from "@/lib/formato";
 import CobrarPoint from '@/components/cobrar-point';
+import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 
@@ -31,7 +32,7 @@ const MEDIOS = [
 
 // Una persona por tarjeta: cuánto debe, si su lente está listo, y los dos
 // botones que importan en la entrega: cobrar y entregar.
-export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
+export default function TarjetaCobro({ fila, mercadoPago = false }: { fila: FilaCobro; mercadoPago?: boolean }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [monto, setMonto] = useState(formatearMonto(fila.saldo));
@@ -114,7 +115,7 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
             }}
             className="flex-1 rounded-xl bg-emerald-800 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-900"
           >
-            Cobrar
+            {mercadoPago ? "Registrar pago recibido" : "Cobrar"}
           </button>
         )}
         {fila.listos > 0 && (
@@ -156,7 +157,7 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
               <input
                 inputMode="numeric"
                 value={monto}
-                onChange={(e) => setMonto(formatearMonto(e.target.value))}
+                onChange={(e) => { setMonto(formatearMonto(e.target.value)); setNumeroVoucher(""); }}
                 className="w-full rounded-xl border bg-white py-3 pl-7 text-xl font-bold tabular-nums outline-none focus:border-emerald-700"
               />
             </div>
@@ -166,7 +167,7 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
               <button
                 key={m.valor}
                 type="button"
-                onClick={() => setMedio(m.valor)}
+                onClick={() => { setMedio(m.valor); setNumeroVoucher(""); }}
                 className={`rounded-full border px-3.5 py-2 text-sm font-semibold ${
                   medio === m.valor ? "border-emerald-800 bg-emerald-800 text-white" : "border-emerald-800/25 bg-white text-emerald-900"
                 }`}
@@ -175,7 +176,9 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
               </button>
             ))}
           </div>
-          {requiereVoucher(medio) && <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={pendiente} />}
+          {requiereVoucher(medio) && (mercadoPago
+        ? <ElegirCobroMercadoPago key={`${medio}:${montoANumero(monto)}`} medio={medio} monto={montoANumero(monto)} value={numeroVoucher} onChange={setNumeroVoucher} disabled={pendiente} />
+        : <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={pendiente} />)}
           <div className="flex gap-2">
             <button
               type="button"
@@ -183,7 +186,7 @@ export default function TarjetaCobro({ fila }: { fila: FilaCobro }) {
               onClick={cobrar}
               className="flex-1 rounded-xl bg-emerald-800 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-900 disabled:opacity-50"
             >
-              {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : validarVoucher(medio, montoANumero(monto), numeroVoucher).error ? "Completa el voucher" : `Registrar pago de ${clp(montoANumero(monto))}`}
+              {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : validarVoucher(medio, montoANumero(monto), numeroVoucher).error ? mercadoPago ? "Selecciona el cobro aprobado" : "Completa el voucher" : `Registrar pago de ${clp(montoANumero(monto))}`}
             </button>
             <button
               type="button"

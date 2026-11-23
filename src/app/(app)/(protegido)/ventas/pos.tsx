@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { coincidePaciente } from "@/lib/buscar-paciente";
 import { filtrarProductos } from "@/lib/buscar-producto";
+import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 import { encolarVenta } from "@/lib/offline/outbox";
@@ -676,6 +677,7 @@ export default function PuntoDeVenta({
   sugerirOperativoPorReceta = true,
   recargosMarcos = null,
   opticaGlobal = false,
+  mercadoPago = false,
   comisionDebitoPct = 0,
   comisionCreditoPct = 0,
 }: {
@@ -695,6 +697,7 @@ export default function PuntoDeVenta({
   sugerirOperativoPorReceta?: boolean;
   recargosMarcos?: RecargosMarcos | null;
   opticaGlobal?: boolean;
+  mercadoPago?: boolean;
   comisionDebitoPct?: number;
   comisionCreditoPct?: number;
 }) {
@@ -732,6 +735,7 @@ export default function PuntoDeVenta({
   // calzaba con la máquina (revisión 20-10-2026).
   const [medioPago, setMedioPago] = useState("");
   const [numeroVoucher, setNumeroVoucher] = useState("");
+  const [pagoMP, setPagoMP] = useState<{ medio: string; monto: number; id: string } | null>(null);
   const [laboratorioId, setLaboratorioId] = useState<string>(laboratorios[0]?.id ?? "");
   const [guardando, setGuardando] = useState(false);
   // Un id por venta, fijo hasta que se cierra: si se aprieta "Cobrar" dos
@@ -847,6 +851,7 @@ export default function PuntoDeVenta({
   const textoAbono = usaMinimo && abonoMinimo > 0 ? formatearMonto(abonoMinimo) : abono;
   const cobro = montoAbono(textoAbono, total);
   const montoACobrar = cobro.monto;
+  const voucherActual = mercadoPago ? pagoMP?.medio === medioPago && pagoMP.monto === montoACobrar ? pagoMP.id : "" : numeroVoucher;
   const esAbonoParcial = cobro.tipo === "parcial";
   const recetaPacienteId = receta?.id;
   const paciente = pacientes.find((p) => p.id === pacienteId);
@@ -1003,6 +1008,7 @@ export default function PuntoDeVenta({
     setUsaMinimo(false);
     setMedioPago("");
     setNumeroVoucher("");
+    setPagoMP(null);
     setPacienteId(id);
     // Paciente nuevo: fuera cristales, marcos y premium del anterior (sus
     // pares no son de esta persona). Los productos sueltos se mantienen.
@@ -1052,6 +1058,7 @@ export default function PuntoDeVenta({
     setFilasQuitadas({});
     setMedioPago("");
     setNumeroVoucher("");
+    setPagoMP(null);
     setPaso(0);
   }
 
@@ -1103,7 +1110,7 @@ export default function PuntoDeVenta({
       abonoInicial: cobro.monto,
       // Sin cobro ahora (cortesía o sin abono) el medio no se usa.
       medioPago: medioPago || "efectivo",
-      numeroVoucher: requiereVoucher(medioPago, cobro.monto) ? numeroVoucher.trim() : null,
+      numeroVoucher: requiereVoucher(medioPago, cobro.monto) ? voucherActual.trim() : null,
       proveedorLabId: origenCristal === "laboratorio" ? laboratorioId || null : null,
     };
   }
@@ -1116,8 +1123,8 @@ export default function PuntoDeVenta({
 
   async function cobrar() {
     if (guardando || faltaPaciente || paresSinMarco.length || acuerdoInvalido) return;
-    const voucher = validarVoucher(medioPago, cobro.monto, numeroVoucher);
-    if (voucher.error) { setMensaje(voucher.error); return; }
+    const voucher = validarVoucher(medioPago, cobro.monto, voucherActual);
+    if (voucher.error) { setMensaje(mercadoPago ? "Selecciona el cobro aprobado de Mercado Pago." : voucher.error); return; }
     setGuardando(true);
     setMensaje(null);
     const venta = armarVenta();
@@ -1271,7 +1278,7 @@ export default function PuntoDeVenta({
 
           {/* La consulta ($5.000) se cobra aparte, sin armar una venta de
               lentes: queda en el operativo de hoy y cuadra con la máquina. */}
-          <RegistrarConsulta operativoId={operativoId || null} />
+          <RegistrarConsulta operativoId={operativoId || null} mercadoPago={mercadoPago} />
 
           <input
             type="search"
@@ -1738,6 +1745,7 @@ export default function PuntoDeVenta({
                     if (medioPago === m.valor) return;
                     setMedioPago(m.valor);
                     setNumeroVoucher("");
+                    setPagoMP(null);
                     setMensaje(null);
                   }}
                   className={`rounded-xl border-2 px-3 py-3 text-base font-semibold ${
@@ -1755,7 +1763,10 @@ export default function PuntoDeVenta({
               Incluye transferencias a la cuenta de Mercado Pago. Verifica el abono de {clp(montoACobrar)} en la cuenta receptora antes de registrarlo. Sin voucher de máquina.
             </p>
           )}
-          {requiereVoucher(medioPago, montoACobrar) && <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={guardando} />}
+          {requiereVoucher(medioPago, montoACobrar) && (mercadoPago ?
+            <ElegirCobroMercadoPago key={`${medioPago}:${montoACobrar}`} medio={medioPago} monto={montoACobrar} value={voucherActual}
+              onChange={id => setPagoMP({ medio: medioPago, monto: montoACobrar, id })} disabled={guardando} />
+            : <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={guardando} />)}
           {esAbonoParcial && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
               Abona {clp(montoACobrar)} ahora. Saldo al entregar: {clp(total - montoACobrar)}.
@@ -1787,7 +1798,7 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={cobrar}
-              disabled={guardando || carrito.length === 0 || faltaPaciente || paresSinMarco.length > 0 || acuerdoInvalido || (montoACobrar > 0 && !medioPago) || Boolean(validarVoucher(medioPago, montoACobrar, numeroVoucher).error)}
+              disabled={guardando || carrito.length === 0 || faltaPaciente || paresSinMarco.length > 0 || acuerdoInvalido || (montoACobrar > 0 && !medioPago) || Boolean(validarVoucher(medioPago, montoACobrar, voucherActual).error)}
               className={`${boton} flex-1 bg-emerald-800 text-white hover:bg-emerald-900`}
             >
               {guardando
@@ -1796,15 +1807,15 @@ export default function PuntoDeVenta({
                   ? "Falta elegir al paciente"
                   : montoACobrar > 0 && !medioPago
                   ? "Elige cómo paga"
-                  : validarVoucher(medioPago, montoACobrar, numeroVoucher).error
-                    ? "Completa el número de voucher"
+                  : validarVoucher(medioPago, montoACobrar, voucherActual).error
+                    ? mercadoPago ? "Selecciona el cobro aprobado" : "Completa el número de voucher"
                   : montoACobrar === 0
                     ? total > 0
                       ? "Registrar sin abono"
                       : "Registrar cortesía"
                     : medioPago === "transferencia"
                       ? `Registrar transferencia de ${clp(montoACobrar)}`
-                      : `Cobrar ${clp(montoACobrar)}`}
+                      : mercadoPago && requiereVoucher(medioPago, montoACobrar) ? `Registrar pago de ${clp(montoACobrar)}` : `Cobrar ${clp(montoACobrar)}`}
             </button>
           </div>
         </section>

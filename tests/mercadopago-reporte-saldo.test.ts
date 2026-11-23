@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {saldoDeReporteCSV,filasCSV} from '../src/lib/mercadopago-reporte-datos';
+import {saldoDeReporteCSV,filasCSV,proximoReporte} from '../src/lib/mercadopago-reporte-datos';
 const cab='DATE,RECORD_TYPE,NET_CREDIT_AMOUNT,NET_DEBIT_AMOUNT,BALANCE_AMOUNT,CURRENCY';
 const csv=(filas:string[])=>[cab,...filas].join('\r\n');
 describe('saldo respaldado por reporte oficial',()=>{
@@ -35,4 +35,12 @@ describe('saldo respaldado por reporte oficial',()=>{
   expect(filasCSV('A,B\n"a,b","c""d"')).toEqual([['A','B'],['a,b','c"d']]);
   expect(()=>filasCSV('A,B\n"incompleto,1')).toThrow();
  });
+});
+
+
+it('espera al menos 30 minutos ante un límite y respeta una espera mayor del proveedor', () => {
+ const ahora=Date.parse('2026-11-23T21:00:00Z');
+ expect(proximoReporte(null,ahora).toISOString()).toBe('2026-11-23T21:30:00.000Z');
+ expect(proximoReporte('7200',ahora).toISOString()).toBe('2026-11-23T23:00:00.000Z');
+ expect(proximoReporte('Mon, 23 Nov 2026 22:00:00 GMT',ahora).toISOString()).toBe('2026-11-23T22:00:00.000Z');
 });

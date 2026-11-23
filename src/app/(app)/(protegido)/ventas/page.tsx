@@ -1,3 +1,4 @@
+import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
 import { leerRecargosMarcos } from "@/lib/niveles-marco";
 import { esOpticaGlobal } from "@/lib/marca-optica";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
@@ -132,6 +133,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
             promociones: (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })),
             descuentoPct: Number(tenantRes.data?.descuento_laboratorio_pct ?? 0),
           }}
+          mercadoPago={mercadoPagoConfigurado(tenantId)}
           tenantId={tenantId}
           sucursalId={sucursalRes.data?.id ?? null}
           vendedorId={user.id}

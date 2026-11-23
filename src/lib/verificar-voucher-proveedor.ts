@@ -7,7 +7,7 @@ export async function verificarVoucherConProveedor(tenant:string,medio:string,mo
  try{
   const {data,error}=await createAdminClient().from('mercadopago_sync').select('collector_id').eq('tenant_id',tenant).single();
   if(error||!data?.collector_id)return 'No se pudo verificar la cuenta de Mercado Pago. El cobro no se registró.';
-  await verificarPagoMP(tenant,String(data.collector_id),voucher??'',monto,medio);
+  await verificarPagoMP(tenant,String(data.collector_id),voucher??'',monto,medio,true);
   return null;
- }catch{return 'Mercado Pago no confirma este voucher, monto y medio de pago. Revisa la operación original; no vuelvas a cobrar.';}
+ }catch{return 'Mercado Pago no pudo verificar el cobro seleccionado. Revisa el monto y el medio en la app de Mercado Pago. No vuelvas a cobrar.';}
 }

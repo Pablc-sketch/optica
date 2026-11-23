@@ -5,6 +5,8 @@ import { registrarAbono } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
 import CobrarPoint from '@/components/cobrar-point';
+import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
+import { montoANumero } from "@/lib/formato";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher } from "@/lib/voucher";
 
@@ -15,12 +17,16 @@ export default function AbonoForm({
   ventaId,
   saldo,
   compacto,
+  mercadoPago = false,
 }: {
   ventaId: string;
   saldo: number;
   compacto?: boolean;
+  mercadoPago?: boolean;
 }) {
   const [montoInicial, setMontoInicial] = useState<number | undefined>(undefined);
+  const [versionMonto, setVersionMonto] = useState(0);
+  const [monto, setMonto] = useState(0);
   const [medio, setMedio] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -46,10 +52,16 @@ export default function AbonoForm({
           if (!resultado.ok) { setError(resultado.error ?? "No se pudo registrar el abono."); return; }
           operacionId.current = null;
           setMontoInicial(undefined);
+          setMonto(0);
+          setVersionMonto(v => v + 1);
           setMedio("");
           formulario.reset();
         } catch { setError("No se pudo confirmar el abono. Reintenta sin volver a cobrar en la máquina."); }
         finally { setGuardando(false); }
+      }}
+      onChange={evento => {
+        const campo = evento.target;
+        if (campo instanceof HTMLInputElement && campo.name === "monto") setMonto(montoANumero(campo.value));
       }}
       className="flex flex-wrap items-center gap-1.5"
     >
@@ -61,6 +73,7 @@ export default function AbonoForm({
         </span>
       )}
       <CampoMonto
+        key={versionMonto}
         name="monto"
         required
         ariaLabel="Monto del abono en pesos"
@@ -70,7 +83,13 @@ export default function AbonoForm({
       />
       <button
         type="button"
-        onClick={() => setMontoInicial(saldo)}
+        onClick={evento => {
+          const campo = evento.currentTarget.form?.elements.namedItem("monto");
+          if (campo instanceof HTMLInputElement && montoANumero(campo.value) === saldo) return;
+          setMontoInicial(saldo);
+          setMonto(saldo);
+          setVersionMonto(v => v + 1);
+        }}
         className="rounded-lg border border-brand/30 px-2 py-1 text-xs font-semibold text-brand-dark transition hover:bg-brand/10"
       >
         Todo
@@ -90,7 +109,9 @@ export default function AbonoForm({
         <option value="credito">Crédito</option>
         <option value="transferencia">Transferencia</option>
       </select>
-      {requiereVoucher(medio) && <CampoVoucher disabled={guardando} />}
+      {requiereVoucher(medio) && (mercadoPago
+        ? <ElegirCobroMercadoPago key={`${medio}:${monto}`} medio={medio} monto={monto} disabled={guardando} />
+        : <CampoVoucher disabled={guardando} />)}
       {error && <p role="alert" className="w-full text-xs text-red-800">{error}</p>}
       <button disabled={guardando} className="rounded-lg bg-brand/10 px-2 py-1 text-xs font-semibold text-brand-dark transition hover:bg-brand hover:text-white disabled:opacity-50">
         {guardando ? "Guardando…" : compacto ? "Cobrar" : "Abonar"}

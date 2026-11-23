@@ -61,3 +61,9 @@ export function saldoDeReporteCSV(texto:string,monedaReporte:string,hastaMovimie
  if(cierre>BigInt(Number.MAX_SAFE_INTEGER)||cierre< -BigInt(Number.MAX_SAFE_INTEGER))throw new ReporteMPInvalido('IMPORTE_FUERA_RANGO');
  return Number(cierre)/100;
 }
+
+export function proximoReporte(retryAfter?: string | null, ahora = Date.now()) {
+ const segundos = retryAfter && /^\d{1,9}$/.test(retryAfter) ? Number(retryAfter) : null;
+ const solicitado = segundos !== null ? ahora + segundos * 1000 : Date.parse(retryAfter ?? '');
+ return new Date(Math.max(ahora + 30 * 60_000, Number.isFinite(solicitado) ? solicitado : ahora));
+}
