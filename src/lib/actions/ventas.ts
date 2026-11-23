@@ -385,8 +385,8 @@ export async function entregarVenta(ventaId: string): Promise<{ ok: boolean; ent
     .select("id");
   if (error) return { ok: false, error: error.message };
   if (!data || data.length === 0) return { ok: false, error: "No había lentes listos para entregar en esta venta." };
-  revalidatePath("/cobros");
-  revalidatePath("/ot");
+  for (const orden of data) revalidatePath(`/ot/${orden.id}`);
+  revalidatePath("/laboratorio");
   revalidatePath("/avisos");
   revalidarOperacionVenta();
   return { ok: true, entregadas: data.length };

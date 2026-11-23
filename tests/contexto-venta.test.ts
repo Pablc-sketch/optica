@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolverContextoVenta } from "../src/lib/contexto-venta";
+import { resolverContextoVenta, rutaVentaReceta } from "../src/lib/contexto-venta";
 
 describe("resolverContextoVenta (F01)", () => {
   it("A con OP_A y luego B sin operativo, sin jornada fijada: B no arrastra OP_A", () => {
@@ -17,5 +17,12 @@ describe("resolverContextoVenta (F01)", () => {
 
   it("jornada fijada y paciente sin receta: sigue en la jornada", () => {
     expect(resolverContextoVenta("OP_B", undefined).operativoId).toBe("OP_B");
+  });
+});
+
+describe("rutaVentaReceta", () => {
+  it("traspasa el identificador de receta seleccionada y la sede explícita", () => {
+    expect(rutaVentaReceta("receta-anterior", "sede-a")).toBe("/ventas?receta=receta-anterior&op=sede-a");
+    expect(rutaVentaReceta("receta-anterior", "")).toBe("/ventas?receta=receta-anterior");
   });
 });

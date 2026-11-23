@@ -210,6 +210,19 @@ function lineaDeCombo(
 
 type PrefillLente = { tipoLente: string; tratamiento: string; posicion?: "lejos" | "cerca"; sugerido: boolean } | null;
 
+function paresSugeridos(receta?: RecetaResumen): PrefillLente[] {
+  if (!receta) return [null, null];
+  const sugerido = (tipoLente: string | null, tratamiento: string | null, posicion?: "lejos" | "cerca"): PrefillLente =>
+    tipoLente && tratamiento ? { tipoLente, tratamiento, posicion, sugerido: true } : null;
+  const pares = [
+    sugerido(receta.sugerencia_tipo_lente, receta.sugerencia_tratamiento, receta.tipo === "cerca" ? "cerca" : "lejos"),
+    receta.tipo === "lejos_y_cerca" ? sugerido(receta.sugerencia_tipo_lente_cerca, receta.sugerencia_tratamiento_cerca, "cerca") : null,
+    ...(receta.sugerencias_extra ?? []).map(e => sugerido(e.tipo_lente, e.tratamiento, e.posicion ?? undefined)),
+  ].filter(Boolean);
+  while (pares.length < 2) pares.push(null);
+  return pares.slice(0, MAX_PARES);
+}
+
 // Una fila = un par de lentes. Se pueden llenar las dos filas para vender
 // dos pares en la misma venta (ej. uno para lejos y otro para cerca, o
 // cualquier combinación) — cada una queda enlazada a su propia orden de
@@ -663,6 +676,7 @@ export default function PuntoDeVenta({
   recetasPorPaciente,
   operativos,
   operativoInicial,
+  pacienteInicial,
   sugerirOperativoPorReceta = true,
   recargosMarcos = null,
   opticaGlobal = false,
@@ -681,6 +695,7 @@ export default function PuntoDeVenta({
   recetasPorPaciente: Record<string, RecetaResumen | undefined>;
   operativos: { id: string; nombre: string; fecha: string; fecha_entrega_estimada: string | null; costo_marco_unitario?: number }[];
   operativoInicial?: string;
+  pacienteInicial?: string;
   sugerirOperativoPorReceta?: boolean;
   recargosMarcos?: RecargosMarcos | null;
   opticaGlobal?: boolean;
@@ -688,15 +703,18 @@ export default function PuntoDeVenta({
   comisionCreditoPct?: number;
 }) {
   const router = useRouter();
-  const [paso, setPaso] = useState(0);
+  const recetaInicial = pacienteInicial ? recetasPorPaciente[pacienteInicial] : undefined;
+  const operativoRecetaInicial = sugerirOperativoPorReceta && operativos.some(o => o.id === recetaInicial?.operativo_id)
+    ? recetaInicial?.operativo_id : null;
+  const [paso, setPaso] = useState(pacienteInicial ? 1 : 0);
   // Cada paso puede tener distinto largo — sin esto la pantalla se quedaba
   // scrolleada donde iba antes y había que subir a mano para ver el título
   // del paso nuevo (fácil perderse).
   useEffect(() => {
     window.scrollTo({ top: 0 });
   }, [paso]);
-  const [pacienteId, setPacienteId] = useState<string>("");
-  const [operativoId, setOperativoId] = useState<string>(operativoInicial ?? "");
+  const [pacienteId, setPacienteId] = useState<string>(pacienteInicial ?? "");
+  const [operativoId, setOperativoId] = useState<string>(operativoInicial ?? operativoRecetaInicial ?? "");
   // Operativo de la jornada, fijado a mano ("hoy estamos en Educa"). Manda
   // sobre el operativo de la receta y se mantiene entre una venta y otra.
   const [operativoSesion, setOperativoSesion] = useState<string>(operativoInicial ?? "");
@@ -733,7 +751,7 @@ export default function PuntoDeVenta({
   // fila lo usa solo como valor inicial y lo puede cambiar sin problema.
   // Un elemento por par (Par 1, Par 2, …). Parten dos filas; se agregan más
   // con "＋ Agregar otro par".
-  const [iniciales, setIniciales] = useState<PrefillLente[]>([null, null]);
+  const [iniciales, setIniciales] = useState(() => paresSugeridos(recetaInicial));
 
   const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
   // Orden estable Par 1, Par 2, … (por el número de la key),
@@ -987,6 +1005,7 @@ export default function PuntoDeVenta({
       setAbono("");
       setUsaMinimo(false);
       setMedioPago("");
+      setNumeroVoucher("");
     }
     setPacienteId(id);
     // Paciente nuevo: fuera cristales, marcos y premium del anterior (sus
@@ -999,7 +1018,8 @@ export default function PuntoDeVenta({
     // acuerde de elegirlo a mano.
     // F01: el operativo se resuelve de nuevo para CADA paciente; nunca queda
     // pegado el del paciente anterior (ver lib/contexto-venta.ts).
-    const contexto = resolverContextoVenta(operativoSesion || null, id && sugerirOperativoPorReceta ? recetasPorPaciente[id]?.operativo_id : null);
+    const operativoDeReceta = sugerirOperativoPorReceta && operativos.some(o => o.id === r?.operativo_id) ? r?.operativo_id : null;
+    const contexto = resolverContextoVenta(operativoSesion || null, operativoDeReceta);
     setOperativoId(contexto.operativoId ?? "");
     const otro = contexto.recetaDeOtroOperativo ? operativos.find((o) => o.id === contexto.recetaDeOtroOperativo) : null;
     setAvisoContexto(
@@ -1007,25 +1027,7 @@ export default function PuntoDeVenta({
         ? `Su receta es de otro operativo (${otro?.nombre ?? "otro"}). La venta queda en el operativo de hoy.`
         : null
     );
-    if (!r) {
-      setIniciales([null, null]);
-      return;
-    }
-    const sugerido = (tipoLente: string | null, tratamiento: string | null, posicion?: "lejos" | "cerca"): PrefillLente =>
-      tipoLente && tratamiento ? { tipoLente, tratamiento, posicion, sugerido: true } : null;
-    const lista: PrefillLente[] =
-      r.tipo === "lejos_y_cerca"
-        ? [
-            sugerido(r.sugerencia_tipo_lente, r.sugerencia_tratamiento, "lejos"),
-            sugerido(r.sugerencia_tipo_lente_cerca, r.sugerencia_tratamiento_cerca, "cerca"),
-          ]
-        : [sugerido(r.sugerencia_tipo_lente, r.sugerencia_tratamiento, r.tipo === "cerca" ? "cerca" : undefined), null];
-    // Los pares extra que dejó sugeridos el tecnólogo, a continuación (sin
-    // dejar huecos: si el Par 2 venía vacío, el primer extra va ahí).
-    const extras = (r.sugerencias_extra ?? []).map((e) => sugerido(e.tipo_lente, e.tratamiento, e.posicion ?? undefined));
-    const llenos = [...lista.filter(Boolean), ...extras.filter(Boolean)];
-    while (llenos.length < 2) llenos.push(null);
-    setIniciales(llenos.slice(0, MAX_PARES));
+    setIniciales(paresSugeridos(r));
   }
 
   function quitar(key: string) {
@@ -1414,7 +1416,7 @@ export default function PuntoDeVenta({
           {creaOT && (
             <p className={`rounded-lg px-3 py-2 text-xs font-medium ${COLOR_PASO[1].aviso}`}>
               Al cobrar se crea la orden de trabajo
-              {recetaPacienteId ? " con la última receta." : ". Ojo: el paciente no tiene receta cargada."}
+              {recetaPacienteId ? " con la receta cargada." : ". Ojo: el paciente no tiene receta cargada."}
             </p>
           )}
           {faltaPaciente && (

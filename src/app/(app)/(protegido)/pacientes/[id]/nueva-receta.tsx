@@ -1,8 +1,9 @@
 "use client";
 
 import { nivelesMarcoDisponibles, precioParConMarco, type RecargosMarcos } from "@/lib/niveles-marco";
-import { useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useRef, useState, useTransition, type FormEvent } from "react";
+import Link from "next/link";
+import { rutaVentaReceta } from "@/lib/contexto-venta";
 import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
@@ -267,18 +268,6 @@ function SelectorLenteConPrecio({
   );
 }
 
-function BotonGuardar({ texto }: { texto: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      disabled={pending}
-      className="rounded-lg bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
-    >
-      {pending ? "Guardando…" : texto}
-    </button>
-  );
-}
-
 export default function NuevaReceta({
   pacienteId,
   operativos,
@@ -286,6 +275,8 @@ export default function NuevaReceta({
   catalogoLab,
   recargosMarcos = null,
   receta,
+  operativoInicial,
+  puedeVender = false,
 }: {
   pacienteId: string;
   operativos: { id: string; nombre: string }[];
@@ -295,6 +286,8 @@ export default function NuevaReceta({
   // Si viene, el formulario parte precargado y guarda con actualizarReceta
   // en vez de crear una receta nueva.
   receta?: RecetaExistente;
+  operativoInicial?: string;
+  puedeVender?: boolean;
 }) {
   // Qué se le va a hacer al paciente. "Multifocal" es UN lente que sirve
   // para lejos y cerca; "dos pares" son dos lentes monofocales distintos.
@@ -341,24 +334,43 @@ export default function NuevaReceta({
   // toque "Guardar" dos veces, queda una sola. Se crea al enviar (no al
   // dibujar la página) y se renueva al empezar otra receta.
   const idNuevo = useRef("");
-  const [guardada, setGuardada] = useState(false);
+  const [guardada, setGuardada] = useState<{ id: string; operativoId: string } | null>(null);
+  const [guardando, iniciar] = useTransition();
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  const [cambiosGuardados, setCambiosGuardados] = useState(false);
   const [vuelta, setVuelta] = useState(0);
 
-  async function guardar(formData: FormData) {
-    if (receta) {
-      await actualizarReceta(formData);
-      return;
-    }
-    if (!idNuevo.current) idNuevo.current = crypto.randomUUID();
-    formData.set("receta_id_nuevo", idNuevo.current);
-    await crearReceta(formData);
-    setGuardada(true);
+  function guardar(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (guardando) return;
+    const formData = new FormData(evento.currentTarget);
+    setErrorGuardado(null);
+    setCambiosGuardados(false);
+    iniciar(async () => {
+      try {
+        if (receta) {
+          await actualizarReceta(formData);
+          setCambiosGuardados(true);
+          return;
+        }
+        if (!idNuevo.current) idNuevo.current = crypto.randomUUID();
+        formData.set("receta_id_nuevo", idNuevo.current);
+        await crearReceta(formData);
+        setGuardada({ id: idNuevo.current, operativoId: String(formData.get("operativo_id") ?? "") });
+      } catch {
+        setErrorGuardado("No se pudo confirmar el guardado. Tus datos siguen en pantalla. Revisa la conexión y vuelve a intentar.");
+      }
+    });
   }
 
   if (guardada) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-emerald-900 shadow-sm">
         <p className="font-semibold">✓ Receta guardada. Ya aparece en el historial.</p>
+        <div className="flex flex-wrap gap-3 text-sm font-semibold">
+          <Link className="underline" href={`/pacientes/${pacienteId}/receta/${guardada.id}`}>Ver receta</Link>
+          {puedeVender && <Link className="underline" href={rutaVentaReceta(guardada.id, guardada.operativoId)}>Abrir esta receta en caja</Link>}
+        </div>
         <button
           type="button"
           onClick={() => {
@@ -370,7 +382,7 @@ export default function NuevaReceta({
             setAdd(null);
             setModo("lejos");
             setExtras([]);
-            setGuardada(false);
+            setGuardada(null);
             setVuelta((v) => v + 1);
           }}
           className="rounded-lg border border-emerald-700/30 bg-white px-4 py-2 text-sm font-semibold"
@@ -382,7 +394,7 @@ export default function NuevaReceta({
   }
 
   const contenido = (
-    <form key={vuelta} action={guardar} className="mt-4 flex flex-col gap-4">
+    <form key={vuelta} onSubmit={guardar} className="mt-4 flex flex-col gap-4">
       <input type="hidden" name="paciente_id" value={pacienteId} />
       {receta && <input type="hidden" name="receta_id" value={receta.id} />}
 
@@ -595,7 +607,7 @@ export default function NuevaReceta({
           Operativo (si fue en terreno)
           <select
             name="operativo_id"
-            defaultValue={receta?.operativo_id ?? ""}
+            defaultValue={receta?.operativo_id ?? operativoInicial ?? ""}
             className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-2 text-base outline-none focus:border-brand"
           >
             <option value="">— Sin especificar —</option>
@@ -618,8 +630,12 @@ export default function NuevaReceta({
         />
       </label>
 
+      {errorGuardado && <p role="alert" className="rounded-lg bg-red-100 p-3 text-sm font-semibold text-red-900">{errorGuardado}</p>}
+      {cambiosGuardados && <p role="status" className="text-sm font-semibold text-emerald-900">Cambios guardados.</p>}
       <div>
-        <BotonGuardar texto={receta ? "Guardar cambios" : "Guardar receta"} />
+        <button type="submit" disabled={guardando} className="rounded-lg bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-60">
+          {guardando ? "Guardando…" : receta ? "Guardar cambios" : "Guardar receta"}
+        </button>
       </div>
     </form>
   );
@@ -629,7 +645,7 @@ export default function NuevaReceta({
   if (receta) return contenido;
 
   return (
-    <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
+    <details open={operativoInicial ? true : undefined} className="rounded-2xl bg-crema-claro p-4 shadow-sm">
       <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nueva receta</summary>
       {contenido}
     </details>

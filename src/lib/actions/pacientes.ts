@@ -229,6 +229,8 @@ export async function crearReceta(formData: FormData) {
 
   revalidatePath(`/pacientes/${pacienteId}`);
   revalidatePath("/ventas");
+  const operativoId = String(formData.get("operativo_id") ?? "").trim();
+  if (operativoId) revalidatePath(`/operativos/${operativoId}`);
 }
 
 // Corregir una receta ya guardada (el tecnólogo se equivocó al tipear, o el
