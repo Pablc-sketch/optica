@@ -6,12 +6,13 @@ const { tablas, exigirRolPagina, cargarCatalogoParaCotizar, capturarSimulador } 
 }));
 vi.mock('@/lib/autorizacion',()=>({exigirRolPagina}));
 vi.mock('@/lib/catalogo-laboratorio',()=>({cargarCatalogoParaCotizar}));
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('@/components/gastos-panel',()=>({default:()=> <section>LISTADO_GASTOS</section>}));
 vi.mock('@/components/simulador-salida',()=>({default:(props:Record<string,unknown>)=>{capturarSimulador(props);return <section>SIMULADOR</section>;}}));
 import Gastos from '../src/app/(app)/(protegido)/gastos/page';
 function consulta(tabla:string){
   const q:Record<string,unknown>={};
-  for(const metodo of ['select','eq','order','range','single','is'])q[metodo]=()=>q;
+  for(const metodo of ['select','eq','order','range','single','is','limit'])q[metodo]=()=>q;
   q.then=(resolver:(r:unknown)=>unknown)=>Promise.resolve(tablas[tabla]??{data:[],error:null}).then(resolver);
   return q;
 }
@@ -88,6 +89,22 @@ describe('resumen de gastos y navegación de rentabilidad',()=>{
     const html=await pantalla({op:'a'});
     expect(html).toContain('Dinero personal por devolver');expect(html).toContain('$-175.000');expect(html).toContain('Nota de la compra');expect(html).toContain('Marcos y bandejas');expect(html).toContain('Importe aproximado');
     expect(resumen(html)).toContain('80.000');expect(resumen(html)).not.toContain('175.000');
+  });
+  it('centraliza el alta de gastos en su propia vista y conserva la sede',async()=>{
+    const html=await pantalla({op:'a'});
+    expect(html).toContain('href="/gastos?op=a&amp;ver=registrar"');
+    expect(html).not.toContain('/caja?ver=movimientos#nuevo-gasto');
+    const alta=await pantalla({ver:'registrar',op:'a'});
+    expect(alta).toContain('Registrar gasto pagado');
+    expect(alta).toMatch(/<option[^>]*value="a"[^>]*selected/);
+    expect(alta).not.toContain('Resumen de gastos');
+  });
+  it('consulta los pagos anteriores en el historial sin mostrar la lista de pendientes',async()=>{
+    tablas.gastos_globales={data:[{id:'pagado',operativo_id:'a',fecha:'2026-11-01',descripcion:'Pago histórico de ejemplo',monto:20000,categoria:'otro',caja:'digital',confirmado_en:'2026-11-23T16:00:00Z'}],error:null};
+    const html=await pantalla({ver:'historial',op:'a'});
+    expect(html).toContain('Pago histórico de ejemplo');
+    expect(html).toContain('Confirmado');
+    expect(html).not.toContain('Resumen de gastos');
   });
   it('oculta cifras si no puede leer las devoluciones personales',async()=>{
     tablas.caja_movimientos={data:null,error:{message:'fallo de lectura'}};

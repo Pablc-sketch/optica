@@ -25,9 +25,7 @@ import { leerTodas } from "@/lib/leer-todas";
 import { conCostoFidesReal } from "@/lib/costo-fides-real";
 import {
   actualizarComisionMedioPago,
-  crearGastoGlobal,
   crearRetiro,
-  eliminarGastoGlobal,
   eliminarRetiro,
   pagarSueldo,
 } from "@/lib/actions/gastos";
@@ -1002,60 +1000,7 @@ export default async function ReportesPage({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Tarjeta icono="📦" titulo="Total del mes" valor={clp(totalGastosGlobales)} acento />
           <div className="rounded-2xl bg-crema-claro p-3 shadow-sm lg:col-span-2">
-            <form action={crearGastoGlobal} className="grid grid-cols-2 gap-2 sm:grid-cols-6">
-              <input
-                type="date"
-                name="fecha"
-                required
-                defaultValue={hoyEnChile()}
-                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              aria-label="Fecha del movimiento" />
-              <select
-                name="categoria"
-                defaultValue="compra_inventario"
-                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-               aria-label="Categoría del gasto">
-                <option value="compra_inventario">Compra de inventario</option>
-                <option value="arriendo">Arriendo</option>
-                <option value="otro">Otro</option>
-              </select>
-              <input
-                name="descripcion"
-                placeholder="Ej. 24 marcos nuevos"
-                required
-                className="col-span-2 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand sm:col-span-2"
-              aria-label="Descripción del gasto" />
-              <input
-                name="monto"
-                inputMode="numeric"
-                placeholder="78.000"
-                required
-                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-              aria-label="Monto en pesos" />
-              <select
-                name="caja"
-                defaultValue="digital"
-                aria-label="¿De qué caja salió?"
-                className="col-span-1 rounded-lg border-2 border-brand/40 bg-white px-2 py-1.5 text-sm font-medium outline-none focus:border-brand"
-              >
-                <option value="efectivo">💵 Salió del efectivo</option>
-                <option value="digital">🏦 Cuenta bancaria (Mercado Pago)</option>
-                <option value="personal">Dinero personal de Pablo</option>
-              </select>
-              <select
-                name="medio_pago"
-                defaultValue=""
-                className="col-span-1 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-               aria-label="Medio de pago">
-                <option value="">Medio de pago…</option>
-                {Object.entries(MEDIOS_PAGO_LABEL).map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <BotonEnviar className="col-span-2 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark sm:col-span-1">Agregar</BotonEnviar>
-            </form>
+            <Link href="/gastos?ver=historial" className="inline-block py-2 text-sm font-semibold underline">Abrir historial de gastos →</Link>
           </div>
         </div>
         {gastosGlobales.length > 0 && (
@@ -1069,10 +1014,6 @@ export default async function ReportesPage({
                   {g.medio_pago ? ` · ${MEDIOS_PAGO_LABEL[g.medio_pago]}` : ""}
                 </span>
                 <span className="font-semibold">{clp(g.monto)}</span>
-                <form action={eliminarGastoGlobal}>
-                  <input type="hidden" name="id" value={g.id} />
-                  <BotonEnviar className="text-xs font-medium text-red-700 hover:underline">Quitar</BotonEnviar>
-                </form>
               </li>
             ))}
           </ul>

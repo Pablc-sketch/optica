@@ -16,7 +16,7 @@ export default function CajaHistorial({cobros,gastos,retiros,traslados,operativo
   const [limite,setLimite]=useState(25);
   const filas=[
     ...cobros.map(c=>({id:`c-${c.id}`,fecha:/^\d{4}-\d{2}-\d{2}$/.test(c.fecha)?c.fecha:diaEnChile(c.fecha),operativo_id:c.operativo_id,caja:cajaDelPago(c.medio_pago),monto:c.monto,titulo:c.medio_pago==='transferencia'?'Transferencia recibida':c.medio_pago==='debito'||c.medio_pago==='credito'?'Pago con máquina':!c.medio_pago?'Cobro sin medio registrado':'Cobro en efectivo',href:`/ventas/${c.venta_id}`})),
-    ...gastos.map(g=>({...g,id:`g-${g.id}`,monto:-g.monto,titulo:g.descripcion,href:'/pagos/revisar'})),
+    ...gastos.map(g=>({...g,id:`g-${g.id}`,monto:-g.monto,titulo:g.descripcion,href:g.operativo_id?`/gastos?ver=historial&op=${g.operativo_id}`:'/gastos?ver=historial'})),
     ...retiros.map(r=>({...r,id:`r-${r.id}`,monto:-r.monto,titulo:`${r.monto<0?'Aporte':r.persona==='ahorro'?'Ahorro separado':'Pago'} · ${personas[r.persona]??r.persona}`,href:'/pagos/revisar'})),
     ...traslados.flatMap(t=>{const s=salidasDeMovimiento(t);return (['efectivo','digital'] as const).filter(c=>s[c]!==0).map(c=>({id:`t-${t.id}-${c}`,fecha:t.fecha,operativo_id:null,caja:c,monto:-s[c],titulo:t.descripcion,href:'/caja'}));}),
   ].filter(m=>(!operativoId||m.operativo_id===operativoId)&&(caja==='todas'||m.caja===caja)&&(tipo==='todos'||(tipo==='entradas'?m.monto>0:m.monto<0)))
