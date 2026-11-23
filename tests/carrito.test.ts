@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { faltaPacienteParaGuardar, quitarHuerfanos } from "../src/lib/carrito";
+import { calcularPrecioAcordado, faltaPacienteParaGuardar, quitarHuerfanos, repartirDescuento } from "../src/lib/carrito";
 
 const k = (...keys: string[]) => keys.map((key) => ({ key }));
 
@@ -30,5 +30,33 @@ describe("faltaPacienteParaGuardar", () => {
   it("solo accesorios sin paciente: se guarda", () => {
     expect(faltaPacienteParaGuardar([accesorio], "")).toBe(false);
     expect(faltaPacienteParaGuardar([], "")).toBe(false);
+  });
+});
+
+describe("repartirDescuento", () => {
+  it("usa el subtotal de los ítems cobrables y conserva el monto exacto con varias unidades", () => {
+    const items = [
+      { cantidad: 1, precioUnitario: 0 },
+      { cantidad: 1, precioUnitario: 2_000 },
+      { cantidad: 2, precioUnitario: 4_000 },
+    ];
+    expect(repartirDescuento(items, 5_000).map(i => i.descuento)).toEqual([0, 2_000, 3_000]);
+    expect(repartirDescuento(items, 10_000).map(i => i.descuento)).toEqual([0, 2_000, 8_000]);
+    expect(repartirDescuento(items, 0).map(i => i.descuento)).toEqual([0, 0, 0]);
+  });
+});
+
+describe("calcularPrecioAcordado", () => {
+  it("calcula el descuento o el total según lo que la vendedora ingrese", () => {
+    expect(calcularPrecioAcordado(201_990, "total", 160_000)).toEqual({ total: 160_000, descuento: 41_990, invalido: false });
+    expect(calcularPrecioAcordado(201_990, "descuento", 41_990)).toEqual({ total: 160_000, descuento: 41_990, invalido: false });
+    expect(calcularPrecioAcordado(216_990, "total", 160_000)).toEqual({ total: 160_000, descuento: 56_990, invalido: false });
+  });
+
+  it("distingue campo vacío de una cortesía completa y bloquea importes superiores al subtotal", () => {
+    expect(calcularPrecioAcordado(201_990, "total", null)).toEqual({ total: 201_990, descuento: 0, invalido: false });
+    expect(calcularPrecioAcordado(201_990, "total", 0)).toEqual({ total: 0, descuento: 201_990, invalido: false });
+    expect(calcularPrecioAcordado(201_990, "total", 205_000).invalido).toBe(true);
+    expect(calcularPrecioAcordado(201_990, "descuento", 205_000).invalido).toBe(true);
   });
 });

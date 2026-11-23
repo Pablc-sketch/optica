@@ -5,7 +5,7 @@ import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
-import { validarRecargosVenta } from "@/lib/recargos-venta";
+import { precioListaMarco, validarRecargosVenta } from "@/lib/recargos-venta";
 import { esOpticaGlobal } from "@/lib/marca-optica";
 import { nombreNivelMarco } from "@/lib/niveles-marco";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
@@ -104,8 +104,8 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   // vista cuándo se vendieron con descuento o de regalo.
   const idsProductos = [...new Set(items.map((i) => i.productoId).filter((x): x is string => Boolean(x)))];
   const { data: productos } = idsProductos.length
-    ? await supabase.from("productos").select("id, precio_venta, recargo_marco, marca, sku").in("id", idsProductos)
-    : { data: [] as { id: string; precio_venta: number; recargo_marco: number | null; marca: string | null; sku: string | null }[] };
+    ? await supabase.from("productos").select("id, precio_venta, recargo_marco").in("id", idsProductos)
+    : { data: [] as { id: string; precio_venta: number; recargo_marco: number | null }[] };
   if ((productos ?? []).length !== idsProductos.length) return { ok: false, error: "Un producto de la venta no existe." };
 
   // Costo y origen, recalculados acá. Si el catálogo no se puede leer o
@@ -113,6 +113,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   // un mensaje claro (F07).
   const ots: Record<string, unknown>[] = [];
   const preciosLista = new Map<number, number>();
+  const preciosListaMarcos = new Map<number, number>();
   if (cristales.length > 0) {
     let cotizar;
     try {
@@ -126,13 +127,19 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       .eq("id", tenantId)
       .single();
     const usaLineasGlobal = esOpticaGlobal(tenant?.nombre_comercial ?? "") && cotizar.recargosMarcos?.especial !== undefined;
-    const errorRecargo = validarRecargosVenta(
-      normal.venta,
-      cotizar.recargosMarcos,
-      new Map((productos ?? []).flatMap(p => p.recargo_marco == null ? [] : [[p.id, p.recargo_marco] as const])),
-      usaLineasGlobal ? new Map((productos ?? []).map(p => [p.id, p])) : undefined,
+    const especiales = new Map(
+      (usaLineasGlobal ? [] : productos ?? []).flatMap(p => p.recargo_marco == null ? [] : [[p.id, p.recargo_marco] as const]),
     );
+    const errorRecargo = validarRecargosVenta(normal.venta, cotizar.recargosMarcos, especiales);
     if (errorRecargo) return { ok: false, error: errorRecargo };
+    for (const marco of Object.values(marcoDeCupo)) {
+      if (!marco?.nivelMarco) continue;
+      const especial = marco.productoId ? especiales.get(marco.productoId) : undefined;
+      const precioLista = marco.nivelMarco === "premium" && marco.recargoEditado === undefined && especial !== undefined
+        ? especial
+        : precioListaMarco(marco.nivelMarco, cotizar.recargosMarcos, especial);
+      preciosListaMarcos.set(marco.slot, precioLista);
+    }
 
     const calculados: { c: (typeof cristales)[number]; costo: NonNullable<ReturnType<typeof costoRealCristal>> }[] = [];
     for (const c of cristales) {
@@ -221,11 +228,12 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
         descripcion: i.descripcion,
         cantidad: i.cantidad,
         precio_unitario: i.precioUnitario,
+        descuento: i.descuento ?? 0,
         ot_index: i.cristalSlot ? ubicacionDeCupo(i.cristalSlot).orden : null,
         cristal_slot: i.cristalSlot ? ubicacionDeCupo(i.cristalSlot).slot : null,
         precio_lista: i.cristalSlot
           ? (preciosLista.get(i.cristalSlot) ?? null)
-          : i.marcoSlot ? i.precioUnitario : (productos ?? []).find((p) => p.id === i.productoId)?.precio_venta ?? null,
+          : i.marcoSlot ? (preciosListaMarcos.get(i.marcoSlot) ?? null) : (productos ?? []).find((p) => p.id === i.productoId)?.precio_venta ?? null,
       })),
     },
   });

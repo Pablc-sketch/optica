@@ -19,3 +19,20 @@ export function quitarHuerfanos<T extends { key: string }>(lineas: T[]): T[] {
 export function faltaPacienteParaGuardar(lineas: { cristal?: unknown }[], pacienteId: string | null | undefined): boolean {
   return !pacienteId && lineas.some((l) => Boolean(l.cristal));
 }
+
+// Guarda el descuento general repartido en ítems cobrables, hasta agotar
+// el monto acordado, para que la suma y cada comprobante cuadren en pesos.
+export function repartirDescuento<T extends { cantidad: number; precioUnitario: number }>(lineas: T[], monto: number) {
+  let pendiente = monto;
+  return lineas.map((linea) => {
+    const descuento = Math.min(pendiente, linea.cantidad * linea.precioUnitario);
+    pendiente -= descuento;
+    return { ...linea, descuento };
+  });
+}
+
+export function calcularPrecioAcordado(subtotal: number, campo: "descuento" | "total", monto: number | null) {
+  const invalido = monto !== null && (!Number.isSafeInteger(monto) || monto < 0 || monto > subtotal);
+  const descuento = invalido || monto === null ? 0 : campo === "total" ? subtotal - monto : monto;
+  return { descuento, total: subtotal - descuento, invalido };
+}

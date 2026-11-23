@@ -8,11 +8,11 @@ import { filtrarProductos } from "@/lib/buscar-producto";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 import { encolarVenta } from "@/lib/offline/outbox";
-import { nivelesMarcoDisponibles, nivelesMarcoInventarioGlobal, precioParConMarco, recargoMarco, type NivelMarco, type RecargosMarcos } from "@/lib/niveles-marco";
-import { lineaRecargo } from "@/lib/recargos-venta";
+import { nivelesMarcoDisponibles, nivelesMarcoInventarioGlobal, nombreNivelMarco, NIVELES_MARCO, type NivelMarco, type RecargosMarcos } from "@/lib/niveles-marco";
+import { lineaRecargo, precioListaMarco } from "@/lib/recargos-venta";
 import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
-import { faltaPacienteParaGuardar, quitarHuerfanos } from "@/lib/carrito";
+import { calcularPrecioAcordado, faltaPacienteParaGuardar, quitarHuerfanos, repartirDescuento } from "@/lib/carrito";
 import { abonoMinimoDe, tasaDelMedio } from "@/lib/abono-minimo";
 import { montoAbono } from "@/lib/monto-abono";
 import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
@@ -99,6 +99,8 @@ type LineaCarrito = {
   armazonSlot?: number;
   recargoSlot?: number;
   recargoEspecial?: number;
+  recargoEditado?: boolean;
+  esCortesia?: boolean;
   nivelMarco?: NivelMarco;
   // El paciente trajo su propio marco: no hay productoId (no sale de
   // nuestro stock, no se descuenta inventario ni se cuenta el costo de
@@ -115,12 +117,6 @@ type LineaCarrito = {
 // Primero los cristales (donde se define el precio) y recién al final el
 // armazón, cuya línea determina el recargo por par.
 const PASOS = ["Paciente", "Cristales", "Marco", "Pago"] as const;
-
-const DETALLE_LINEA_GLOBAL: Partial<Record<NivelMarco, string>> = {
-  seleccion: "Le Giro, Vespa, Angelo Falconi, Go Scheers, Foose y Dioxy",
-  premium: "Silmo con sobrelente",
-  especial: "Lacrosse LY-2187L · mica deportiva espejada e inserto para graduar",
-};
 
 // Abono mínimo por tipo de lente: números cerrados y fáciles de recordar,
 // no el costo exacto del laboratorio (que varía por tratamiento y rango).
@@ -183,20 +179,16 @@ function lineaDeCombo(
   numero: number,
   combo: CostoCristal,
   factorVenta: number,
-  opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number }
+  opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean; esCortesia?: boolean; precioManual?: number }
 ): LineaCarrito {
-  // El precio final es el que quedó editado en la fila (precioManual) —
-  // puede ser el de lista tal cual, o uno rebajado a mano (descuento en el
-  // momento de la venta). Cortesía sigue forzando $0 aparte, por si acaso.
-  // precioManual siempre debería venir seteado desde FilaLente (que sí
-  // sabe el origen real); "laboratorio" acá es solo el respaldo por si
-  // algún día se llama a esto sin pasar por ahí — nunca cobra de menos.
-  const precio = opciones?.esRegalo ? 0 : (opciones?.precioManual ?? precioDeCombo(combo, factorVenta, "laboratorio"));
+  // El importe y la indicación de cortesía se guardan por separado.
+  const precio = opciones?.precioManual ?? precioDeCombo(combo, factorVenta, "laboratorio");
   return {
     key: `cristal-${numero}`,
-    descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${opciones?.esRegalo ? " (cortesía)" : ""}`,
+    descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${opciones?.esCortesia ? " (cortesía)" : ""}`,
     cantidad: 1,
     precioUnitario: precio,
+    esCortesia: opciones?.esCortesia,
     cristal: {
       tipoLente: combo.tipo_lente,
       rangoReceta: combo.rango_receta,
@@ -235,6 +227,7 @@ function FilaLente({
   receta,
   catalogoLab,
   inicial,
+  guardado,
   onCambio,
 }: {
   numero: number;
@@ -243,21 +236,20 @@ function FilaLente({
   receta: RecetaResumen | undefined;
   catalogoLab: CatalogoLaboratorio;
   inicial: PrefillLente;
+  guardado?: LineaCarrito;
   onCambio: (
-    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number } | null
+    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esCortesia?: boolean; precioManual?: number } | null
   ) => void;
 }) {
-  const [tipoLente, setTipoLente] = useState(inicial?.tipoLente ?? "");
-  const [posicion, setPosicion] = useState<"lejos" | "cerca">(inicial?.posicion === "cerca" ? "cerca" : "lejos");
-  const [tratamiento, setTratamiento] = useState(inicial?.tratamiento ?? "");
-  const [rangoManual, setRangoManual] = useState("");
-  const [sugerido, setSugerido] = useState(inicial?.sugerido ?? false);
-  // Para gente que se lo gana (coordinadores sociales y similares): el
-  // lente se sigue mandando a hacer normal, pero queda a $0.
-  const [esRegalo, setEsRegalo] = useState(false);
+  const [tipoLente, setTipoLente] = useState(guardado?.cristal?.tipoLente ?? inicial?.tipoLente ?? "");
+  const [posicion, setPosicion] = useState<"lejos" | "cerca">((guardado?.cristal?.posicion ?? inicial?.posicion) === "cerca" ? "cerca" : "lejos");
+  const [tratamiento, setTratamiento] = useState(guardado?.cristal?.tratamiento ?? inicial?.tratamiento ?? "");
+  const [rangoManual, setRangoManual] = useState(guardado?.cristal?.rangoReceta ?? "");
+  const [sugerido, setSugerido] = useState(guardado ? (guardado.cristal?.sugerido ?? false) : (inicial?.sugerido ?? false));
+  const [esCortesia, setEsCortesia] = useState(guardado?.esCortesia ?? false);
   // El precio parte igual al de lista, pero se puede rebajar a mano en el
   // momento (descuento puntual a un paciente) sin tener que ir a /precios.
-  const [precioTexto, setPrecioTexto] = useState("");
+  const [precioTexto, setPrecioTexto] = useState(formatearMonto(guardado?.precioUnitario));
 
   const tiposLente = useMemo(() => [...new Set(costos.map((c) => c.tipo_lente))], [costos]);
   const posicionParaRango = tipoLente === "Monofocal" ? posicion : "lejos";
@@ -297,11 +289,11 @@ function FilaLente({
   // Solo al montar: si venía precargada por la sugerencia del tecnólogo,
   // se suma sola al carrito apenas aparece la fila.
   useEffect(() => {
-    if (combo) {
+    if (combo && !guardado) {
       const precioInicial = precioDeCombo(combo, factorVenta, origenReal(combo));
       // eslint-disable-next-line react-hooks/set-state-in-effect -- precarga el precio inicial de la fila solo al montar, no estado derivado de un evento
       setPrecioTexto(formatearMonto(precioInicial));
-      onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo, precioManual: precioInicial });
+      onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esCortesia, precioManual: precioInicial });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -314,17 +306,21 @@ function FilaLente({
       onCambio(null);
       return;
     }
-    const precioNuevo = esRegalo ? 0 : precioDeCombo(elegido, factorVenta, origenReal(elegido));
+    const precioNuevo = precioDeCombo(elegido, factorVenta, origenReal(elegido));
     setPrecioTexto(formatearMonto(precioNuevo));
-    onCambio({ combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined, esRegalo, precioManual: precioNuevo });
+    onCambio({ combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined, esCortesia, precioManual: precioNuevo });
   }
 
-  function alternarRegalo(valor: boolean) {
-    setEsRegalo(valor);
+  function alternarCortesia(valor: boolean) {
+    setEsCortesia(valor);
     if (!combo) return;
-    const precioNuevo = valor ? 0 : precioDeCombo(combo, factorVenta, origenReal(combo));
-    setPrecioTexto(formatearMonto(precioNuevo));
-    onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esRegalo: valor, precioManual: precioNuevo });
+    onCambio({
+      combo,
+      posicion: tipoLente === "Monofocal" ? posicion : undefined,
+      sugerido,
+      esCortesia: valor,
+      precioManual: montoANumero(precioTexto),
+    });
   }
 
   // Descuento puntual al paciente: se cambia el número acá mismo, sin tener
@@ -337,7 +333,7 @@ function FilaLente({
         combo,
         posicion: tipoLente === "Monofocal" ? posicion : undefined,
         sugerido,
-        esRegalo,
+        esCortesia,
         precioManual: montoANumero(formateado),
       });
     }
@@ -451,22 +447,22 @@ function FilaLente({
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-tinta-suave/25 bg-white px-3 py-2 text-xs font-medium has-checked:border-brand has-checked:bg-brand/5">
             <input
               type="checkbox"
-              checked={esRegalo}
-              onChange={(e) => alternarRegalo(e.target.checked)}
+              checked={esCortesia}
+              onChange={(e) => alternarCortesia(e.target.checked)}
               className="accent-brand"
             />
-            🎁 Cortesía: se hace igual, pero queda en $0
+            Lente de cortesía
           </label>
         )}
 
-        {combo && esRegalo && (
-          <p className="rounded-lg bg-violet-800 px-3 py-2.5 text-center text-base font-bold text-white">$0 (cortesía)</p>
+        {combo && esCortesia && (
+          <p className="text-xs text-violet-900">Puedes cobrar una mejora. Para una cortesía completa, escribe $0 en Total acordado al llegar a Pago.</p>
         )}
 
-        {combo && !esRegalo && (
+        {combo && (
           <div className="flex flex-col gap-1">
             <label className="flex flex-col gap-1 text-xs font-medium text-violet-900">
-              Precio Esencial (puedes aplicar descuento)
+              Precio de los cristales
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/80">$</span>
                 <input
@@ -726,6 +722,7 @@ export default function PuntoDeVenta({
   // tienen cristal (lib/carrito.ts).
   const carrito = useMemo(() => quitarHuerfanos(carritoTodo), [carritoTodo]);
   const [abono, setAbono] = useState<string>("");
+  const [acuerdo, setAcuerdo] = useState<{ campo: "descuento" | "total"; texto: string }>({ campo: "descuento", texto: "" });
   // "Abono mínimo" apretado: el monto sigue al mínimo vigente (cambia con
   // el medio de pago, por la comisión) hasta que se escriba otro monto o se
   // elija otro botón.
@@ -752,8 +749,13 @@ export default function PuntoDeVenta({
   // Un elemento por par (Par 1, Par 2, …). Parten dos filas; se agregan más
   // con "＋ Agregar otro par".
   const [iniciales, setIniciales] = useState(() => paresSugeridos(recetaInicial));
+  const [filasQuitadas, setFilasQuitadas] = useState<Partial<Record<number, number>>>({});
 
-  const total = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
+  const subtotal = carrito.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);
+  const { descuento, total, invalido: acuerdoInvalido } = calcularPrecioAcordado(
+    subtotal, acuerdo.campo, acuerdo.texto === "" ? null : montoANumero(acuerdo.texto),
+  );
+  const lineasCobro = repartirDescuento(carrito, descuento);
   // Orden estable Par 1, Par 2, … (por el número de la key),
   // independiente del orden en que se hayan ido completando las filas.
   const lineasCristal = carrito.filter((l) => l.cristal).sort((a, b) => numeroDePar(a.key) - numeroDePar(b.key));
@@ -813,11 +815,6 @@ export default function PuntoDeVenta({
     .map((l) => numeroDePar(l.key))
     .filter((n) => !carrito.some((c) => c.key === `armazon-${n}`));
   const usaLineasGlobal = opticaGlobal && recargosMarcos?.especial !== undefined;
-  const paresSinLineaMarco = usaLineasGlobal ? lineasArmazon.filter((marco) => {
-    const producto = productos.find((p) => p.id === marco.productoId);
-    return producto && !nivelesMarcoInventarioGlobal(producto).includes("esencial")
-      && !carrito.some((linea) => linea.recargoSlot === marco.armazonSlot);
-  }).map((marco) => marco.armazonSlot) : [];
   // Abono mínimo: cubre mandar a hacer estos cristales al laboratorio, así
   // no hay que poner plata propia mientras se espera el pago del saldo.
   // Un lente de cortesía (precio $0) no tiene nada que abonar — no tiene
@@ -831,9 +828,9 @@ export default function PuntoDeVenta({
       const costoNetoMarco = usaLineasGlobal && marco?.productoId
         ? productos.find((producto) => producto.id === marco.productoId)?.costo ?? 0
         : 0;
-      const recargo = carrito.find((linea) => linea.recargoSlot === numero)?.precioUnitario ?? 0;
+      const cargosDelPar = lineasCobro.filter(linea => linea.key === l.key || linea.recargoSlot === numero);
       return {
-        precio: l.precioUnitario + recargo,
+        precio: cargosDelPar.reduce((monto, linea) => monto + linea.precioUnitario - linea.descuento, 0),
         costoCristal: costoRealDeLinea(l)?.costo ?? null,
         costoMarco: marco?.marcoPropio ? 0 : costoNetoMarco > 0 ? Math.round(costoNetoMarco * IVA) : undefined,
         minimoFijo: ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0,
@@ -875,23 +872,13 @@ export default function PuntoDeVenta({
   function elegirArmazon(numero: number, producto: Producto | null) {
     const key = `armazon-${numero}`;
     setCarrito((prev) => {
-      const keyRecargo = `premium-${numero}`;
-      const anteriorEspecial = prev.some(l => l.key === key && l.recargoEspecial != null);
-      const especial = usaLineasGlobal ? null : producto?.recargo_marco;
-      const sinEsteSlot = prev.filter(l => l.key !== key && (!(usaLineasGlobal || anteriorEspecial || especial != null) || l.key !== keyRecargo));
-      if (!producto) return sinEsteSlot;
-      let nivel: NivelMarco | undefined;
-      if (usaLineasGlobal) {
-        const permitidos = nivelesMarcoInventarioGlobal(producto);
-        const nivelElegido = prev.find(l => l.key === keyRecargo)?.nivelMarco;
-        if (nivelElegido && permitidos.includes(nivelElegido)) nivel = nivelElegido;
-        else if (permitidos.length === 1) nivel = permitidos[0];
-      } else if (especial != null) {
-        nivel = "premium";
-      }
-      const cortesia = prev.find(l => l.key === `cristal-${numero}`)?.precioUnitario === 0;
+      const sinMarco = prev.filter(l => l.armazonSlot !== numero && l.recargoSlot !== numero);
+      if (!producto) return sinMarco;
+      const especial = usaLineasGlobal ? undefined : producto.recargo_marco;
+      const cotizado = prev.find(l => l.recargoSlot === numero);
+      const nivel = cotizado?.nivelMarco ?? (especial != null ? "especial" : usaLineasGlobal ? nivelesMarcoInventarioGlobal(producto)[0] : "esencial");
       return [
-        ...sinEsteSlot,
+        ...sinMarco,
         {
           key,
           productoId: producto.id,
@@ -901,7 +888,11 @@ export default function PuntoDeVenta({
           armazonSlot: numero,
           recargoEspecial: especial ?? undefined,
         },
-        ...(nivel ? [lineaRecargo(numero, nivel, recargosMarcos, cortesia, especial)] : []),
+        ...(cotizado?.recargoEditado
+          ? [cotizado]
+          : nivel === "esencial" ? [] : [
+              { ...lineaRecargo(numero, nivel, recargosMarcos, false, nivel === "especial" ? especial : undefined), recargoEditado: false },
+            ]),
       ];
     });
   }
@@ -925,23 +916,26 @@ export default function PuntoDeVenta({
     ]);
   }
 
-  function cambiarNivelMarco(numero:number,nivel:NivelMarco) {
-    setCarrito(prev=>{
-      if(prev.find(l=>l.key===`armazon-${numero}`)?.recargoEspecial!=null)return prev;
-      const sin=prev.filter(l=>l.key!==`premium-${numero}`);
-      if(nivel==='esencial'||prev.find(l=>l.key===`armazon-${numero}`)?.marcoPropio)return sin;
-      return [...sin,lineaRecargo(numero,nivel,recargosMarcos,prev.find(l=>l.key===`cristal-${numero}`)?.precioUnitario===0)];
+  function fijarPrecioMarco(numero: number, nivel: NivelMarco, precioManual?: number) {
+    setCarrito(prev => {
+      const marco = prev.find(l => l.armazonSlot === numero);
+      if (marco?.marcoPropio) return prev;
+      const sinRecargo = prev.filter(l => l.recargoSlot !== numero);
+      if (nivel === "esencial" && precioManual === undefined) return sinRecargo;
+      const lista = lineaRecargo(numero, nivel, recargosMarcos, false, nivel === "especial" ? marco?.recargoEspecial : undefined);
+      return [...sinRecargo, {
+        ...lista,
+        precioUnitario: precioManual ?? lista.precioUnitario,
+        recargoEditado: precioManual !== undefined,
+      }];
     });
   }
 
-  // Marco descrito en palabras: no sale del inventario (no descuenta stock),
-  // pero queda en la orden y en el pedido de cristales.
   function describirMarco(numero: number, descripcion: string) {
-    const key = `armazon-${numero}`;
     setCarrito((prev) => [
-      ...prev.filter(l => l.key !== key && (l.key !== `premium-${numero}` || !prev.some(m => m.key === key && m.recargoEspecial != null))),
+      ...prev.filter(l => l.armazonSlot !== numero),
       {
-        key,
+        key: `armazon-${numero}`,
         descripcion: `Marco ${descripcion}`,
         cantidad: 1,
         precioUnitario: 0,
@@ -949,6 +943,10 @@ export default function PuntoDeVenta({
         marcoDescrito: descripcion,
       },
     ]);
+  }
+
+  function editarPrecioProducto(key: string, precio: number) {
+    setCarrito(prev => prev.map(l => l.key === key ? { ...l, precioUnitario: precio } : l));
   }
 
   function agregarProducto(p: Producto) {
@@ -975,23 +973,21 @@ export default function PuntoDeVenta({
 
   function manejarCambioLente(
     numero: number,
-    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esRegalo?: boolean; precioManual?: number } | null
+    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esCortesia?: boolean; precioManual?: number } | null
   ) {
     const key = `cristal-${numero}`;
     setCarrito((prev) => {
       const sinEstaFila = prev.filter((l) => l.key !== key);
-      if (!datos) return sinEstaFila.filter(l=>l.key!==`premium-${numero}`&&l.key!==`armazon-${numero}`);
-      const nivel=prev.find(l=>l.key===`premium-${numero}`)?.nivelMarco;
-      const actualizados=nivel?sinEstaFila.map(l=>l.key===`premium-${numero}`?lineaRecargo(numero,nivel,recargosMarcos,!!datos.esRegalo||datos.precioManual===0,prev.find(m=>m.key===`armazon-${numero}`)?.recargoEspecial):l):sinEstaFila;
-      return [
-        ...actualizados,
-        lineaDeCombo(numero, datos.combo, factorVenta, {
-          posicion: datos.posicion,
-          sugerido: datos.sugerido,
-          esRegalo: datos.esRegalo,
-          precioManual: datos.precioManual,
-        }),
-      ];
+      if (!datos) return sinEstaFila.filter(l => l.recargoSlot !== numero && l.armazonSlot !== numero);
+      const cristal = lineaDeCombo(numero, datos.combo, factorVenta, {
+        posicion: datos.posicion,
+        sugerido: datos.sugerido,
+        esCortesia: datos.esCortesia,
+        precioManual: datos.precioManual,
+      });
+      return prev.some(l => l.key === key)
+        ? prev.map(l => l.key === key ? cristal : l)
+        : [...prev, cristal];
     });
   }
 
@@ -999,14 +995,14 @@ export default function PuntoDeVenta({
   // del tecnólogo, cada fila la trae precargada sola — la vendedora solo
   // confirma o cambia algo si el paciente decidió otra cosa.
   function elegirPaciente(id: string) {
+    if (id === pacienteId) return;
     // Otro comprador: el abono y el medio de pago del anterior no se
     // arrastran (revisión Codex 20-10-2026).
-    if (id !== pacienteId) {
-      setAbono("");
-      setUsaMinimo(false);
-      setMedioPago("");
-      setNumeroVoucher("");
-    }
+    setAbono("");
+    setAcuerdo({ campo: "descuento", texto: "" });
+    setUsaMinimo(false);
+    setMedioPago("");
+    setNumeroVoucher("");
     setPacienteId(id);
     // Paciente nuevo: fuera cristales, marcos y premium del anterior (sus
     // pares no son de esta persona). Los productos sueltos se mantienen.
@@ -1031,6 +1027,13 @@ export default function PuntoDeVenta({
   }
 
   function quitar(key: string) {
+    if (key.startsWith("cristal-")) {
+      const numero = numeroDePar(key);
+      setIniciales(prev => prev.map((inicial, i) => i === numero - 1 ? null : inicial));
+      manejarCambioLente(numero, null);
+      setFilasQuitadas(prev => ({ ...prev, [numero]: (prev[numero] ?? 0) + 1 }));
+      return;
+    }
     setCarrito((prev) => prev.filter((l) => l.key !== key));
   }
 
@@ -1038,6 +1041,7 @@ export default function PuntoDeVenta({
     setVentaId(crypto.randomUUID());
     setCarrito([]);
     setAbono("");
+    setAcuerdo({ campo: "descuento", texto: "" });
     setUsaMinimo(false);
     setPacienteId("");
     setOperativoId(operativoSesion);
@@ -1045,6 +1049,7 @@ export default function PuntoDeVenta({
     setBuscaPaciente("");
     setBuscaProducto("");
     setIniciales([null, null]);
+    setFilasQuitadas({});
     setMedioPago("");
     setNumeroVoucher("");
     setPaso(0);
@@ -1065,11 +1070,12 @@ export default function PuntoDeVenta({
       operativoId: operativoId || null,
       recetaId: recetaPacienteId ?? null,
       sucursalId,
-      items: carrito.map((l) => ({
+      items: lineasCobro.map((l) => ({
         productoId: l.productoId ?? null,
         descripcion: l.descripcion,
         cantidad: l.cantidad,
         precioUnitario: l.precioUnitario,
+        descuento: l.descuento,
         // El cupo va explícito, no por posición en una lista (F01).
         cristalSlot: l.cristal ? numeroDePar(l.key) : null,
         marcoSlot: l.recargoSlot ?? null,
@@ -1083,13 +1089,17 @@ export default function PuntoDeVenta({
             posicion: l.cristal!.posicion ?? null,
           }))
         : [],
-      armazones: lineasArmazon.map((l) => ({
-        slot: l.armazonSlot,
-        productoId: l.productoId ?? null,
-        marcoPropio: l.marcoPropio ?? false,
-        descripcion: l.marcoDescrito ?? null,
-        nivelMarco: l.marcoPropio ? "esencial" : (carrito.find(c=>c.key===`premium-${l.armazonSlot}`)?.nivelMarco ?? "esencial"),
-      })),
+      armazones: lineasArmazon.map((l) => {
+        const cobroMarco = carrito.find(c => c.recargoSlot === l.armazonSlot);
+        return {
+          slot: l.armazonSlot,
+          productoId: l.productoId ?? null,
+          marcoPropio: l.marcoPropio ?? false,
+          descripcion: l.marcoDescrito ?? null,
+          nivelMarco: cobroMarco?.nivelMarco ?? "esencial",
+          recargoEditado: cobroMarco?.recargoEditado ?? false,
+        };
+      }),
       abonoInicial: cobro.monto,
       // Sin cobro ahora (cortesía o sin abono) el medio no se usa.
       medioPago: medioPago || "efectivo",
@@ -1105,7 +1115,7 @@ export default function PuntoDeVenta({
   }
 
   async function cobrar() {
-    if (guardando || faltaPaciente || paresSinMarco.length || paresSinLineaMarco.length) return;
+    if (guardando || faltaPaciente || paresSinMarco.length || acuerdoInvalido) return;
     const voucher = validarVoucher(medioPago, cobro.monto, numeroVoucher);
     if (voucher.error) { setMensaje(voucher.error); return; }
     setGuardando(true);
@@ -1335,13 +1345,14 @@ export default function PuntoDeVenta({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {iniciales.map((inicial, i) => (
               <FilaLente
-                key={`par${i + 1}-${pacienteId}`}
+                key={`par${i + 1}-${pacienteId}-${filasQuitadas[i + 1] ?? 0}`}
                 numero={i + 1}
                 costos={costos}
                 factorVenta={factorVenta}
                 receta={receta}
                 catalogoLab={catalogoLab}
                 inicial={inicial}
+                guardado={lineasCristal.find(l => numeroDePar(l.key) === i + 1)}
                 onCambio={(d) => manejarCambioLente(i + 1, d)}
               />
             ))}
@@ -1411,7 +1422,7 @@ export default function PuntoDeVenta({
             </label>
           )}
 
-          <Resumen carrito={carrito} total={total} quitar={quitar} />
+          <Resumen carrito={carrito} total={total} descuento={descuento} quitar={quitar} editarPrecioProducto={editarPrecioProducto} />
 
           {creaOT && (
             <p className={`rounded-lg px-3 py-2 text-xs font-medium ${COLOR_PASO[1].aviso}`}>
@@ -1470,27 +1481,17 @@ export default function PuntoDeVenta({
                     ? `Par ${numero}${l.cristal?.posicion ? ` (${l.cristal.posicion})` : ""}`
                     : "tu lente";
                 const marco = carrito.find((c) => c.key === `armazon-${numero}`);
-                const producto = usaLineasGlobal ? productos.find((p) => p.id === marco?.productoId) : undefined;
-                const permitidos = producto ? nivelesMarcoInventarioGlobal(producto) : null;
-                const nivelActual = carrito.find(c => c.recargoSlot === numero)?.nivelMarco
-                  ?? (permitidos && !permitidos.includes("esencial") ? null : "esencial");
-                const categorias = nivelesMarcoDisponibles(recargosMarcos).filter(n => !permitidos || permitidos.includes(n.id));
+                const cobroMarco = carrito.find(c => c.recargoSlot === numero);
+                const nivelActual = cobroMarco?.nivelMarco ?? "esencial";
+                const tarifasHabilitadas = nivelesMarcoDisponibles(recargosMarcos);
+                const categorias = marco?.recargoEspecial == null ? tarifasHabilitadas : NIVELES_MARCO.filter(
+                  n => n.id === "especial" || tarifasHabilitadas.includes(n),
+                );
+                const precioMarco = cobroMarco?.precioUnitario ?? 0;
+                const precioLista = precioListaMarco(nivelActual, recargosMarcos, marco?.recargoEspecial);
+                const precioPorCategoria = (nivel: NivelMarco) => precioListaMarco(nivel, recargosMarcos, marco?.recargoEspecial);
                 return (
                   <div key={`armazon-slot-${numero}`} className="flex flex-col gap-2">
-                    {!marco?.marcoPropio && marco?.recargoEspecial == null && (
-                      <fieldset className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                        <legend className="mb-2 text-sm font-bold">Categoría de marco · Par {numero}</legend>
-                        {categorias.map((n) => (
-                          <button key={n.id} type="button" onClick={() => cambiarNivelMarco(numero, n.id)} aria-pressed={nivelActual === n.id} className={`rounded-2xl border-2 px-3 py-3 text-left ${nivelActual === n.id ? "border-tinta bg-tinta text-white" : "border-tinta/20 bg-white text-tinta"}`}>
-                            <span className="block font-bold">{n.nombre}</span>
-                            <span className="block text-xs">{n.id === "esencial" ? "Marco incluido" : `Marco +${clp(recargoMarco(n.id, recargosMarcos))}`}</span>
-                            <span className="mt-1 block font-bold tabular-nums">{clp(l.precioUnitario === 0 ? 0 : precioParConMarco(l.precioUnitario, n.id, recargosMarcos))} el par</span>
-                            {usaLineasGlobal && DETALLE_LINEA_GLOBAL[n.id] && <span className="mt-1 block text-xs">{DETALLE_LINEA_GLOBAL[n.id]}</span>}
-                          </button>
-                        ))}
-                      </fieldset>
-                    )}
-                    {marco?.recargoEspecial != null && <p className="rounded-xl bg-amber-50 p-3 font-semibold">Colección Especial · {clp(l.precioUnitario === 0 ? 0 : l.precioUnitario + marco.recargoEspecial)} el par</p>}
                     <SelectorArmazon
                       etiqueta={etiqueta}
                       productos={productos}
@@ -1499,6 +1500,49 @@ export default function PuntoDeVenta({
                       onMarcarPropio={() => marcarMarcoPropio(numero)}
                       onDescribir={(d) => describirMarco(numero, d)}
                     />
+                    {!marco?.marcoPropio && (
+                      <fieldset className="flex flex-col gap-2 rounded-xl border border-amber-200 p-3">
+                        <legend className="px-1 text-sm font-bold">Categoría y precio del marco · Par {numero}</legend>
+                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                          {categorias.map((n) => (
+                            <button
+                              key={n.id}
+                              type="button"
+                              onClick={() => nivelActual !== n.id && fijarPrecioMarco(numero, n.id)}
+                              aria-pressed={nivelActual === n.id}
+                              className={`rounded-xl border-2 px-3 py-2 text-left ${nivelActual === n.id ? "border-amber-900 bg-amber-900 text-white" : "border-tinta/20 bg-white text-tinta"}`}
+                            >
+                              <span className="block font-bold">{n.nombre}</span>
+                              <span className="block text-xs">{n.id === "esencial" ? "Marco incluido" : `Marco +${clp(precioPorCategoria(n.id))}`}</span>
+                              <span className="block text-xs">{clp(l.precioUnitario + precioPorCategoria(n.id))} el par</span>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <label className="flex min-w-40 flex-1 flex-col gap-1 text-sm font-semibold">
+                            Precio del marco (CLP)
+                            <input
+                              inputMode="numeric"
+                              maxLength={12}
+                              placeholder="0"
+                              value={precioMarco === 0 && cobroMarco?.recargoEditado ? "" : formatearMonto(precioMarco)}
+                              onChange={e => fijarPrecioMarco(numero, nivelActual, montoANumero(e.target.value))}
+                              className={select}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => fijarPrecioMarco(numero, nivelActual)}
+                            className="rounded-lg border border-amber-800/30 bg-white px-3 py-2.5 text-sm font-semibold text-amber-900"
+                          >
+                            Aplicar precio de lista
+                          </button>
+                        </div>
+                        <p className="text-sm text-tinta-suave">
+                          Lista {nombreNivelMarco(nivelActual)} {clp(precioLista)} · Par <strong>{clp(l.precioUnitario + precioMarco)}</strong>
+                        </p>
+                      </fieldset>
+                    )}
                   </div>
                 );
               })}
@@ -1547,7 +1591,7 @@ export default function PuntoDeVenta({
             )}
           </ul>
 
-          <Resumen carrito={carrito} total={total} quitar={quitar} />
+          <Resumen carrito={carrito} total={total} descuento={descuento} quitar={quitar} editarPrecioProducto={editarPrecioProducto} />
 
           <div className="flex gap-2">
             <button
@@ -1560,14 +1604,12 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(3)}
-              disabled={paresSinMarco.length > 0 || paresSinLineaMarco.length > 0}
+              disabled={paresSinMarco.length > 0}
               className={`${boton} flex-1 bg-amber-700 text-white hover:bg-amber-800`}
             >
               {paresSinMarco.length > 0
                 ? `Falta el marco del par ${paresSinMarco.join(", ")}`
-                : paresSinLineaMarco.length > 0
-                  ? `Elige la categoría de marco del par ${paresSinLineaMarco.join(", ")}`
-                  : "Continuar al pago"}
+                : "Continuar al pago"}
             </button>
           </div>
         </section>
@@ -1583,7 +1625,41 @@ export default function PuntoDeVenta({
             </p>
           </div>
 
-          <Resumen carrito={carrito} total={total} quitar={quitar} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Total acordado (CLP)
+              <input
+                inputMode="numeric"
+                maxLength={12}
+                value={acuerdo.campo === "total" ? acuerdo.texto : formatearMonto(total)}
+                onChange={e => setAcuerdo({ campo: "total", texto: formatearMonto(e.target.value) })}
+                placeholder={formatearMonto(subtotal)}
+                aria-invalid={acuerdoInvalido && acuerdo.campo === "total"}
+                aria-describedby={acuerdoInvalido ? "acuerdo-invalido" : undefined}
+                className={select}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Descuento de la venta (CLP)
+              <input
+                inputMode="numeric"
+                maxLength={12}
+                value={acuerdo.campo === "descuento" ? acuerdo.texto : formatearMonto(descuento)}
+                onChange={e => setAcuerdo({ campo: "descuento", texto: formatearMonto(e.target.value) })}
+                placeholder="0"
+                aria-invalid={acuerdoInvalido && acuerdo.campo === "descuento"}
+                aria-describedby={acuerdoInvalido ? "acuerdo-invalido" : undefined}
+                className={select}
+              />
+            </label>
+          </div>
+          {acuerdoInvalido && (
+            <p id="acuerdo-invalido" role="alert" className="text-sm font-semibold text-red-700">
+              {acuerdo.campo === "total" ? "El total acordado" : "El descuento"} supera el subtotal de {clp(subtotal)}.
+            </p>
+          )}
+
+          <Resumen carrito={carrito} total={total} descuento={descuento} quitar={quitar} editarPrecioProducto={editarPrecioProducto} />
 
           <label className="flex flex-col gap-1 text-sm font-medium">
             ¿Cuánto paga ahora?
@@ -1644,20 +1720,26 @@ export default function PuntoDeVenta({
           )}
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">¿Cómo paga? (mira la máquina)</span>
+            <span className="text-sm font-medium">Medio de pago</span>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {(
                 [
-                  { valor: "debito", titulo: "Débito" },
-                  { valor: "credito", titulo: "Crédito" },
+                  { valor: "debito", titulo: "Débito en máquina" },
+                  { valor: "credito", titulo: "Crédito en máquina" },
                   { valor: "efectivo", titulo: "Efectivo" },
-                  { valor: "transferencia", titulo: "Transferencia" },
+                  { valor: "transferencia", titulo: "Transferencia bancaria" },
                 ] as const
               ).map((m) => (
                 <button
                   key={m.valor}
                   type="button"
-                  onClick={() => setMedioPago(m.valor)}
+                  aria-pressed={medioPago === m.valor}
+                  onClick={() => {
+                    if (medioPago === m.valor) return;
+                    setMedioPago(m.valor);
+                    setNumeroVoucher("");
+                    setMensaje(null);
+                  }}
                   className={`rounded-xl border-2 px-3 py-3 text-base font-semibold ${
                     medioPago === m.valor ? "border-emerald-800 bg-emerald-800 text-white" : "border-tinta/15 bg-white"
                   }`}
@@ -1668,6 +1750,11 @@ export default function PuntoDeVenta({
             </div>
           </div>
 
+          {medioPago === "transferencia" && montoACobrar > 0 && (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              Incluye transferencias a la cuenta de Mercado Pago. Verifica el abono de {clp(montoACobrar)} en la cuenta receptora antes de registrarlo. Sin voucher de máquina.
+            </p>
+          )}
           {requiereVoucher(medioPago, montoACobrar) && <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={guardando} />}
           {esAbonoParcial && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
@@ -1700,7 +1787,7 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={cobrar}
-              disabled={guardando || carrito.length === 0 || faltaPaciente || (montoACobrar > 0 && !medioPago) || Boolean(validarVoucher(medioPago, montoACobrar, numeroVoucher).error)}
+              disabled={guardando || carrito.length === 0 || faltaPaciente || paresSinMarco.length > 0 || acuerdoInvalido || (montoACobrar > 0 && !medioPago) || Boolean(validarVoucher(medioPago, montoACobrar, numeroVoucher).error)}
               className={`${boton} flex-1 bg-emerald-800 text-white hover:bg-emerald-900`}
             >
               {guardando
@@ -1715,7 +1802,9 @@ export default function PuntoDeVenta({
                     ? total > 0
                       ? "Registrar sin abono"
                       : "Registrar cortesía"
-                    : `Cobrar ${clp(montoACobrar)}`}
+                    : medioPago === "transferencia"
+                      ? `Registrar transferencia de ${clp(montoACobrar)}`
+                      : `Cobrar ${clp(montoACobrar)}`}
             </button>
           </div>
         </section>
@@ -1731,11 +1820,15 @@ export default function PuntoDeVenta({
 function Resumen({
   carrito,
   total,
+  descuento,
   quitar,
+  editarPrecioProducto,
 }: {
   carrito: LineaCarrito[];
   total: number;
+  descuento: number;
   quitar: (key: string) => void;
+  editarPrecioProducto: (key: string, precio: number) => void;
 }) {
   if (carrito.length === 0) {
     return (
@@ -1770,18 +1863,39 @@ function Resumen({
                 </span>
               )}
             </span>
-            <span className="font-semibold">{clp(l.cantidad * l.precioUnitario)}</span>
-            <button
-              type="button"
-              onClick={() => quitar(l.key)}
-              className="text-tinta-suave transition hover:text-red-600"
-              aria-label={`Quitar ${l.descripcion}`}
-            >
-              ✕
-            </button>
+            {l.key.startsWith("prod-") ? (
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <input
+                  aria-label={`Precio unitario de ${l.descripcion}`}
+                  inputMode="numeric"
+                  maxLength={12}
+                  value={l.precioUnitario === 0 ? "" : formatearMonto(l.precioUnitario)}
+                  placeholder="0"
+                  onChange={e => editarPrecioProducto(l.key, montoANumero(e.target.value))}
+                  className="w-24 rounded-md border border-tinta/20 px-2 py-1 text-right font-semibold tabular-nums"
+                />
+                {l.cantidad > 1 && <span className="font-semibold">{clp(l.cantidad * l.precioUnitario)}</span>}
+              </div>
+            ) : <span className="font-semibold">{clp(l.cantidad * l.precioUnitario)}</span>}
+            {l.armazonSlot === undefined && l.recargoSlot === undefined && (
+              <button
+                type="button"
+                onClick={() => quitar(l.key)}
+                className="text-tinta-suave transition hover:text-red-600"
+                aria-label={`Quitar ${l.descripcion}`}
+              >
+                ✕
+              </button>
+            )}
           </li>
         ))}
       </ul>
+      {descuento > 0 && (
+        <div className="mt-2 space-y-1 border-t border-tinta-suave/15 pt-2 text-sm">
+          <p className="flex justify-between"><span>Subtotal</span><span>{clp(total + descuento)}</span></p>
+          <p className="flex justify-between font-semibold text-emerald-800"><span>Descuento</span><span>−{clp(descuento)}</span></p>
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between border-t border-tinta-suave/15 pt-2">
         <span className="font-bold">Total</span>
         <span className="text-xl font-bold">{clp(total)}</span>

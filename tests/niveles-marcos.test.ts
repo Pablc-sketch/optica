@@ -61,3 +61,40 @@ describe('Rentabilidad realista por tipo de cristal',()=>{
   expect(pr.conReserva-es.conReserva).toBeCloseTo(21990*(1/1.19-.1296));
  });
 });
+
+describe("Precio de marco acordado en caja", () => {
+  it.each([
+    ["esencial", 3_000],
+    ["seleccion", 6_990],
+    ["especial", 25_000],
+    ["premium", 0],
+  ] as const)("permite editar %s sin perder el par", (nivel, precioUnitario) => {
+    const marco = { ...ar(2, nivel, "producto-inventario"), recargoEditado: true };
+    const extra = { ...lineaRecargo(2, nivel, T), marcoSlot: 2, precioUnitario };
+    const n = normal([marco], [{ ...ci(2), descuento: 5_000 }, extra]);
+    expect(n.ok).toBe(true);
+    if (!n.ok) return;
+    expect(validarRecargosVenta(n.venta, T)).toBeNull();
+    expect(n.venta.items).toMatchObject([{ cristalSlot: 1, descuento: 5_000 }, { marcoSlot: 1, precioUnitario }]);
+    expect(validar([marco], [ci(2), extra, extra])).toBeTruthy();
+  });
+
+  it("cobra el marco de lista aunque los cristales queden en cero en una venta nueva", () => {
+    const marco = { ...ar(1, "premium"), recargoEditado: false };
+    expect(validar([marco], [ci(1, 0), ex(1, "premium")])).toBeNull();
+  });
+
+  it("acepta el recargo histórico especial y la nueva edición en otra categoría", () => {
+    const especiales = new Map([["propio-catalogo", 30_000]]);
+    const antiguo = normal([ar(1, "premium", "propio-catalogo")], [ci(1), { ...ex(1, "premium"), precioUnitario: 30_000 }]);
+    const actual = normal([{ ...ar(1, "premium", "propio-catalogo"), recargoEditado: false }], [ci(1), ex(1, "premium")]);
+    for (const n of [antiguo, actual]) {
+      expect(n.ok).toBe(true);
+      if (n.ok) expect(validarRecargosVenta(n.venta, T, especiales)).toBeNull();
+    }
+  });
+
+  it.each([-1, 1.5, 38_001])("rechaza descuento inválido %i", descuento => {
+    expect(normal([ar(1)], [{ ...ci(1), descuento }, ex(1)]).ok).toBe(false);
+  });
+});

@@ -35,13 +35,14 @@ export type CristalPedido = {
 
 // Un marco es del inventario (productoId), del paciente (marcoPropio) o
 // descrito en palabras ("acetato rojo"), sin cargarlo al inventario.
-export type ArmazonPedido = { slot: Cupo; productoId: string | null; marcoPropio: boolean; descripcion?: string | null; nivelMarco?:NivelMarco };
+export type ArmazonPedido = { slot: Cupo; productoId: string | null; marcoPropio: boolean; descripcion?: string | null; nivelMarco?: NivelMarco; recargoEditado?: boolean };
 
 export type ItemPedido = {
   productoId?: string | null;
   descripcion: string;
   cantidad: number;
   precioUnitario: number;
+  descuento?: number;
   cristalSlot?: Cupo | null;
   marcoSlot?: Cupo | null;
 };
@@ -52,7 +53,7 @@ export type VentaNormalizada = {
   items: ItemPedido[];
 };
 
-const esEnteroNoNegativo = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0;
+const esEnteroNoNegativo = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
 
 export function normalizarVenta(
   cristales: CristalPedido[],
@@ -64,8 +65,11 @@ export function normalizarVenta(
     if (!esEnteroNoNegativo(i.cantidad) || i.cantidad === 0) {
       return { ok: false, error: `Cantidad inválida en "${i.descripcion}".` };
     }
-    if (!esEnteroNoNegativo(i.precioUnitario)) {
+    if (!esEnteroNoNegativo(i.precioUnitario) || !Number.isSafeInteger(i.cantidad * i.precioUnitario)) {
       return { ok: false, error: `Precio inválido en "${i.descripcion}".` };
+    }
+    if (i.descuento !== undefined && (!esEnteroNoNegativo(i.descuento) || i.descuento > i.cantidad * i.precioUnitario)) {
+      return { ok: false, error: `Descuento inválido en "${i.descripcion}".` };
     }
   }
 

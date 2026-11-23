@@ -28,6 +28,26 @@ describe('Acción real de venta con líneas de marco',()=>{
  it('marco propio no agrega recargo ni sale de inventario',async()=>{const v=venta('esencial');v.armazones[0].marcoPropio=true;expect((await registrarVenta(v)).ok).toBe(true);expect(mocks.rpc.mock.calls[0][1].p.ots[0]).toMatchObject({armazon_producto_id:null,marco_propio:true,marco_descripcion:null});});
 });
 
+describe("Voucher del pago inicial", () => {
+  it("registra una transferencia bancaria sin voucher ni verificación de máquina", async () => {
+    const v = venta("premium");
+    v.items[0] = { ...v.items[0], descripcion: "Cristales (cortesía)", precioUnitario: 180_000, descuento: 41_990 };
+    v.abonoInicial = 160_000;
+    v.medioPago = "transferencia";
+    expect((await registrarVenta(v)).ok).toBe(true);
+    expect(mocks.rpc.mock.calls[0][1].p).toMatchObject({
+      medio_pago: "transferencia", numero_voucher: null, abono: 160_000,
+      items: [{ descripcion: "Cristales (cortesía)", descuento: 41_990 }, { precio_unitario: 21_990 }],
+    });
+  });
+
+  it.each(["debito", "credito"])("pide voucher para el cobro por %s", async medioPago => {
+    const v = { ...venta("premium"), medioPago, abonoInicial: 55_000 };
+    expect(await registrarVenta(v)).toMatchObject({ ok: false, error: expect.stringContaining("voucher") });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+});
+
 describe('Marcos de inventario de Óptica Global', () => {
   function venderMarco(marca: string, sku: string | null, recargoAnterior: number | null, nivel: NivelMarco) {
     const consultas = mocks.from.getMockImplementation()!;
@@ -56,14 +76,28 @@ describe('Marcos de inventario de Óptica Global', () => {
   });
 
   it.each([
-    ['LACROSSE', 'especial', 'LY-2130L C-2'],
-    ['LACROSSE', 'esencial', 'LY-2187L C-2'],
-    ['LACROSSE', 'premium', 'LY-2187L C-4'],
-    ['SILMO', 'especial', 'ZD-21126 C-2'],
-    ['SILMO', 'esencial', null],
-    ['VESPA', 'esencial', null],
-  ] as const)('impide cobrar %s en la categoría %s (SKU %s)', async (marca, nivel, sku) => {
-    expect((await venderMarco(marca, sku, null, nivel)).ok).toBe(false);
-    expect(mocks.rpc).not.toHaveBeenCalled();
+    ['LACROSSE', 'especial', 'LY-2130L C-2', 'Colección Especial'],
+    ['LACROSSE', 'esencial', 'LY-2187L C-2', 'Esencial'],
+    ['LACROSSE', 'premium', 'LY-2187L C-4', 'Premium'],
+    ['SILMO', 'especial', 'ZD-21126 C-2', 'Colección Especial'],
+    ['SILMO', 'esencial', null, 'Esencial'],
+    ['VESPA', 'esencial', null, 'Esencial'],
+  ] as const)('permite elegir %s en la categoría %s (SKU %s)', async (marca, nivel, sku, etiqueta) => {
+    expect((await venderMarco(marca, sku, null, nivel)).ok).toBe(true);
+    const p = mocks.rpc.mock.calls[0][1].p;
+    expect(p.ots[0]).toMatchObject({armazon_producto_id: 'producto', marco_descripcion: `${etiqueta} · Acetato rojo`});
+  });
+
+  it('guarda el recargo negociado, el descuento y el precio de lista como importes distintos', async () => {
+    const v = venta('especial', 2);
+    v.armazones[0].recargoEditado = true;
+    v.items[0].descuento = 5_000;
+    v.items[1].precioUnitario = 25_000;
+    expect((await registrarVenta(v)).ok).toBe(true);
+    const p = mocks.rpc.mock.calls[0][1].p;
+    expect(p.items).toMatchObject([
+      {precio_unitario: 38_000, precio_lista: 38_000, descuento: 5_000, cristal_slot: 1},
+      {precio_unitario: 25_000, precio_lista: 31_990, descuento: 0},
+    ]);
   });
 });

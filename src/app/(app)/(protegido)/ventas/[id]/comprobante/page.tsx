@@ -62,6 +62,8 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const abonado = pagos.reduce((s: number, p: { monto: number }) => s + p.monto, 0);
   const saldo = venta.total - abonado;
   const sinVoucher = venta.boleta_folio ? [] : pagos.filter((p) => requiereVoucher(p.medio_pago, p.monto) && validarVoucher(p.medio_pago, p.monto, p.numero_voucher).error);
+  const descuentoTotal = items.reduce((suma, item) => suma + (item.descuento ?? 0), 0);
+
   // La relación llega como objeto o arreglo según el shape que infiera
   // supabase-js; normalizamos antes de listar los folios.
   const folios = [
@@ -213,6 +215,12 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
             })}
           </tbody>
           <tfoot>
+            {descuentoTotal > 0 && (
+              <tr>
+                <td colSpan={3} className="pt-2 text-right">Descuento total</td>
+                <td className="pt-2 text-right">−{clp(descuentoTotal)}</td>
+              </tr>
+            )}
             <tr>
               <td colSpan={3} className="py-2 text-right font-bold">Total</td>
               <td className="py-2 text-right text-base font-bold">{clp(venta.total)}</td>
