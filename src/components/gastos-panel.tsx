@@ -11,8 +11,12 @@ import { fechaLegible } from '@/lib/fechas';
 import { clp } from '@/lib/clp';
 
 type Gasto={id:string;fecha:string;descripcion:string;monto:number;categoria:string;caja:string;operativo_id:string|null};
-type Fila={id:string;nombre:string;fecha:string;vendido:number;cobrado:number;utilidad:number;costo:number;atendidos:number;pares:number;costoFidesActual:number|null;costoFidesNota:string|null;
-  costos:{clave:string;titulo:string;total:number;pagado:number}[];importes:Record<string,number>;costoMarco:number};
+type Costo = { clave: ClaveCosto | 'fides' | 'marcos'; titulo: string; total: number; pagado: number };
+type Fila = {
+  id: string; nombre: string; fecha: string; archivado: boolean; pares: number; costoMarco: number;
+  costoFidesActual: number | null; costoFidesNota: string | null; costos: Costo[];
+  importes: Record<string, number>;
+};
 const campo='mt-1 w-full rounded-xl border bg-white p-3';
 export default function GastosPanel({filas,gastos,asignaciones,hoy,gastosSii=[],historial=false,enfocarSede=false}:{filas:Fila[];gastos:Gasto[];asignaciones:AsignacionCosto[];hoy:string;gastosSii?:string[];historial?:boolean;enfocarSede?:boolean}) {
   const [pagoAbierto,setPagoAbierto]=useState<string|null>(null);
@@ -24,11 +28,20 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,gastosSii=[],
   const [vinculo,setVinculo]=useState<{id:string;op:string;clave:string;total:number;pagado:number}|null>(null);
   const [gastoId,setGastoId]=useState('');
   const [monto,setMonto]=useState('');
-  const costos=filas.flatMap(o=>o.costos.filter(c=>c.total>0||c.pagado>0).map(c=>({...c,op:o})));
-  const pendientes=costos.filter(c=>c.total>c.pagado);
-  const totalPendiente=pendientes.reduce((total,c)=>total+(c.total-c.pagado),0);
-  const visibles=pendientes.filter(c=>`${c.titulo} ${c.op.nombre}`.toLowerCase().includes(busqueda.toLowerCase()));
-  const paginas=Math.max(1,Math.ceil(visibles.length/20)),actual=Math.min(pagina,paginas-1);
+  const sedes = filas.flatMap(sede => {
+    const costos = sede.costos.filter(c => c.total > c.pagado);
+    if (!costos.length) return [];
+    return [{ sede, costos, saldo: costos.reduce((total, c) => total + c.total - c.pagado, 0) }];
+  });
+  const termino = busqueda.trim().toLocaleLowerCase('es-CL');
+  const visibles = sedes.flatMap(grupo => {
+    const costos = grupo.costos.filter(c => `${grupo.sede.nombre} ${c.titulo}`.toLocaleLowerCase('es-CL').includes(termino));
+    return costos.length ? [{ ...grupo, costos }] : [];
+  });
+  const totalPendiente = sedes.reduce((total, grupo) => total + grupo.saldo, 0);
+  const paginas = Math.max(1, Math.ceil(visibles.length / 10));
+  const actual = Math.min(pagina, paginas - 1);
+  const editar = filas.filter(o => enfocarSede || !o.archivado || o.costos.some(c => c.total > c.pagado));
   const candidatos=gastos.filter(g=>!gastosSii.includes(g.id)&&!g.descripcion.startsWith('SII F29 · ')).map(g=>({...g,disponible:disponibleDeGasto(g,asignaciones)})).filter(g=>g.disponible>0);
   const fuente=candidatos.find(g=>g.id===gastoId);
   const vinculados=asignaciones.filter(a=>!a.anulado_en&&filas.some(o=>o.id===a.operativo_id));
@@ -37,7 +50,7 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,gastosSii=[],
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-tinta/10 p-4 sm:p-5">
         <h2 className="text-lg font-bold">Costos por pagar</h2>
         <strong className="ml-auto tabular-nums text-accent-dark">{clp(totalPendiente)}</strong>
-        {pendientes.length>8&&<label className="block sm:w-64"><span className="sr-only">Buscar gasto o sede</span><input type="search" className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm" value={busqueda} onChange={e=>{setBusqueda(e.target.value);setPagina(0);}} placeholder="Buscar gasto o sede"/></label>}
+        {sedes.length>3&&<label className="block sm:w-64"><span className="sr-only">Buscar costo o sede</span><input type="search" className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm" value={busqueda} onChange={e=>{setBusqueda(e.target.value);setPagina(0);}} placeholder="Buscar costo o sede"/></label>}
       </div>
       {error&&<p role="alert" className="m-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {vinculo&&<form id="vincular-pago" className="m-4 space-y-3 rounded-xl border-2 border-accent bg-sky-50 p-4" onSubmit={e=>{e.preventDefault();iniciar(async()=>{setError('');try {const r=await vincularGasto({id:vinculo.id,gastoId,operativoId:vinculo.op,clave:vinculo.clave,monto:Number(monto)});if(r.error)setError(r.error);else{setVinculo(null);router.refresh();}}catch{setError('No se pudo confirmar la vinculación. Recarga y revisa antes de reintentar.');}});}}>
@@ -47,39 +60,51 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,gastosSii=[],
         {fuente&&<label className="block text-sm">Monto a asignar<input className={campo} type="number" min={1} max={Math.min(fuente.disponible,Math.max(0,vinculo.total-vinculo.pagado))} step={1} required value={monto} onChange={e=>setMonto(e.target.value)}/></label>}
         <div className="flex flex-wrap gap-2"><button disabled={ocupado||!fuente} className="rounded-xl bg-accent-dark px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{ocupado?'Guardando…':'Vincular pago'}</button><button type="button" disabled={ocupado} onClick={()=>setVinculo(null)} className="rounded-xl border bg-white px-4 py-3 text-sm">Cancelar</button></div>
       </form>}
-      <div className="hidden grid-cols-[minmax(0,1fr)_8rem_7rem] gap-4 bg-crema/50 px-5 py-3 text-sm text-tinta-suave sm:grid"><span>Gasto / sede</span><span className="text-right">Pendiente</span><span className="text-right">Acción</span></div>
-      {visibles.length===0&&<div className="px-5 py-10 text-center"><p className="font-semibold">{busqueda?'Sin resultados':'Sin costos pendientes'}</p></div>}
-      <ul className="divide-y divide-tinta/10">{visibles.slice(actual*20,actual*20+20).map(c=>{
-        const id=`${c.op.id}:${c.clave}`;
-        const abierto=pagoAbierto===id;
-        const pendiente=Math.max(0,c.total-c.pagado);
-        return <li key={id} className="p-4 sm:px-5">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_8rem_7rem] sm:gap-4">
-            <div className="min-w-0"><h3 className="font-semibold">{c.clave==='marcos'?'Marcos':c.titulo}</h3><p className="mt-1 break-words text-sm text-tinta-suave">{c.op.nombre} · {fechaLegible(c.op.fecha)}</p></div>
-            <div className="text-right"><span className="block text-sm text-tinta-suave sm:hidden">Pendiente</span><strong className={`tabular-nums text-tinta`}>{clp(pendiente)}</strong></div>
-            <div className="col-span-2 flex justify-end sm:col-span-1"><button aria-expanded={abierto} aria-controls={`pago-${id}`} className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold ${abierto?'border bg-white':'bg-accent-dark text-white'}`} onClick={()=>setPagoAbierto(abierto?null:id)}>{abierto?'Cerrar':'Pagar'}</button></div>
-          </div>
-          {abierto&&<div id={`pago-${id}`} className="mt-4 space-y-3 rounded-xl bg-crema p-3">
-            <ul><PagoCostoOperativo operativoId={c.op.id} clave={c.clave as ClaveCosto|'fides'|'marcos'} titulo={c.titulo} total={c.total} pagado={c.pagado} costoFidesActual={c.op.costoFidesActual} hoy={hoy}/></ul>
-            <button disabled={ocupado} onClick={()=>{setError('');setVinculo({id:crypto.randomUUID(),op:c.op.id,clave:c.clave,total:c.total,pagado:c.pagado});setGastoId('');setMonto('');window.scrollTo({top:0,behavior:'smooth'});}} className="min-h-11 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">Ya lo pagué: usar un gasto registrado</button>
-          </div>}
-          <details className="mt-2 text-sm text-tinta-suave"><summary className="w-fit cursor-pointer py-1">Detalle del costo</summary><dl className="mt-2 flex flex-wrap gap-x-6 gap-y-2"><div><dt>Total</dt><dd className="font-semibold text-tinta">{clp(c.total)}</dd></div><div><dt>Pagado</dt><dd className="font-semibold text-tinta">{clp(c.pagado)}</dd></div><div><dt>Pendiente</dt><dd className="font-semibold text-tinta">{clp(pendiente)}</dd></div></dl>{c.clave==='marcos'&&<p className="mt-2">{c.titulo}</p>}</details>
-        </li>;
-      })}</ul>
+      {visibles.length===0&&<p className="px-5 py-8 text-center text-sm text-tinta-suave">{termino?'Sin resultados':'Sin costos pendientes'}</p>}
+      {visibles.slice(actual*10,actual*10+10).map(({ sede, costos, saldo }) => <section key={sede.id} className="border-b border-tinta/10 last:border-0">
+        <header className="flex flex-wrap items-baseline justify-between gap-2 bg-crema/60 px-4 py-3 sm:px-5">
+          <div><h3 className="font-bold">{sede.nombre}</h3><p className="text-sm text-tinta-suave">{fechaLegible(sede.fecha)}{sede.archivado && ' · Archivado'}</p></div>
+          <p className="text-sm">Por pagar <strong className="ml-1 tabular-nums">{clp(saldo)}</strong></p>
+        </header>
+        <ul className="divide-y divide-tinta/10">{costos.map(c => {
+          const id = `${sede.id}:${c.clave}`;
+          const abierto = pagoAbierto === id;
+          return <li key={id} className="px-4 py-3 sm:px-5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,2fr)_auto] lg:items-center">
+              <div>
+                <h4 className="font-semibold">{c.titulo}</h4>
+                {c.clave==='fides'&&<p className="text-xs text-tinta-suave">{sede.costoFidesActual===null?'Estimado según ventas':'Costo ingresado de Fides'}</p>}
+                {c.clave==='marcos'&&<p className="text-xs text-tinta-suave">{sede.pares} × {clp(sede.costoMarco)} por marco</p>}
+              </div>
+              <dl className="col-span-2 row-start-2 grid grid-cols-3 gap-2 text-sm lg:col-span-1 lg:row-auto">
+                <div><dt className="text-xs text-tinta-suave">Costo total</dt><dd className="font-medium tabular-nums">{clp(c.total)}</dd></div>
+                <div><dt className="text-xs text-tinta-suave">Pagado</dt><dd className="font-medium tabular-nums">{clp(c.pagado)}</dd></div>
+                <div><dt className="text-xs text-tinta-suave">Falta pagar</dt><dd className="font-bold tabular-nums text-accent-dark">{clp(c.total-c.pagado)}</dd></div>
+              </dl>
+              <button aria-expanded={abierto} aria-controls={abierto?`pago-${id}`:undefined}
+                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold ${abierto?'border bg-white':'bg-accent-dark text-white'}`}
+                onClick={()=>setPagoAbierto(abierto?null:id)}>{abierto?'Cerrar':'Pagar'}</button>
+            </div>
+            {abierto&&<div id={`pago-${id}`} className="mt-3 space-y-3 rounded-xl bg-crema p-3">
+              <ul><PagoCostoOperativo operativoId={sede.id} clave={c.clave} titulo={c.titulo} total={c.total} pagado={c.pagado} costoFidesActual={sede.costoFidesActual} hoy={hoy}/></ul>
+              <button disabled={ocupado} onClick={()=>{setError('');setVinculo({id:crypto.randomUUID(),op:sede.id,clave:c.clave,total:c.total,pagado:c.pagado});setGastoId('');setMonto('');window.scrollTo({top:0,behavior:'smooth'});}} className="min-h-11 rounded-xl border bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50">Usar un gasto ya registrado</button>
+            </div>}
+          </li>;
+        })}</ul>
+      </section>)}
       {paginas>1&&<nav aria-label="Páginas de gastos" className="flex items-center justify-between border-t border-tinta/10 p-4 text-sm"><button className="min-h-11 rounded-xl border px-3 py-2 disabled:opacity-40" disabled={actual===0} onClick={()=>setPagina(actual-1)}>Anterior</button><span>{actual+1} de {paginas}</span><button className="min-h-11 rounded-xl border px-3 py-2 disabled:opacity-40" disabled={actual===paginas-1} onClick={()=>setPagina(actual+1)}>Siguiente</button></nav>}
     </section>}
-    {!historial&&<details id="costos" className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm sm:p-5"><summary className="cursor-pointer font-semibold">Editar costos por sede <span className="ml-1 text-sm font-normal text-tinta-suave">({filas.length})</span></summary>
-      <div className="mt-4 space-y-3">{filas.map(o=><details key={o.id} open={enfocarSede} className="rounded-xl border border-tinta/15 p-4"><summary className="cursor-pointer font-semibold"><span className="break-words">{o.nombre}</span><span className="mt-1 block text-sm font-normal text-tinta-suave">{fechaLegible(o.fecha)} · resultado {clp(o.utilidad)}</span></summary>
-        <dl className="my-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{[['Ventas',clp(o.vendido)],['Cobrado',clp(o.cobrado)],['Costos',clp(o.costo)],['Atendidos',String(o.atendidos)]].map(([titulo,valor])=><div key={titulo} className="rounded-lg bg-crema p-3"><dt className="text-sm text-tinta-suave">{titulo}</dt><dd className="font-semibold tabular-nums">{valor}</dd></div>)}</dl>
-        <p className="mb-4 text-sm text-tinta-suave">{o.pares} anteojos · costo por atención {o.atendidos?clp(o.costo/o.atendidos):'sin atenciones'} · resultado por atención {o.atendidos?clp(o.utilidad/o.atendidos):'sin atenciones'}.</p>
+    {!historial&&editar.length>0&&<details id="costos" className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm sm:p-5"><summary className="cursor-pointer font-semibold">Editar costos por sede</summary>
+      <div className="mt-4 space-y-3">{editar.map(o=><details key={o.id} open={enfocarSede} className="rounded-xl border border-tinta/15 p-4"><summary className="cursor-pointer font-semibold"><span className="break-words">{o.nombre}</span><span className="mt-1 block text-sm font-normal text-tinta-suave">{fechaLegible(o.fecha)}{o.archivado&&' · Archivado'}</span></summary>
+        <p className="my-3 text-sm text-tinta-suave">Anota el costo completo. Los pagos se registran arriba.</p>
         <FormularioAgenda accion={actualizarJornada} etiqueta="Guardar costos"><input name="id" type="hidden" value={o.id}/><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{COSTOS.map(c=><label key={c.clave} className="text-sm">{c.titulo}<input className={campo} name={c.clave} type="number" min={0} max={999999999} step={1} defaultValue={o.importes[c.clave]}/></label>)}<label className="text-sm">Costo por marco vendido<input className={campo} name="costo_marco_unitario" type="number" min={0} max={999999999} step={1} defaultValue={o.costoMarco}/></label></div></FormularioAgenda>
         <div className="mt-3"><CostoFidesEditor operativoId={o.id} actual={o.costoFidesActual} nota={o.costoFidesNota} /></div>
-        <p className="mt-3 text-sm text-tinta-suave">Ingresa el costo completo, pagado o pendiente. No repitas comida ni hospedaje dentro de viáticos.</p>
-      </details>)}{filas.length===0&&<p className="text-sm text-tinta-suave">No hay sedes en el período seleccionado.</p>}</div>
+        <p className="mt-3 text-sm text-tinta-suave">Si comida u hospedaje se anotan por separado, exclúyelos de viáticos.</p>
+      </details>)}</div>
     </details>}
     {historial&&error&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {historial&&vinculados.length>0&&<details className="rounded-2xl bg-white p-4 shadow-sm sm:p-5"><summary className="cursor-pointer font-semibold">Pagos vinculados <span className="ml-1 text-sm font-normal text-tinta-suave">({vinculados.length})</span></summary>
-      {vinculados.map(a=><div key={a.id} className="mt-3 border-t border-tinta/10 pt-3 text-sm"><p className="font-medium">{gastos.find(g=>g.id===a.gasto_id)?.descripcion}</p><p className="mt-1 text-tinta-suave">{filas.find(o=>o.id===a.operativo_id)?.nombre} · {a.clave} · {clp(a.monto)}</p><button disabled={ocupado} onClick={()=>iniciar(async()=>{try{const r=await deshacerVinculo(a.id);if(r.error)setError(r.error);else router.refresh();}catch{setError('No se pudo deshacer. Recarga y revisa.');}})} className="mt-2 min-h-11 rounded-xl border px-3 py-2 disabled:opacity-50">Desvincular pago</button></div>)}
+      {vinculados.map(a=><div key={a.id} className="mt-3 border-t border-tinta/10 pt-3 text-sm"><p className="font-medium">{gastos.find(g=>g.id===a.gasto_id)?.descripcion}</p><p className="mt-1 text-tinta-suave">{filas.find(o=>o.id===a.operativo_id)?.nombre} · {filas.find(o=>o.id===a.operativo_id)?.costos.find(c=>c.clave===a.clave)?.titulo ?? a.clave} · {clp(a.monto)}</p><button disabled={ocupado} onClick={()=>iniciar(async()=>{try{const r=await deshacerVinculo(a.id);if(r.error)setError(r.error);else router.refresh();}catch{setError('No se pudo deshacer. Recarga y revisa.');}})} className="mt-2 min-h-11 rounded-xl border px-3 py-2 disabled:opacity-50">Desvincular pago</button></div>)}
       <p className="mt-3 text-sm text-tinta-suave">Desvincular conserva el gasto original.</p>
     </details>}
   </div>;

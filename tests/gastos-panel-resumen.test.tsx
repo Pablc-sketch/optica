@@ -106,6 +106,23 @@ describe('resumen de gastos y navegación de rentabilidad',()=>{
     expect(html).toContain('Confirmado');
     expect(html).not.toContain('Resumen de gastos');
   });
+  it('muestra costo, abono y saldo bajo una sola sede aunque el operativo esté archivado',async()=>{
+    const { default: Panel }=await vi.importActual<typeof import('@/components/gastos-panel')>('@/components/gastos-panel');
+    const html=renderToStaticMarkup(<Panel hoy="2026-11-23" gastos={[]} asignaciones={[]} filas={[{
+      id:'archivo',nombre:'Sede con saldo',fecha:'2026-11-01',archivado:true,pares:2,costoMarco:6000,
+      costoFidesActual:null,costoFidesNota:null,importes:{},
+      costos:[{clave:'fides',titulo:'Cristales (Fides)',total:19000,pagado:5000},{clave:'marcos',titulo:'Marcos',total:12000,pagado:0}],
+    }]}/>);
+    const lista=html.slice(0,html.indexOf('id="costos"'));
+    expect(lista.match(/Sede con saldo/g)).toHaveLength(1);
+    expect(lista).toContain('Archivado');
+    expect(lista).toContain('Estimado según ventas');
+    expect(lista).toContain('Costo total');
+    expect(lista).toContain('19.000');
+    expect(lista).toContain('5.000');
+    expect(lista).toContain('14.000');
+    expect(lista).toContain('26.000');
+  });
   it('oculta cifras si no puede leer las devoluciones personales',async()=>{
     tablas.caja_movimientos={data:null,error:{message:'fallo de lectura'}};
     const html=await pantalla();expect(html).toContain('No se pudieron cargar todos los gastos');expect(html).not.toContain('Resumen de gastos');

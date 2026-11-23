@@ -5,7 +5,8 @@ import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { createClient } from "@/lib/supabase/server";
 import { crearOperativo, cambiarEstadoOperativo } from "@/lib/actions/operativos";
 import { formatearTelefono } from "@/lib/formato";
-import { fechaLegible } from "@/lib/fechas";
+import { diaEnChile, horaCorta, rangoHorario, ZONA_CHILE } from "@/lib/fechas";
+import { cubreDia, esOperativoArchivado, mostrarFechas } from "@/lib/agenda";
 import { clp } from "@/lib/clp";
 import { CampoTelefono } from "@/components/campos";
 import { cargarPendientes } from "@/lib/resumen-pendientes";
@@ -23,12 +24,16 @@ const TIPOS_VENUE = [
 ];
 
 const ESTADOS: Record<string, string> = {
-  planificado: "Planificado",
+  planificado: "Por realizar",
   realizado: "Realizado",
   cancelado: "Cancelado",
 };
 
-export default async function OperativosPage() {
+export default async function OperativosPage({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
+  const archivo = (await searchParams).ver === "archivo";
+  const ahora = new Date();
+  const hoy = diaEnChile(ahora);
+  const hora = new Intl.DateTimeFormat("es-CL", { timeZone: ZONA_CHILE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ahora);
   const supabase = await createClient();
   const {
     data: { user },
@@ -54,8 +59,9 @@ export default async function OperativosPage() {
     leerTodas((a, b) => supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, direccion, estado, notas"
+        "id, nombre, tipo_venue, fecha, fecha_fin, hora_inicio, hora_fin, direccion, estado"
       )
+      .in("estado", archivo ? ["realizado", "cancelado"] : ["planificado"])
       .order("fecha", { ascending: false }).order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("recetas").select("id, operativo_id").not("operativo_id", "is", null).order("id").range(a, b)),
     leerTodas((a, b) => supabase
@@ -119,52 +125,53 @@ export default async function OperativosPage() {
 
   const lista = operativos ?? [];
   const pendiente = (id: string) => pendientePorOperativo.get(id) ?? { lentes: new Set<string>(), saldo: 0 };
-  // Activos: los que se están por hacer, y los ya hechos que todavía tienen
-  // lentes por entregar o plata por cobrar. Terminado = nada pendiente.
-  const terminado = (o: (typeof lista)[number]) =>
-    (o.estado === "cancelado" || o.estado === "realizado") && pendiente(o.id).lentes.size === 0 && pendiente(o.id).saldo === 0 && !pagosPorOperativo.has(o.id);
-  const activos = lista
-    .filter((o) => !terminado(o))
-    .sort((a, b) => Number(a.estado !== "planificado") - Number(b.estado !== "planificado") || a.fecha.localeCompare(b.fecha));
-  const terminados = lista.filter(terminado);
+  const prioridad = (o: (typeof lista)[number]) => cubreDia(o, hoy) ? 0 : o.fecha > hoy ? 1 : 2;
+  const visibles = archivo ? lista : [...lista].sort((a, b) =>
+    prioridad(a) - prioridad(b) || (prioridad(a) === 2 ? b.fecha.localeCompare(a.fecha) : a.fecha.localeCompare(b.fecha))
+    || (a.hora_inicio ?? "99").localeCompare(b.hora_inicio ?? "99"));
+  const etiqueta = (o: (typeof lista)[number]) => {
+    if (esOperativoArchivado(o.estado)) return ESTADOS[o.estado];
+    if (!cubreDia(o, hoy)) return o.fecha < hoy ? "Pendiente de cierre" : ESTADOS.planificado;
+    const inicio = horaCorta(o.hora_inicio);
+    const fin = horaCorta(o.hora_fin);
+    return inicio && fin && inicio <= hora && hora < fin ? "En curso" : "Hoy";
+  };
 
   const input =
     "rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand";
 
-  const botonEstado = (o: (typeof lista)[number]) =>
-    o.estado !== "cancelado" && (
-      <form action={cambiarEstadoOperativo} className="flex items-center gap-1">
-        <input type="hidden" name="id" value={o.id} />
-        <input type="hidden" name="estado" value={o.estado === "planificado" ? "realizado" : "cancelado"} />
-        <button className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-xs font-medium transition hover:bg-white">
-          {o.estado === "planificado" ? "Marcar realizado" : "Cancelar"}
-        </button>
-      </form>
-    );
+  const botonEstado = (o: (typeof lista)[number]) => o.estado !== "cancelado" && (
+    <form action={cambiarEstadoOperativo}>
+      <input type="hidden" name="id" value={o.id} />
+      <input type="hidden" name="estado" value={archivo ? "planificado" : "realizado"} />
+      <input type="hidden" name="estado_anterior" value={o.estado} />
+      <BotonEnviar className="min-h-10 rounded-lg border border-tinta/20 bg-white px-3 py-2 text-xs font-semibold transition hover:bg-crema">
+        {archivo ? "Volver a activos" : "Marcar realizado"}
+      </BotonEnviar>
+    </form>
+  );
 
-  // Operativo activo: color vivo, con lo que falta (lentes por entregar y
-  // plata por cobrar).
-  const tarjetaActiva = (o: (typeof lista)[number]) => {
+  const tarjeta = (o: (typeof lista)[number]) => {
     const examenes = examenesPorOperativo.get(o.id) ?? 0;
     const venta = ventasPorOperativo.get(o.id);
     const contacto = contactoPorOperativo.get(o.id);
     const pend = pendiente(o.id);
     const pagos = pagosPorOperativo.get(o.id);
-    const planificado = o.estado === "planificado";
+    const enFecha = !archivo && cubreDia(o, hoy);
     return (
       <li
         key={o.id}
-        className={`rounded-2xl border-2 p-4 shadow-sm ${planificado ? "border-sky-500 bg-sky-50" : "border-emerald-600 bg-emerald-50"}`}
+        className={`rounded-2xl border-2 p-4 shadow-sm ${enFecha ? "border-sky-400 bg-sky-50" : "border-tinta/10 bg-white"}`}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Link href={`/operativos/${o.id}`} className="flex-1">
             <p className="text-lg font-bold text-tinta">{o.nombre}</p>
             <p className="text-sm text-tinta-suave">
-              {[fechaLegible(o.fecha), TIPOS_VENUE.find((t) => t.valor === o.tipo_venue)?.etiqueta, o.direccion].filter(Boolean).join(" · ")}
+              {[mostrarFechas(o), rangoHorario(o.hora_inicio, o.hora_fin), TIPOS_VENUE.find((t) => t.valor === o.tipo_venue)?.etiqueta, o.direccion].filter(Boolean).join(" · ")}
             </p>
             <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs font-bold">
-              <span className={`rounded-full px-2.5 py-1 ${planificado ? "bg-sky-600 text-white" : "bg-emerald-700 text-white"}`}>
-                {ESTADOS[o.estado] ?? o.estado}
+              <span className={`rounded-full px-2.5 py-1 ${enFecha ? "bg-sky-700 text-white" : "bg-crema text-tinta"}`}>
+                {etiqueta(o)}
               </span>
               {pend.lentes.size > 0 && (
                 <span className="rounded-full bg-amber-400 px-2.5 py-1 text-amber-950">
@@ -183,7 +190,6 @@ export default async function OperativosPage() {
                 {(cuantosContactos.get(o.id) ?? 0) > 1 && ` +${(cuantosContactos.get(o.id) ?? 0) - 1} más`}
               </p>
             )}
-            {o.notas && <p className="mt-1 text-xs text-tinta-suave">{o.notas}</p>}
           </Link>
           {botonEstado(o)}
         </div>
@@ -194,8 +200,9 @@ export default async function OperativosPage() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <CabeceraPagina seccion="En terreno" titulo="Operativos" />
+        <CabeceraPagina seccion="En terreno" titulo={archivo ? "Archivo de operativos" : "Operativos"} />
         <div className="flex flex-wrap gap-2">
+          <Link href={archivo ? "/operativos" : "/operativos?ver=archivo"} className="rounded-xl border border-tinta/15 bg-white px-4 py-3 text-sm font-semibold">{archivo ? "Activos" : "Archivo"}</Link>
           <Link href="/operativos/agenda" className="rounded-xl bg-sky-900 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-800">
             Abrir calendario
           </Link>
@@ -209,39 +216,11 @@ export default async function OperativosPage() {
       </div>
 
       <section className="flex flex-col gap-3">
-        <ul className="flex flex-col gap-3">
-          {activos.map(tarjetaActiva)}
-          {lista.length === 0 && (
-            <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-800">Todavía no hay operativos. Crea el primero abajo.</p>
-          )}
-          {lista.length > 0 && activos.length === 0 && (
-            <p className="rounded-2xl bg-emerald-50 p-4 text-center font-semibold text-emerald-800">Nada pendiente ✓</p>
-          )}
-        </ul>
+        {visibles.length > 0 ? <ul className="flex flex-col gap-3">
+          {visibles.map(tarjeta)}
+        </ul> : <p className="rounded-2xl bg-white p-4 text-sm text-tinta-suave">{archivo ? "Sin operativos archivados." : "Sin operativos por realizar o en curso."}</p>}
 
-        {terminados.length > 0 && (
-          <details className="rounded-2xl bg-neutral-100 p-3">
-            <summary className="cursor-pointer text-sm font-semibold text-neutral-500">Terminados ({terminados.length})</summary>
-            <ul className="mt-2 flex flex-col gap-1.5">
-              {terminados.map((o) => (
-                <li key={o.id}>
-                  <Link
-                    href={`/operativos/${o.id}`}
-                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-3 py-2 text-neutral-500 hover:bg-neutral-200"
-                  >
-                    <span className="font-medium">{o.nombre}</span>
-                    <span className="text-xs">
-                      {fechaLegible(o.fecha)}
-                      {o.estado === "cancelado" && " · cancelado"}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-
-        <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
+        {!archivo && <details className="rounded-2xl border border-sky-100 bg-sky-50 p-4 shadow-sm">
           <summary className="cursor-pointer font-semibold text-sky-800">＋ Nuevo operativo</summary>
           <form action={crearOperativo} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm font-medium">
@@ -304,7 +283,7 @@ export default async function OperativosPage() {
               </BotonEnviar>
             </div>
           </form>
-        </details>
+        </details>}
       </section>
     </div>
   );
