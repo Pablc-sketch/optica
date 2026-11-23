@@ -24,7 +24,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     supabase.from("pacientes").select("id, nombre, rut", { count: "exact" }).order("nombre").limit(2000),
     supabase
       .from("productos")
-      .select("id, nombre, marca, precio_venta, categoria, sku, recargo_marco")
+      .select("id, nombre, marca, precio_venta, categoria, sku, modelo, codigo_color, recargo_marco, costo")
       .order("marca")
       .limit(2000),
     supabase

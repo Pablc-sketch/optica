@@ -8,7 +8,7 @@
 export type ResultadoAbonoMinimo = { monto: number; noCubre: boolean };
 
 export function abonoMinimoDe(
-  pares: { precio: number; costoCristal: number | null; minimoFijo: number }[],
+  pares: { precio: number; costoCristal: number | null; costoMarco?: number; minimoFijo: number }[],
   costoMarco: number,
   total: number,
   // Comisión % del medio con que se va a cobrar (0 para efectivo y
@@ -20,7 +20,7 @@ export function abonoMinimoDe(
   const suma = pares
     .filter((p) => p.precio > 0)
     .reduce((s, p) => {
-      const real = p.costoCristal === null ? 0 : Math.ceil((p.costoCristal + costoMarco) / factor / 1000) * 1000;
+      const real = p.costoCristal === null ? 0 : Math.ceil((p.costoCristal + (p.costoMarco ?? costoMarco)) / factor / 1000) * 1000;
       if (real > p.precio) noCubre = true;
       return s + Math.min(p.precio, Math.max(p.minimoFijo, real));
     }, 0);
