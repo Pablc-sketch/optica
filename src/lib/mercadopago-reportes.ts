@@ -3,12 +3,12 @@ import {createAdminClient} from '@/lib/supabase/admin';
 import {mercadoPagoConfigurado} from '@/lib/mercadopago-sync';
 import {consultarApiMP,ErrorMercadoPago} from '@/lib/mercadopago-api';
 import {idMercadoPago} from '@/lib/mercadopago-datos';
-import {ReporteMPInvalido,saldoDeReporteCSV} from '@/lib/mercadopago-reporte-datos';
+import {proximoReporte,ReporteMPInvalido,saldoDeReporteCSV} from '@/lib/mercadopago-reporte-datos';
 import {hoyEnChile,inicioDelDia,restarDias} from '@/lib/fechas';
 const BASE='/v1/account/release_report';
 const COLUMNAS=['DATE','RECORD_TYPE','NET_CREDIT_AMOUNT','NET_DEBIT_AMOUNT'];
 class ErrorReporteAPI extends ErrorMercadoPago {
- constructor(public status:number,etapa:string,public proveedor:string){super(`${etapa}_HTTP_${status}${proveedor?'_'+proveedor:''}`.slice(0,100));}
+ constructor(public status:number,etapa:string,public proveedor:string,public reintentar?:string|null){super(`${etapa}_HTTP_${status}${proveedor?'_'+proveedor:''}`.slice(0,100));}
 }
 async function reporteJSON(path:string,init:RequestInit={}){
  const r=await fetch(`https://api.mercadopago.com${path}`,{...init,headers:{Authorization:`Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`,'Content-Type':'application/json'},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});
@@ -19,7 +19,7 @@ async function reporteJSON(path:string,init:RequestInit={}){
   let code=typeof raw==='string'&&/^[a-zA-Z0-9_-]{1,55}$/.test(raw)?raw:'';
   if(!code&&typeof d.message==='string'&&/not found|does not exist|no.*config/i.test(d.message))code='CONFIG_NOT_FOUND';
   const etapa=path.endsWith('/config')?`CONFIG_${init.method??'GET'}`:'REPORTE';
-  throw new ErrorReporteAPI(r.status,etapa,code);
+  throw new ErrorReporteAPI(r.status,etapa,code,r.headers.get('retry-after'));
  }
  return await r.json() as unknown;
 }
@@ -115,6 +115,7 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
  const collector=String(sync.collector_id);
  const {data:lease,error:errLease}=await db.rpc('mercadopago_reservar_saldo',{p_tenant:tenant,p_collector:collector});
  if(errLease||!lease)return;
+ let bloqueoHasta: string | null = null;
  const guardar=async(valores:Record<string,unknown>)=>{const {error}=await db.from('mercadopago_saldos').update(valores).eq('tenant_id',tenant).eq('collector_id',collector);if(error)throw new Error('No se pudo guardar el saldo consultado.');};
  try{
   if(idMercadoPago((await consultarApiMP('/users/me')).id)!==collector)throw new ReporteMPInvalido('CUENTA_NO_COINCIDE');
@@ -134,7 +135,7 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
    const corte=new Date(Math.min(Date.parse(String(meta.end_date)),actualizado)).toISOString();
    if(typeof meta.file_name!=='string'||!/^[-A-Za-z0-9_.]+\.csv$/i.test(meta.file_name))throw new ReporteMPInvalido('ARCHIVO_NO_CSV');
    const resp=await fetch(`https://api.mercadopago.com${BASE}/${encodeURIComponent(meta.file_name)}`,{headers:{Authorization:`Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
-   if(!resp.ok)throw new ErrorMercadoPago(`DESCARGA_HTTP_${resp.status}`);
+   if(!resp.ok)throw new ErrorReporteAPI(resp.status,'DESCARGA','',resp.headers.get('retry-after'));
    if(Number(resp.headers.get('content-length')??0)>5_000_000)throw new ReporteMPInvalido('ARCHIVO_GRANDE');
    const texto=await resp.text();
    const saldo=saldoDeReporteCSV(texto,String(meta.currency_id),corte);
@@ -166,9 +167,10 @@ export async function actualizarSaldoPorReporte(tenant:string,opciones:{cierreAn
   return {estado:'preparando'};
  }catch(e){
   const codigo=e instanceof ErrorMercadoPago||e instanceof ReporteMPInvalido?e.codigo:'CONSULTA_FALLIDA';
+  if(e instanceof ErrorReporteAPI&&e.status===429)bloqueoHasta=proximoReporte(e.reintentar).toISOString();
   await guardar({estado:/HTTP_(401|403)/.test(codigo)?'sin_permiso':'error',error_codigo:codigo});
   return {estado:'error',codigo};
- }finally{await guardar({bloqueado_hasta:null});}
+ }finally{await guardar({bloqueado_hasta:bloqueoHasta});}
 }
 
 // Diagnóstico de solo lectura para el endpoint interno autenticado. No devuelve

@@ -1,7 +1,7 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { consultarApiMP } from '@/lib/mercadopago-api';
-import { idMercadoPago, normalizarPagoMercadoPago } from '@/lib/mercadopago-datos';
+import { esCobroIntegradoMP, idMercadoPago, normalizarPagoMercadoPago } from '@/lib/mercadopago-datos';
 import { pagoConfirmadoDeOrden,referenciaPoint,type OrdenPoint } from '@/lib/mercadopago-point-datos';
 export async function listarTerminalesMP(collector:string){
  const me=await consultarApiMP('/users/me');
@@ -12,11 +12,12 @@ export async function listarTerminalesMP(collector:string){
  return data.terminals.filter(t=>typeof t.id==='string'&&/^[A-Za-z0-9_-]{5,100}$/.test(t.id))
   .map(t=>({id:t.id as string,modo:String(t.operating_mode)}));
 }
-export async function verificarPagoMP(tenant:string,collector:string,pagoId:string,monto:number,medio?:string){
+export async function verificarPagoMP(tenant:string,collector:string,pagoId:string,monto:number,medio?:string,soloExterno=false){
  if(!/^[0-9]{8,30}$/.test(pagoId))throw new Error('Usa el número completo de operación de Mercado Pago.');
  const raw=await consultarApiMP(`/v1/payments/${pagoId}`);
+ if(soloExterno&&esCobroIntegradoMP(raw))throw new Error('Este cobro tiene orden integrada');
  const p=normalizarPagoMercadoPago(raw,collector);
- if(!p||p.estado!=='approved'||p.monto_devuelto!==0||p.monto!==monto||!p.medio_pago||(medio&&p.medio_pago!==medio))
+ if(!p||p.pago_id!==pagoId||p.estado!=='approved'||p.monto_devuelto!==0||p.monto!==monto||!p.medio_pago||(medio&&p.medio_pago!==medio))
   throw new Error('La operación de Mercado Pago no coincide con el monto o medio de esta compra.');
  const {error}=await createAdminClient().from('mercadopago_pagos').upsert({...p,tenant_id:tenant,guardado_en:new Date().toISOString()},{onConflict:'tenant_id,pago_id'});
  if(error)throw new Error('No se pudo guardar la verificación del pago.');

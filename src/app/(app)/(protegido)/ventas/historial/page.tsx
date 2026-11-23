@@ -1,3 +1,4 @@
+import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -35,6 +36,8 @@ const ESTADO_PAGO: Record<string, { label: string; clase: string }> = {
 // del punto de venta y hacía esa pantalla lenta y recargada.
 export default async function HistorialVentas() {
   const supabase = await createClient();
+  const { data: tenant } = await supabase.from("tenants").select("id").maybeSingle();
+  const mercadoPago = mercadoPagoConfigurado(tenant?.id ?? "");
   const ventasRes = await supabase
     .from("ventas")
     .select(
@@ -165,7 +168,7 @@ export default async function HistorialVentas() {
                   )}
                   {!v.anulada && saldo > 0 && (
                     <div className="mt-2">
-                      <AbonoForm ventaId={v.id} saldo={saldo} />
+                      <AbonoForm mercadoPago={mercadoPago} ventaId={v.id} saldo={saldo} />
                     </div>
                   )}
                 </li>

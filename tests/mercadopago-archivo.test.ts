@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { idMercadoPago, normalizarPagoMercadoPago } from '../src/lib/mercadopago-datos';
+import { cobrosMPCoincidentes, idMercadoPago, normalizarPagoMercadoPago } from '../src/lib/mercadopago-datos';
 
 const pago = { id: 186851523418, collector_id: 123, currency_id: 'CLP', live_mode: true,
   transaction_amount: 19000, transaction_amount_refunded: 0, status: 'approved', payment_type_id: 'debit_card',
@@ -30,5 +30,26 @@ describe('archivo seguro de operaciones Mercado Pago', () => {
     expect(normalizarPagoMercadoPago({ ...pago, status: 'refunded', transaction_amount_refunded: 19000 }, '123'))
       .toMatchObject({ estado: 'refunded', monto_devuelto: 19000 });
     expect(normalizarPagoMercadoPago({ ...pago, payment_type_id: 'bank_transfer' }, '123')?.medio_pago).toBeNull();
+  });
+});
+
+
+describe('selección de cobros ya realizados', () => {
+  it('devuelve todas las coincidencias válidas sin elegir una ni exponer datos del cliente', () => {
+    const desde = Date.parse('2026-10-30T09:00:00Z');
+    const hasta = Date.parse('2026-10-30T11:00:00Z');
+    expect(cobrosMPCoincidentes([
+      pago, pago, { ...pago, id: 186851523419, date_created: '2026-10-30T10:30:00Z' },
+      { ...pago, id: 186851523420, transaction_amount: 19001 },
+      { ...pago, id: 186851523421, status: 'pending' },
+      { ...pago, id: 186851523422, transaction_amount_refunded: 1 },
+      { ...pago, id: 186851523423, collector_id: 456 },
+      { ...pago, id: 186851523424, payment_type_id: 'credit_card' },
+      { ...pago, id: 186851523425, date_created: '2026-10-30T08:59:00Z' },
+      { ...pago, id: 186851523426, external_reference: 'lentia-8d312a54-1a8a-401c-8d59-5650b6dd319d' },
+    ], '123', 'debito', 19000, desde, hasta)).toEqual([
+      { id: '186851523419', fecha: '2026-10-30T10:30:00.000Z' },
+      { id: '186851523418', fecha: '2026-10-30T10:00:00.000Z' },
+    ]);
   });
 });

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useTransition, useRef } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { actualizarArchivoMercadoPago } from '@/lib/actions/mercadopago';
 export default function ActualizarCajaMercadoPago() {
@@ -7,22 +7,20 @@ export default function ActualizarCajaMercadoPago() {
   const [pendiente, iniciar] = useTransition();
   const [mensaje, setMensaje] = useState('');
   const router = useRouter();
-  const enCurso=useRef(false);
   useEffect(() => {
-    if(!automatico)return;
-    const refrescar=async()=>{
-      if(enCurso.current||document.visibilityState!=='visible'||!navigator.onLine)return;
-      enCurso.current=true;
-      try{const r=await actualizarArchivoMercadoPago();setMensaje(r.ok?'Mercado Pago revisado.':r.mensaje);router.refresh();}
-      catch{setMensaje('No se pudo verificar Mercado Pago. Los saldos anteriores pueden estar desactualizados.');}
-      finally{enCurso.current=false;}
+    if (!automatico) return;
+    const refrescar = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) router.refresh();
     };
-    void refrescar();
-    const intervalo=setInterval(()=>void refrescar(),60000);
-    document.addEventListener('visibilitychange',refrescar);
-    window.addEventListener('online',refrescar);
-    return()=>{clearInterval(intervalo);document.removeEventListener('visibilitychange',refrescar);window.removeEventListener('online',refrescar);};
-  },[automatico,router]);
+    const intervalo = setInterval(refrescar, 60000);
+    document.addEventListener('visibilitychange', refrescar);
+    window.addEventListener('online', refrescar);
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', refrescar);
+      window.removeEventListener('online', refrescar);
+    };
+  }, [automatico, router]);
   return <div className="flex flex-col items-start gap-2 sm:items-end">
     <div className="flex flex-wrap items-center gap-3">
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={automatico} onChange={e => setAutomatico(e.target.checked)} />Autoactualizar</label>

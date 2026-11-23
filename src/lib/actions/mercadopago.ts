@@ -6,13 +6,16 @@ import { requerirPerfil } from '@/lib/autorizacion';
 import { sincronizarMercadoPago } from '@/lib/mercadopago-sync';
 import { mercadoPagoConfigurado } from '@/lib/mercadopago-sync';
 import { createAdminClient } from '@/lib/supabase/admin';
-import type { IdentidadAbonoMercadoPago } from '@/lib/mercadopago-datos';
+import { cobrosMPCoincidentes, type IdentidadAbonoMercadoPago } from '@/lib/mercadopago-datos';
+import { consultarApiMP } from '@/lib/mercadopago-api';
+import { hoyEnChile, inicioDelDia } from '@/lib/fechas';
 
 export async function actualizarArchivoMercadoPago(): Promise<{ ok: boolean; mensaje: string }> {
   const { tenantId } = await requerirPerfil({ roles: ['admin'], suscripcion: true });
   try {
-    const [archivo]=await Promise.all([sincronizarMercadoPago(tenantId),sincronizarOrdenesPoint(tenantId),actualizarSaldoPorReporte(tenantId)]);
-    const r=archivo;
+    const [archivo] = await Promise.allSettled([sincronizarMercadoPago(tenantId), sincronizarOrdenesPoint(tenantId), actualizarSaldoPorReporte(tenantId)]);
+    if (archivo.status === 'rejected') throw new Error('Archivo de pagos pendiente');
+    const r=archivo.value;
     revalidatePath('/configuracion/integraciones');
     revalidatePath('/configuracion/integraciones/mercadopago');
     revalidatePath('/caja/mercadopago');
@@ -44,4 +47,34 @@ export async function confirmarPacienteMercadoPago(input: {
   revalidatePath('/caja/mercadopago');
   revalidatePath(`/ventas/${input.identidad.venta_id}/comprobante`);
   return { ok: true, mensaje: 'Paciente confirmado. El voucher quedó protegido para este abono.' };
+}
+
+export async function buscarCobrosConTarjeta(monto: number, medio: string) {
+  const { tenantId } = await requerirPerfil({ roles: ['admin', 'ventas', 'clinico'], suscripcion: true });
+  if (!mercadoPagoConfigurado(tenantId) || !Number.isSafeInteger(monto) || monto <= 0 || !['debito','credito'].includes(medio)) {
+    return { error: 'Revisa el monto y el medio del cobro.', cobros: [] };
+  }
+  try {
+    const db = createAdminClient();
+    const { data, error } = await db.from('mercadopago_sync').select('collector_id').eq('tenant_id', tenantId).single();
+    if (error || !data?.collector_id) throw new Error('Cuenta no verificada');
+    const hasta = Date.now();
+    const desde = Math.min(Date.parse(inicioDelDia(hoyEnChile())), hasta - 60 * 60_000);
+    const filtros = new URLSearchParams({
+      sort: 'date_created', criteria: 'desc', range: 'date_created', limit: '100',
+      begin_date: new Date(desde).toISOString(), end_date: new Date(hasta).toISOString(),
+      status: 'approved', payment_type_id: medio === 'debito' ? 'debit_card' : 'credit_card',
+    });
+    const respuesta = await consultarApiMP(`/v1/payments/search?${filtros}`);
+    if (!Array.isArray(respuesta.results)) throw new Error('Respuesta sin pagos');
+    const candidatos = cobrosMPCoincidentes(respuesta.results, String(data.collector_id), medio, monto, desde, hasta);
+    if (!candidatos.length) return { cobros: [] };
+    const usados = await db.from('pagos_abonos').select('numero_voucher').eq('tenant_id', tenantId)
+      .in('numero_voucher', candidatos.map(p => p.id));
+    if (usados.error) throw new Error('No se pudieron revisar los abonos existentes');
+    const vinculados = new Set((usados.data ?? []).map(p => p.numero_voucher));
+    return { cobros: candidatos.filter(p => !vinculados.has(p.id)) };
+  } catch {
+    return { error: 'No se pudo consultar Mercado Pago. Reintenta la búsqueda sin volver a cobrar.', cobros: [] };
+  }
 }

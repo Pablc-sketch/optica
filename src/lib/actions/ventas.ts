@@ -466,6 +466,8 @@ export async function registrarConsulta(input: {
   if (!MEDIOS.includes(input.medioPago)) return { ok: false, error: "Medio de pago inválido." };
   const voucher = validarVoucher(input.medioPago, input.monto * cantidad, input.numeroVoucher);
   if (voucher.error) return { ok: false, error: voucher.error };
+  const verificacion = await verificarVoucherConProveedor(ctx.tenantId, input.medioPago, input.monto * cantidad, voucher.numero);
+  if (verificacion) return { ok: false, error: verificacion };
   const { error } = await ctx.supabase.rpc("registrar_venta_con_voucher", {
     p: {
       venta_id: input.consultaId,

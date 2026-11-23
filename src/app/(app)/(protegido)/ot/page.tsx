@@ -1,3 +1,4 @@
+import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -20,6 +21,8 @@ const COLUMNAS = [
 
 export default async function TableroOT() {
   const supabase = await createClient();
+  const { data: tenant } = await supabase.from("tenants").select("id").maybeSingle();
+  const mercadoPago = mercadoPagoConfigurado(tenant?.id ?? "");
 
   const otsRes = await leerTodas((a,b) => supabase
       .from("ordenes_trabajo")
@@ -149,7 +152,7 @@ export default async function TableroOT() {
                       )}
                       {col.estado === "listo" && venta && saldo > 0 && (
                         <div className="mt-2">
-                          <AbonoForm ventaId={venta.ventaId} saldo={saldo} compacto />
+                          <AbonoForm mercadoPago={mercadoPago} ventaId={venta.ventaId} saldo={saldo} compacto />
                         </div>
                       )}
                       {col.estado === "listo" && venta && saldo <= 0 && (

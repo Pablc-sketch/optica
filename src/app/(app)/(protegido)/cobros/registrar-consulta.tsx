@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { registrarConsulta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
 import { PRECIO_CONSULTA } from "@/lib/consulta";
+import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 
@@ -17,7 +18,7 @@ const MEDIOS = [
 
 // Cobrar una o varias consultas ($5.000 c/u) en el operativo elegido, en
 // dos toques. Entra a la caja del operativo y cuadra con Mercado Pago.
-export default function RegistrarConsulta({ operativoId }: { operativoId: string | null }) {
+export default function RegistrarConsulta({ operativoId, mercadoPago = false }: { operativoId: string | null; mercadoPago?: boolean }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [cantidad, setCantidad] = useState(1);
@@ -76,11 +77,11 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
       </p>
       <div className="flex items-center gap-3">
         <span className="text-sm text-tinta-suave">Cantidad</span>
-        <button type="button" onClick={() => setCantidad((c) => Math.max(1, c - 1))} className="h-10 w-10 rounded-full border text-lg font-bold">
+        <button type="button" onClick={() => { setCantidad(c => Math.max(1, c - 1)); setNumeroVoucher(""); }} className="h-10 w-10 rounded-full border text-lg font-bold">
           −
         </button>
         <span className="w-6 text-center text-lg font-bold tabular-nums">{cantidad}</span>
-        <button type="button" onClick={() => setCantidad((c) => Math.min(20, c + 1))} className="h-10 w-10 rounded-full border text-lg font-bold">
+        <button type="button" onClick={() => { setCantidad(c => Math.min(20, c + 1)); setNumeroVoucher(""); }} className="h-10 w-10 rounded-full border text-lg font-bold">
           ＋
         </button>
         <span className="ml-auto text-lg font-bold tabular-nums">{clp(PRECIO_CONSULTA * cantidad)}</span>
@@ -90,7 +91,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
           <button
             key={m.valor}
             type="button"
-            onClick={() => setMedio(m.valor)}
+            onClick={() => { setMedio(m.valor); setNumeroVoucher(""); }}
             className={`rounded-full border px-3.5 py-2 text-sm font-semibold ${
               medio === m.valor ? "border-tinta bg-tinta text-white" : "border-tinta/20 bg-white"
             }`}
@@ -99,7 +100,9 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
           </button>
         ))}
       </div>
-      {requiereVoucher(medio) && <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={pendiente} />}
+      {requiereVoucher(medio) && (mercadoPago
+        ? <ElegirCobroMercadoPago key={`${medio}:${PRECIO_CONSULTA * cantidad}`} medio={medio} monto={PRECIO_CONSULTA * cantidad} value={numeroVoucher} onChange={setNumeroVoucher} disabled={pendiente} />
+        : <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={pendiente} />)}
       <p className="text-xs text-tinta-suave">
         Si pagaron por separado, regístralos por separado.
       </p>
@@ -110,7 +113,7 @@ export default function RegistrarConsulta({ operativoId }: { operativoId: string
           onClick={registrar}
           className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
         >
-          {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : validarVoucher(medio, PRECIO_CONSULTA * cantidad, numeroVoucher).error ? "Completa el voucher" : `Registrar ${clp(PRECIO_CONSULTA * cantidad)}`}
+          {pendiente ? "Registrando…" : !medio ? "Elige cómo paga" : validarVoucher(medio, PRECIO_CONSULTA * cantidad, numeroVoucher).error ? mercadoPago ? "Selecciona el cobro aprobado" : "Completa el voucher" : `Registrar ${clp(PRECIO_CONSULTA * cantidad)}`}
         </button>
         <button type="button" onClick={() => setAbierto(false)} className="rounded-xl border-2 border-tinta/20 px-4 py-3 font-semibold">
           Cancelar
