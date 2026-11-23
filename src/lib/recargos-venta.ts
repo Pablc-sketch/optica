@@ -1,4 +1,4 @@
-import { nivelesMarcoInventarioGlobal, nombreNivelMarco, recargoMarco, type NivelMarco, type RecargosMarcos } from './niveles-marco';
+import { nivelesMarcoInventarioGlobal, nombreNivelMarco, recargoMarco, type MarcoInventarioGlobal, type NivelMarco, type RecargosMarcos } from './niveles-marco';
 import type { VentaNormalizada } from './venta-normalizar';
 
 export function lineaRecargo(numero:number,nivel:NivelMarco,tarifas:RecargosMarcos|null,cortesia=false,especial?:number|null){
@@ -12,17 +12,17 @@ export function validarRecargosVenta(
   venta: VentaNormalizada,
   tarifas: RecargosMarcos | null,
   especiales: ReadonlyMap<string, number> = new Map(),
-  marcasInventarioGlobal?: ReadonlyMap<string, string | null>,
+  inventarioGlobal?: ReadonlyMap<string, MarcoInventarioGlobal>,
 ): string | null {
   for(const c of venta.cristales){
     const marco=venta.marcoDeCupo[c.cupo];
     const extras=venta.items.filter(i=>i.marcoSlot===c.cupo);
-    const especial=marco?.productoId && !marcasInventarioGlobal ? especiales.get(marco.productoId) : undefined;
+    const especial=marco?.productoId && !inventarioGlobal ? especiales.get(marco.productoId) : undefined;
     if(especial!==undefined&&marco?.nivelMarco!=='premium')return 'Vuelve a elegir el marco de Colección Especial antes de cobrar.';
     if(!marco?.nivelMarco){if(extras.length)return 'Recargo sin línea de marco.';continue;}
     const nivel=marco.nivelMarco;
-    if (marco.productoId && marcasInventarioGlobal) {
-      const permitidos = nivelesMarcoInventarioGlobal(marcasInventarioGlobal.get(marco.productoId) ?? null);
+    if (marco.productoId && inventarioGlobal) {
+      const permitidos = nivelesMarcoInventarioGlobal(inventarioGlobal.get(marco.productoId) ?? { marca: null });
       if (!permitidos.includes(nivel)) return 'Vuelve a elegir la categoría del marco del inventario antes de cobrar.';
     }
     if((!tarifas&&nivel==='seleccion')||(tarifas?.especial===undefined&&nivel==='especial'))return 'Esta línea de marco no está habilitada.';
