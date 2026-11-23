@@ -104,8 +104,8 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   // vista cuándo se vendieron con descuento o de regalo.
   const idsProductos = [...new Set(items.map((i) => i.productoId).filter((x): x is string => Boolean(x)))];
   const { data: productos } = idsProductos.length
-    ? await supabase.from("productos").select("id, precio_venta, recargo_marco, marca").in("id", idsProductos)
-    : { data: [] as { id: string; precio_venta: number; recargo_marco: number | null; marca: string | null }[] };
+    ? await supabase.from("productos").select("id, precio_venta, recargo_marco, marca, sku").in("id", idsProductos)
+    : { data: [] as { id: string; precio_venta: number; recargo_marco: number | null; marca: string | null; sku: string | null }[] };
   if ((productos ?? []).length !== idsProductos.length) return { ok: false, error: "Un producto de la venta no existe." };
 
   // Costo y origen, recalculados acá. Si el catálogo no se puede leer o
@@ -130,7 +130,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       normal.venta,
       cotizar.recargosMarcos,
       new Map((productos ?? []).flatMap(p => p.recargo_marco == null ? [] : [[p.id, p.recargo_marco] as const])),
-      usaLineasGlobal ? new Map((productos ?? []).map(p => [p.id, p.marca])) : undefined,
+      usaLineasGlobal ? new Map((productos ?? []).map(p => [p.id, p])) : undefined,
     );
     if (errorRecargo) return { ok: false, error: errorRecargo };
 

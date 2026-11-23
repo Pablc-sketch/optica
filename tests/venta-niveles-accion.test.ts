@@ -29,11 +29,11 @@ describe('Acción real de venta con líneas de marco',()=>{
 });
 
 describe('Marcos de inventario de Óptica Global', () => {
-  function venderMarco(marca: string, recargoAnterior: number | null, nivel: NivelMarco) {
+  function venderMarco(marca: string, sku: string | null, recargoAnterior: number | null, nivel: NivelMarco) {
     const consultas = mocks.from.getMockImplementation()!;
     mocks.from.mockImplementation((tabla: string) => {
       if (tabla === 'tenants') return consulta({nombre_comercial: 'Óptica Global', factor_venta_cristales: 6, dias_entrega_default: 7});
-      if (tabla === 'productos') return consulta([{id: 'producto', marca, recargo_marco: recargoAnterior, precio_venta: 0}]);
+      if (tabla === 'productos') return consulta([{id: 'producto', marca, sku, recargo_marco: recargoAnterior, precio_venta: 0}]);
       return consultas(tabla);
     });
     const v = venta(nivel);
@@ -43,19 +43,27 @@ describe('Marcos de inventario de Óptica Global', () => {
   }
 
   it.each([
-    ['FOOSE', 'seleccion', null, 49990, 'Selección'],
-    ['SILMO', 'premium', 26990, 59990, 'Premium'],
-    ['SILMO', 'especial', 26990, 69990, 'Colección Especial'],
-    ['LACROSSE', 'esencial', 31990, 38000, 'Esencial'],
-  ] as const)('cobra %s según la categoría %s', async (marca, nivel, anterior, total, etiqueta) => {
-    expect((await venderMarco(marca, anterior, nivel)).ok).toBe(true);
+    ['FOOSE', 'seleccion', null, null, 49990, 'Selección'],
+    ['SILMO', 'premium', 'ZD-21126 C-2', 26990, 59990, 'Premium'],
+    ['LACROSSE', 'especial', 'LY-2187L C-2', 31990, 69990, 'Colección Especial'],
+    ['LACROSSE', 'especial', 'LY-2187L C-4', 31990, 69990, 'Colección Especial'],
+    ['LACROSSE', 'esencial', 'LY-2130L C-2', null, 38000, 'Esencial'],
+  ] as const)('cobra %s en la categoría %s (SKU %s)', async (marca, nivel, sku, anterior, total, etiqueta) => {
+    expect((await venderMarco(marca, sku, anterior, nivel)).ok).toBe(true);
     const p = mocks.rpc.mock.calls[0][1].p;
     expect(p.ots[0]).toMatchObject({armazon_producto_id: 'producto', marco_descripcion: `${etiqueta} · Acetato rojo`});
     expect(p.items.reduce((s: number, i: {precio_unitario: number; cantidad: number}) => s + i.precio_unitario * i.cantidad, 0)).toBe(total);
   });
 
-  it.each([['LACROSSE', 'especial'], ['SILMO', 'esencial'], ['VESPA', 'esencial']] as const)('impide cobrar %s en la categoría %s', async (marca, nivel) => {
-    expect((await venderMarco(marca, null, nivel)).ok).toBe(false);
+  it.each([
+    ['LACROSSE', 'especial', 'LY-2130L C-2'],
+    ['LACROSSE', 'esencial', 'LY-2187L C-2'],
+    ['LACROSSE', 'premium', 'LY-2187L C-4'],
+    ['SILMO', 'especial', 'ZD-21126 C-2'],
+    ['SILMO', 'esencial', null],
+    ['VESPA', 'esencial', null],
+  ] as const)('impide cobrar %s en la categoría %s (SKU %s)', async (marca, nivel, sku) => {
+    expect((await venderMarco(marca, sku, null, nivel)).ok).toBe(false);
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 });

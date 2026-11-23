@@ -118,7 +118,7 @@ const PASOS = ["Paciente", "Cristales", "Marco", "Pago"] as const;
 const DETALLE_LINEA_GLOBAL: Partial<Record<NivelMarco, string>> = {
   seleccion: "Le Giro, Vespa, Angelo Falconi, Go Scheers, Foose y Dioxy",
   premium: "Silmo con sobrelente",
-  especial: "Solo Silmo deportivos con sobrelente fotoespejado y soporte para graduar",
+  especial: "Lacrosse LY-2187L · mica deportiva espejada e inserto para graduar",
 };
 
 // Abono mínimo por tipo de lente: números cerrados y fáciles de recordar,
@@ -800,7 +800,7 @@ export default function PuntoDeVenta({
   const usaLineasGlobal = opticaGlobal && recargosMarcos?.especial !== undefined;
   const paresSinLineaMarco = usaLineasGlobal ? lineasArmazon.filter((marco) => {
     const producto = productos.find((p) => p.id === marco.productoId);
-    return producto && !nivelesMarcoInventarioGlobal(producto.marca).includes("esencial")
+    return producto && !nivelesMarcoInventarioGlobal(producto).includes("esencial")
       && !carrito.some((linea) => linea.recargoSlot === marco.armazonSlot);
   }).map((marco) => marco.armazonSlot) : [];
   // Abono mínimo: cubre mandar a hacer estos cristales al laboratorio, así
@@ -860,7 +860,7 @@ export default function PuntoDeVenta({
       if (!producto) return sinEsteSlot;
       let nivel: NivelMarco | undefined;
       if (usaLineasGlobal) {
-        const permitidos = nivelesMarcoInventarioGlobal(producto.marca);
+        const permitidos = nivelesMarcoInventarioGlobal(producto);
         const nivelElegido = prev.find(l => l.key === keyRecargo)?.nivelMarco;
         if (nivelElegido && permitidos.includes(nivelElegido)) nivel = nivelElegido;
         else if (permitidos.length === 1) nivel = permitidos[0];
@@ -1465,7 +1465,7 @@ export default function PuntoDeVenta({
                     : "tu lente";
                 const marco = carrito.find((c) => c.key === `armazon-${numero}`);
                 const producto = usaLineasGlobal ? productos.find((p) => p.id === marco?.productoId) : undefined;
-                const permitidos = producto ? nivelesMarcoInventarioGlobal(producto.marca) : null;
+                const permitidos = producto ? nivelesMarcoInventarioGlobal(producto) : null;
                 const nivelActual = carrito.find(c => c.recargoSlot === numero)?.nivelMarco
                   ?? (permitidos && !permitidos.includes("esencial") ? null : "esencial");
                 const categorias = nivelesMarcoDisponibles(recargosMarcos).filter(n => !permitidos || permitidos.includes(n.id));

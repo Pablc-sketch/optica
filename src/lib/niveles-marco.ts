@@ -9,10 +9,15 @@ export type RecargosMarcos=Record<Exclude<NivelMarco,'especial'>,number> & {espe
 export const RECARGOS_OPTICA_GLOBAL:RecargosMarcos={esencial:0,seleccion:11990,premium:21990,especial:31990};
 
 const MARCAS_SELECCION = new Set(["legiro", "vespa", "angelofalconi", "goscheers", "foose", "dioxy"]);
+const SKU_LACROSSE_ESPECIAL = new Set(["LY2187LC2", "LY2187LC4"]);
 
-export function nivelesMarcoInventarioGlobal(marca: string | null): readonly NivelMarco[] {
+export type MarcoInventarioGlobal = { marca: string | null; sku?: string | null };
+
+export function nivelesMarcoInventarioGlobal({ marca, sku }: MarcoInventarioGlobal): readonly NivelMarco[] {
   const nombre = (marca ?? "").toLowerCase().replace(/[^a-z]/g, "");
-  if (nombre === "silmo") return ["premium", "especial"];
+  const codigo = (sku ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (nombre === "lacrosse" && SKU_LACROSSE_ESPECIAL.has(codigo)) return ["especial"];
+  if (nombre === "silmo") return ["premium"];
   if (MARCAS_SELECCION.has(nombre)) return ["seleccion"];
   return ["esencial", "seleccion"];
 }
