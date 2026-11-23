@@ -1,4 +1,5 @@
 import { leerRecargosMarcos } from "@/lib/niveles-marco";
+import { esOpticaGlobal } from "@/lib/marca-optica";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -34,7 +35,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
          diseno_laboratorio_proximo, diseno_proximo_desde`
       )
       .order("tipo_lente"),
-    supabase.from("tenants").select("factor_venta_cristales, descuento_laboratorio_pct, comision_debito_pct, comision_credito_pct, recargos_marcos").single(),
+    supabase.from("tenants").select("nombre_comercial, factor_venta_cristales, descuento_laboratorio_pct, comision_debito_pct, comision_credito_pct, recargos_marcos").single(),
     supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
     supabase
@@ -109,6 +110,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
           costos={costosRes.data ?? []}
           laboratorios={laboratoriosRes.data ?? []}
           recargosMarcos={leerRecargosMarcos(tenantRes.data?.recargos_marcos)}
+          opticaGlobal={esOpticaGlobal(tenantRes.data?.nombre_comercial ?? "")}
           factorVenta={tenantRes.data?.factor_venta_cristales ?? 6}
           catalogoLab={{
             stock: stockRes.data ?? [],

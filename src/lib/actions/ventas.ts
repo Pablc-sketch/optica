@@ -6,6 +6,7 @@ import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
 import { validarRecargosVenta } from "@/lib/recargos-venta";
+import { esOpticaGlobal } from "@/lib/marca-optica";
 import { nombreNivelMarco } from "@/lib/niveles-marco";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
@@ -103,8 +104,8 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   // vista cuándo se vendieron con descuento o de regalo.
   const idsProductos = [...new Set(items.map((i) => i.productoId).filter((x): x is string => Boolean(x)))];
   const { data: productos } = idsProductos.length
-    ? await supabase.from("productos").select("id, precio_venta, recargo_marco").in("id", idsProductos)
-    : { data: [] as { id: string; precio_venta: number; recargo_marco: number|null }[] };
+    ? await supabase.from("productos").select("id, precio_venta, recargo_marco, marca").in("id", idsProductos)
+    : { data: [] as { id: string; precio_venta: number; recargo_marco: number | null; marca: string | null }[] };
   if ((productos ?? []).length !== idsProductos.length) return { ok: false, error: "Un producto de la venta no existe." };
 
   // Costo y origen, recalculados acá. Si el catálogo no se puede leer o
@@ -119,13 +120,19 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
     } catch {
       return { ok: false, error: "No se pudo leer el catálogo de precios. Revisa la conexión e intenta de nuevo." };
     }
-    const errorRecargo=validarRecargosVenta(normal.venta,cotizar.recargosMarcos,new Map((productos??[]).flatMap(p=>p.recargo_marco===null?[]:[[p.id,p.recargo_marco] as const])));
-    if(errorRecargo)return {ok:false,error:errorRecargo};
     const { data: tenant } = await supabase
       .from("tenants")
-      .select("factor_venta_cristales, dias_entrega_default")
+      .select("factor_venta_cristales, dias_entrega_default, nombre_comercial")
       .eq("id", tenantId)
       .single();
+    const usaLineasGlobal = esOpticaGlobal(tenant?.nombre_comercial ?? "") && cotizar.recargosMarcos?.especial !== undefined;
+    const errorRecargo = validarRecargosVenta(
+      normal.venta,
+      cotizar.recargosMarcos,
+      new Map((productos ?? []).flatMap(p => p.recargo_marco == null ? [] : [[p.id, p.recargo_marco] as const])),
+      usaLineasGlobal ? new Map((productos ?? []).map(p => [p.id, p.marca])) : undefined,
+    );
+    if (errorRecargo) return { ok: false, error: errorRecargo };
 
     const calculados: { c: (typeof cristales)[number]; costo: NonNullable<ReturnType<typeof costoRealCristal>> }[] = [];
     for (const c of cristales) {

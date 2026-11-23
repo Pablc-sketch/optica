@@ -7,6 +7,16 @@ export const NIVELES_MARCO = [
 export type NivelMarco=(typeof NIVELES_MARCO)[number]['id'];
 export type RecargosMarcos=Record<Exclude<NivelMarco,'especial'>,number> & {especial?:number};
 export const RECARGOS_OPTICA_GLOBAL:RecargosMarcos={esencial:0,seleccion:11990,premium:21990,especial:31990};
+
+const MARCAS_SELECCION = new Set(["legiro", "vespa", "angelofalconi", "goscheers", "foose", "dioxy"]);
+
+export function nivelesMarcoInventarioGlobal(marca: string | null): readonly NivelMarco[] {
+  const nombre = (marca ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  if (nombre === "silmo") return ["premium", "especial"];
+  if (MARCAS_SELECCION.has(nombre)) return ["seleccion"];
+  return ["esencial", "seleccion"];
+}
+
 export function esNivelMarco(v:unknown):v is NivelMarco{return NIVELES_MARCO.some(n=>n.id===v);}
 export function leerRecargosMarcos(v:unknown):RecargosMarcos|null {
   if(!v||typeof v!=='object')return null;
