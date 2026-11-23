@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
+import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 
 const SIGUIENTE: Record<string, string> = {
   recepcion: "laboratorio",
@@ -43,8 +44,10 @@ async function moverOT(formData: FormData, direccion: "avanzar" | "retroceder") 
     throw new Error("Esta orden cambió de estado mientras la tenías abierta. Recarga la página.");
   }
 
-  revalidatePath("/ot");
-  revalidatePath("/");
+  revalidatePath(`/ot/${otId}`);
+  revalidatePath("/laboratorio");
+  revalidatePath("/avisos");
+  revalidarOperacionVenta();
 }
 
 export async function avanzarOT(formData: FormData) {

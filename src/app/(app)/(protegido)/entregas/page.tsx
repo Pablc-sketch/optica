@@ -11,6 +11,13 @@ import TarjetaCobro, { type FilaCobro } from "../cobros/tarjeta-cobro";
 type Ot = { id: string; estado: string; tipo_lente: string | null; tipo_lente_2: string | null };
 type Grupo = { clave: string; nombre: string; fecha: string | null; filas: FilaCobro[] };
 
+function totalesPendientes(filas: FilaCobro[]) {
+  return filas.reduce((suma, fila) => ({
+    listos: suma.listos + fila.listos,
+    enProceso: suma.enProceso + fila.enProceso,
+  }), { listos: 0, enProceso: 0 });
+}
+
 export default async function Entregas() {
   const supabase = await createClient();
   const res = await leerTodas((a, b) => supabase
@@ -65,8 +72,7 @@ export default async function Entregas() {
       filas: g.filas.sort((a, b) => Number(b.listos > 0) - Number(a.listos > 0) || b.saldo - a.saldo),
     }))
     .sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? ""));
-  const totalListos = lista.reduce((s, g) => s + g.filas.filter((f) => f.listos > 0).length, 0);
-  const totalFaltan = lista.reduce((s, g) => s + g.filas.length, 0);
+  const total = totalesPendientes(lista.flatMap(g => g.filas));
 
   return (
     <div className="flex flex-col gap-5">
@@ -74,7 +80,7 @@ export default async function Entregas() {
         <div>
           <CabeceraPagina seccion="Operación" titulo="Entregas" />
           <p className="text-sm text-tinta-suave">
-            {res.error ? "Entregas no disponibles" : totalFaltan === 0 ? "Todo entregado" : `${totalListos} listos · ${totalFaltan - totalListos} en laboratorio`}
+            {res.error ? "Entregas no disponibles" : lista.length === 0 ? "Todo entregado" : `${total.listos} pares listos · ${total.enProceso} en laboratorio`}
           </p>
         </div>
         <Link href="/avisos" className="rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900">
@@ -93,14 +99,14 @@ export default async function Entregas() {
       )}
 
       {lista.map((g) => {
-        const listos = g.filas.filter((f) => f.listos > 0).length;
+        const { listos, enProceso } = totalesPendientes(g.filas);
         return (
           <section key={g.clave} className="flex flex-col gap-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-tinta/10 pb-1">
               <h2 className="text-lg font-bold">{g.nombre}</h2>
               <p className="text-sm text-tinta-suave">
                 {g.fecha ? `${fechaLegible(g.fecha)} · ` : ""}
-                <b className={listos > 0 ? "text-emerald-700" : ""}>{listos} listos</b> · {g.filas.length - listos} en laboratorio
+                <b className={listos > 0 ? "text-emerald-700" : ""}>{listos} pares listos</b> · {enProceso} en laboratorio
               </p>
             </div>
             <ul className="flex flex-col gap-3">

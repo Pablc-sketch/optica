@@ -35,3 +35,8 @@ export function resolverContextoVenta(
   if (receta) return { operativoId: receta, origen: "receta", recetaDeOtroOperativo: null };
   return { operativoId: null, origen: "particular", recetaDeOtroOperativo: null };
 }
+export function rutaVentaReceta(recetaId: string, operativoId?: string | null): string {
+  const params = new URLSearchParams({ receta: recetaId });
+  if (operativoId) params.set("op", operativoId);
+  return `/ventas?${params}`;
+}

@@ -2,21 +2,18 @@ import { leerRecargosMarcos } from "@/lib/niveles-marco";
 import { esOpticaGlobal } from "@/lib/marca-optica";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { exigirRolPagina } from "@/lib/autorizacion";
 import PuntoDeVenta from "./pos";
 import { leerSugerenciasExtra } from "@/lib/sugerencias";
 import CabeceraPagina from "@/components/cabecera-pagina";
 
-export default async function VentasPage({ searchParams }: { searchParams: Promise<{ op?: string }> }) {
-  const { op } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export default async function VentasPage({ searchParams }: { searchParams: Promise<{ op?: string; receta?: string }> }) {
+  const { op, receta } = await searchParams;
+  const { supabase, user, tenantId } = await exigirRolPagina(["admin", "ventas"]);
 
   const [
-    pacientesRes, productosRes, costosRes, tenantRes, perfilRes, sucursalRes,
-    recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, promoRes, operativosRes,
+    pacientesRes, productosRes, costosRes, tenantRes, sucursalRes,
+    recetasRes, laboratoriosRes, stockRes, labRes, montajeRes, recargoRes, promoRes, operativosRes, recetaElegidaRes,
   ] = await Promise.all([
     // Hasta 2.000: el buscador del punto de venta filtra en el navegador, así
     // que lo que no se carga no se encuentra. Si algún día se pasa, se avisa
@@ -36,7 +33,6 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
       )
       .order("tipo_lente"),
     supabase.from("tenants").select("nombre_comercial, factor_venta_cristales, descuento_laboratorio_pct, comision_debito_pct, comision_credito_pct, recargos_marcos").single(),
-    supabase.from("users").select("tenant_id").eq("id", user!.id).single(),
     supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
     supabase
       .from("recetas")
@@ -65,18 +61,32 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
       .select("id, nombre, fecha, fecha_entrega_estimada, costo_marco_unitario")
       .in("estado", ["planificado", "realizado"])
       .order("fecha", { ascending: false }),
+    receta ? supabase.from("recetas").select("*").eq("id", receta).eq("tenant_id", tenantId).maybeSingle() : null,
   ]);
 
+  const recetaElegida = recetaElegidaRes?.data;
+  const pacienteElegido = recetaElegida ? (pacientesRes.data ?? []).find(p => p.id === recetaElegida.paciente_id)
+    ?? (await supabase.from("pacientes").select("id, nombre, rut").eq("id", recetaElegida.paciente_id).eq("tenant_id", tenantId).maybeSingle()).data : null;
+  if (receta && (!recetaElegida || !pacienteElegido)) return (
+    <div className="rounded-xl bg-white p-5 shadow-sm">
+      <h1 className="text-xl font-bold">Receta no disponible</h1>
+      <p className="mt-1 text-sm">Abre la receta desde la ficha del paciente o inicia otra venta.</p>
+      <Link href="/ventas" className="mt-3 inline-block underline">Volver al punto de venta</Link>
+    </div>
+  );
 
   // Última receta por paciente: la OT creada desde el POS la enlaza sola
   // (también offline), y sus esfera/cilindro + sugerencia dejan la venta
   // precargada sin que la vendedora tenga que preguntar ni calcular nada.
   const recetasPorPaciente: Record<string, NonNullable<typeof recetasRes.data>[number]> = {};
   for (const r of recetasRes.data ?? []) {
-    if (!recetasPorPaciente[r.paciente_id]) {
+    if (!recetasPorPaciente[r.paciente_id] || (op && r.operativo_id === op && recetasPorPaciente[r.paciente_id].operativo_id !== op)) {
       recetasPorPaciente[r.paciente_id] = { ...r, sugerencias_extra: leerSugerenciasExtra(r.sugerencias_extra) };
     }
   }
+  if (recetaElegida) recetasPorPaciente[recetaElegida.paciente_id] = {
+    ...recetaElegida, sugerencias_extra: leerSugerenciasExtra(recetaElegida.sugerencias_extra),
+  };
 
   const {data: existencias} = sucursalRes.data
     ? await supabase.from("inventario").select("producto_id, stock_actual").eq("sucursal_id", sucursalRes.data.id).limit(2000)
@@ -84,7 +94,8 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   const stockPorProducto = new Map(existencias?.map(p => [p.producto_id, p.stock_actual]));
 
   const contexto = operativosRes.data?.find(o=>o.id===op);
-  const piloto = esPilotoTerreno(perfilRes.data?.tenant_id);
+  const piloto = esPilotoTerreno(tenantId);
+  const pacientes = pacientesRes.data ?? [];
   if (op && !contexto) return <div className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-xl font-bold">Operativo no disponible</h1><p className="mt-1 text-sm">Revisa la agenda antes de registrar esta venta.</p><Link href={piloto ? "/agenda/equipos" : "/operativos"} className="mt-3 inline-block underline">Volver a operativos</Link></div>;
   return (
     <div className="flex flex-col gap-4">
@@ -102,10 +113,11 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
         )}
         {contexto && <p className="rounded-xl bg-sky-100 p-3 text-sm text-sky-950"><b>Operativo</b> · {contexto.nombre}</p>}
         <PuntoDeVenta
-          key={contexto?.id ?? "sucursal"}
+          key={`${contexto?.id ?? "sucursal"}:${recetaElegida?.id ?? "venta"}`}
           operativoInicial={contexto?.id}
+          pacienteInicial={pacienteElegido?.id}
           sugerirOperativoPorReceta={!piloto}
-          pacientes={pacientesRes.data ?? []}
+          pacientes={pacienteElegido && !pacientes.some(p => p.id === pacienteElegido.id) ? [pacienteElegido, ...pacientes] : pacientes}
           productos={(productosRes.data ?? []).map(p => ({...p, stock: stockPorProducto.get(p.id)}))}
           costos={costosRes.data ?? []}
           laboratorios={laboratoriosRes.data ?? []}
@@ -120,9 +132,9 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
             promociones: (promoRes.data ?? []).map((p) => ({ ...p, descuento_pct: Number(p.descuento_pct) })),
             descuentoPct: Number(tenantRes.data?.descuento_laboratorio_pct ?? 0),
           }}
-          tenantId={perfilRes.data?.tenant_id ?? ""}
+          tenantId={tenantId}
           sucursalId={sucursalRes.data?.id ?? null}
-          vendedorId={user?.id ?? null}
+          vendedorId={user.id}
           recetasPorPaciente={recetasPorPaciente}
           operativos={operativosRes.data ?? []}
           comisionDebitoPct={Number(tenantRes.data?.comision_debito_pct ?? 0)}

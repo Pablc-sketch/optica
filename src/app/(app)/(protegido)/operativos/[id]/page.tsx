@@ -4,6 +4,7 @@ import OperativoTerreno from "@/components/operativo-terreno";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import Link from "next/link";
+import { rutaVentaReceta } from "@/lib/contexto-venta";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarDetallesOperativo, actualizarOperativo, actualizarSueldosOperativo } from "@/lib/actions/operativos";
@@ -90,7 +91,8 @@ const TIPOS_VENUE = [
 export default async function DetalleOperativo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: tenantId } = await supabase.rpc("jwt_tenant_id");
+  const [{ data: tenantId }, { data: rol }] = await Promise.all([supabase.rpc("jwt_tenant_id"), supabase.rpc("jwt_rol")]);
+  const puedeVender = rol === "admin" || rol === "ventas";
   if (esPilotoTerreno(tenantId)) return <OperativoTerreno id={id}/>;
 
   const [
@@ -1174,13 +1176,14 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               return (
                 <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
                   {paciente ? (
-                    <Link href={`/pacientes/${paciente.id}`} className="min-w-32 flex-1 font-medium hover:underline">
+                    <Link href={`/pacientes/${paciente.id}?${new URLSearchParams({ op: id })}`} className="min-w-32 flex-1 font-medium hover:underline">
                       {paciente.nombre}
                     </Link>
                   ) : (
                     <span className="min-w-32 flex-1 text-tinta-suave">Sin paciente</span>
                   )}
                   <span className="text-xs text-tinta-suave">{fechaLegible(r.fecha)}</span>
+                  {paciente && !compro && puedeVender && <Link href={rutaVentaReceta(r.id, id)} className="font-semibold text-brand-dark underline">Abrir en caja</Link>}
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                       compro ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"

@@ -8,6 +8,7 @@ import EliminarReceta from "../eliminar-receta";
 import EditarPaciente from "../editar-paciente";
 import NuevaReceta from "./nueva-receta";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
+import { rutaVentaReceta } from "@/lib/contexto-venta";
 
 const TIPO_LABEL: Record<string, string> = {
   lejos: "Lejos",
@@ -20,8 +21,9 @@ function fmtDioptria(v: number | null): string {
   return (v > 0 ? "+" : "") + v.toFixed(2);
 }
 
-export default async function FichaPaciente({ params }: { params: Promise<{ id: string }> }) {
+export default async function FichaPaciente({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ op?: string }> }) {
   const { id } = await params;
+  const { op } = await searchParams;
   const supabase = await createClient();
 
   const { data: paciente } = await supabase
@@ -46,7 +48,7 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
       )
     : null;
 
-  const [{ data: recetas }, { data: operativos }, cotizar] = await Promise.all([
+  const [{ data: recetas }, { data: operativos }, cotizar, { data: rol }] = await Promise.all([
     supabase
       .from("recetas")
       .select("*")
@@ -65,7 +67,10 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
     // vendedora, y el precio que se le dice al paciente en el box sea el
     // mismo que después se le cobra.
     cargarCatalogoParaCotizar(supabase),
+    supabase.rpc("jwt_rol"),
   ]);
+  const puedeVender = rol === "admin" || rol === "ventas";
+  const operativoInicial = operativos?.find(o => o.id === op)?.id;
 
   return (
     <div className="flex flex-col gap-6">
@@ -179,12 +184,14 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
         </form>
       </details>
 
-      <NuevaReceta
+      {(rol === "admin" || rol === "clinico") && <NuevaReceta
         pacienteId={paciente.id}
         operativos={operativos ?? []}
+        operativoInicial={operativoInicial}
+        puedeVender={puedeVender}
         costos={cotizar.filas}
         catalogoLab={cotizar.catalogo} recargosMarcos={cotizar.recargosMarcos}
-      />
+      />}
 
       <section>
         <h2 className="mb-3 font-semibold">Historial de recetas</h2>
@@ -197,6 +204,12 @@ export default async function FichaPaciente({ params }: { params: Promise<{ id: 
                 <div className="mb-2 flex items-center justify-between text-sm">
                   <span className="font-semibold">{new Date(r.fecha + "T00:00:00").toLocaleDateString("es-CL")}</span>
                   <div className="flex items-center gap-2">
+                    {puedeVender && <Link
+                      href={rutaVentaReceta(r.id, operativoInicial)}
+                      className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-brand-dark transition hover:bg-white"
+                    >
+                      Vender con esta receta
+                    </Link>}
                     <span className="rounded-full bg-crema px-2.5 py-0.5 text-xs font-medium text-tinta-suave">{TIPO_LABEL[r.tipo] ?? r.tipo}</span>
                     <Link
                       href={`/pacientes/${paciente.id}/receta/${r.id}`}
