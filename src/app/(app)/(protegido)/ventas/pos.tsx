@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { coincidePaciente } from "@/lib/buscar-paciente";
+import { filtrarProductos } from "@/lib/buscar-producto";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 import { encolarVenta } from "@/lib/offline/outbox";
@@ -21,12 +22,12 @@ import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
-import { type CatalogoLaboratorio, type CostoCristal as CostoReal } from "@/lib/costo-fides";
+import { IVA, type CatalogoLaboratorio, type CostoCristal as CostoReal } from "@/lib/costo-fides";
 import { costoRealCristal, origenCristal as origenDelCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
-type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string; sku?: string|null; recargo_marco?: number|null; stock?: number };
+type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string; sku?: string | null; modelo?: string | null; codigo_color?: string | null; recargo_marco?: number | null; stock?: number; costo?: number };
 // Una fila del catálogo de /precios: el precio al que se vende, más el
 // puente hacia la lista del laboratorio para poder calcular el costo real.
 type CostoCristal = {
@@ -510,7 +511,6 @@ function SelectorArmazon({
   // El código o modelo del marco (lo que trae la etiqueta), aparte del
   // color: así sale en el pedido sin tener que cargar el marco al inventario.
   const [codigoMarco, setCodigoMarco] = useState("");
-  const [verInventario, setVerInventario] = useState(true);
   const descripcion = [
     [tipoMarco, colorMarco.trim().toLowerCase()].filter(Boolean).join(" "),
     codigoMarco.trim() ? `cód. ${codigoMarco.trim().toUpperCase()}` : "",
@@ -518,11 +518,7 @@ function SelectorArmazon({
     .filter(Boolean)
     .join(" · ");
   const armazones = useMemo(() => productos.filter((p) => p.categoria === "armazon"), [productos]);
-  const filtrados = useMemo(() => {
-    const t = busca.trim().toLowerCase();
-    if (!t) return armazones;
-    return armazones.filter((p) => `${p.marca ?? ""} ${p.nombre} ${p.sku ?? ""}`.toLowerCase().includes(t));
-  }, [armazones, busca]);
+  const filtrados = useMemo(() => filtrarProductos(armazones, busca), [armazones, busca]);
 
   return (
     <fieldset className="flex-1 rounded-xl border border-amber-300 bg-white p-3">
@@ -544,86 +540,19 @@ function SelectorArmazon({
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          <div className="flex flex-col gap-2 rounded-lg bg-amber-50 p-2.5">
-            <p className="text-xs font-bold uppercase tracking-wider text-amber-900">Describe el marco</p>
-            <div className="flex flex-wrap gap-1.5">
-              {TIPOS_MARCO.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTipoMarco(t)}
-                  className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${
-                    tipoMarco === t ? "border-amber-800 bg-amber-800 text-white" : "border-amber-800/25 bg-white text-amber-900"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {COLORES_MARCO.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColorMarco(c)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                    colorMarco === c ? "border-tinta bg-tinta text-white" : "border-tinta/20 bg-white text-tinta"
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
+          <label className="flex flex-col gap-1 text-sm font-semibold text-amber-900">
+            Código del marco en inventario
             <input
-              value={colorMarco}
-              onChange={(e) => setColorMarco(e.target.value)}
-              placeholder="Color u otro detalle (ej. carey con dorado)"
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Ej. LY-2187L C-2"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              className="w-full rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
             />
-            <label className="flex flex-col gap-1 text-sm font-bold text-amber-900">
-              Código del marco (el de la etiqueta)
-              <input
-                value={codigoMarco}
-                onChange={(e) => setCodigoMarco(e.target.value)}
-                placeholder="Ej. GYS8039"
-                autoCapitalize="characters"
-                className="w-full rounded-xl border-2 border-amber-300 bg-white px-3 py-3 text-lg font-bold uppercase tracking-wide outline-none focus:border-amber-600"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={!tipoMarco || (!colorMarco.trim() && !codigoMarco.trim())}
-              onClick={() => onDescribir(descripcion)}
-              className="rounded-lg bg-amber-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40"
-            >
-              {tipoMarco && (colorMarco.trim() || codigoMarco.trim()) ? `Usar: marco ${descripcion}` : "Elige tipo y color (o código)"}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={onMarcarPropio}
-            className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left text-sm font-semibold text-sky-900 transition hover:bg-sky-100"
-          >
-            👓 El paciente trae su propio marco
-          </button>
-          {armazones.length > 0 && !verInventario && (
-            <button
-              type="button"
-              onClick={() => setVerInventario(true)}
-              className="text-left text-xs font-semibold text-amber-900 underline"
-            >
-              Buscar en el inventario ({armazones.length} marcos cargados)
-            </button>
-          )}
-          {verInventario && (
-          <>
-          <input
-            type="search"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar marca, modelo o código…"
-            className="w-full rounded-lg border border-tinta-suave/30 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
-          />
+          </label>
           <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto">
             {filtrados.map((p) => (
               <li key={p.id}>
@@ -634,9 +563,14 @@ function SelectorArmazon({
                 >
                   <span className="flex-1 truncate">
                     {p.marca ? `${p.marca} ` : ""}
-                    {p.nombre} {p.sku && <small className="block">{p.sku}</small>}
+                    {p.nombre}
+                    {p.sku && p.sku !== p.nombre && <small className="block font-semibold">{p.sku}</small>}
                   </span>
-                  {p.stock!==undefined && <span className="text-xs">{p.stock<=0 ? `Por encargar (${p.stock})` : `Stock ${p.stock}`}</span>}
+                  {p.stock !== undefined && (
+                    <span className={`shrink-0 text-xs font-semibold ${p.stock > 0 ? "text-emerald-800" : "text-amber-900"}`}>
+                      {p.stock > 0 ? `Stock ${p.stock}` : p.stock < 0 ? `Por encargar · saldo ${p.stock}` : "Sin stock · por encargar"}
+                    </span>
+                  )}
                 </button>
               </li>
             ))}
@@ -646,8 +580,71 @@ function SelectorArmazon({
               </li>
             )}
           </ul>
-          </>
-          )}
+          <button
+            type="button"
+            onClick={onMarcarPropio}
+            className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left text-sm font-semibold text-sky-900 transition hover:bg-sky-100"
+          >
+            👓 El paciente trae su propio marco
+          </button>
+          <details className="rounded-lg border border-amber-200">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-amber-900">Describir un marco fuera del inventario</summary>
+            <div className="flex flex-col gap-2 rounded-lg bg-amber-50 p-2.5">
+              <p className="text-xs text-amber-900">Este registro queda en la orden sin descontar inventario.</p>
+              <div className="flex flex-wrap gap-1.5">
+                {TIPOS_MARCO.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTipoMarco(t)}
+                    className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${
+                      tipoMarco === t ? "border-amber-800 bg-amber-800 text-white" : "border-amber-800/25 bg-white text-amber-900"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {COLORES_MARCO.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColorMarco(c)}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                      colorMarco === c ? "border-tinta bg-tinta text-white" : "border-tinta/20 bg-white text-tinta"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <input
+                value={colorMarco}
+                onChange={(e) => setColorMarco(e.target.value)}
+                placeholder="Color u otro detalle (ej. carey con dorado)"
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
+              />
+              <label className="flex flex-col gap-1 text-sm font-bold text-amber-900">
+                Código del marco (el de la etiqueta)
+                <input
+                  value={codigoMarco}
+                  onChange={(e) => setCodigoMarco(e.target.value)}
+                  placeholder="Ej. GYS8039"
+                  autoCapitalize="characters"
+                  className="w-full rounded-xl border-2 border-amber-300 bg-white px-3 py-3 text-lg font-bold uppercase tracking-wide outline-none focus:border-amber-600"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!tipoMarco || (!colorMarco.trim() && !codigoMarco.trim())}
+                onClick={() => onDescribir(descripcion)}
+                className="rounded-lg bg-amber-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40"
+              >
+                {tipoMarco && (colorMarco.trim() || codigoMarco.trim()) ? `Usar: marco ${descripcion}` : "Elige tipo y color (o código)"}
+              </button>
+            </div>
+          </details>
         </div>
       )}
     </fieldset>
@@ -810,11 +807,20 @@ export default function PuntoDeVenta({
   // Con el costo real de cada par (lib/abono-minimo.ts), no solo un monto
   // fijo por tipo: un fotocromático tallado cuesta bastante más de $10.000.
   const { monto: abonoMinimo, noCubre: abonoNoCubre } = abonoMinimoDe(
-    lineasCristal.map((l) => ({
-      precio: l.precioUnitario,
-      costoCristal: costoRealDeLinea(l)?.costo ?? null,
-      minimoFijo: ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0,
-    })),
+    lineasCristal.map((l) => {
+      const numero = numeroDePar(l.key);
+      const marco = lineasArmazon.find((armazon) => armazon.armazonSlot === numero);
+      const costoNetoMarco = usaLineasGlobal && marco?.productoId
+        ? productos.find((producto) => producto.id === marco.productoId)?.costo ?? 0
+        : 0;
+      const recargo = carrito.find((linea) => linea.recargoSlot === numero)?.precioUnitario ?? 0;
+      return {
+        precio: l.precioUnitario + recargo,
+        costoCristal: costoRealDeLinea(l)?.costo ?? null,
+        costoMarco: marco?.marcoPropio ? 0 : costoNetoMarco > 0 ? Math.round(costoNetoMarco * IVA) : undefined,
+        minimoFijo: ABONO_MINIMO_POR_TIPO[l.cristal?.tipoLente ?? ""] ?? 0,
+      };
+    }),
     operativos.find(o=>o.id===operativoId)?.costo_marco_unitario ?? COSTO_MARCO_POR_PAR,
     total,
     // Bruto del medio elegido: con tarjeta hay que cobrar algo más para que
@@ -845,9 +851,7 @@ export default function PuntoDeVenta({
   const tieneCristal = lineasCristal.length > 0;
   const productosFiltrados = useMemo(() => {
     const base = productos.filter(p => p.categoria !== "armazon" || (!tieneCristal && p.precio_venta > 0));
-    const t = buscaProducto.trim().toLowerCase();
-    if (!t) return base;
-    return base.filter((p) => `${p.marca ?? ""} ${p.nombre} ${p.sku ?? ""}`.toLowerCase().includes(t));
+    return filtrarProductos(base, buscaProducto);
   }, [productos, buscaProducto, tieneCristal]);
 
   function elegirArmazon(numero: number, producto: Producto | null) {
@@ -873,7 +877,7 @@ export default function PuntoDeVenta({
         {
           key,
           productoId: producto.id,
-          descripcion: `${producto.marca ? producto.marca + " " : ""}${producto.nombre}`,
+          descripcion: [producto.marca, producto.nombre, producto.sku?.trim().toUpperCase() === producto.nombre.trim().toUpperCase() ? null : producto.sku].filter(Boolean).join(" · "),
           cantidad: 1,
           precioUnitario: 0,
           armazonSlot: numero,

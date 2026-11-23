@@ -39,6 +39,13 @@ describe("abonoMinimoDe", () => {
       noCubre: true,
     });
   });
+  it("cubre la reposición por SKU en cada par y permite marco propio sin costo", () => {
+    const pares = [
+      { precio: 69990, costoCristal: 3577, costoMarco: 23800, minimoFijo: 10000 },
+      { precio: 38000, costoCristal: 3577, costoMarco: 0, minimoFijo: 10000 },
+    ];
+    expect(abonoMinimoDe(pares, 5000, 107990, 2.13)).toEqual({ monto: 38000, noCubre: false });
+  });
   it("tasa por medio", () => {
     expect(tasaDelMedio("credito", 2.13, 2.96)).toBe(2.96);
     expect(tasaDelMedio("debito", 2.13, 2.96)).toBe(2.13);
