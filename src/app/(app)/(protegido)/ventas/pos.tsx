@@ -7,6 +7,7 @@ import { coincidePaciente } from "@/lib/buscar-paciente";
 import { filtrarProductos } from "@/lib/buscar-producto";
 import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
 import CampoVoucher from "@/components/campo-voucher";
+import { CampoPresupuestoPar, EstadoPresupuestoPar } from "@/components/presupuesto-par";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
 import { encolarVenta } from "@/lib/offline/outbox";
 import { nivelesMarcoDisponibles, nivelesMarcoInventarioGlobal, nombreNivelMarco, NIVELES_MARCO, type NivelMarco, type RecargosMarcos } from "@/lib/niveles-marco";
@@ -15,7 +16,7 @@ import { MAX_PARES } from "@/lib/venta-normalizar";
 import { resolverContextoVenta } from "@/lib/contexto-venta";
 import { calcularPrecioAcordado, faltaPacienteParaGuardar, quitarHuerfanos, repartirDescuento } from "@/lib/carrito";
 import { abonoMinimoDe, tasaDelMedio } from "@/lib/abono-minimo";
-import { montoAbono } from "@/lib/monto-abono";
+import { montoAbono, montosSugeridosAbono } from "@/lib/monto-abono";
 import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import RegistrarConsulta from "../cobros/registrar-consulta";
 import type { SugerenciaExtra } from "@/lib/sugerencias";
@@ -128,6 +129,14 @@ const ABONO_MINIMO_POR_TIPO: Record<string, number> = {
   Bifocal: 40000,
   Multifocal: 80000,
 };
+
+const OPCIONES_ABONO = [
+  { modo: "total", titulo: "Paga todo" },
+  { modo: "mitad", titulo: "Mitad" },
+  { modo: "minimo", titulo: "Abono mínimo" },
+] as const;
+
+type AbonoElegido = { modo: (typeof OPCIONES_ABONO)[number]["modo"] } | { modo: "manual"; texto: string };
 
 // Un color bien distinto por paso — alto contraste a propósito, para que
 // sea fácil seguir en qué parte de la venta se está de un vistazo (pedido
@@ -724,12 +733,9 @@ export default function PuntoDeVenta({
   // Lo que de verdad se cobra: sin marcos ni premium de pares que ya no
   // tienen cristal (lib/carrito.ts).
   const carrito = useMemo(() => quitarHuerfanos(carritoTodo), [carritoTodo]);
-  const [abono, setAbono] = useState<string>("");
+  const [presupuestos, setPresupuestos] = useState<Partial<Record<number, string>>>({});
+  const [abono, setAbono] = useState<AbonoElegido>({ modo: "total" });
   const [acuerdo, setAcuerdo] = useState<{ campo: "descuento" | "total"; texto: string }>({ campo: "descuento", texto: "" });
-  // "Abono mínimo" apretado: el monto sigue al mínimo vigente (cambia con
-  // el medio de pago, por la comisión) hasta que se escriba otro monto o se
-  // elija otro botón.
-  const [usaMinimo, setUsaMinimo] = useState(false);
   // Sin valor por defecto: se elige en cada cobro. Antes partía en
   // "efectivo" y quedaba pegado el de la venta anterior, y la caja no
   // calzaba con la máquina (revisión 20-10-2026).
@@ -848,11 +854,11 @@ export default function PuntoDeVenta({
   );
   // Lo que dice el campo y lo que se cobra: el botón y la venta usan este
   // mismo monto (lib/monto-abono.ts).
-  const textoAbono = usaMinimo && abonoMinimo > 0 ? formatearMonto(abonoMinimo) : abono;
+  const montosSugeridos = montosSugeridosAbono(total, abonoMinimo);
+  const textoAbono = abono.modo === "manual" ? abono.texto : formatearMonto(montosSugeridos[abono.modo]);
   const cobro = montoAbono(textoAbono, total);
   const montoACobrar = cobro.monto;
   const voucherActual = mercadoPago ? pagoMP?.medio === medioPago && pagoMP.monto === montoACobrar ? pagoMP.id : "" : numeroVoucher;
-  const esAbonoParcial = cobro.tipo === "parcial";
   const recetaPacienteId = receta?.id;
   const paciente = pacientes.find((p) => p.id === pacienteId);
 
@@ -1003,9 +1009,9 @@ export default function PuntoDeVenta({
     if (id === pacienteId) return;
     // Otro comprador: el abono y el medio de pago del anterior no se
     // arrastran (revisión Codex 20-10-2026).
-    setAbono("");
+    setAbono({ modo: "total" });
+    setPresupuestos({});
     setAcuerdo({ campo: "descuento", texto: "" });
-    setUsaMinimo(false);
     setMedioPago("");
     setNumeroVoucher("");
     setPagoMP(null);
@@ -1036,6 +1042,7 @@ export default function PuntoDeVenta({
     if (key.startsWith("cristal-")) {
       const numero = numeroDePar(key);
       setIniciales(prev => prev.map((inicial, i) => i === numero - 1 ? null : inicial));
+      setPresupuestos(prev => ({ ...prev, [numero]: undefined }));
       manejarCambioLente(numero, null);
       setFilasQuitadas(prev => ({ ...prev, [numero]: (prev[numero] ?? 0) + 1 }));
       return;
@@ -1046,9 +1053,9 @@ export default function PuntoDeVenta({
   function reiniciar() {
     setVentaId(crypto.randomUUID());
     setCarrito([]);
-    setAbono("");
+    setAbono({ modo: "total" });
+    setPresupuestos({});
     setAcuerdo({ campo: "descuento", texto: "" });
-    setUsaMinimo(false);
     setPacienteId("");
     setOperativoId(operativoSesion);
     setAvisoContexto(null);
@@ -1495,8 +1502,9 @@ export default function PuntoDeVenta({
                   n => n.id === "especial" || tarifasHabilitadas.includes(n),
                 );
                 const precioMarco = cobroMarco?.precioUnitario ?? 0;
+                const presupuestoTexto = presupuestos[numero] ?? "";
+                const presupuesto = presupuestoTexto === "" ? null : montoANumero(presupuestoTexto);
                 const precioLista = precioListaMarco(nivelActual, recargosMarcos, marco?.recargoEspecial);
-                const precioPorCategoria = (nivel: NivelMarco) => precioListaMarco(nivel, recargosMarcos, marco?.recargoEspecial);
                 return (
                   <div key={`armazon-slot-${numero}`} className="flex flex-col gap-2">
                     <SelectorArmazon
@@ -1507,24 +1515,51 @@ export default function PuntoDeVenta({
                       onMarcarPropio={() => marcarMarcoPropio(numero)}
                       onDescribir={(d) => describirMarco(numero, d)}
                     />
-                    {!marco?.marcoPropio && (
+                    {marco?.marcoPropio ? (
+                      <div className="flex flex-col gap-2 rounded-xl border border-amber-200 p-3">
+                        <CampoPresupuestoPar
+                          valor={presupuestoTexto}
+                          onChange={valor => setPresupuestos(prev => ({ ...prev, [numero]: valor }))}
+                        />
+                        <p className="text-sm">
+                          Cristales con marco propio <strong>{clp(l.precioUnitario)}</strong>
+                          <EstadoPresupuestoPar precio={l.precioUnitario} presupuesto={presupuesto} />
+                        </p>
+                      </div>
+                    ) : (
                       <fieldset className="flex flex-col gap-2 rounded-xl border border-amber-200 p-3">
                         <legend className="px-1 text-sm font-bold">Categoría y precio del marco · Par {numero}</legend>
+                        <CampoPresupuestoPar
+                          valor={presupuestoTexto}
+                          onChange={valor => setPresupuestos(prev => ({ ...prev, [numero]: valor }))}
+                        />
                         <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                          {categorias.map((n) => (
-                            <button
-                              key={n.id}
-                              type="button"
-                              onClick={() => nivelActual !== n.id && fijarPrecioMarco(numero, n.id)}
-                              aria-pressed={nivelActual === n.id}
-                              className={`rounded-xl border-2 px-3 py-2 text-left ${nivelActual === n.id ? "border-amber-900 bg-amber-900 text-white" : "border-tinta/20 bg-white text-tinta"}`}
-                            >
-                              <span className="block font-bold">{n.nombre}</span>
-                              <span className="block text-xs">{n.id === "esencial" ? "Marco incluido" : `Marco +${clp(precioPorCategoria(n.id))}`}</span>
-                              <span className="block text-xs">{clp(l.precioUnitario + precioPorCategoria(n.id))} el par</span>
-                            </button>
-                          ))}
+                          {categorias.map((n) => {
+                            const elegido = nivelActual === n.id;
+                            const recargo = elegido ? precioMarco : precioListaMarco(n.id, recargosMarcos, marco?.recargoEspecial);
+                            const precioPar = l.precioUnitario + recargo;
+                            const dentroDelPresupuesto = presupuesto !== null && precioPar <= presupuesto;
+                            return (
+                              <button
+                                key={n.id}
+                                type="button"
+                                onClick={() => !elegido && fijarPrecioMarco(numero, n.id)}
+                                aria-pressed={elegido}
+                                className={`rounded-xl border-2 px-3 py-2 text-left ${
+                                  elegido ? "border-amber-900 bg-amber-900 text-white"
+                                    : dentroDelPresupuesto ? "border-emerald-700 bg-emerald-50 text-emerald-900"
+                                    : "border-tinta/20 bg-white text-tinta"
+                                }`}
+                              >
+                                <span className="block font-bold">{n.nombre}</span>
+                                <span className="block text-xs">{recargo === 0 ? "Marco incluido" : `Marco +${clp(recargo)}`}</span>
+                                <span className="block text-base font-semibold tabular-nums">{clp(precioPar)} el par</span>
+                                <EstadoPresupuestoPar precio={precioPar} presupuesto={presupuesto} />
+                              </button>
+                            );
+                          })}
                         </div>
+                        {descuento > 0 && <p className="text-xs text-tinta-suave">Precios por par antes del descuento de la venta.</p>}
                         <div className="flex flex-wrap items-end gap-2">
                           <label className="flex min-w-40 flex-1 flex-col gap-1 text-sm font-semibold">
                             Precio del marco (CLP)
@@ -1678,8 +1713,7 @@ export default function PuntoDeVenta({
                 inputMode="numeric"
                 value={textoAbono}
                 onChange={(e) => {
-                  setUsaMinimo(false);
-                  setAbono(formatearMonto(e.target.value));
+                  setAbono({ modo: "manual", texto: formatearMonto(e.target.value) });
                 }}
                 placeholder={formatearMonto(total)}
                 className={`${select} pl-7 text-right`}
@@ -1690,36 +1724,36 @@ export default function PuntoDeVenta({
             </span>
           </label>
 
-          <div className="flex flex-wrap gap-1.5">
-            {[total, Math.round(total / 2)].map((monto, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  setUsaMinimo(false);
-                  setAbono(formatearMonto(monto));
-                }}
-                className="rounded-full border border-emerald-800/25 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-800 hover:text-white"
-              >
-                {i === 0 ? `Paga todo (${clp(total)})` : `Mitad (${clp(monto)})`}
-              </button>
-            ))}
-            {abonoMinimo > 0 && abonoMinimo < total && (
-              <button
-                type="button"
-                onClick={() => {
-                  setUsaMinimo(true);
-                  setAbono(formatearMonto(abonoMinimo));
-                }}
-                className="rounded-full border border-emerald-800/25 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-800 hover:text-white"
-              >
-                Abono mínimo ({clp(abonoMinimo)})
-              </button>
-            )}
-          </div>
-          <p className="-mt-1 text-xs text-tinta-suave">
-            El mínimo cubre cristal + marco (y la comisión si es tarjeta).
-          </p>
+          {total > 0 && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Opciones de pago inicial">
+              {OPCIONES_ABONO.filter(({ modo }) => modo === "total" || montosSugeridos[modo] < total).map(({ modo, titulo }) => (
+                <button
+                  key={modo}
+                  type="button"
+                  aria-pressed={abono.modo === modo}
+                  onClick={() => setAbono({ modo })}
+                  className={`min-h-11 rounded-lg border px-3.5 py-2 text-left text-sm font-semibold transition ${
+                    abono.modo === modo ? "border-emerald-800 bg-emerald-800 text-white" : "border-emerald-800/25 bg-white text-emerald-900 hover:bg-emerald-50"
+                  }`}
+                >
+                  {titulo} <span className="block tabular-nums">{clp(montosSugeridos[modo])}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <dl className="grid grid-cols-2 gap-2 rounded-xl bg-emerald-50 p-3 text-emerald-950" aria-live="polite">
+            <div>
+              <dt className="text-sm font-medium">Paga hoy</dt>
+              <dd className="text-xl font-bold tabular-nums">{clp(montoACobrar)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium">Saldo al entregar</dt>
+              <dd className="text-xl font-bold tabular-nums">{clp(total - montoACobrar)}</dd>
+            </div>
+          </dl>
+          {abonoMinimo > 0 && montoACobrar > 0 && montoACobrar < abonoMinimo && (
+            <p className="text-sm text-amber-900">El abono mínimo sugerido para este pedido es {clp(abonoMinimo)}.</p>
+          )}
           {abonoNoCubre && (
             <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">
               Ojo: este precio no cubre el costo del lente.
@@ -1767,12 +1801,6 @@ export default function PuntoDeVenta({
             <ElegirCobroMercadoPago key={`${medioPago}:${montoACobrar}`} medio={medioPago} monto={montoACobrar} value={voucherActual}
               onChange={id => setPagoMP({ medio: medioPago, monto: montoACobrar, id })} disabled={guardando} />
             : <CampoVoucher value={numeroVoucher} onChange={setNumeroVoucher} disabled={guardando} />)}
-          {esAbonoParcial && (
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-              Abona {clp(montoACobrar)} ahora. Saldo al entregar: {clp(total - montoACobrar)}.
-              {usaMinimo && " (Es el abono mínimo: se ajusta solo al medio de pago.)"}
-            </p>
-          )}
           {faltaPaciente && (
             <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">
               Elige un paciente para guardar la venta y crear su orden.{" "}

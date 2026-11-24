@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { montoAbono } from "../src/lib/monto-abono";
+import { montoAbono, montosSugeridosAbono } from "../src/lib/monto-abono";
 
 // La UI muestra `monto` en el botón y envía ese mismo `monto` como
 // abonoInicial: probar la función es probar que los dos coinciden.
@@ -23,5 +23,18 @@ describe("montoAbono", () => {
   it("cortesía (total 0) nunca cobra", () => {
     expect(montoAbono("", 0)).toEqual({ monto: 0, tipo: "sin_abono" });
     expect(montoAbono("5.000", 0)).toEqual({ monto: 0, tipo: "sin_abono" });
+  });
+});
+
+describe("montosSugeridosAbono", () => {
+  it("recalcula la mitad sobre el total acordado y el mínimo según el cobro", () => {
+    expect(montosSugeridosAbono(49990, 10000)).toEqual({ total: 49990, mitad: 24995, minimo: 10000 });
+    expect(montosSugeridosAbono(45001, 11000)).toEqual({ total: 45001, mitad: 22501, minimo: 11000 });
+  });
+
+  it("mantiene el total cuando desaparece la opción de abono mínimo", () => {
+    expect(montosSugeridosAbono(5000, 0).minimo).toBe(5000);
+    expect(montosSugeridosAbono(5000, 10000).minimo).toBe(5000);
+    expect(montosSugeridosAbono(0, 0)).toEqual({ total: 0, mitad: 0, minimo: 0 });
   });
 });
