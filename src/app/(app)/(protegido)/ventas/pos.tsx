@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { coincidePaciente } from "@/lib/buscar-paciente";
-import { filtrarProductos } from "@/lib/buscar-producto";
+import { filtrarProductos, marcoPorCodigo } from "@/lib/buscar-producto";
 import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
 import CampoVoucher from "@/components/campo-voucher";
 import { CampoPresupuestoPar, EstadoPresupuestoPar } from "@/components/presupuesto-par";
@@ -111,6 +111,7 @@ type LineaCarrito = {
   marcoPropio?: boolean;
   // Marco descrito en palabras ("acetato rojo"), sin cargarlo al inventario.
   marcoDescrito?: string;
+  codigoMarco?: string;
 };
 
 // La venta se arma en cuatro pasos, uno por pantalla, en vez de mostrar
@@ -519,7 +520,7 @@ function SelectorArmazon({
   productos: Producto[];
   elegido: LineaCarrito | undefined;
   onElegir: (producto: Producto | null) => void;
-  onDescribir: (descripcion: string) => void;
+  onDescribir: (descripcion: string, codigo?: string) => void;
   // El paciente trae su propio marco: no sale de nuestro stock, así que no
   // hay nada que buscar ni elegir del inventario.
   onMarcarPropio: () => void;
@@ -538,6 +539,8 @@ function SelectorArmazon({
     .join(" · ");
   const armazones = useMemo(() => productos.filter((p) => p.categoria === "armazon"), [productos]);
   const filtrados = useMemo(() => filtrarProductos(armazones, busca), [armazones, busca]);
+  const marcoExacto = marcoPorCodigo(armazones, busca);
+  const descritoEnInventario = marcoPorCodigo(armazones, codigoMarco);
 
   return (
     <fieldset className="flex-1 rounded-xl border border-amber-300 bg-white p-3">
@@ -560,11 +563,16 @@ function SelectorArmazon({
       ) : (
         <div className="flex flex-col gap-2">
           <label className="flex flex-col gap-1 text-sm font-semibold text-amber-900">
-            Código del marco en inventario
+            Busca o escanea el código de la etiqueta
             <input
               type="search"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
+              onKeyDown={e => {
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                if (marcoExacto) onElegir(marcoExacto);
+              }}
               placeholder="Ej. LY-2187L C-2"
               autoComplete="off"
               autoCapitalize="characters"
@@ -609,7 +617,7 @@ function SelectorArmazon({
           <details className="rounded-lg border border-amber-200">
             <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-amber-900">Describir un marco fuera del inventario</summary>
             <div className="flex flex-col gap-2 rounded-lg bg-amber-50 p-2.5">
-              <p className="text-xs text-amber-900">Este registro queda en la orden sin descontar inventario.</p>
+              <p className="text-xs text-amber-900">Solo se descuenta stock si el código coincide con un marco cargado.</p>
               <div className="flex flex-wrap gap-1.5">
                 {TIPOS_MARCO.map((t) => (
                   <button
@@ -650,17 +658,23 @@ function SelectorArmazon({
                   value={codigoMarco}
                   onChange={(e) => setCodigoMarco(e.target.value)}
                   placeholder="Ej. GYS8039"
+                  maxLength={80}
+                  spellCheck={false}
                   autoCapitalize="characters"
                   className="w-full rounded-xl border-2 border-amber-300 bg-white px-3 py-3 text-lg font-bold uppercase tracking-wide outline-none focus:border-amber-600"
                 />
               </label>
               <button
                 type="button"
-                disabled={!tipoMarco || (!colorMarco.trim() && !codigoMarco.trim())}
-                onClick={() => onDescribir(descripcion)}
+                disabled={!descritoEnInventario && !codigoMarco.trim() && (!tipoMarco || !colorMarco.trim())}
+                onClick={() => {
+                  if (descritoEnInventario) onElegir(descritoEnInventario);
+                  else onDescribir(descripcion, codigoMarco.trim() || undefined);
+                }}
                 className="rounded-lg bg-amber-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40"
               >
-                {tipoMarco && (colorMarco.trim() || codigoMarco.trim()) ? `Usar: marco ${descripcion}` : "Elige tipo y color (o código)"}
+                {descritoEnInventario ? `Usar ${descritoEnInventario.sku} del inventario`
+                  : descripcion ? "Usar este marco" : "Escribe el código o describe el marco"}
               </button>
             </div>
           </details>
@@ -879,6 +893,7 @@ export default function PuntoDeVenta({
     const base = productos.filter(p => p.categoria !== "armazon" || (!tieneCristal && p.precio_venta > 0));
     return filtrarProductos(base, buscaProducto);
   }, [productos, buscaProducto, tieneCristal]);
+  const marcoSueltoPorCodigo = marcoPorCodigo(productosFiltrados.filter(p => p.categoria === "armazon"), buscaProducto);
 
   function elegirArmazon(numero: number, producto: Producto | null) {
     const key = `armazon-${numero}`;
@@ -942,7 +957,7 @@ export default function PuntoDeVenta({
     });
   }
 
-  function describirMarco(numero: number, descripcion: string) {
+  function describirMarco(numero: number, descripcion: string, codigo?: string) {
     setCarrito((prev) => [
       ...prev.filter(l => l.armazonSlot !== numero),
       {
@@ -952,6 +967,7 @@ export default function PuntoDeVenta({
         precioUnitario: 0,
         armazonSlot: numero,
         marcoDescrito: descripcion,
+        codigoMarco: codigo,
       },
     ]);
   }
@@ -1093,6 +1109,7 @@ export default function PuntoDeVenta({
         // El cupo va explícito, no por posición en una lista (F01).
         cristalSlot: l.cristal ? numeroDePar(l.key) : null,
         marcoSlot: l.recargoSlot ?? null,
+        armazonSlot: l.armazonSlot ?? null,
       })),
       cristales: creaOT
         ? lineasCristal.map((l) => ({
@@ -1110,6 +1127,7 @@ export default function PuntoDeVenta({
           productoId: l.productoId ?? null,
           marcoPropio: l.marcoPropio ?? false,
           descripcion: l.marcoDescrito ?? null,
+          codigo: l.codigoMarco ?? null,
           nivelMarco: cobroMarco?.nivelMarco ?? "esencial",
           recargoEditado: cobroMarco?.recargoEditado ?? false,
         };
@@ -1513,7 +1531,7 @@ export default function PuntoDeVenta({
                       elegido={marco}
                       onElegir={(p) => elegirArmazon(numero, p)}
                       onMarcarPropio={() => marcarMarcoPropio(numero)}
-                      onDescribir={(d) => describirMarco(numero, d)}
+                      onDescribir={(d, codigo) => describirMarco(numero, d, codigo)}
                     />
                     {marco?.marcoPropio ? (
                       <div className="flex flex-col gap-2 rounded-xl border border-amber-200 p-3">
@@ -1597,7 +1615,14 @@ export default function PuntoDeVenta({
             type="search"
             value={buscaProducto}
             onChange={(e) => setBuscaProducto(e.target.value)}
-            placeholder="Buscar marca o modelo…"
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || e.nativeEvent.isComposing || !marcoSueltoPorCodigo) return;
+              e.preventDefault();
+              agregarProducto(marcoSueltoPorCodigo);
+              setBuscaProducto("");
+            }}
+            aria-label="Buscar productos por código, modelo o marca"
+            placeholder="Buscar código, modelo o marca…"
             className={select}
           />
 
@@ -1612,6 +1637,7 @@ export default function PuntoDeVenta({
                   <span className="flex-1 truncate">
                     {p.marca ? `${p.marca} ` : ""}
                     {p.nombre}
+                    {p.sku && p.sku !== p.nombre && <small className="block font-semibold">{p.sku}</small>}
                   </span>
                   {p.categoria === "armazon" ? (
                     <span className="font-semibold text-amber-700">{clp(p.precio_venta)}</span>

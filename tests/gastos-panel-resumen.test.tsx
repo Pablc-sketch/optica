@@ -19,7 +19,7 @@ const operativo=(id:string,nombre:string,fecha:string,costo:number)=>({
   id,nombre,fecha,costo_transporte:costo,costo_arriendo:0,costo_viaticos:0,costo_otros:0,
   costo_marco_unitario:5000,costo_fides_real:null,comision_vendedora_pct:0,comision_vendedora_base:'venta_total',ahorro_pct:20,
 });
-async function pantalla(filtros:{op?:string;desde?:string;hasta?:string;ver?:string}={}){
+async function pantalla(filtros:{op?:string|string[];desde?:string;hasta?:string;ver?:string}={}){
   return renderToStaticMarkup(await Gastos({searchParams:Promise.resolve(filtros)}));
 }
 function resumen(html:string){return html.match(/<section[^>]+aria-label="Resumen de gastos"[\s\S]*?<\/section>/)?.[0]??'';}
@@ -57,6 +57,33 @@ describe('resumen de gastos y navegación de rentabilidad',()=>{
     expect(resumen(html)).toContain('230.000');expect(resumen(html)).not.toContain('310.000');
     expect(html).toContain('href="/gastos?op=b&amp;desde=2026-11-02&amp;hasta=2026-11-03&amp;ver=rentabilidad"');
     expect(html).not.toContain('desde=2026-11-23');
+  });
+  it('conserva las sedes elegidas desde Caja al pasar al historial', async () => {
+    tablas.operativos.data = [...tablas.operativos.data as unknown[], operativo('c', 'Otra sede', '2026-11-02', 60000)];
+    tablas.gastos_globales = { data: [
+      { id: 'ga', operativo_id: 'a', fecha: '2026-11-03', descripcion: 'Fides · Norte', monto: 8000, caja: 'digital' },
+      { id: 'gb', operativo_id: 'b', fecha: '2026-11-03', descripcion: 'Gasto de Sur', monto: 5000, caja: 'efectivo' },
+      { id: 'gc', operativo_id: 'c', fecha: '2026-11-03', descripcion: 'Gasto ajeno', monto: 4000, caja: 'efectivo' },
+      { id: 'gg', operativo_id: null, fecha: '2026-11-03', descripcion: 'Gasto general ajeno', monto: 2000, caja: 'efectivo' },
+    ], error: null };
+    const pendiente = await pantalla({ op: ['a', 'b'] });
+    expect(resumen(pendiente)).toContain('90.000');
+    expect(pendiente).toContain('href="/gastos?op=a&amp;op=b&amp;ver=historial"');
+    const historial = await pantalla({ ver: 'historial', op: ['a', 'b'], desde: '2026-11-03' });
+    expect(historial).toContain('Cristales / laboratorio');
+    expect(historial).toContain('Gasto de Sur');
+    expect(historial).not.toContain('Gasto ajeno');
+    expect(historial).not.toContain('Gasto general ajeno');
+    expect(historial).not.toContain('LISTADO_GASTOS');
+  });
+  it('abre el registro de gastos en la sede elegida sin depender de la consulta de ventas', async () => {
+    tablas.ventas = { data: null, error: { message: 'consulta no disponible' } };
+    const html = await pantalla({ ver: 'registrar', op: 'b' });
+    expect(html).toContain('Gasto de una sede');
+    expect(html).toContain('Gasto general de la óptica');
+    expect(html).toMatch(/<option value="b" selected=""/);
+    expect(html).toContain('name="volver_historial"');
+    expect(html).not.toContain('No se pudieron cargar todos los gastos');
   });
   it('el simulador no impone las fechas de noviembre y volver a gastos conserva los filtros',async()=>{
     const html=await pantalla({ver:'rentabilidad',op:'a',desde:'2026-11-01',hasta:'2026-11-02'});

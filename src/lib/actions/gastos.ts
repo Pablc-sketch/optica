@@ -78,6 +78,7 @@ export async function crearGastoGlobal(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/caja");
   if (fuente === 'personal' || formData.get('volver_gastos') === '1') redirect('/gastos?guardado=1#adelantos-personales');
+  if (formData.get("volver_historial") === "1") redirect("/gastos?ver=historial&guardado=1");
   if (formData.get("volver_caja") === "1") redirect("/caja?guardado=1");
 }
 

@@ -38,6 +38,28 @@ export function pendientesCostos(op: GastosOperativo, pagos: PagoCosto[]) {
   return COSTOS.map((c) => ({ ...c, total: op[c.clave] ?? 0, pagado: pagadoCosto(pagos, c.clave) }));
 }
 
+export function costosDeSede(
+  sede: GastosOperativo,
+  productos: { totalCristales: number; totalArmazones: number },
+  pagos: PagoCosto[],
+) {
+  return [
+    { clave: "fides" as const, titulo: "Cristales / laboratorio", total: productos.totalCristales, pagado: pagadoCon(pagos, PREFIJO_FIDES) },
+    { clave: "marcos" as const, titulo: "Marcos", total: productos.totalArmazones, pagado: pagadoCon(pagos, PREFIJO_MARCOS) },
+    ...pendientesCostos(sede, pagos),
+  ];
+}
+
+export function saldoCostos(costos: readonly { total: number; pagado: number }[]) {
+  return costos.reduce((saldo, costo) => saldo + Math.max(0, costo.total - costo.pagado), 0);
+}
+
+export function conceptoDeGasto(descripcion: string): string {
+  if (descripcion.startsWith(PREFIJO_FIDES)) return "Cristales / laboratorio";
+  if (descripcion.startsWith(PREFIJO_MARCOS)) return "Marcos";
+  return COSTOS.find(c => descripcion.startsWith(prefijoCosto(c.clave)))?.titulo ?? descripcion;
+}
+
 // Un abono extra de laboratorio implica un nuevo costo total, incluyendo
 // lo que ya se pagó. Se confirma el costo antes de registrar la salida.
 export function costoFidesParaPago(clave: string, total: number, pagado: number, monto: number): number | null {

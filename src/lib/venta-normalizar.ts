@@ -35,7 +35,7 @@ export type CristalPedido = {
 
 // Un marco es del inventario (productoId), del paciente (marcoPropio) o
 // descrito en palabras ("acetato rojo"), sin cargarlo al inventario.
-export type ArmazonPedido = { slot: Cupo; productoId: string | null; marcoPropio: boolean; descripcion?: string | null; nivelMarco?: NivelMarco; recargoEditado?: boolean };
+export type ArmazonPedido = { slot: Cupo; productoId: string | null; marcoPropio: boolean; descripcion?: string | null; codigo?: string | null; nivelMarco?: NivelMarco; recargoEditado?: boolean };
 
 export type ItemPedido = {
   productoId?: string | null;
@@ -45,6 +45,7 @@ export type ItemPedido = {
   descuento?: number;
   cristalSlot?: Cupo | null;
   marcoSlot?: Cupo | null;
+  armazonSlot?: Cupo | null;
 };
 
 export type VentaNormalizada = {
@@ -106,12 +107,29 @@ export function normalizarVenta(
     if (cupo) marcoDeCupo[cupo] = { ...a, slot: cupo };
   }
 
+  const fisicos = items.filter(i => i.armazonSlot != null);
+  if (fisicos.some(i => i.cantidad !== 1 || i.marcoSlot != null || i.cristalSlot != null ||
+    !slots.includes(i.armazonSlot!) ||
+    (i.productoId ?? null) !== (marcoDeCupo[cupoNuevo.get(i.armazonSlot!)!]?.productoId ?? null)) ||
+    new Set(fisicos.map(i => i.armazonSlot)).size !== fisicos.length) {
+    return { ok: false, error: "Revisa el marco de inventario de cada par." };
+  }
+  if (armazones.some(a => a.codigo != null && (typeof a.codigo !== "string" || a.codigo.length > 80 ||
+    !fisicos.some(i => i.armazonSlot === a.slot)))) {
+    return { ok: false, error: "Revisa el código del marco antes de guardar." };
+  }
+
   return {
     ok: true,
     venta: {
       cristales: ordenados.map((c) => ({ ...c, cupo: cupoNuevo.get(c.slot)! })),
       marcoDeCupo,
-      items: items.map((i) => (i.marcoSlot ? {...i,marcoSlot:cupoNuevo.get(i.marcoSlot)!,cristalSlot:null} : i.cristalSlot ? { ...i, cristalSlot: cupoNuevo.get(i.cristalSlot)! } : { ...i, cristalSlot: null })),
+      items: items.map(i => ({
+        ...i,
+        cristalSlot: i.cristalSlot ? cupoNuevo.get(i.cristalSlot)! : null,
+        ...(i.marcoSlot ? { marcoSlot: cupoNuevo.get(i.marcoSlot)! } : {}),
+        ...(i.armazonSlot ? { armazonSlot: cupoNuevo.get(i.armazonSlot)! } : {}),
+      })),
     },
   };
 }

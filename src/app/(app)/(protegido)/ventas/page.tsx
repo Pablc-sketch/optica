@@ -7,9 +7,10 @@ import { exigirRolPagina } from "@/lib/autorizacion";
 import PuntoDeVenta from "./pos";
 import { leerSugerenciasExtra } from "@/lib/sugerencias";
 import CabeceraPagina from "@/components/cabecera-pagina";
+import { leerTodas } from "@/lib/leer-todas";
 
-export default async function VentasPage({ searchParams }: { searchParams: Promise<{ op?: string; receta?: string }> }) {
-  const { op, receta } = await searchParams;
+export default async function VentasPage({ searchParams }: { searchParams: Promise<{ op?: string; receta?: string; sucursal?: string }> }) {
+  const { op, receta, sucursal } = await searchParams;
   const { supabase, user, tenantId } = await exigirRolPagina(["admin", "ventas"]);
 
   const [
@@ -20,11 +21,9 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     // que lo que no se carga no se encuentra. Si algún día se pasa, se avisa
     // en pantalla en vez de esconderlo (A12).
     supabase.from("pacientes").select("id, nombre, rut", { count: "exact" }).order("nombre").limit(2000),
-    supabase
-      .from("productos")
+    leerTodas((a, b) => supabase.from("productos")
       .select("id, nombre, marca, precio_venta, categoria, sku, modelo, codigo_color, recargo_marco, costo")
-      .order("marca")
-      .limit(2000),
+      .eq("tenant_id", tenantId).order("marca").order("id").range(a, b)),
     supabase
       .from("costos_cristales")
       .select(
@@ -34,7 +33,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
       )
       .order("tipo_lente"),
     supabase.from("tenants").select("nombre_comercial, factor_venta_cristales, descuento_laboratorio_pct, comision_debito_pct, comision_credito_pct, recargos_marcos").single(),
-    supabase.from("sucursales").select("id").order("created_at").limit(1).maybeSingle(),
+    supabase.from("sucursales").select("id,nombre").eq("tenant_id", tenantId).order("created_at").order("id"),
     supabase
       .from("recetas")
       // "*" y no una lista: si a la base le falta una columna nueva (una
@@ -89,10 +88,12 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     ...recetaElegida, sugerencias_extra: leerSugerenciasExtra(recetaElegida.sugerencias_extra),
   };
 
-  const {data: existencias} = sucursalRes.data
-    ? await supabase.from("inventario").select("producto_id, stock_actual").eq("sucursal_id", sucursalRes.data.id).limit(2000)
-    : {data: []};
-  const stockPorProducto = new Map(existencias?.map(p => [p.producto_id, p.stock_actual]));
+  const sucursales = sucursalRes.data ?? [];
+  const sucursalActiva = sucursales.find(s => s.id === sucursal) ?? sucursales[0];
+  const existencias = sucursalActiva ? await leerTodas((a, b) => supabase.from("inventario")
+    .select("producto_id, stock_actual").eq("tenant_id", tenantId).eq("sucursal_id", sucursalActiva.id)
+    .order("id").range(a, b)) : { data: [], error: null };
+  const stockPorProducto = new Map((existencias.data ?? []).map(p => [p.producto_id, p.stock_actual]));
 
   const contexto = operativosRes.data?.find(o=>o.id===op);
   const piloto = esPilotoTerreno(tenantId);
@@ -112,14 +113,27 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
             Si no aparece, búscalo en Pacientes.
           </p>
         )}
+        {sucursales.length > 1 && <form action="/ventas" className="flex flex-wrap items-end gap-2">
+          {op && <input type="hidden" name="op" value={op} />}
+          {receta && <input type="hidden" name="receta" value={receta} />}
+          <label className="grid gap-1 text-sm font-semibold">Stock de sucursal
+            <select name="sucursal" defaultValue={sucursalActiva?.id} className="rounded-xl border border-tinta/20 bg-white px-3 py-2">
+              {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          </label>
+          <button className="rounded-xl border border-tinta/20 bg-white px-3 py-2 text-sm font-semibold">Cambiar sucursal</button>
+        </form>}
+        {(productosRes.error || existencias.error || sucursalRes.error) && <p role="alert" className="rounded-xl bg-amber-100 p-3 text-sm text-amber-900">
+          No se pudo cargar todo el inventario. Actualiza si necesitas elegir un marco por código.
+        </p>}
         {contexto && <p className="rounded-xl bg-sky-100 p-3 text-sm text-sky-950"><b>Operativo</b> · {contexto.nombre}</p>}
         <PuntoDeVenta
-          key={`${contexto?.id ?? "sucursal"}:${recetaElegida?.id ?? "venta"}`}
+          key={`${sucursalActiva?.id ?? "sucursal"}:${contexto?.id ?? "sin-operativo"}:${recetaElegida?.id ?? "venta"}`}
           operativoInicial={contexto?.id}
           pacienteInicial={pacienteElegido?.id}
           sugerirOperativoPorReceta={!piloto}
           pacientes={pacienteElegido && !pacientes.some(p => p.id === pacienteElegido.id) ? [pacienteElegido, ...pacientes] : pacientes}
-          productos={(productosRes.data ?? []).map(p => ({...p, stock: stockPorProducto.get(p.id)}))}
+          productos={(productosRes.data ?? []).map(p => ({...p, stock: existencias.error ? undefined : stockPorProducto.get(p.id) ?? (sucursalActiva && p.categoria === "armazon" ? 0 : undefined)}))}
           costos={costosRes.data ?? []}
           laboratorios={laboratoriosRes.data ?? []}
           recargosMarcos={leerRecargosMarcos(tenantRes.data?.recargos_marcos)}
@@ -135,7 +149,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
           }}
           mercadoPago={mercadoPagoConfigurado(tenantId)}
           tenantId={tenantId}
-          sucursalId={sucursalRes.data?.id ?? null}
+          sucursalId={sucursalActiva?.id ?? null}
           vendedorId={user.id}
           recetasPorPaciente={recetasPorPaciente}
           operativos={operativosRes.data ?? []}

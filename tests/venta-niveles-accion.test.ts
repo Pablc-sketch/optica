@@ -101,3 +101,35 @@ describe('Marcos de inventario de Óptica Global', () => {
     ]);
   });
 });
+
+
+describe("Identificación de marcos al guardar la venta", () => {
+  it("carga una sola salida del código exacto en el par correcto", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: [{ codigo: "LY2187LC2", producto_id: "marco-c2" }], error: null });
+    const consultar = mocks.from.getMockImplementation()!;
+    mocks.from.mockImplementation((tabla: string) => tabla === "productos"
+      ? consulta([{ id: "marco-c2", precio_venta: 0, recargo_marco: null }])
+      : consultar(tabla));
+    const v = venta("esencial", 2);
+    v.armazones[0].codigo = "ly-2187l C-2";
+    v.items.push({ descripcion: "Marco LY-2187L C-2", cantidad: 1, precioUnitario: 0, armazonSlot: 2 });
+    expect(await registrarVenta(v)).toMatchObject({ ok: true });
+    expect(mocks.rpc.mock.calls[0]).toEqual(["buscar_marcos_por_codigo", { p_codigos: ["LY2187LC2"] }]);
+    const { p } = mocks.rpc.mock.calls[1][1];
+    expect(p.ots[0]).toMatchObject({ armazon_producto_id: "marco-c2" });
+    expect(p.items.filter((i: { producto_id: string | null }) => i.producto_id)).toEqual([
+      expect.objectContaining({ producto_id: "marco-c2", cantidad: 1, precio_unitario: 0, cristal_slot: null }),
+    ]);
+  });
+
+  it("guarda el código sin salida cuando no existe en inventario", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: [], error: null });
+    const v = venta("esencial");
+    v.armazones[0].codigo = "SIN-CATALOGO-1";
+    v.items.push({ descripcion: "Marco SIN-CATALOGO-1", cantidad: 1, precioUnitario: 0, armazonSlot: 1 });
+    expect(await registrarVenta(v)).toMatchObject({ ok: true });
+    const { p } = mocks.rpc.mock.calls[1][1];
+    expect(p.ots[0].armazon_producto_id).toBeNull();
+    expect(p.items[1].producto_id).toBeNull();
+  });
+});

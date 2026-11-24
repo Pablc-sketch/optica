@@ -10,7 +10,7 @@ const campo='mt-1 w-full rounded-xl border bg-white px-3 py-3 text-base';
 export default function GastosPersonales({gastos,hoy}:{gastos:GastoPersonal[];hoy:string}){
  if(!gastos.length)return null;
  const pendiente=gastos.reduce((s,g)=>s+g.pendiente,0);
- return <section id="adelantos-personales" aria-label="Dinero personal por devolver" className="scroll-mt-6 overflow-hidden rounded-2xl border-2 border-red-200 bg-white">
+ return <section aria-label="Dinero personal por devolver" className="overflow-hidden rounded-2xl border-2 border-red-200 bg-white">
   <header className="border-b border-red-200 bg-red-50 p-5 sm:p-6">
    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-bold text-tinta sm:text-2xl">Dinero personal por devolver</h2><span className="rounded-full border border-red-300 bg-white px-3 py-1 text-sm font-semibold text-red-900">Prioridad de pago</span></div>
    <p className="mt-4 text-sm font-semibold text-red-900">Pendiente de devolución</p><p className="mt-1 text-4xl font-bold tracking-tight text-red-900 tabular-nums sm:text-5xl">{clp(-pendiente)}</p>
