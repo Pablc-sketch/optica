@@ -6,8 +6,10 @@ import Link from "next/link";
 import { rutaVentaReceta } from "@/lib/contexto-venta";
 import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
+import { CampoPresupuestoPar, EstadoPresupuestoPar } from "@/components/presupuesto-par";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { clp } from "@/lib/clp";
+import { montoANumero } from "@/lib/formato";
 import { hoyEnChile } from "@/lib/fechas";
 import { motivoFueraDeCajaMultifocal, type CatalogoLaboratorio } from "@/lib/costo-fides";
 import { leerSugerenciasExtra, type SugerenciaExtra } from "@/lib/sugerencias";
@@ -117,6 +119,9 @@ function SelectorLenteConPrecio({
       ? `${inicialTipoLente}|${inicialTratamiento}`
       : "";
   const [elegido, setElegido] = useState(inicial);
+  const [presupuestoTexto, setPresupuestoTexto] = useState("");
+  const presupuesto = presupuestoTexto === "" ? null : montoANumero(presupuestoTexto);
+  const categorias = recargosMarcos ? nivelesMarcoDisponibles(recargosMarcos) : [];
   const [tipoLente, tratamiento] = elegido ? elegido.split("|") : ["", ""];
 
   const potencias = {
@@ -162,7 +167,7 @@ function SelectorLenteConPrecio({
     return (
       <label
         key={clave}
-        className={`flex cursor-pointer items-center justify-between gap-2 rounded-xl border-2 px-3 py-2.5 text-sm has-checked:border-brand has-checked:shadow-sm ${
+        className={`flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-xl border-2 px-3 py-2.5 text-sm has-checked:border-brand has-checked:shadow-sm ${
           o.origen === "stock" && hayReceta ? "border-emerald-200 bg-emerald-50" : "border-transparent bg-white"
         }`}
       >
@@ -180,9 +185,21 @@ function SelectorLenteConPrecio({
             </span>
           )}
         </span>
-        <span className="flex shrink-0 flex-col items-end leading-tight">
-          <span className="font-semibold tabular-nums">{o.precio > 0 ? `${recargosMarcos?"Esencial ":""}${clp(o.precio)}` : "sin precio"}</span>
-          {recargosMarcos&&o.precio>0&&nivelesMarcoDisponibles(recargosMarcos).filter(n=>n.id!=="esencial").map(n=><span key={n.id} className="text-xs tabular-nums">{n.nombre} {clp(precioParConMarco(o.precio,n.id,recargosMarcos))}</span>)}
+        <span className="ml-auto flex flex-col items-end gap-1 text-right leading-tight">
+          {o.precio <= 0 ? <span className="font-semibold">Sin precio</span> : categorias.length === 0 ? (
+            <span className="font-semibold tabular-nums">
+              {clp(o.precio)}
+              <EstadoPresupuestoPar precio={o.precio} presupuesto={presupuesto} />
+            </span>
+          ) : categorias.map(n => {
+            const precio = precioParConMarco(o.precio, n.id, recargosMarcos);
+            return (
+              <span key={n.id} className={`tabular-nums ${n.id === "esencial" ? "font-semibold" : "text-xs"}`}>
+                {n.nombre} {clp(precio)}
+                <EstadoPresupuestoPar precio={precio} presupuesto={presupuesto} />
+              </span>
+            );
+          })}
           {/* Un lente de stock también se puede mandar a tallar: si el
               precio cambia, se muestra el de laboratorio también. */}
           {o.origen === "stock" && hayReceta && o.precioLaboratorio !== o.precio && (
@@ -203,10 +220,16 @@ function SelectorLenteConPrecio({
         </p>
       )}
 
+      {opciones.some(o => o.precio > 0) && (
+        <div className="mb-3">
+          <CampoPresupuestoPar valor={presupuestoTexto} onChange={setPresupuestoTexto} />
+        </div>
+      )}
+
       {hayReceta && (
         <div className="mb-2 flex flex-col gap-1.5">
           <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-            ✓ De stock · llega antes y cuesta menos
+            Cristales de stock
           </p>
           {deStock.length > 0 ? (
             deStock.map(fila)
@@ -237,7 +260,12 @@ function SelectorLenteConPrecio({
             <p className="text-2xl font-bold tracking-tight text-brand-dark tabular-nums">
               {sel.precio > 0 ? clp(sel.precio) : "Sin precio (revisa Precios)"}
             </p>
-            {recargosMarcos&&<p className="my-2 text-sm">{nivelesMarcoDisponibles(recargosMarcos).map(n=>`${n.nombre} ${clp(precioParConMarco(sel.precio,n.id,recargosMarcos))}`).join(" · ")}<br/>Mismo cristal; cambia la línea del marco. Precio por par, IVA incluido.</p>}
+            {sel.precio > 0 && recargosMarcos && (
+              <p className="my-2 text-sm">
+                {categorias.map(n => `${n.nombre} ${clp(precioParConMarco(sel.precio, n.id, recargosMarcos))}`).join(" · ")}
+                <br />Precio por par, IVA incluido.
+              </p>
+            )}
             <p className="text-sm text-tinta-suave">
               {!hayReceta
                 ? "Escribe la receta para saber si sale de stock."

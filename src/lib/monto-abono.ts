@@ -9,6 +9,14 @@
 //   igual o mayor    → total (nunca más que el total)
 export type MontoAbono = { monto: number; tipo: "total" | "parcial" | "sin_abono" };
 
+export function montosSugeridosAbono(total: number, minimo: number) {
+  return {
+    total,
+    mitad: Math.round(total / 2),
+    minimo: minimo > 0 ? Math.min(minimo, total) : total,
+  };
+}
+
 export function montoAbono(texto: string, total: number): MontoAbono {
   const totalSeguro = Math.max(0, Math.round(total));
   if (totalSeguro === 0) return { monto: 0, tipo: "sin_abono" };

@@ -85,6 +85,7 @@ export async function registrarGastoCajaOperativo(_: ResultadoCaja, f: FormData)
 
   for (const ruta of ['/', '/caja', '/gastos', '/reportes', '/pagos', '/pagos/revisar', '/impuestos', '/operativos',
     `/operativos/${operativo}`, `/operativos/${operativo}/cierre`]) revalidatePath(ruta);
+  if (f.get('volver_gastos') === '1') redirect(`/gastos?ver=historial&op=${operativo}&guardado=1`);
   const params = new URLSearchParams({ guardado: '1' });
   for (const sede of f.getAll('sede')) {
     if (typeof sede === 'string' && uuidAgenda.test(sede)) params.append('sede', sede);

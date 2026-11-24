@@ -6,14 +6,15 @@ import PagoCostoOperativo from './pago-costo-operativo';
 import FormularioAgenda from './formulario-agenda';
 import { actualizarJornada } from '@/lib/actions/agenda-terreno';
 import { vincularGasto,deshacerVinculo } from '@/lib/actions/gastos-asignaciones';
-import { COSTOS, disponibleDeGasto, type AsignacionCosto, type ClaveCosto } from '@/lib/pagos-operativo';
+import { COSTOS, disponibleDeGasto, saldoCostos, type AsignacionCosto, type ClaveCosto } from '@/lib/pagos-operativo';
 import { clp } from '@/lib/clp';
+import { fechaLegible } from '@/lib/fechas';
 
 type Gasto={id:string;fecha:string;descripcion:string;monto:number;categoria:string;caja:string;operativo_id:string|null};
 type Fila={id:string;nombre:string;fecha:string;vendido:number;cobrado:number;utilidad:number;costo:number;atendidos:number;pares:number;costoFidesActual:number|null;
   costos:{clave:string;titulo:string;total:number;pagado:number}[];importes:Record<string,number>;costoMarco:number};
 const campo='mt-1 w-full rounded-xl border bg-white p-3';
-export default function GastosPanel({filas,gastos,asignaciones,hoy,generales,gastosSii=[]}:{filas:Fila[];gastos:Gasto[];asignaciones:AsignacionCosto[];hoy:string;generales:Gasto[];gastosSii?:string[]}) {
+export default function GastosPanel({filas,gastos,asignaciones,hoy,gastosSii=[]}:{filas:Fila[];gastos:Gasto[];asignaciones:AsignacionCosto[];hoy:string;gastosSii?:string[]}) {
   const [pagoAbierto,setPagoAbierto]=useState<string|null>(null);
   const [vista,setVista]=useState('pendientes');
   const [busqueda,setBusqueda]=useState('');
@@ -34,10 +35,7 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,generales,gas
   return <div className="space-y-4">
     <section className="overflow-hidden rounded-2xl bg-white shadow-sm" aria-label="Listado de gastos">
       <div className="space-y-4 border-b border-tinta/10 p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold">Por pagar <span className="ml-1 tabular-nums text-accent-dark">{clp(pendientes.reduce((s,c)=>s+Math.max(0,c.total-c.pagado),0))}</span></h2>
-          <Link href="/caja?ver=movimientos#nuevo-gasto" className="rounded-xl border border-tinta/20 px-4 py-2.5 text-sm font-semibold hover:bg-crema">Agregar gasto</Link>
-        </div>
+        <h2 className="text-lg font-bold">Por pagar <span className="ml-1 tabular-nums text-accent-dark">{clp(saldoCostos(pendientes))}</span></h2>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <nav className="flex gap-1 rounded-xl bg-crema p-1" aria-label="Estado de los gastos">{[['pendientes',`Pendientes (${pendientes.length})`],['pagados',`Pagados (${pagados.length})`],['todos','Todos']].map(([v,n])=><button key={v} onClick={()=>{setVista(v);setPagina(0);}} aria-pressed={vista===v} className={`min-h-11 flex-1 rounded-lg px-3 py-2 text-sm font-semibold ${vista===v?'bg-tinta text-white':'text-tinta-suave hover:bg-white'}`}>{n}</button>)}</nav>
           <label className="block sm:w-64"><span className="sr-only">Buscar gasto o sede</span><input type="search" className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm" value={busqueda} onChange={e=>{setBusqueda(e.target.value);setPagina(0);}} placeholder="Buscar gasto o sede"/></label>
@@ -59,7 +57,7 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,generales,gas
         const pendiente=Math.max(0,c.total-c.pagado);
         return <li key={id} className="p-4 sm:px-5">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_8rem_7rem] sm:gap-4">
-            <div className="min-w-0"><h3 className="font-semibold">{c.clave==='marcos'?'Marcos':c.titulo}</h3><Link href={`/operativos/${c.op.id}/cierre#costos`} className="mt-1 block break-words text-sm text-tinta-suave hover:underline">{c.op.nombre} · {c.op.fecha}</Link></div>
+            <div className="min-w-0"><h3 className="font-semibold">{c.titulo}</h3><Link href={`/operativos/${c.op.id}/cierre#costos`} className="mt-1 block break-words text-sm text-tinta-suave hover:underline">{c.op.nombre} · {fechaLegible(c.op.fecha)}</Link></div>
             <div className="text-right"><span className="block text-sm text-tinta-suave sm:hidden">{pendiente>0?'Pendiente':'Pagado'}</span><strong className={`tabular-nums ${pendiente>0?'text-tinta':'text-accent-dark'}`}>{clp(pendiente>0?pendiente:c.pagado)}</strong></div>
             <div className="col-span-2 flex justify-end sm:col-span-1">{pendiente>0?<button aria-expanded={abierto} aria-controls={`pago-${id}`} className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold ${abierto?'border bg-white':'bg-accent-dark text-white'}`} onClick={()=>setPagoAbierto(abierto?null:id)}>{abierto?'Cerrar':'Pagar'}</button>:<span className="rounded-lg bg-sky-50 px-3 py-2 text-sm font-semibold text-accent-dark">Pagado</span>}</div>
           </div>
@@ -67,7 +65,7 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,generales,gas
             <ul><PagoCostoOperativo operativoId={c.op.id} clave={c.clave as ClaveCosto|'fides'|'marcos'} titulo={c.titulo} total={c.total} pagado={c.pagado} costoFidesActual={c.op.costoFidesActual} hoy={hoy}/></ul>
             <button disabled={ocupado} onClick={()=>{setError('');setVinculo({id:crypto.randomUUID(),op:c.op.id,clave:c.clave,total:c.total,pagado:c.pagado});setGastoId('');setMonto('');window.scrollTo({top:0,behavior:'smooth'});}} className="min-h-11 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">Ya lo pagué: usar un gasto registrado</button>
           </div>}
-          <details className="mt-2 text-sm text-tinta-suave"><summary className="w-fit cursor-pointer py-1">Detalle del costo</summary><dl className="mt-2 flex flex-wrap gap-x-6 gap-y-2"><div><dt>Total</dt><dd className="font-semibold text-tinta">{clp(c.total)}</dd></div><div><dt>Pagado</dt><dd className="font-semibold text-tinta">{clp(c.pagado)}</dd></div><div><dt>Pendiente</dt><dd className="font-semibold text-tinta">{clp(pendiente)}</dd></div></dl>{c.clave==='marcos'&&<p className="mt-2">{c.titulo}</p>}</details>
+          <details className="mt-2 text-sm text-tinta-suave"><summary className="w-fit cursor-pointer py-1">Detalle del costo</summary><dl className="mt-2 flex flex-wrap gap-x-6 gap-y-2"><div><dt>Total</dt><dd className="font-semibold text-tinta">{clp(c.total)}</dd></div><div><dt>Pagado</dt><dd className="font-semibold text-tinta">{clp(c.pagado)}</dd></div><div><dt>Pendiente</dt><dd className="font-semibold text-tinta">{clp(pendiente)}</dd></div></dl>{c.clave==='marcos'&&<p className="mt-2">{c.op.pares} pares × {clp(c.op.costoMarco)} por par.</p>}</details>
           {c.pagado>c.total&&<p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">Hay {clp(c.pagado-c.total)} pagados de más. Revisa el costo o el pago.</p>}
         </li>;
       })}</ul>
@@ -80,10 +78,6 @@ export default function GastosPanel({filas,gastos,asignaciones,hoy,generales,gas
         <FormularioAgenda accion={actualizarJornada} etiqueta="Guardar costos"><input name="id" type="hidden" value={o.id}/><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{COSTOS.map(c=><label key={c.clave} className="text-sm">{c.titulo}<input className={campo} name={c.clave} type="number" min={0} max={999999999} step={1} defaultValue={o.importes[c.clave]}/></label>)}<label className="text-sm">Costo por marco vendido<input className={campo} name="costo_marco_unitario" type="number" min={0} max={999999999} step={1} defaultValue={o.costoMarco}/></label></div></FormularioAgenda>
         <p className="mt-3 text-sm text-tinta-suave">Ingresa el costo completo, pagado o pendiente. No repitas comida ni hospedaje dentro de viáticos.</p>
       </details>)}{filas.length===0&&<p className="text-sm text-tinta-suave">No hay sedes en el período seleccionado.</p>}</div>
-    </details>
-    <details className="rounded-2xl bg-white p-4 shadow-sm sm:p-5"><summary className="cursor-pointer font-semibold">Gastos generales <span className="ml-1 text-sm font-normal tabular-nums text-tinta-suave">{clp(generales.reduce((s,g)=>s+g.monto,0))}</span></summary>
-      <p className="mt-3 text-sm text-tinta-suave">Pagos de la óptica, incluidas compras de stock. El stock se descuenta de la utilidad cuando se vende.</p>
-      <div className="mt-3 max-h-96 overflow-y-auto">{[...generales].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(g=><div key={g.id} className="flex items-start justify-between gap-3 border-t border-tinta/10 py-3"><div className="min-w-0"><p className="break-words text-sm font-medium">{g.descripcion}</p><p className="mt-1 text-sm text-tinta-suave">{g.fecha}{g.caja==='personal'?' · pago personal':''}</p></div><b className="shrink-0 text-sm tabular-nums">{clp(g.monto)}</b></div>)}{generales.length===0&&<p className="py-3 text-sm text-tinta-suave">Sin gastos generales en este período.</p>}</div>
     </details>
     <details className="rounded-2xl bg-white p-4 shadow-sm sm:p-5"><summary className="cursor-pointer font-semibold">Pagos vinculados <span className="ml-1 text-sm font-normal text-tinta-suave">({vinculados.length})</span></summary>
       {vinculados.map(a=><div key={a.id} className="mt-3 border-t border-tinta/10 pt-3 text-sm"><p className="font-medium">{gastos.find(g=>g.id===a.gasto_id)?.descripcion}</p><p className="mt-1 text-tinta-suave">{filas.find(o=>o.id===a.operativo_id)?.nombre} · {a.clave} · {clp(a.monto)}</p><button disabled={ocupado} onClick={()=>iniciar(async()=>{try{const r=await deshacerVinculo(a.id);if(r.error)setError(r.error);else router.refresh();}catch{setError('No se pudo deshacer. Recarga y revisa.');}})} className="mt-2 min-h-11 rounded-xl border px-3 py-2 disabled:opacity-50">Desvincular pago</button></div>)}

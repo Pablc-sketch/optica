@@ -1,5 +1,6 @@
 import { cajaDelPago } from '@/lib/caja';
 import { numerosDeOperativo, type OperativoParaCierre, type VentaParaCierre } from '@/lib/cierre-operativo';
+import { costosDeSede, saldoCostos, type PagoCosto } from '@/lib/pagos-operativo';
 
 export const CATEGORIAS_CAJA = [
   { clave: 'costo_transporte', nombre: 'Bencina y transporte' },
@@ -45,7 +46,7 @@ export function sedesDeCaja<T extends SedeCaja>(sedes: T[], hoy: string, filtro?
 }
 
 export function resumenSedeCaja(
-  sede: SedeCaja & OperativoParaCierre, ventas: VentaParaCierre[], debito: number, credito: number,
+  sede: SedeCaja & OperativoParaCierre, ventas: VentaParaCierre[], debito: number, credito: number, pagos: PagoCosto[] = [],
 ) {
   const numeros = numerosDeOperativo(sede, ventas, debito, credito);
   let porCobrar = 0;
@@ -64,5 +65,6 @@ export function resumenSedeCaja(
     marcos: numeros.desglose.totalArmazones, otros: numeros.desglose.totalOtros,
     gastos: numeros.gastos, tarjeta: numeros.cierre.comisionTarjeta, comisionVenta: numeros.cierre.isadora,
     utilidad: numeros.cierre.gananciaLiquida,
+    porPagar: saldoCostos(costosDeSede(sede, numeros.desglose, pagos)),
   };
 }

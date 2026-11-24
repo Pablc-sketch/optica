@@ -14,7 +14,7 @@ import Caja from '../src/app/(app)/(protegido)/caja/page';
 import CajaHistorial from '../src/components/caja-historial';
 function consulta(tabla:string) {
   const q:Record<string,unknown>={};
-  for(const m of ['select','eq','order','range','limit','single','in']) q[m]=()=>q;
+  for(const m of ['select','eq','order','range','limit','single','in','is']) q[m]=()=>q;
   q.then=(resolver:(r:unknown)=>unknown)=>Promise.resolve(tablas[tabla] ?? {data:[],error:null}).then(resolver);
   return q;
 }
@@ -58,6 +58,17 @@ describe('panel financiero de Caja',()=>{
     expect(s).toContain('60.000');
     expect(s).toContain('120.000');
   });
+  it('enlaza los costos por pagar con las mismas sedes y distingue una lectura incompleta', async () => {
+    tablas.operativos.data = [{ ...costos, id: 'a', nombre: 'Norte', fecha: '2026-11-01', costo_transporte: 17000 },
+      { ...costos, id: 'b', nombre: 'Sur', fecha: '2026-11-02', costo_fides_real: 8000 }];
+    tablas.gastos_globales = { data: [{ operativo_id: 'a', descripcion: 'Costo operativo · costo_transporte · Norte', monto: 5000 }], error: null };
+    const s = await html('resumen', '', ['a', 'b']);
+    expect(s).toMatch(/href="\/gastos\?op=a&amp;op=b">Costos por pagar<\/a><\/dt><dd[^>]*>\$20\.000<\/dd>/);
+    tablas.gastos_asignaciones = { data: null, error: { message: 'fallo de prueba' } };
+    const incompleta = await html('resumen', '', ['a', 'b']);
+    expect(incompleta).toMatch(/Costos por pagar<\/a><\/dt><dd[^>]*>Por verificar<\/dd>/);
+    expect(incompleta).toContain('Cobrado hasta ahora');
+  });
   it('distingue selección vacía de la selección automática',async()=>{
     const s=await html('resumen','','');
     expect(s).toContain('Elige las sedes que quieres sumar');
@@ -88,7 +99,7 @@ describe('panel financiero de Caja',()=>{
   it('sin saldo externo no presenta el saldo calculado como liquidez',async()=>{leerEstadoCuenta.mockResolvedValue({saldo:{estado:'no_habilitado'},estado:'error',ultimaCorrecta:null,errorCodigo:'PAGOS_HTTP_401'});const s=await html();expect(s).toContain('Por verificar');expect(s).not.toContain('230.000');});
   it('envía las devoluciones a Gastos y conserva la prioridad sin restar la deuda de caja',async()=>{
     tablas.gastos_globales={data:[{id:'g',fecha:'2026-11-01',descripcion:'Compra de prueba',monto:150000,caja:'personal',monto_estimado:true}],error:null};
-    const cuadrar=await html('cuadrar');expect(cuadrar).toContain('/gastos#adelantos-personales');expect(cuadrar).not.toContain('Compra de prueba');
+    const cuadrar=await html('cuadrar');expect(cuadrar).toContain('/gastos?personal=1#adelantos-personales');expect(cuadrar).not.toContain('Compra de prueba');
     expect(cuadrar).toContain('Primero se devuelve el dinero personal');expect(cuadrar).not.toContain('230.000');
   });
   it('el historial por operativo excluye traslados globales y otros operativos',()=>{

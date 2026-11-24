@@ -9,7 +9,6 @@ import { clp } from '@/lib/clp';
 import { hoyEnChile, fechaLegible } from '@/lib/fechas';
 import {etiquetasReparto} from '@/lib/etiquetas-reparto';
 import { pendientePersonal } from '@/lib/caja-fuentes';
-import { crearGastoGlobal }  from '@/lib/actions/gastos';
 import {leerEstadoCuenta} from '@/lib/cuenta-mercadopago';
 import { efectivoDesdeConteo, prioridadCaja } from '@/lib/caja-verificada';
 import { resumenSedeCaja, sedesDeCaja } from '@/lib/caja-operativo';
@@ -18,9 +17,9 @@ import ActualizarCajaMercadoPago from '@/components/actualizar-caja-mercadopago'
 import CuentaBancaria from '@/components/cuenta-bancaria';
 import ResumenCajaOperativo from '@/components/resumen-caja-operativo';
 import CajaFormulario from '@/components/caja-formulario';
+import { pagosConAsignaciones, type PagoCosto } from '@/lib/pagos-operativo';
 import { resumirCaja } from '@/lib/caja';
 import CajaHistorial from '@/components/caja-historial';
-import BotonEnviar from '@/components/boton-enviar';
 export const dynamic = 'force-dynamic';
 const campo = 'w-full min-w-0 rounded-xl border px-3 py-2.5';
 const vistas = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['pendientes', 'Pendientes'], ['cuadrar', 'Cuadrar']] as const;
@@ -48,21 +47,37 @@ export default async function Caja({ searchParams }: {
     const seleccion = sedesDeCaja(sedes, hoy, params.sede);
     const grupos = [];
     for (let i = 0; i < seleccion.length; i += 50) grupos.push(seleccion.slice(i, i + 50).map(s => s.id));
-    const ventas = await Promise.all(grupos.map(ids => leerTodas((a, b) => supabase.from('ventas').select(
-      `id,operativo_id,total,pagos_abonos(monto,medio_pago),
-      venta_items(cantidad,precio_unitario,descuento,descripcion,cristal_slot,
-        ordenes_trabajo:ot_id(costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2),
-        productos:producto_id(costo,categoria))`)
-      .eq('tenant_id', tenantId).eq('anulada', false).in('operativo_id', ids).order('id').range(a, b))));
+    const datosPorGrupo = await Promise.all(grupos.map(ids => Promise.all([
+      leerTodas((a, b) => supabase.from('ventas').select(
+        `id,operativo_id,total,pagos_abonos(monto,medio_pago),
+        venta_items(cantidad,precio_unitario,descuento,descripcion,cristal_slot,
+          ordenes_trabajo:ot_id(costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2),
+          productos:producto_id(costo,categoria))`)
+        .eq('tenant_id', tenantId).eq('anulada', false).in('operativo_id', ids).order('id').range(a, b)),
+      leerTodas((a, b) => supabase.from('gastos_globales').select('id,operativo_id,descripcion,monto')
+        .eq('tenant_id', tenantId).in('operativo_id', ids).order('id').range(a, b)),
+      leerTodas((a, b) => supabase.from('gastos_asignaciones').select('id,gasto_id,operativo_id,clave,monto,anulado_en')
+        .eq('tenant_id', tenantId).in('operativo_id', ids).is('anulado_en', null).order('id').range(a, b)),
+    ])));
     const porSede = new Map<string, VentaParaCierre[]>();
-    for (const venta of ventas.flatMap(grupo => grupo.data ?? [])) {
+    for (const venta of datosPorGrupo.flatMap(([ventas]) => ventas.data ?? [])) {
       if (!venta.operativo_id) continue;
       const lista = porSede.get(venta.operativo_id) ?? [];
       lista.push(venta as unknown as VentaParaCierre);
       porSede.set(venta.operativo_id, lista);
     }
+    const costosPorSede = new Map<string, PagoCosto[]>();
+    for (const gasto of datosPorGrupo.flatMap(([, gastos]) => gastos.data ?? [])) {
+      if (!gasto.operativo_id) continue;
+      const lista = costosPorSede.get(gasto.operativo_id) ?? [];
+      lista.push(gasto);
+      costosPorSede.set(gasto.operativo_id, lista);
+    }
+    const asignaciones = datosPorGrupo.flatMap(([, , res]) => res.data ?? []);
+    const errorPagos = datosPorGrupo.some(([, gastos, vinculos]) => gastos.error || vinculos.error);
     const filas = seleccion.map(s => resumenSedeCaja(s, porSede.get(s.id) ?? [],
-      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0)));
+      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0),
+      pagosConAsignaciones(costosPorSede.get(s.id) ?? [], asignaciones, s.id)));
     const totales = caja.data as { entro_efectivo: number; salio_efectivo: number } | null;
     const efectivo = totales && !caja.error && !conteo.error
       ? efectivoDesdeConteo(totales.entro_efectivo - totales.salio_efectivo, conteo.data?.[0]) : null;
@@ -74,7 +89,8 @@ export default async function Caja({ searchParams }: {
       {navegacion}
       {guardado}
       <ResumenCajaOperativo sedes={sedes.sort((a, b) => b.fecha.localeCompare(a.fecha))} seleccion={seleccion} filas={filas}
-        saldo={cuenta.saldo} efectivo={efectivo} hoy={hoy} error={Boolean(operativos.error || tenant.error || ventas.some(grupo => grupo.error))} />
+        saldo={cuenta.saldo} efectivo={efectivo} hoy={hoy} errorPagos={errorPagos}
+        error={Boolean(operativos.error || tenant.error || datosPorGrupo.some(([ventas]) => ventas.error))} />
     </div>;
   }
 
@@ -144,17 +160,7 @@ export default async function Caja({ searchParams }: {
       </>}
       {vista==='movimientos' && <>
       <section id="nuevo-gasto" className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold text-red-700">Gastos</h2>
-        <details className="mt-2"><summary className="cursor-pointer py-2 font-semibold">Agregar gasto general ya pagado</summary>
-          <form action={crearGastoGlobal} className="mt-3 grid gap-3"><input type="hidden" name="volver_caja" value="1" /><input type="hidden" name="id" value={randomUUID()} />
-            <label className="text-sm">Qué se pagó<input name="descripcion" placeholder="Arriendo del equipo, bandejas…" maxLength={250} required className={campo} /></label>
-            <label className="text-sm">Nota de la compra<textarea name="nota" rows={3} maxLength={1000} placeholder="Qué se compró, cantidades y para qué se usará" className={campo}/></label>
-            <div className="grid grid-cols-2 gap-3"><label className="text-sm">Fecha<input type="date" name="fecha" defaultValue={fecha} max={fecha} required className={campo} /></label><label className="text-sm">Monto<input name="monto" type="number" min="1" step="1" required className={campo} /></label></div>
-            <label className="text-sm">De dónde salió<select name="caja" required defaultValue="" className={campo}><option value="" disabled>Elige el origen</option><option value="digital">{piloto ? 'Cuenta bancaria' : 'Cuenta bancaria (Mercado Pago)'}</option><option value="efectivo">Efectivo de la óptica</option><option value="personal">{piloto ? 'Fondo personal' : `Dinero personal de ${nombres.pablo}`}</option></select></label>
-            <label className="text-sm">Categoría<select name="categoria" className={campo}><option value="otro">Otro gasto</option><option value="arriendo">Arriendo</option><option value="compra_inventario">Inventario / equipamiento</option></select></label>
-            <p className="text-xs text-tinta-suave">Si ya está registrado en un operativo o en Reportes, no lo agregues otra vez.</p>
-            <BotonEnviar className="rounded-xl bg-brand px-4 py-3 font-semibold text-white">Guardar gasto</BotonEnviar>
-          </form>
-        </details>
+        <Link href="/gastos?ver=registrar" className="mt-2 inline-block py-2 text-sm font-semibold underline">Registrar gasto</Link>
       </section>
       <details id="traspasos" open className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Trasladar entre efectivo y cuenta</summary><p className="my-3 text-sm text-tinta-suave">Registra un depósito o retiro que ya hiciste. Lentia no mueve dinero.</p>
         <CajaFormulario><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="caja" value="digital" />
@@ -181,7 +187,7 @@ export default async function Caja({ searchParams }: {
         <p className="mt-2 text-sm text-tinta-suave">{deudaPersonal > 0 ? 'Primero se devuelve el dinero personal.' : 'Saldo verificado de caja menos compromisos y ahorro pendientes.'}</p>
       </details>
       <Link href="/caja?ver=movimientos" className="rounded-xl bg-white p-4 text-center font-semibold">Revisar movimientos y diferencias →</Link>
-      <Link href="/gastos#adelantos-personales" className="block rounded-2xl border border-tinta/20 bg-white p-5 text-base font-semibold">Gastos personales y devoluciones →</Link>
+      <Link href="/gastos?personal=1#adelantos-personales" className="block rounded-2xl border border-tinta/20 bg-white p-5 text-base font-semibold">Gastos personales y devoluciones →</Link>
       </>}
     </>}
   </div>;
