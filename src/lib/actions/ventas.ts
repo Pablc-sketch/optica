@@ -1,5 +1,6 @@
 "use server";
 
+import { claveCodigoMarco } from "@/lib/buscar-producto";
 import { revalidatePath } from "next/cache";
 import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
@@ -71,6 +72,29 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   const { cristales, marcoDeCupo, items } = normal.venta;
   if (cristales.length > 0 && !input.pacienteId) {
     return { ok: false, error: "Para vender cristales hay que elegir al paciente (la orden de trabajo es suya)." };
+  }
+
+  // Un código escrito en terreno puede haberse cargado al inventario
+  // mientras esta venta estaba abierta o en la cola sin conexión.
+  const porResolver = Object.values(marcoDeCupo).flatMap(marco => {
+    if (!marco || marco.marcoPropio || marco.productoId || !marco.codigo) return [];
+    const codigo = claveCodigoMarco(marco.codigo);
+    return codigo ? [{ marco, codigo }] : [];
+  });
+  if (porResolver.length) {
+    const { data, error } = await supabase.rpc("buscar_marcos_por_codigo", {
+      p_codigos: [...new Set(porResolver.map(m => m.codigo))],
+    });
+    if (error) return { ok: false, error: "No se pudo comprobar el código del marco. Intenta de nuevo." };
+    const coincidencias = (data ?? []) as { codigo: string; producto_id: string }[];
+    const productosPorCodigo = new Map(coincidencias.map(m => [m.codigo, m.producto_id] as const));
+    for (const { marco, codigo } of porResolver) {
+      const productoId = productosPorCodigo.get(codigo);
+      if (!productoId) continue;
+      const item = items.find(i => i.armazonSlot === marco.slot)!;
+      item.productoId = productoId;
+      marco.productoId = productoId;
+    }
   }
 
   const fechaVenta = input.fecha && !Number.isNaN(Date.parse(input.fecha)) ? input.fecha : new Date().toISOString();

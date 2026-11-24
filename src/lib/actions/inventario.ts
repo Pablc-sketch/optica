@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { montoANumero } from "@/lib/formato";
+import { uuidAgenda } from "@/lib/agenda-terreno";
+import { leerCargaMarcos } from "@/lib/carga-marcos";
 
 // El stock nunca se escribe a mano: se registra un movimiento y el trigger
 // trg_movimiento_stock lo aplica. Así queda historial de por qué cambió.
@@ -42,6 +44,7 @@ export async function registrarMovimiento(formData: FormData) {
   if (error) throw error;
 
   revalidatePath("/inventario");
+  revalidatePath("/ventas");
   revalidatePath("/");
 }
 
@@ -101,7 +104,9 @@ export async function crearProducto(formData: FormData) {
     })
     .select("id")
     .single();
-  if (error) return { ok: false, error: "No se pudo crear el producto." };
+  if (error) return { ok: false, error: error.code === "23505" && categoria === "armazon"
+    ? "Ese código de marco ya existe. Súmale unidades con Cargar marcos por código."
+    : "No se pudo crear el producto." };
 
   const { data: sucursales } = await supabase.from("sucursales").select("id").eq("tenant_id", perfil.tenant_id);
   const filasInventario = (sucursales ?? []).map((s) => ({
@@ -128,84 +133,35 @@ export async function crearProducto(formData: FormData) {
   }
 
   revalidatePath("/inventario");
+  revalidatePath("/ventas");
   revalidatePath("/precios");
   return { ok: true, id: producto.id as string };
 }
 
-// Alta rápida de varios armazones a la vez, pegando una lista de códigos
-// (una foto de un cuaderno con los códigos del proveedor, por ejemplo) en
-// vez de llenar "Nuevo producto" código por código. Cada línea es un
-// armazón propio con ese código como nombre y como SKU — sin marca, modelo
-// ni costo, para completar después si hace falta. Los códigos repetidos
-// (ya sea entre sí o con un producto ya cargado) se saltan solos, no se
-// duplican.
-export async function crearProductosMasivo(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: perfil } = await supabase.from("users").select("tenant_id").eq("id", user.id).single();
-  if (!perfil) throw new Error("Perfil no encontrado");
-
-  const lineas = String(formData.get("codigos") ?? "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (lineas.length === 0) return { ok: false as const, error: "Pega al menos un código." };
-
-  // Únicos dentro de lo pegado (por si el mismo código aparece dos veces
-  // en la lista), preservando el orden en que se escribieron.
-  const codigosUnicos = [...new Set(lineas)];
-
-  const { data: existentes } = await supabase
-    .from("productos")
-    .select("sku")
-    .eq("tenant_id", perfil.tenant_id)
-    .in("sku", codigosUnicos);
-  const yaExisten = new Set((existentes ?? []).map((p) => p.sku));
-
-  const nuevos = codigosUnicos.filter((c) => !yaExisten.has(c));
-  const repetidos = codigosUnicos.filter((c) => yaExisten.has(c));
-
-  if (nuevos.length > 0) {
-    const { data: creados, error } = await supabase
-      .from("productos")
-      .insert(
-        nuevos.map((codigo) => ({
-          tenant_id: perfil.tenant_id,
-          categoria: "armazon" as const,
-          nombre: codigo,
-          sku: codigo,
-          costo: 0,
-          precio_venta: 0,
-        }))
-      )
-      .select("id");
-    if (error) return { ok: false as const, error: "No se pudieron crear los productos." };
-
-    // Una fila de inventario (en 0) por cada sucursal, igual que crearProducto
-    // — así cualquier sucursal puede registrar stock de este armazón después.
-    const { data: sucursales } = await supabase.from("sucursales").select("id").eq("tenant_id", perfil.tenant_id);
-    const filasInventario = (creados ?? []).flatMap((p) =>
-      (sucursales ?? []).map((s) => ({
-        tenant_id: perfil.tenant_id,
-        sucursal_id: s.id,
-        producto_id: p.id,
-        stock_actual: 0,
-        stock_minimo: 0,
-      }))
-    );
-    if (filasInventario.length > 0) {
-      const { error: invError } = await supabase.from("inventario").insert(filasInventario);
-      if (invError) return { ok: false as const, error: "Los productos se crearon, pero no se pudo preparar el inventario." };
-    }
+export async function cargarStockMarcos(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const sucursal = String(formData.get("sucursal_id") ?? "");
+  const modo = formData.get("modo");
+  if (!uuidAgenda.test(id) || !uuidAgenda.test(sucursal) || (modo !== "entrada" && modo !== "conteo")) {
+    return { ok: false as const, error: "Revisa la sucursal y el tipo de carga." };
   }
+  const { filas, error } = leerCargaMarcos(String(formData.get("codigos") ?? ""), modo);
+  if (error || !filas.length) return { ok: false as const, error: error ?? "Ingresa al menos un código." };
 
-  revalidatePath("/inventario");
-  revalidatePath("/precios");
-  return { ok: true as const, creados: nuevos.length, repetidos };
+  try {
+    const { supabase } = await requerirPerfil({ roles: ["admin", "ventas", "bodega"], suscripcion: true });
+    const carga = await supabase.rpc("cargar_stock_marcos", {
+      p_id: id, p_sucursal: sucursal, p_modo: modo, p_filas: filas,
+    });
+    if (carga.error) return { ok: false as const, error: carga.error.code === "23505"
+      ? "Ya se guardó otra lista con esta solicitud. Revisa el stock antes de volver a cargar."
+      : "No se pudo completar la carga. Revisa la conexión y vuelve a intentar." };
+    for (const ruta of ["/inventario", "/ventas", "/precios", "/"]) revalidatePath(ruta);
+    return { ok: true as const, resultado: carga.data as { creados: number; codigos: number; unidades: number } };
+  } catch (e) {
+    if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
+    throw e;
+  }
 }
 
 // La foto se sube desde el navegador (subir-foto-marco.tsx, mismo patrón

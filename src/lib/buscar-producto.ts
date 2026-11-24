@@ -10,6 +10,16 @@ type ProductoBuscable = {
 const normalizar = (texto: string) => texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 const compacto = (texto: string) => normalizar(texto).replace(/[^a-z0-9]/g, "");
 
+export const claveCodigoMarco = (codigo: string) =>
+  codigo.normalize("NFD").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
+export function marcoPorCodigo<T extends ProductoBuscable>(marcos: readonly T[], codigo: string): T | undefined {
+  const clave = claveCodigoMarco(codigo);
+  if (!clave) return undefined;
+  const coincidencias = marcos.filter(m => claveCodigoMarco(m.sku ?? "") === clave);
+  return coincidencias.length === 1 ? coincidencias[0] : undefined;
+}
+
 export function filtrarProductos<T extends ProductoBuscable>(productos: readonly T[], entrada: string): T[] {
   const consulta = normalizar(entrada.trim());
   const codigo = compacto(consulta);
