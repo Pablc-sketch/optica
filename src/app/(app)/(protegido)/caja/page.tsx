@@ -11,20 +11,74 @@ import {etiquetasReparto} from '@/lib/etiquetas-reparto';
 import { pendientePersonal } from '@/lib/caja-fuentes';
 import { crearGastoGlobal }  from '@/lib/actions/gastos';
 import {leerEstadoCuenta} from '@/lib/cuenta-mercadopago';
-import {efectivoDesdeConteo,prioridadCaja} from '@/lib/caja-verificada';
+import { efectivoDesdeConteo, prioridadCaja } from '@/lib/caja-verificada';
+import { resumenSedeCaja, sedesDeCaja } from '@/lib/caja-operativo';
+import type { VentaParaCierre } from '@/lib/cierre-operativo';
 import ActualizarCajaMercadoPago from '@/components/actualizar-caja-mercadopago';
 import CuentaBancaria from '@/components/cuenta-bancaria';
-import SaldoCaja from '@/components/saldo-caja';
+import ResumenCajaOperativo from '@/components/resumen-caja-operativo';
 import CajaFormulario from '@/components/caja-formulario';
 import { resumirCaja } from '@/lib/caja';
 import CajaHistorial from '@/components/caja-historial';
 import BotonEnviar from '@/components/boton-enviar';
 export const dynamic = 'force-dynamic';
 const campo = 'w-full min-w-0 rounded-xl border px-3 py-2.5';
-export default async function Caja({ searchParams }: { searchParams: Promise<{ guardado?: string; ver?: string; operativo?: string }> }) {
+const vistas = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['pendientes', 'Pendientes'], ['cuadrar', 'Cuadrar']] as const;
+export default async function Caja({ searchParams }: {
+  searchParams: Promise<{ guardado?: string; ver?: string; operativo?: string; sede?: string | string[] }>;
+}) {
   const { supabase, tenantId } = await exigirRolPagina(['admin']);
   const piloto = esPilotoTerreno(tenantId);
-  const [caja, pendientes, gastos, movimientos, conteos, cobros, retiros, tenant, ventas, operativos, params] = await Promise.all([
+  const params = await searchParams;
+  const vista = vistas.find(([clave]) => clave === params.ver)?.[0] ?? 'resumen';
+  const navegacion = <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-4">{vistas.map(([clave,nombre]) => <Link key={clave} href={clave === 'resumen' ? '/caja' : `/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>;
+  const guardado = params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>;
+
+  if (vista === 'resumen') {
+    const hoy = hoyEnChile();
+    const [operativos, cuenta, caja, conteo, tenant] = await Promise.all([
+      leerTodas((a, b) => supabase.from('operativos').select('id,nombre,fecha,fecha_fin,hora_inicio,estado,costo_fides_real,costo_marco_unitario,costo_transporte,costo_arriendo,costo_viaticos,costo_otros,costo_ayudante,costo_equipos,costo_hospedaje,costo_comida,costo_peajes,comision_vendedora_pct,comision_vendedora_base,ahorro_pct')
+        .eq('tenant_id', tenantId).order('id').range(a, b)),
+      leerEstadoCuenta(tenantId),
+      supabase.rpc('caja_global').single(),
+      supabase.from('caja_conteos').select('contado,esperado').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(1),
+      supabase.from('tenants').select('comision_debito_pct,comision_credito_pct').eq('id', tenantId).single(),
+    ]);
+    const sedes = (operativos.data ?? []).filter(o => o.fecha <= hoy && o.estado !== 'cancelado');
+    const seleccion = sedesDeCaja(sedes, hoy, params.sede);
+    const grupos = [];
+    for (let i = 0; i < seleccion.length; i += 50) grupos.push(seleccion.slice(i, i + 50).map(s => s.id));
+    const ventas = await Promise.all(grupos.map(ids => leerTodas((a, b) => supabase.from('ventas').select(
+      `id,operativo_id,total,pagos_abonos(monto,medio_pago),
+      venta_items(cantidad,precio_unitario,descuento,descripcion,cristal_slot,
+        ordenes_trabajo:ot_id(costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2),
+        productos:producto_id(costo,categoria))`)
+      .eq('tenant_id', tenantId).eq('anulada', false).in('operativo_id', ids).order('id').range(a, b))));
+    const porSede = new Map<string, VentaParaCierre[]>();
+    for (const venta of ventas.flatMap(grupo => grupo.data ?? [])) {
+      if (!venta.operativo_id) continue;
+      const lista = porSede.get(venta.operativo_id) ?? [];
+      lista.push(venta as unknown as VentaParaCierre);
+      porSede.set(venta.operativo_id, lista);
+    }
+    const filas = seleccion.map(s => resumenSedeCaja(s, porSede.get(s.id) ?? [],
+      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0)));
+    const totales = caja.data as { entro_efectivo: number; salio_efectivo: number } | null;
+    const efectivo = totales && !caja.error && !conteo.error
+      ? efectivoDesdeConteo(totales.entro_efectivo - totales.salio_efectivo, conteo.data?.[0]) : null;
+    return <div className="mx-auto flex max-w-5xl flex-col gap-4 pb-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <CabeceraPagina seccion="Operación" titulo="Caja" />
+        <ActualizarCajaMercadoPago compacto />
+      </div>
+      {navegacion}
+      {guardado}
+      <ResumenCajaOperativo sedes={sedes.sort((a, b) => b.fecha.localeCompare(a.fecha))} seleccion={seleccion} filas={filas}
+        saldo={cuenta.saldo} efectivo={efectivo} hoy={hoy} error={Boolean(operativos.error || tenant.error || ventas.some(grupo => grupo.error))} />
+    </div>;
+  }
+
+  const [caja, pendientes, gastos, movimientos, conteos, cobros, retiros, tenant, ventas, operativos] = await Promise.all([
     supabase.rpc('caja_global').single(), cargarPendientes(supabase),
     leerTodas((a,b) => supabase.from('gastos_globales').select('id,fecha,descripcion,monto,caja,operativo_id,monto_estimado').eq('tenant_id',tenantId).order('id').range(a,b)),
     leerTodas((a,b) => supabase.from('caja_movimientos').select('id,fecha,tipo,monto,caja,gasto_id,descripcion,created_at').eq('tenant_id',tenantId).order('id').range(a,b)),
@@ -34,7 +88,6 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
     supabase.from('tenants').select('comision_debito_pct,comision_credito_pct,reparto_etiquetas').eq('id',tenantId).single(),
     leerTodas((a,b) => supabase.from('ventas').select('id,total,operativo_id,pagos_abonos(monto)').eq('tenant_id',tenantId).eq('anulada',false).order('id').range(a,b)),
     leerTodas((a,b) => supabase.from('operativos').select('id,nombre,fecha').eq('tenant_id',tenantId).order('id').range(a,b)),
-    searchParams,
   ]);
   const error = caja.error || pendientes.error || gastos.error || movimientos.error || conteos.error || cobros.error || retiros.error || tenant.error || ventas.error || operativos.error;
   const t = caja.data as { entro_efectivo: number; salio_efectivo: number; entro_digital: number; entro_debito: number; entro_credito: number; salio_digital: number } | null;
@@ -46,57 +99,38 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
   const personales = (gastos.data ?? []).filter(g => g.caja === 'personal').map(g => ({ ...g,
     pendiente: pendientePersonal(g.monto,(movimientos.data ?? []).filter(m => m.gasto_id === g.id)) })).filter(g => g.pendiente > 0).sort((a,b) => a.fecha.localeCompare(b.fecha));
   const deudaPersonal = personales.reduce((s,g) => s+g.pendiente,0);
-  const cuentaProveedor=await leerEstadoCuenta(tenantId);
+  const cuentaProveedor = vista === "cuadrar" ? await leerEstadoCuenta(tenantId) : undefined;
   const efectivoVerificado=efectivoDesdeConteo(efectivo,ultimoConteo);
-  const prioridad=prioridadCaja(efectivoVerificado,cuentaProveedor.saldo.estado==='disponible'||cuentaProveedor.saldo.estado==='reporte'&&cuentaProveedor.saldo.vigente?cuentaProveedor.saldo.disponible:null,deudaPersonal);
+  const banco = cuentaProveedor?.saldo;
+  const prioridad = prioridadCaja(efectivoVerificado, banco?.estado === "disponible" ? banco.disponible : null, deudaPersonal);
   const base = pendientes.resumen;
   const p = piloto ? {...base,total:base.costos,ahorro:0,personas:{pablo:0,madre:0,isadora:0}} : {...base,total:base.total+(pendientes.impuestosPendientes??0)};
 
-  const vistas = [['resumen','Resumen'],['movimientos','Movimientos'],['pendientes','Pendientes'],['cuadrar','Cuadrar']] as const;
-  const vista = vistas.find(([clave]) => clave === params.ver)?.[0] ?? 'resumen';
   const operativoId = (vista==='movimientos'||vista==='pendientes') && (operativos.data ?? []).some(o => o.id === params.operativo) ? params.operativo! : '';
   const ventasFiltradas = (ventas.data ?? []).filter(v => !operativoId || v.operativo_id === operativoId);
   const operativoPorVenta = new Map((ventas.data ?? []).map(v => [v.id,v.operativo_id]));
   const porCobrar = ventasFiltradas.reduce((s,v) => s + Math.max(0, v.total - v.pagos_abonos.reduce((s,p) => s+p.monto,0)),0);
-  const ahorroSeparado = (retiros.data ?? []).filter(r => r.persona === 'ahorro').reduce((s,r) => s+r.monto,0);
   const pendientesFiltrados = p.operativos.filter(o => !operativoId || o.operativoId === operativoId);
   const fecha = hoyEnChile();
   const nombres=etiquetasReparto(tenant.data?.reparto_etiquetas);
   const filas = [[nombres.pablo,p.personas.pablo],[nombres.madre,p.personas.madre],[nombres.isadora,p.personas.isadora],['Laboratorio',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos],['SII declarado por pagar',pendientes.impuestosPendientes??0]] as const;
   return <div className="flex flex-col gap-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><CabeceraPagina seccion="Operación" titulo="Caja" /><div className="flex flex-wrap items-center gap-3"><ActualizarCajaMercadoPago/><Link href="/impuestos" className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold">SII mensual</Link></div></div>
-    <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-4">{vistas.map(([clave,nombre]) => <Link key={clave} href={`/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-3 text-center font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>
+    <div className="flex flex-wrap items-center justify-between gap-3"><CabeceraPagina seccion="Operación" titulo="Caja" /><div className="flex flex-wrap items-center gap-3">{vista === "cuadrar" && <ActualizarCajaMercadoPago compacto />}<Link href="/impuestos" className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold">SII mensual</Link></div></div>
+    {navegacion}
     {(vista==='movimientos'||vista==='pendientes') && <form action="/caja" className="flex flex-wrap items-end gap-2"><input type="hidden" name="ver" value={vista} /><label className="min-w-0 flex-1 text-sm">Operativo<select name="operativo" defaultValue={operativoId} className={campo}><option value="">Todos los operativos</option>{[...(operativos.data ?? [])].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(o=><option key={o.id} value={o.id}>{o.nombre} · {fechaLegible(o.fecha)}</option>)}</select></label><button className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Ver</button></form>}
-    {params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>}
+    {guardado}
 
     {error ? <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">No se pudo leer toda la caja. Recarga antes de registrar movimientos.</p> : <>
-      {vista==='resumen' && <>
-      <div className="grid items-start gap-4 xl:grid-cols-[2fr_1fr]">
-        <SaldoCaja saldo={cuentaProveedor.saldo} efectivo={efectivoVerificado}/>
-        <details className="self-start rounded-2xl border border-tinta/20 bg-white p-5"><summary className="cursor-pointer font-semibold">Disponible para repartir</summary><p className="mt-4 text-3xl font-bold tabular-nums">{deudaPersonal>0?clp(0):prioridad.paraRepartir===null?'Por verificar':clp(Math.max(0,prioridad.paraRepartir-p.total-p.ahorro))}</p><p className="mt-3 text-base leading-relaxed text-tinta-suave">{deudaPersonal>0?'Primero se devuelve el dinero personal. Después se revisan costos, sueldos y ahorro.':prioridad.total===null?'Falta verificar el banco o contar el efectivo.':'Saldo de caja menos compromisos registrados.'}</p>{deudaPersonal>0&&<Link href="/gastos#adelantos-personales" className="mt-4 inline-block min-h-11 rounded-xl border border-tinta/25 px-4 py-3 font-semibold">Ver devolución pendiente</Link>}</details>
-      </div>
-      <nav aria-label="Acciones de caja" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Link href="/cobros" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">+ Cobrar venta</Link>
-        <Link href="/gastos" className="rounded-xl bg-emerald-800 px-4 py-4 text-center font-semibold text-white">Ver gastos</Link>
-        <Link href={piloto ? "/agenda/equipos" : "/pagos"} className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">{piloto ? 'Gastos por operativo' : 'Registrar pago'}</Link>
-        <Link href="/caja?ver=movimientos#traspasos" className="rounded-xl bg-white px-4 py-4 text-center font-semibold shadow-sm">Transferir entre cuentas</Link>
-      </nav>
-      <Link href="/caja?ver=cuadrar" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-50 p-4 text-amber-900"><span><b className="block">Conciliar caja</b><span className="text-sm">Confirma el efectivo contado y el saldo bancario.</span></span><span className="text-sm font-semibold">Revisar saldos →</span></Link>
-      {pendientes.sinAsignar && <Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 underline">Hay pagos o aportes sin operativo. Revisar →</Link>}
-      {(cobros.data ?? []).some(c=>!c.medio_pago) && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Hay cobros sin medio de pago, incluidos como efectivo. Revísalos si hay diferencias.</p>}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <CajaHistorial operativos={operativos.data ?? []} cobros={(cobros.data ?? []).map(c=>({...c,operativo_id:operativoPorVenta.get(c.venta_id) ?? null}))} gastos={gastos.data ?? []} retiros={retiros.data ?? []} traslados={movimientos.data ?? []} />
-        <section className="rounded-2xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Por pagar</h2><p className="mt-2 text-sm text-red-700">Compromisos pendientes · {clp(p.total+deudaPersonal)}</p><dl className="mt-4 divide-y divide-tinta/10">{filas.filter(([,monto])=>monto>0).map(([nombre,monto])=><div key={nombre} className="flex justify-between gap-3 py-3 text-sm"><dt>{nombre}</dt><dd className="font-semibold tabular-nums text-red-700">{clp(monto)}</dd></div>)}{deudaPersonal>0 && <div className="flex justify-between gap-3 py-3 text-sm"><dt>{piloto ? 'Gastos por reembolsar' : `Devolver a ${nombres.pablo}`}</dt><dd className="font-semibold text-red-700">{clp(deudaPersonal)}</dd></div>}</dl><Link href="/caja?ver=pendientes" className="mt-3 block text-sm font-semibold underline">Ver por operativo →</Link><div className="mt-5 border-t border-tinta/10 pt-4"><h3 className="text-sm">Utilidad calculada · operativos</h3><p className={`mt-2 text-3xl font-bold ${pendientes.utilidadOperativos<0?'text-red-700':'text-emerald-800'}`}>{clp(pendientes.utilidadOperativos)}</p><p className="mt-2 text-xs text-tinta-suave">Ventas menos costos. Incluye ventas por cobrar; no es saldo disponible.</p><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="mt-4 block rounded-xl border px-3 py-3 text-center font-semibold">{piloto ? 'Ver reportes →' : 'Ahorro, pagos y retiros →'}</Link></div></section>
-      </div>
-      <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-tinta-suave">Ahorro registrado</p><b className="text-2xl text-emerald-800 tabular-nums">{clp(ahorroSeparado)}</b></Link></div>
-      <p className="text-xs text-tinta-suave">Los traspasos no son ingresos. Los pagos realizados reducen el saldo.</p>
-      </>}
       {vista==='pendientes' && <>
       <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b><p className="mt-2 text-sm underline">Gestionar cobros →</p></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-tinta p-4 font-semibold text-white">Confirmar o corregir pagos, gastos y ahorro →</Link></div>
       <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Por operativo</h2>
       {pendientesFiltrados.length===0 && <p className="mt-3 text-sm">Sin pagos ni ahorro pendientes.</p>}
       {pendientesFiltrados.map(o=><Link key={o.operativoId} href={`/operativos/${o.operativoId}/cierre`} className="mt-3 block rounded-xl border p-3"><b>{o.nombre}</b><p className="text-xs text-tinta-suave">{fechaLegible(o.fecha)}</p><dl className="mt-2 grid grid-cols-2 gap-2 text-sm">{[['Laboratorio',o.fides],['Marcos',o.marcos],['Gastos',o.gastos],[nombres.pablo,o.personas.pablo],[nombres.madre,o.personas.madre],[nombres.isadora,o.personas.isadora],['Ahorro por separar',o.ahorro]].map(([n,m])=><div key={n} className="flex justify-between gap-2"><dt>{n}</dt><dd className="tabular-nums">{clp(Number(m))}</dd></div>)}</dl></Link>)}
       </section>
+      <div className="flex flex-wrap gap-4 px-1 text-sm">
+        <Link href={piloto ? "/reportes" : "/pagos/revisar"} className="underline">Ahorro registrado · {clp((retiros.data ?? []).filter(r => r.persona === 'ahorro').reduce((s, r) => s + r.monto, 0))}</Link>
+        <Link href="/reportes" className="underline">Reportes</Link>
+      </div>
       <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-bold text-red-700">Total de la óptica por pagar · {clp(p.total+deudaPersonal)}</summary>
       <div className="pt-2">
         <dl className="mt-2 divide-y divide-tinta/10">{filas.filter(([,monto])=>monto>0).map(([nombre,monto]) => <div key={nombre} className="flex justify-between gap-3 py-2"><dt>{nombre}</dt><dd className="font-semibold tabular-nums">{clp(monto)}</dd></div>)}
@@ -141,13 +175,13 @@ export default async function Caja({ searchParams }: { searchParams: Promise<{ g
           </CajaFormulario>
         </details>
       </section>
-      <CuentaBancaria tenantId={tenantId} cuenta={cuentaProveedor} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito ?? 0)+(t?.entro_credito ?? 0),transferencias:(t?.entro_digital ?? 0)-(t?.entro_debito ?? 0)-(t?.entro_credito ?? 0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}} />
+      <CuentaBancaria enlaceExterno={false} tenantId={tenantId} cuenta={cuentaProveedor} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito ?? 0)+(t?.entro_credito ?? 0),transferencias:(t?.entro_digital ?? 0)-(t?.entro_debito ?? 0)-(t?.entro_credito ?? 0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}} />
+      <details className="rounded-2xl bg-white p-4"><summary className="cursor-pointer font-semibold">Disponible para repartir</summary>
+        <p className="mt-3 text-2xl font-bold tabular-nums">{deudaPersonal > 0 ? clp(0) : prioridad.paraRepartir === null ? 'Por verificar' : clp(Math.max(0, prioridad.paraRepartir - p.total - p.ahorro))}</p>
+        <p className="mt-2 text-sm text-tinta-suave">{deudaPersonal > 0 ? 'Primero se devuelve el dinero personal.' : 'Saldo verificado de caja menos compromisos y ahorro pendientes.'}</p>
+      </details>
       <Link href="/caja?ver=movimientos" className="rounded-xl bg-white p-4 text-center font-semibold">Revisar movimientos y diferencias →</Link>
       <Link href="/gastos#adelantos-personales" className="block rounded-2xl border border-tinta/20 bg-white p-5 text-base font-semibold">Gastos personales y devoluciones →</Link>
-      </>}
-      {vista==='resumen' && <>
-
-      <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Reportes y documentos</summary><div className="mt-3 flex flex-wrap gap-2">{[['/reportes','Reportes'],['/boleta','Boletas'],['/seguros','Reembolsos']].map(([href,n])=><Link key={href} href={href} className="rounded-xl border px-4 py-3">{n}</Link>)}</div></details>
       </>}
     </>}
   </div>;

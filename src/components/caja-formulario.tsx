@@ -1,8 +1,10 @@
 'use client';
 import { useActionState, type ReactNode } from 'react';
-import { registrarMovimientoCaja } from '@/lib/actions/caja';
-export default function CajaFormulario({ children, texto = 'Guardar' }: { children: ReactNode; texto?: string }) {
-  const [estado, action, pendiente] = useActionState(registrarMovimientoCaja, {});
+import { registrarMovimientoCaja, type ResultadoCaja } from '@/lib/actions/caja';
+export default function CajaFormulario({ children, texto = 'Guardar', guardar = registrarMovimientoCaja }: {
+  children: ReactNode; texto?: string; guardar?: (estado: ResultadoCaja, datos: FormData) => Promise<ResultadoCaja>;
+}) {
+  const [estado, action, pendiente] = useActionState(guardar, {});
   return <form action={action} className="grid gap-3">
     {children}
     {estado.error && <p role="alert" className="text-sm text-red-700">{estado.error}</p>}
