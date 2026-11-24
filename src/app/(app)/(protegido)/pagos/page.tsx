@@ -18,7 +18,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
     <Link href="/gastos" className="rounded-xl bg-emerald-800 p-4 text-center font-bold text-white">Gastos: saldar pendientes o vincular pagos anteriores →</Link>
     <Link href="/impuestos" className="rounded-xl border bg-white p-3 text-center font-semibold">SII mensual · ver saldo y registrar pagos →</Link>
     <h1 className="text-2xl font-bold">Pagos y ahorro</h1>
-    <Link href="/pagos/revisar" className="rounded-xl bg-tinta px-4 py-3 text-center font-semibold text-white">Revisar pagos y gastos →</Link>
+    <Link href="/pagos/revisar" className="rounded-xl bg-tinta px-4 py-3 text-center font-semibold text-white">Revisar sueldos y ahorro →</Link>
     <nav className="flex gap-2" aria-label="Tipo de pendiente">
       {VISTAS.map((v) => <Link key={v.clave} href={`/pagos?ver=${v.clave}`} aria-current={vista.clave === v.clave ? "page" : undefined}
         className={`rounded-xl px-4 py-3 font-semibold ${vista.clave === v.clave ? "bg-tinta text-white" : "bg-white"}`}>{v.titulo}</Link>)}

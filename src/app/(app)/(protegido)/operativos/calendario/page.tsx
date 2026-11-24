@@ -61,7 +61,7 @@ export default async function CalendarioOperativos({
   if (perfilRes.data?.rol !== "admin") {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-xl font-bold">Calendario de operativos</h1>
+        <h1 className="text-xl font-bold">Metas y resultados</h1>
         <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
           Solo el administrador de la óptica organiza los operativos.
         </p>
@@ -144,10 +144,10 @@ export default async function CalendarioOperativos({
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <Link href="/operativos" className="text-xs font-medium text-sky-700 hover:underline">
-          ← Operativos
+        <Link href={`/operativos/agenda?mes=${mes}`} className="text-xs font-medium text-sky-700 hover:underline">
+          ← Calendario
         </Link>
-        <h1 className="mt-1 text-xl font-bold">Calendario de operativos</h1>
+        <h1 className="mt-1 text-xl font-bold">Metas y resultados</h1>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">

@@ -5,6 +5,8 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { clp } from '@/lib/clp';
 import { fechaLegible } from '@/lib/fechas';
+import { eliminarGastoGlobal } from '@/lib/actions/gastos';
+import BotonEnviar from './boton-enviar';
 import { revisarMovimiento } from '@/lib/actions/revision-financiera';
 import { conceptoProtegido, diferenciaRevision, PERSONAS_REVISION, type MovimientoRevision } from '@/lib/revision-financiera';
 import { COSTOS, prefijoCosto, PREFIJO_FIDES, PREFIJO_MARCOS } from '@/lib/pagos-operativo';
@@ -19,8 +21,10 @@ const conceptos = [
   ...COSTOS.map(c => ({ valor: prefijoCosto(c.clave), nombre: c.titulo })),
 ];
 
-export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, historial }: {
-  movimientos: MovimientoRevision[]; operativos: OperativoPorPagar[]; hoy: string; inicial: string; historial: Evento[];
+type OpcionOperativo = Pick<OperativoPorPagar, 'operativoId' | 'nombre' | 'fecha'> & Partial<Pick<OperativoPorPagar, 'ahorro' | 'sueldos'>>;
+
+export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, historial, soloGastos = false }: {
+  movimientos: MovimientoRevision[]; operativos: OpcionOperativo[]; hoy: string; inicial: string; historial: Evento[]; soloGastos?: boolean;
 }) {
   const router = useRouter();
   const [operativo, setOperativo] = useState(inicial);
@@ -66,21 +70,21 @@ export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, histo
   }
   return <>
     <div className="grid gap-3 rounded-2xl bg-white p-4 sm:grid-cols-2">
-      <label className="text-sm">Operativo<select className={campo} value={operativo} onChange={e => { setOperativo(e.target.value); setPagina(0); }}><option value="">Todos</option><option value="sin">Sin operativo</option>{[...operativos].sort((a,b) => b.fecha.localeCompare(a.fecha)).map(o => <option key={o.operativoId} value={o.operativoId}>{fechaLegible(o.fecha)} · {o.nombre}</option>)}</select></label>
-      <label className="text-sm">Qué revisar<select className={campo} value={tipo} onChange={e => { setTipo(e.target.value); setPagina(0); }}><option value="todos">Todo</option>{Object.entries(PERSONAS_REVISION).map(([id,n]) => <option key={id} value={id}>{n}</option>)}<option value="gastos">Gastos</option></select></label>
+      {!soloGastos&&<label className="text-sm">Operativo<select className={campo} value={operativo} onChange={e => { setOperativo(e.target.value); setPagina(0); }}><option value="">Todos</option><option value="sin">Sin operativo</option>{[...operativos].sort((a,b) => b.fecha.localeCompare(a.fecha)).map(o => <option key={o.operativoId} value={o.operativoId}>{fechaLegible(o.fecha)} · {o.nombre}</option>)}</select></label>}
+      {!soloGastos&&<label className="text-sm">Qué revisar<select className={campo} value={tipo} onChange={e => { setTipo(e.target.value); setPagina(0); }}><option value="todos">Todo</option>{Object.entries(PERSONAS_REVISION).map(([id,n]) => <option key={id} value={id}>{n}</option>)}</select></label>}
       <label className="text-sm">Estado<select className={campo} value={estado} onChange={e => { setEstado(e.target.value); setPagina(0); }}><option value="todos">Todos</option><option value="pendientes">Por confirmar</option><option value="confirmados">Confirmados</option></select></label>
       <label className="text-sm">Buscar<input className={campo} value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(0); }} placeholder="Concepto o nota" /></label>
     </div>
     <p className="text-sm">{base.filter(m => !m.confirmado_en).length} por confirmar · {base.filter(m => m.confirmado_en).length} confirmados</p>
-    {op && <section className="rounded-2xl bg-white p-4"><h2 className="font-bold">{op.nombre} · calculado y registrado</h2><div className="mt-2 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="py-2">Concepto</th><th>Calculado</th><th>Registrado</th><th>Diferencia</th></tr></thead><tbody>
+    {!soloGastos && op?.sueldos && <section className="rounded-2xl bg-white p-4"><h2 className="font-bold">{op.nombre} · calculado y registrado</h2><div className="mt-2 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="py-2">Concepto</th><th>Calculado</th><th>Registrado</th><th>Diferencia</th></tr></thead><tbody>
       {Object.entries(PERSONAS_REVISION).map(([persona,nombre]) => {
-        const calculado = persona === 'ahorro' ? op.ahorro : op.sueldos[persona as keyof typeof op.sueldos];
+        const calculado = persona === 'ahorro' ? op.ahorro : op.sueldos?.[persona as keyof OperativoPorPagar['sueldos']] ?? 0;
         const real = base.filter(m => m.tabla === 'retiros_sueldo' && m.persona === persona).reduce((s,m) => s + m.monto,0);
-        const d = diferenciaRevision(calculado,real);
-        return <tr key={persona} className="border-t border-tinta/10"><th className="py-3 pr-3">{nombre}</th><td className="pr-3">{clp(calculado)}</td><td className="pr-3">{clp(real)}</td><td className={d.extra ? 'text-amber-800' : ''}>{d.extra ? `${clp(d.extra)} extra` : d.pendiente ? `${clp(d.pendiente)} ${persona === 'ahorro' ? 'sin separar' : 'pendiente'}` : 'Cuadra'}</td></tr>;
+        const d = diferenciaRevision(calculado ?? 0,real);
+        return <tr key={persona} className="border-t border-tinta/10"><th className="py-3 pr-3">{nombre}</th><td className="pr-3">{clp(calculado ?? 0)}</td><td className="pr-3">{clp(real)}</td><td className={d.extra ? 'text-amber-800' : ''}>{d.extra ? `${clp(d.extra)} extra` : d.pendiente ? `${clp(d.pendiente)} ${persona === 'ahorro' ? 'sin separar' : 'pendiente'}` : 'Cuadra'}</td></tr>;
       })}
     </tbody></table></div><p className="mt-2 text-xs text-tinta-suave">Registrado incluye movimientos por confirmar. El cálculo del reparto no cambia al corregir un pago.</p><Link href={`/operativos/${op.operativoId}/cierre`} className="mt-3 inline-block underline">Ver costos y reparto del operativo →</Link></section>}
-    <div className="flex flex-wrap gap-2"><button disabled={pendiente} onClick={() => nuevo()} className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Agregar pago o gasto omitido</button><button disabled={pendiente} onClick={() => nuevo(true)} className="rounded-xl border px-4 py-3 font-semibold">No aparté ahorro</button></div>
+    {!soloGastos&&<div className="flex flex-wrap gap-2"><button disabled={pendiente} onClick={() => nuevo()} className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Agregar pago o aporte omitido</button><button disabled={pendiente} onClick={() => nuevo(true)} className="rounded-xl border px-4 py-3 font-semibold">No aparté ahorro</button></div>}
     {editor && <EditorMovimiento key={editor.movimiento.id} {...editor} operativos={operativos} hoy={hoy} onCerrar={() => setEditor(null)} onGuardado={() => { setEditor(null); setAviso('Guardado y confirmado. Caja y pendientes actualizados.'); router.refresh(); }} />}
     {aviso && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">{aviso}</p>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-900">{error}</p>}
@@ -89,6 +93,14 @@ export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, histo
       {m.motivo && <p className="mt-1 text-sm">{m.motivo}</p>}
       <p className={`mt-2 text-sm ${m.confirmado_en ? 'text-emerald-800' : 'text-amber-800'}`}>{m.confirmado_en ? `Confirmado · ${new Date(m.confirmado_en).toLocaleString('es-CL',{ timeZone:'America/Santiago',dateStyle:'short',timeStyle:'short' })}` : 'Por confirmar'}{m.monto === 0 ? ' · sin salida de dinero' : ''}</p>
       <div className="mt-3 flex gap-2">{!m.confirmado_en && <button disabled={pendiente || !!editor} onClick={() => confirmar(m)} className="rounded-xl bg-emerald-50 px-4 py-2 font-semibold text-emerald-900">Confirmar</button>}<button disabled={pendiente || !!editor} onClick={() => { setAviso(''); setEditor({movimiento:m,nuevo:false}); }} className="rounded-xl border px-4 py-2 font-semibold">Corregir</button></div>
+      {soloGastos&&!m.operativo_id&&!conceptoProtegido(m)&&m.caja!=='personal'&&
+        <details className="mt-3 text-sm"><summary className="w-fit cursor-pointer text-red-800">Quitar registro</summary>
+          <form action={eliminarGastoGlobal} className="mt-2">
+            <input type="hidden" name="id" value={m.id} />
+            <p className="mb-2">Quita el gasto del historial y ajusta la caja.</p>
+            <BotonEnviar className="rounded-xl border border-red-200 px-4 py-2 font-semibold text-red-800">Quitar gasto</BotonEnviar>
+          </form>
+        </details>}
     </article>)}</div>
     {filas.length === 0 && <p className="rounded-xl bg-white p-4">Sin registros con estos filtros.</p>}
     {paginas > 1 && <nav className="flex items-center justify-between" aria-label="Páginas de movimientos"><button disabled={paginaActual===0} onClick={() => setPagina(paginaActual-1)} className="rounded-xl border p-3">Anterior</button><span>{paginaActual+1} / {paginas}</span><button disabled={paginaActual===paginas-1} onClick={() => setPagina(paginaActual+1)} className="rounded-xl border p-3">Siguiente</button></nav>}
@@ -100,7 +112,7 @@ export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, histo
 }
 
 function EditorMovimiento({ movimiento, nuevo, operativos, hoy, onCerrar, onGuardado }: {
-  movimiento: MovimientoRevision; nuevo: boolean; operativos: OperativoPorPagar[]; hoy:string; onCerrar:()=>void; onGuardado:()=>void;
+  movimiento: MovimientoRevision; nuevo: boolean; operativos: OpcionOperativo[]; hoy:string; onCerrar:()=>void; onGuardado:()=>void;
 }) {
   const [m,setM] = useState(movimiento);
   const [motivo,setMotivo] = useState(nuevo ? 'Registro histórico omitido' : '');
@@ -116,7 +128,6 @@ function EditorMovimiento({ movimiento, nuevo, operativos, hoy, onCerrar, onGuar
     } catch { setError('No se pudo guardar. Recarga y revisa el historial antes de reintentar.'); } });
   }}>
     <h2 className="text-lg font-bold">{nuevo?'Agregar registro':'Corregir registro'} · {titulo(m)}</h2>
-    {nuevo && <label className="text-sm">Tipo<select className={campo} value={m.tabla} onChange={e => patch(e.target.value==='gastos_globales'?{tabla:'gastos_globales',descripcion:'',categoria:'otro',monto:Math.abs(m.monto)}:{tabla:'retiros_sueldo',persona:'isadora',caja:'digital'})}><option value="retiros_sueldo">Pago, adelanto o ahorro</option><option value="gastos_globales">Gasto ya pagado</option></select></label>}
     <label className="text-sm">Operativo<select disabled={protegido} className={campo} value={m.operativo_id ?? ''} onChange={e => patch({operativo_id:e.target.value || null, ...(nuevo && conceptoProtegido(m) ? {descripcion:''} : {})})}><option value="">Sin operativo</option>{operativos.map(o => <option key={o.operativoId} value={o.operativoId}>{o.nombre} · {fechaLegible(o.fecha)}</option>)}</select></label>
     {m.tabla==='retiros_sueldo' ? <>
       <label className="text-sm">Persona o ahorro<select className={campo} value={m.persona} onChange={e => patch({persona:e.target.value,monto:Math.abs(m.monto)})}>{Object.entries(PERSONAS_REVISION).map(([id,n]) => <option key={id} value={id}>{n}</option>)}</select></label>

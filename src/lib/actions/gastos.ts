@@ -59,6 +59,13 @@ export async function crearGastoGlobal(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (id && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id)) throw new Error("Identificador no válido.");
 
+  const operativoId = String(formData.get('operativo_id') ?? '');
+  if (operativoId) {
+    if (!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(operativoId)) throw new Error('Operativo no válido.');
+    const { data, error } = await supabase.from('operativos').select('id').eq('tenant_id', tenantId).eq('id', operativoId).maybeSingle();
+    if (error || !data) throw new Error('Operativo no disponible.');
+  }
+
   const { error } = await supabase.from("gastos_globales").insert({
     ...(id ? { id } : {}),
     tenant_id: tenantId,
@@ -68,6 +75,7 @@ export async function crearGastoGlobal(formData: FormData) {
     monto,
     categoria: (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
     medio_pago: parsearMedioPago(formData.get("medio_pago")),
+    operativo_id: operativoId || null,
     caja: fuente,
   });
   if (error && !(id && error.code === "23505")) throw error;
@@ -77,7 +85,8 @@ export async function crearGastoGlobal(formData: FormData) {
   revalidatePath("/reportes");
   revalidatePath("/");
   revalidatePath("/caja");
-  if (fuente === 'personal' || formData.get('volver_gastos') === '1') redirect('/gastos?guardado=1#adelantos-personales');
+  if (fuente === 'personal') redirect('/gastos?guardado=1#adelantos-personales');
+  if (formData.get('volver_gastos') === '1') redirect(`/gastos?ver=historial&guardado=1${operativoId?`&op=${operativoId}`:''}`);
   if (formData.get("volver_caja") === "1") redirect("/caja?guardado=1");
 }
 

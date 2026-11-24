@@ -8,10 +8,7 @@ import { clp } from "@/lib/clp";
 import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import FilaPago from "./fila-pago";
-import PagoCostoOperativo from "@/components/pago-costo-operativo";
-import { pagadoCon, pendientesCostos, PREFIJO_FIDES, PREFIJO_MARCOS, pagosConAsignaciones } from "@/lib/pagos-operativo";
 import { leerTodas } from "@/lib/leer-todas";
-import CostoFidesEditor from "@/components/costo-fides-editor";
 
 // Cerrar el operativo: cuánto se ganó de verdad y a quién hay que pagarle.
 // Cada "Marcar pagado" saca esa plata de la caja, así la cuenta de la app
@@ -21,7 +18,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
   if (esPilotoTerreno(tenantId)) redirect("/operativos/"+id);
 
-  const [opRes, ventasRes, tenantRes, retirosRes, fidesRes, asignacionesRes, deudaRes] = await Promise.all([
+  const [opRes, ventasRes, tenantRes, retirosRes, deudaRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).maybeSingle(),
     leerTodas((a, b) => supabase
       .from("ventas")
@@ -35,14 +32,12 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
       .eq("anulada", false).order("id").range(a, b)),
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct, reparto_etiquetas").single(),
     leerTodas((a, b) => supabase.from("retiros_sueldo").select("id, persona, monto").eq("operativo_id", id).order("id").range(a, b)),
-    leerTodas((a, b) => supabase.from("gastos_globales").select("id, descripcion, monto").eq("operativo_id", id).order("id").range(a, b)),
-    leerTodas((a,b) => supabase.from("gastos_asignaciones").select("id,gasto_id,operativo_id,clave,monto,anulado_en").eq("operativo_id",id).order("id").range(a,b)),
     supabase.rpc('deuda_personal_pendiente'),
   ]);
   const nombres=etiquetasReparto(tenantRes.data?.reparto_etiquetas);
   const op = opRes.data;
   if (!op) notFound();
-  const error = opRes.error ?? tenantRes.error ?? ventasRes.error ?? retirosRes.error ?? fidesRes.error ?? asignacionesRes.error ?? deudaRes.error;
+  const error = opRes.error ?? tenantRes.error ?? ventasRes.error ?? retirosRes.error ?? deudaRes.error;
 
   const ventas = ventasRes.data ?? [];
   const n = numerosDeOperativo(
@@ -55,10 +50,6 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
 
   const pagadoA = (persona: string) =>
     (retirosRes.data ?? []).filter((r) => r.persona === persona).reduce((s, r) => s + r.monto, 0);
-  const pagos = pagosConAsignaciones(fidesRes.data ?? [],asignacionesRes.data ?? [],id);
-  const fidesPagado = pagadoCon(pagos, PREFIJO_FIDES);
-  const marcosPagado = pagadoCon(pagos, PREFIJO_MARCOS);
-  const costos = pendientesCostos(op, pagos);
   const porCobrar = n.porCobrar;
 
   return (
@@ -67,7 +58,6 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         <Link href={`/operativos/${id}`} className="text-sm text-tinta-suave underline">
           ← {op.nombre}
         </Link>
-        <Link href={`/gastos?op=${id}`} className="mt-2 block rounded-xl bg-emerald-800 px-4 py-3 text-center font-semibold text-white">Gastos: saldar y vincular pagos anteriores →</Link>
         <h1 className="mt-1 text-2xl font-bold">Reparto y pagos del operativo</h1>
         <Link
           href={`/cobros?op=${id}&ver=deben`}
@@ -140,18 +130,11 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
       </section>
       </>}
 
-      {!error&&Number(deudaRes.data??0)>0&&<section className="rounded-2xl bg-amber-50 p-4"><h2 className="font-bold">Devolución personal prioritaria · {clp(Number(deudaRes.data))}</h2><p className="mt-2 text-sm">El reparto calculado es una proyección. Primero se devuelve el dinero financiado personalmente; los pagos de sueldos y ahorro quedan bloqueados hasta saldarlo.</p><Link href="/caja?ver=cuadrar#reintegros" className="mt-3 block font-semibold underline">Revisar la devolución</Link></section>}
+      {!error&&Number(deudaRes.data??0)>0&&<section className="rounded-2xl bg-amber-50 p-4"><h2 className="font-bold">Devolución personal prioritaria · {clp(Number(deudaRes.data))}</h2><p className="mt-2 text-sm">El reparto calculado es una proyección. Primero se devuelve el dinero financiado personalmente; los pagos de sueldos y ahorro quedan bloqueados hasta saldarlo.</p><Link href="/gastos#adelantos-personales" className="mt-3 block font-semibold underline">Revisar la devolución</Link></section>}
       {!error && <>
-      <h2 id="costos" className="scroll-mt-6 text-lg font-bold">Costos por pagar</h2>
-      <CostoFidesEditor operativoId={id} actual={op.costo_fides_real ?? null} nota={op.costo_fides_nota ?? null} />
-      <ul className="flex flex-col gap-3">
-        <PagoCostoOperativo clave="fides" costoFidesActual={op.costo_fides_real ?? null} titulo="Laboratorio (cristales)" operativoId={id} total={desglose.totalCristales} pagado={fidesPagado} />
-        <PagoCostoOperativo clave="marcos" titulo={`Reponer marcos (${desglose.marcos})`} operativoId={id} total={desglose.totalArmazones} pagado={marcosPagado} />
-        {costos.map((costo) => <PagoCostoOperativo key={costo.clave} operativoId={id} {...costo} />)}
-      </ul>
+      <Link id="costos" href={`/gastos?op=${id}`} className="rounded-xl bg-emerald-800 px-4 py-3 text-center font-semibold text-white">Gestionar gastos del operativo →</Link>
       <h2 id="sueldos" className="scroll-mt-6 text-lg font-bold">Remuneraciones</h2>
       <ul className="flex flex-col gap-3">
-        <FilaPago tipo="ayudante" operativoId={id} monto={op.costo_ayudante ?? 0} />
         <FilaPago tipo="sueldo" operativoId={id} persona="isadora" nombre={nombres.isadora} monto={c.isadora} pagado={pagadoA("isadora")} />
         <FilaPago tipo="sueldo" operativoId={id} persona="madre" nombre={nombres.madre} monto={c.madre} pagado={pagadoA("madre")} />
         <FilaPago tipo="sueldo" operativoId={id} persona="pablo" nombre={nombres.pablo} monto={c.pablo} pagado={pagadoA("pablo")} />

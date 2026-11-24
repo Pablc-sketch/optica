@@ -9,7 +9,6 @@ import { clp } from '@/lib/clp';
 import { hoyEnChile, fechaLegible } from '@/lib/fechas';
 import {etiquetasReparto} from '@/lib/etiquetas-reparto';
 import { pendientePersonal } from '@/lib/caja-fuentes';
-import { crearGastoGlobal }  from '@/lib/actions/gastos';
 import {leerEstadoCuenta} from '@/lib/cuenta-mercadopago';
 import { efectivoDesdeConteo, prioridadCaja } from '@/lib/caja-verificada';
 import { resumenSedeCaja, sedesDeCaja } from '@/lib/caja-operativo';
@@ -20,7 +19,6 @@ import ResumenCajaOperativo from '@/components/resumen-caja-operativo';
 import CajaFormulario from '@/components/caja-formulario';
 import { resumirCaja } from '@/lib/caja';
 import CajaHistorial from '@/components/caja-historial';
-import BotonEnviar from '@/components/boton-enviar';
 export const dynamic = 'force-dynamic';
 const campo = 'w-full min-w-0 rounded-xl border px-3 py-2.5';
 const vistas = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['pendientes', 'Pendientes'], ['cuadrar', 'Cuadrar']] as const;
@@ -122,7 +120,7 @@ export default async function Caja({ searchParams }: {
 
     {error ? <p role="alert" className="rounded-xl bg-amber-50 p-4 text-amber-900">No se pudo leer toda la caja. Recarga antes de registrar movimientos.</p> : <>
       {vista==='pendientes' && <>
-      <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b><p className="mt-2 text-sm underline">Gestionar cobros →</p></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-tinta p-4 font-semibold text-white">Confirmar o corregir pagos, gastos y ahorro →</Link></div>
+      <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b><p className="mt-2 text-sm underline">Gestionar cobros →</p></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-tinta p-4 font-semibold text-white">Revisar sueldos y ahorro →</Link></div>
       <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Por operativo</h2>
       {pendientesFiltrados.length===0 && <p className="mt-3 text-sm">Sin pagos ni ahorro pendientes.</p>}
       {pendientesFiltrados.map(o=><Link key={o.operativoId} href={`/operativos/${o.operativoId}/cierre`} className="mt-3 block rounded-xl border p-3"><b>{o.nombre}</b><p className="text-xs text-tinta-suave">{fechaLegible(o.fecha)}</p><dl className="mt-2 grid grid-cols-2 gap-2 text-sm">{[['Laboratorio',o.fides],['Marcos',o.marcos],['Gastos',o.gastos],[nombres.pablo,o.personas.pablo],[nombres.madre,o.personas.madre],[nombres.isadora,o.personas.isadora],['Ahorro por separar',o.ahorro]].map(([n,m])=><div key={n} className="flex justify-between gap-2"><dt>{n}</dt><dd className="tabular-nums">{clp(Number(m))}</dd></div>)}</dl></Link>)}
@@ -143,19 +141,7 @@ export default async function Caja({ searchParams }: {
       </details>
       </>}
       {vista==='movimientos' && <>
-      <section id="nuevo-gasto" className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold text-red-700">Gastos</h2>
-        <details className="mt-2"><summary className="cursor-pointer py-2 font-semibold">Agregar gasto general ya pagado</summary>
-          <form action={crearGastoGlobal} className="mt-3 grid gap-3"><input type="hidden" name="volver_caja" value="1" /><input type="hidden" name="id" value={randomUUID()} />
-            <label className="text-sm">Qué se pagó<input name="descripcion" placeholder="Arriendo del equipo, bandejas…" maxLength={250} required className={campo} /></label>
-            <label className="text-sm">Nota de la compra<textarea name="nota" rows={3} maxLength={1000} placeholder="Qué se compró, cantidades y para qué se usará" className={campo}/></label>
-            <div className="grid grid-cols-2 gap-3"><label className="text-sm">Fecha<input type="date" name="fecha" defaultValue={fecha} max={fecha} required className={campo} /></label><label className="text-sm">Monto<input name="monto" type="number" min="1" step="1" required className={campo} /></label></div>
-            <label className="text-sm">De dónde salió<select name="caja" required defaultValue="" className={campo}><option value="" disabled>Elige el origen</option><option value="digital">{piloto ? 'Cuenta bancaria' : 'Cuenta bancaria (Mercado Pago)'}</option><option value="efectivo">Efectivo de la óptica</option><option value="personal">{piloto ? 'Fondo personal' : `Dinero personal de ${nombres.pablo}`}</option></select></label>
-            <label className="text-sm">Categoría<select name="categoria" className={campo}><option value="otro">Otro gasto</option><option value="arriendo">Arriendo</option><option value="compra_inventario">Inventario / equipamiento</option></select></label>
-            <p className="text-xs text-tinta-suave">Si ya está registrado en un operativo o en Reportes, no lo agregues otra vez.</p>
-            <BotonEnviar className="rounded-xl bg-brand px-4 py-3 font-semibold text-white">Guardar gasto</BotonEnviar>
-          </form>
-        </details>
-      </section>
+      <Link id="nuevo-gasto" href="/gastos?ver=registrar" className="w-fit text-sm font-semibold underline">Registrar gasto en Gastos →</Link>
       <details id="traspasos" open className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Trasladar entre efectivo y cuenta</summary><p className="my-3 text-sm text-tinta-suave">Registra un depósito o retiro que ya hiciste. Lentia no mueve dinero.</p>
         <CajaFormulario><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="caja" value="digital" />
           <label className="text-sm">Movimiento<select name="tipo" className={campo}><option value="deposito">Depositaste efectivo en Mercado Pago</option><option value="retiro">Retiraste efectivo de Mercado Pago</option></select></label>

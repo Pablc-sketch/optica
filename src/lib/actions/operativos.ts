@@ -151,15 +151,19 @@ export async function cambiarEstadoOperativo(formData: FormData) {
   const { supabase } = await requerirAdmin();
   const id = String(formData.get("id") ?? "");
   const estado = String(formData.get("estado") ?? "");
-  if (!id || !["planificado", "realizado", "cancelado"].includes(estado)) return;
+  const previo = String(formData.get("estado_anterior") ?? "");
+  const transicion = (previo === "planificado" && estado === "realizado") || (previo === "realizado" && estado === "planificado");
+  if (!id || !transicion) return;
 
-  const { error } = await supabase.from("operativos").update({ estado }).eq("id", id);
+  const { error } = await supabase.from("operativos").update({ estado }).eq("id", id).eq("estado", previo);
   if (error?.code === "23P01") redirect(RUTA_AGENDA + "?error=cruce");
   if (error) throw error;
 
+  revalidatePath(`/operativos/${id}`);
   revalidatePath("/operativos");
   revalidatePath("/operativos/calendario");
   revalidatePath(RUTA_AGENDA);
+  revalidatePath("/gastos");
   revalidatePath("/");
 }
 

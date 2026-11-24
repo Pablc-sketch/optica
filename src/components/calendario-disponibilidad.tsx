@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cubreDia, estadoDisponibilidad, eventosDelDia, urlAgenda, type BloqueLibre, type EventoAgenda, type FiltroAgenda } from "@/lib/agenda";
+import { cubreDia, esEventoArchivado, estadoDisponibilidad, eventosDelDia, urlAgenda, type BloqueLibre, type EventoAgenda, type FiltroAgenda } from "@/lib/agenda";
 import { diaDeLaSemana, fechaConDia, rangoHorario, semanasDelMes, sumarDias } from "@/lib/fechas";
 import { textoUbicacion } from "@/lib/mapas";
 
@@ -19,8 +19,8 @@ export function LeyendaDisponibilidad({ nombreOptica }: { nombreOptica: string }
   </div>;
 }
 
-export default function CalendarioDisponibilidad({ eventos, bloques, hoy, mes, seleccionado, nombreOptica = "Mi óptica", filtro = "todos" }: {
-  eventos: EventoAgenda[]; bloques: BloqueLibre[]; hoy: string; mes?: string; seleccionado?: string; nombreOptica?: string; filtro?: FiltroAgenda;
+export default function CalendarioDisponibilidad({ eventos, bloques, hoy, mes, seleccionado, nombreOptica = "Mi óptica", filtro = "todos", archivo = false }: {
+  eventos: EventoAgenda[]; bloques: BloqueLibre[]; hoy: string; mes?: string; seleccionado?: string; nombreOptica?: string; filtro?: FiltroAgenda; archivo?: boolean;
 }) {
   const dias = mes ? semanasDelMes(mes).flat() : Array.from({ length: 14 }, (_, i) => sumarDias(hoy, i));
   if (mes) return <div className="overflow-x-auto rounded-xl pb-2" role="region" aria-label="Calendario mensual de operativos; desplaza horizontalmente en pantallas pequeñas" tabIndex={0}>
@@ -28,11 +28,11 @@ export default function CalendarioDisponibilidad({ eventos, bloques, hoy, mes, s
       {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map(d => <span key={d} className="py-2 text-center text-sm font-bold text-tinta-suave">{d}</span>)}
       {dias.map((d, i) => {
         if (!d) return <span key={`vacio-${i}`} className="rounded-xl bg-slate-50/60" />;
-        const visibles = eventosDelDia(eventos, d, filtro);
-        const todos = eventosDelDia(eventos, d);
+        const visibles = eventosDelDia(eventos, d, filtro, { archivo, hoy });
+        const todos = eventosDelDia(eventos, d, "todos", { archivo, hoy });
         const ocultos = todos.length - visibles.length;
         const estado = estadoDisponibilidad(d, bloques, eventos);
-        return <Link key={d} href={`${urlAgenda(d, { filtro })}#detalle-dia`} aria-current={d === seleccionado ? "date" : undefined}
+        return <Link key={d} href={`${urlAgenda(d, archivo ? { filtro, ver: "archivo" } : { filtro })}#detalle-dia`} aria-current={d === seleccionado ? "date" : undefined}
           aria-label={`${fechaConDia(d)}${d === hoy ? ", hoy" : ""}, ${visibles.length} operativos en esta vista${ocultos ? `, ${ocultos} en otro filtro` : ""}`}
           className={`flex min-h-36 min-w-0 flex-col gap-2 rounded-xl border p-2 transition hover:border-slate-400 hover:bg-slate-50 ${d === seleccionado ? "border-slate-900 bg-slate-50 ring-2 ring-slate-900" : "border-slate-200 bg-white"}`}>
           <div className="flex items-center justify-between gap-1">
@@ -44,11 +44,11 @@ export default function CalendarioDisponibilidad({ eventos, bloques, hoy, mes, s
             <span className="mt-1 block break-words text-sm font-bold leading-snug">{e.nombre}</span>
             {e.tipo === "externo" && e.optica && <span className="mt-1 block break-words text-xs">{e.optica}</span>}
             {textoUbicacion(e) && <span className="mt-1 block break-words text-xs leading-snug">{textoUbicacion(e)}</span>}
-            {e.estado === "pendiente" && <span className="mt-1 block text-[10px] font-bold">Por confirmar</span>}
+            {(archivo || e.estado === "pendiente") && <span className="mt-1 block text-[10px] font-bold">{archivo ? ({ cancelado: "Cancelado", realizado: "Realizado", pendiente: "Fecha pasada", confirmado: "Fecha pasada" })[e.estado] : "Por confirmar"}</span>}
           </span>)}
           {visibles.length > 0 && <span className="mt-auto text-xs font-semibold text-tinta-suave">{visibles.length} {visibles.length === 1 ? "operativo" : "operativos"}</span>}
           {ocultos > 0 && <span className="rounded-md bg-slate-100 p-1.5 text-[11px] text-slate-700">+{ocultos} en {filtro === "propio" ? "otras ópticas" : nombreOptica}</span>}
-          {todos.length === 0 && <span className={`mt-auto rounded-md px-2 py-1.5 text-xs ${estado === "disponible" ? "bg-green-100 font-bold text-green-900" : "text-tinta-suave"}`}>{estado === "disponible" ? "Libre" : "Sin agendar"}</span>}
+          {!archivo && todos.length === 0 && <span className={`mt-auto rounded-md px-2 py-1.5 text-xs ${estado === "disponible" ? "bg-green-100 font-bold text-green-900" : "text-tinta-suave"}`}>{estado === "disponible" ? "Libre" : estado === "sin_confirmar" ? "Sin agendar" : "Ocupado"}</span>}
         </Link>;
       })}
     </div>
@@ -61,7 +61,7 @@ export default function CalendarioDisponibilidad({ eventos, bloques, hoy, mes, s
       const estado = estadoDisponibilidad(d, bloques, eventos);
       const estilo = ESTILO_DISPONIBILIDAD[estado];
       const pasado = d < hoy;
-      const enFecha = eventos.filter(e => e.estado !== "cancelado" && cubreDia(e, d));
+      const enFecha = eventos.filter(e => !esEventoArchivado(e, hoy) && cubreDia(e, d));
       const detalle = enFecha.map(e => e.optica || e.nombre).join(", ");
       const tienePropio = estado === "ocupado" && enFecha.some(e => e.tipo === "propio");
       const etiqueta = estado === "propio" ? nombreOptica.replace(/^óptica\s+/i, "") : estilo.corto;

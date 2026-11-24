@@ -29,18 +29,28 @@ export function filtroAgenda(valor: string): FiltroAgenda {
   return valor === "propio" || valor === "externo" ? valor : "todos";
 }
 
-export function eventosDelDia(eventos: EventoAgenda[], dia: string, filtro: FiltroAgenda = "todos") {
-  return eventos.filter(e => e.estado !== "cancelado" && cubreDia(e, dia)
+export function esOperativoArchivado(estado: string) {
+  return estado === "realizado" || estado === "cancelado";
+}
+
+type VistaAgenda = { archivo?: boolean; hoy?: string };
+
+export function esEventoArchivado(e: EventoAgenda, hoy?: string) {
+  return esOperativoArchivado(e.estado) || Boolean(hoy && e.tipo === "externo" && fechaTermino(e) < hoy);
+}
+
+export function eventosDelDia(eventos: EventoAgenda[], dia: string, filtro: FiltroAgenda = "todos", vista: VistaAgenda = {}) {
+  return eventos.filter(e => esEventoArchivado(e, vista.hoy) === (vista.archivo ?? false) && cubreDia(e, dia)
     && (filtro === "todos" || e.tipo === filtro))
     .sort((a, b) => (horaCorta(a.hora_inicio) ?? "99:99").localeCompare(horaCorta(b.hora_inicio) ?? "99:99")
       || (horaCorta(a.hora_fin) ?? "99:99").localeCompare(horaCorta(b.hora_fin) ?? "99:99")
       || a.nombre.localeCompare(b.nombre, "es") || a.id.localeCompare(b.id));
 }
 
-export function resumenAgenda(eventos: EventoAgenda[], desde: string, hasta: string, filtro: FiltroAgenda = "todos") {
+export function resumenAgenda(eventos: EventoAgenda[], desde: string, hasta: string, filtro: FiltroAgenda = "todos", vista: VistaAgenda = {}) {
   const dias: { fecha: string; eventos: EventoAgenda[] }[] = [];
   for (let fecha = desde; fecha <= hasta; fecha = sumarDias(fecha, 1)) {
-    const delDia = eventosDelDia(eventos, fecha, filtro);
+    const delDia = eventosDelDia(eventos, fecha, filtro, vista);
     if (delDia.length) dias.push({ fecha, eventos: delDia });
   }
   return dias;
