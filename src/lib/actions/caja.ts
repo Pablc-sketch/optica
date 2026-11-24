@@ -1,10 +1,12 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { requerirPerfil } from '@/lib/autorizacion';
+import { requerirPerfil, SinPermiso } from '@/lib/autorizacion';
 import { montoCaja } from '@/lib/caja-fuentes';
 import { hoyEnChile } from '@/lib/fechas';
 import { fechaValidaDocumento } from '@/lib/fecha-documentos';
+import { uuidAgenda } from '@/lib/agenda-terreno';
+import { CATEGORIAS_CAJA } from '@/lib/caja-operativo';
 
 export type ResultadoCaja = { error?: string };
 export async function registrarMovimientoCaja(_: ResultadoCaja, f: FormData): Promise<ResultadoCaja> {
@@ -54,4 +56,38 @@ export async function guardarNotaGasto(f:FormData){
  if(error||!data)throw new Error('No se pudo guardar la nota del gasto.');
  revalidatePath('/gastos');revalidatePath('/caja');
  redirect('/gastos?guardado=1#adelantos-personales');
+}
+
+
+export async function registrarGastoCajaOperativo(_: ResultadoCaja, f: FormData): Promise<ResultadoCaja> {
+  const id = String(f.get('id') ?? '');
+  const operativo = String(f.get('operativo_id') ?? '');
+  const clave = String(f.get('clave') ?? '');
+  const fecha = String(f.get('fecha') ?? '');
+  const caja = String(f.get('caja') ?? '');
+  const monto = montoCaja(f.get('monto'));
+  if (!uuidAgenda.test(id) || !uuidAgenda.test(operativo) || monto === null ||
+    !CATEGORIAS_CAJA.some(c => c.clave === clave) || !['efectivo', 'digital', 'personal'].includes(caja) ||
+    !fechaValidaDocumento(fecha) || fecha > hoyEnChile()) {
+    return { error: 'Revisa la sede, el monto, la fecha y de dónde salió el gasto.' };
+  }
+
+  try {
+    const { supabase } = await requerirPerfil({ roles: ['admin'], suscripcion: true });
+    const { error } = await supabase.rpc('registrar_gasto_caja_operativo', {
+      p_id: id, p_operativo: operativo, p_clave: clave, p_fecha: fecha, p_monto: monto, p_caja: caja,
+    });
+    if (error) return { error: error.code === '22023' ? 'Revisa los datos y que la sede siga disponible.' : 'No se pudo guardar el gasto. Revisa los movimientos antes de reintentar.' };
+  } catch (error) {
+    if (error instanceof SinPermiso) return { error: error.message };
+    throw error;
+  }
+
+  for (const ruta of ['/', '/caja', '/gastos', '/reportes', '/pagos', '/pagos/revisar', '/impuestos', '/operativos',
+    `/operativos/${operativo}`, `/operativos/${operativo}/cierre`]) revalidatePath(ruta);
+  const params = new URLSearchParams({ guardado: '1' });
+  for (const sede of f.getAll('sede')) {
+    if (typeof sede === 'string' && uuidAgenda.test(sede)) params.append('sede', sede);
+  }
+  redirect(`/caja?${params}`);
 }

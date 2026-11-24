@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import {leerEstadoCuenta,type EstadoCuenta} from '@/lib/cuenta-mercadopago';
 import { clp } from '@/lib/clp';
-export default async function CuentaBancaria({ tenantId, obligaciones, registrado, cuenta }: { tenantId: string; obligaciones?: number; registrado?: { saldo: number; maquina: number; transferencias: number; salidas: number; comisiones: number }; cuenta?:EstadoCuenta }) {
+export default async function CuentaBancaria({ tenantId, obligaciones, registrado, cuenta, enlaceExterno = true }: { tenantId: string; obligaciones?: number; registrado?: { saldo: number; maquina: number; transferencias: number; salidas: number; comisiones: number }; cuenta?:EstadoCuenta; enlaceExterno?: boolean }) {
   const estado=cuenta??await leerEstadoCuenta(tenantId);
   const saldo=estado.saldo;
   const limitado=estado.reporteError?.includes('_HTTP_429');
@@ -26,7 +26,7 @@ export default async function CuentaBancaria({ tenantId, obligaciones, registrad
     {estado.estado==='error'&&<p role="status" className="mt-2 rounded-xl bg-white/10 p-3 text-sm">No se ha podido actualizar el archivo de cobros.{estado.errorCodigo?` Diagnóstico: ${estado.errorCodigo}.`:''} Los datos anteriores no son una confirmación actual.</p>}
     <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
       <Link href="/caja/mercadopago" className="rounded-xl border border-white/40 px-3 py-2">Cobros y vouchers →</Link>
-      {saldo.estado !== 'disponible' && saldo.estado !== 'no_configurado' && <a href="https://www.mercadopago.cl/home" target="_blank" rel="noopener noreferrer" className="rounded-xl border border-white/40 px-3 py-2">Ver saldo en Mercado Pago ↗</a>}
+      {enlaceExterno && saldo.estado !== 'disponible' && saldo.estado !== 'no_configurado' && <a href="https://www.mercadopago.cl/home" target="_blank" rel="noopener noreferrer" className="rounded-xl border border-white/40 px-3 py-2">Ver saldo en Mercado Pago ↗</a>}
     </div>
   </section>;
 }
