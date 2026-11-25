@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import NuevaReceta from "../../../nueva-receta";
+import DatosPaciente from "../../../../datos-paciente";
+import { hoyEnChile } from "@/lib/fechas";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 
 export default async function EditarRecetaPage({
@@ -12,7 +14,7 @@ export default async function EditarRecetaPage({
   const { id, recetaId } = await params;
   const supabase = await createClient();
 
-  const [recetaRes, operativosRes, cotizar] = await Promise.all([
+  const [recetaRes, operativosRes, cotizar, pacienteRes] = await Promise.all([
     supabase.from("recetas").select("*").eq("id", recetaId).eq("paciente_id", id).single(),
     supabase
       .from("operativos")
@@ -20,10 +22,12 @@ export default async function EditarRecetaPage({
       .in("estado", ["planificado", "realizado"])
       .order("fecha", { ascending: false }),
     cargarCatalogoParaCotizar(supabase),
+    supabase.from("pacientes").select("id,nombre,rut,telefono,email,fecha_nacimiento").eq("id", id).single(),
   ]);
 
   const receta = recetaRes.data;
-  if (!receta) notFound();
+  const paciente = pacienteRes.data;
+  if (!receta || !paciente) notFound();
 
   return (
     <div className="flex flex-col gap-4">
@@ -38,6 +42,8 @@ export default async function EditarRecetaPage({
       </div>
 
       <div className="rounded-2xl bg-crema-claro p-4 shadow-sm">
+        <p className="font-semibold">{paciente.nombre}</p>
+        <DatosPaciente paciente={paciente} hoy={hoyEnChile()} />
         <NuevaReceta
           pacienteId={id}
           operativos={operativosRes.data ?? []}

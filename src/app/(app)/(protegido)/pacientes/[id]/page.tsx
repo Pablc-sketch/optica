@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarFichaClinica } from "@/lib/actions/pacientes";
-import { formatearRut } from "@/lib/rut";
+import { hoyEnChile } from "@/lib/fechas";
+import DatosPaciente from "../datos-paciente";
 import EliminarPaciente from "../eliminar-paciente";
 import EliminarReceta from "../eliminar-receta";
 import EditarPaciente from "../editar-paciente";
@@ -41,13 +42,6 @@ export default async function FichaPaciente({ params, searchParams }: { params: 
     paciente.usa_lentes_contacto && "Usa lentes de contacto",
   ].filter(Boolean) as string[];
 
-  const edad = paciente.fecha_nacimiento
-    ? Math.floor(
-        (new Date().getTime() - new Date(paciente.fecha_nacimiento + "T00:00:00").getTime()) /
-          (365.25 * 24 * 3600 * 1000)
-      )
-    : null;
-
   const [{ data: recetas }, { data: operativos }, cotizar, { data: rol }, { data: { user } }] = await Promise.all([
     supabase
       .from("recetas")
@@ -78,16 +72,7 @@ export default async function FichaPaciente({ params, searchParams }: { params: 
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">{paciente.nombre}</h1>
-          <p className="text-sm text-tinta-suave">
-            {[
-              formatearRut(paciente.rut) || null,
-              edad !== null ? `${edad} años` : null,
-              paciente.telefono,
-              paciente.email,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "Sin datos de contacto"}
-          </p>
+          <DatosPaciente paciente={paciente} hoy={hoyEnChile()} />
         </div>
         <EliminarPaciente pacienteId={paciente.id} nombre={paciente.nombre} irALista />
       </div>
