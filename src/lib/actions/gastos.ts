@@ -49,7 +49,9 @@ export async function crearGastoGlobal(formData: FormData) {
   const { supabase, tenantId } = await requerirTenant();
 
   const fecha = String(formData.get("fecha") ?? "").trim();
-  const descripcion = String(formData.get("descripcion") ?? "").trim();
+  const detalle = String(formData.get("descripcion") ?? "").trim();
+  const comida = formData.get("comida") === "1";
+  const descripcion = comida && detalle ? `Comida · ${detalle}` : detalle;
   const nota = String(formData.get("nota") ?? "").trim();
   const monto = montoCaja(formData.get("monto"));
   const categoria = String(formData.get("categoria") ?? "");
@@ -69,7 +71,7 @@ export async function crearGastoGlobal(formData: FormData) {
     descripcion,
     nota,
     monto,
-    categoria: (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
+    categoria: !comida && (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
     medio_pago: parsearMedioPago(formData.get("medio_pago")),
     caja: fuente,
   });

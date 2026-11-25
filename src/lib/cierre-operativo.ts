@@ -2,7 +2,7 @@
 // solo lugar para la pantalla de reparto y para el resumen del Inicio.
 import { calcularCierre, type Cierre } from "./cierre";
 import { totalConsultas } from "./consulta";
-import { desglosarCostos, type ItemConCosto } from "./costo-venta";
+import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "./costo-venta";
 import { gastosDeOperativo, type GastosOperativo } from "./gastos-operativo";
 import type { BaseComision } from "./sueldos";
 import { conCostoFidesReal } from "./costo-fides-real";
@@ -34,10 +34,17 @@ export function numerosDeOperativo(
   op: OperativoParaCierre,
   ventas: VentaParaCierre[],
   pctDebito: number,
-  pctCredito: number
+  pctCredito: number,
+  marcosUsados?: number,
 ): NumerosOperativo {
   const items = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
   const desglose = conCostoFidesReal(desglosarCostos(items, op.costo_marco_unitario ?? undefined), op.costo_fides_real);
+  if (marcosUsados !== undefined) {
+    const costoMarcos = marcosUsados * (op.costo_marco_unitario ?? COSTO_MARCO_POR_PAR);
+    desglose.total += costoMarcos - desglose.totalArmazones;
+    desglose.totalArmazones = costoMarcos;
+    desglose.marcos = marcosUsados;
+  }
   const pagos = ventas.flatMap((v) => v.pagos_abonos ?? []);
   const suma = (f: (p: { monto: number; medio_pago: string | null }) => boolean) =>
     pagos.filter(f).reduce((s, p) => s + p.monto, 0);

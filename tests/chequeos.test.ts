@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { gastoDeResultado, resumirCajaChequeo, type GastoChequeo } from "@/lib/caja-chequeo";
 import { resumirChequeo, type SedeChequeo, type VentaChequeo } from "@/lib/chequeos";
 
 const sede = (id: string): SedeChequeo => ({
@@ -45,6 +46,34 @@ describe("Resumen de chequeos", () => {
       ...venta("a", 5000, 5000),
       venta_items: [{ cantidad: 1, producto_id: null, precio_unitario: 5000, descripcion: "Consulta / receta" }],
     }], 0, 20, 0, 0);
-    expect(resumen).toMatchObject({ pares: 2, marcos: 2, ventas: 1, vendido: 55_000, comisionVentas: 5000 });
+    expect(resumen).toMatchObject({ pares: 2, marcos: 2, ventas: 1, vendido: 55_000, comisionVentas: 5000, utilidad: 27_000 });
+  });
+});
+
+describe("Caja del chequeo", () => {
+  it("reserva reembolsos y laboratorio una sola vez aunque exista un pago parcial", () => {
+    const compra: GastoChequeo = {
+      id: "compra", descripcion: "Compra adelantada", fecha: "2026-11-25",
+      monto: 34_000, caja: "personal", categoria: "compra_inventario",
+      operativo_id: null, chequeo_id: "grupo", nota: null, monto_estimado: false,
+    };
+    const comida = { ...compra, id: "comida", caja: "efectivo", categoria: "otro", descripcion: "Comida · almuerzos", monto: 5000 };
+    const laboratorio = { ...compra, id: "fides", chequeo_id: null, operativo_id: "a", caja: "digital", categoria: "otro", descripcion: "Fides · a", monto: 2000 };
+    const items = [{
+      cantidad: 1, producto_id: null, precio_unitario: 100_000,
+      ordenes_trabajo: { estado: "listo", costo_laboratorio: 7000, costo_laboratorio_2: null,
+        marco_propio: false, marco_propio_2: false, armazon_producto_id: null, armazon_producto_id_2: null },
+    }];
+    const resumen = resumirChequeo([sede("a")], [], [
+      { ...venta("a", 100_000, 70_000), venta_items: items },
+      { ...venta("a", 10_000, 0), venta_items: [{ ...items[0], ordenes_trabajo: null }] },
+    ], gastoDeResultado(compra, []) + gastoDeResultado(comida, []), 20, 0, 0);
+    expect(resumen).toMatchObject({ porCobrar: 40_000, porCobrarEntrega: 30_000, utilidad: 82_000 });
+    const parcial = resumirCajaChequeo(resumen, "grupo", [compra, comida, laboratorio], [],
+      [{ gasto_id: compra.id, monto: 4000 }], []);
+    expect(parcial).toMatchObject({
+      cristales: 7000, marcos: 5000, comida: 5000, fidesPendiente: 5000, porReembolsar: 30_000,
+      cajaRegistrada: 59_000, saldoTrasPagos: 13_000, proyectado: 53_000,
+    });
   });
 });

@@ -10,7 +10,7 @@ export type SedeChequeo = OperativoParaCierre & {
 };
 export type AtencionChequeo = { operativo_id: string; paciente_id: string };
 type MarcoOT = {
-  marco_propio: boolean; marco_propio_2: boolean;
+  marco_propio: boolean; marco_propio_2: boolean; estado?: string;
   armazon_producto_id: string | null; armazon_producto_id_2: string | null;
 };
 type ItemChequeo = Omit<ItemConCosto, "ordenes_trabajo"> & {
@@ -57,9 +57,9 @@ export function resumirChequeo(
     const pacientes = new Set(atenciones.filter(a => a.operativo_id === sede.id).map(a => a.paciente_id));
     for (const p of pacientes) atendidos.add(p);
     const operaciones = ventas.filter(v => v.operativo_id === sede.id);
-    const numeros = numerosDeOperativo(sede, operaciones, debito, credito);
     let porCobrar = 0;
     let conSaldo = 0;
+    let porCobrarEntrega = 0;
     let pares = 0;
     let marcos = 0;
     let ventasProductos = 0;
@@ -67,25 +67,31 @@ export function resumirChequeo(
       const saldo = Math.max(0, v.total - (v.pagos_abonos ?? []).reduce((suma, pago) => suma + pago.monto, 0));
       if (saldo > 0) conSaldo++;
       porCobrar += saldo;
-      const items = v.venta_items ?? [];
+      const items: ItemChequeo[] = v.venta_items ?? [];
+      if (items.some(item => {
+        const ot = uno(item.ordenes_trabajo);
+        return ot?.estado && ot.estado !== "entregado" && ot.estado !== "cancelado";
+      })) porCobrarEntrega += saldo;
       if (!esVentaDeConsulta(items)) ventasProductos++;
       const cantidades = contarLentesYMarcos(items);
       pares += cantidades.pares;
       marcos += cantidades.marcos;
     }
+    const numeros = numerosDeOperativo(sede, operaciones, debito, credito, marcos);
     return {
       sede, pacientes: pacientes.size, ventas: ventasProductos, pares, marcos, conSaldo,
-      vendido: numeros.vendido, cobrado: numeros.cobrado, porCobrar,
+      vendido: numeros.vendido, cobrado: numeros.cobrado, porCobrar, porCobrarEntrega,
+      desglose: numeros.desglose, comisionTarjeta: numeros.cierre.comisionTarjeta,
       utilidad: numeros.cierre.gananciaLiquida, comisionVentas: numeros.cierre.isadora,
     };
   });
-  const total = (campo: "ventas" | "pares" | "marcos" | "conSaldo" | "vendido" | "cobrado" | "porCobrar" | "utilidad" | "comisionVentas") =>
+  const total = (campo: "ventas" | "pares" | "marcos" | "conSaldo" | "vendido" | "cobrado" | "porCobrar" | "porCobrarEntrega" | "utilidad" | "comisionVentas") =>
     filas.reduce((suma, sede) => suma + sede[campo], 0);
   const utilidad = total("utilidad") - gastosCompartidos;
   const reparto = calcularSueldos(0, utilidad, { comisionVendedoraPct: 0, comisionVendedoraBase: "venta_total", ahorroPct });
   return {
     filas, pacientes: atendidos.size, ventas: total("ventas"), pares: total("pares"), marcos: total("marcos"),
-    conSaldo: total("conSaldo"), vendido: total("vendido"), cobrado: total("cobrado"), porCobrar: total("porCobrar"),
+    conSaldo: total("conSaldo"), vendido: total("vendido"), cobrado: total("cobrado"), porCobrar: total("porCobrar"), porCobrarEntrega: total("porCobrarEntrega"),
     utilidad, comisionVentas: total("comisionVentas"), reparto, gastosCompartidos,
   };
 }
