@@ -4,12 +4,11 @@ import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { crearPaciente } from "@/lib/actions/pacientes";
 import { encolarAtencion } from "@/lib/offline/atenciones";
-import type { PacienteTerreno } from "@/lib/offline/datos-terreno";
-import { formatearRut } from "@/lib/rut";
+import { pacienteDesdeFormulario, type PacienteParaAtender } from "@/lib/datos-paciente";
 import { CampoFechaNacimiento, CampoRut, CampoTelefono } from "@/components/campos";
 
 export default function NuevoPaciente({ usuarioId, alGuardar }: {
-  usuarioId?: string; alGuardar?: (paciente: PacienteTerreno) => void;
+  usuarioId?: string; alGuardar?: (paciente: PacienteParaAtender) => void;
 } = {}) {
   const router = useRouter();
   const intento = useRef("");
@@ -24,16 +23,15 @@ export default function NuevoPaciente({ usuarioId, alGuardar }: {
     setError(null);
     try {
       if (usuarioId && alGuardar) {
-        const nombre = String(formData.get("nombre") ?? "").trim();
-        if (!nombre) {
+        intento.current ||= crypto.randomUUID();
+        const paciente = pacienteDesdeFormulario(intento.current, formData);
+        if (!paciente.nombre) {
           setError("Escribe el nombre del paciente.");
           return;
         }
-        intento.current ||= crypto.randomUUID();
-        const id = intento.current;
-        await encolarAtencion(usuarioId, "paciente", formData, id);
+        await encolarAtencion(usuarioId, "paciente", formData, paciente.id);
         intento.current = "";
-        alGuardar({ id, nombre, rut: formatearRut(String(formData.get("rut") ?? "")) || null });
+        alGuardar(paciente);
         return;
       }
       const resultado = await crearPaciente(formData);

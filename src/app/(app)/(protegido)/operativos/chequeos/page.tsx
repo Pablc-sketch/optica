@@ -9,6 +9,7 @@ import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 import { leerTodas } from "@/lib/leer-todas";
 import { disponibleDeGasto } from "@/lib/pagos-operativo";
 import FormularioChequeo from "./formulario";
+import PersonasDeSede from "./personas-de-sede";
 
 const ruta = "/operativos/chequeos";
 
@@ -20,7 +21,7 @@ function Recuadro({ etiqueta, valor, destacado = false }: { etiqueta: string; va
 }
 
 export default async function ChequeosPage({ searchParams }: {
-  searchParams: Promise<{ chequeo?: string; modo?: string; guardado?: string }>;
+  searchParams: Promise<{ chequeo?: string; modo?: string; guardado?: string; sede?: string }>;
 }) {
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
   const params = await searchParams;
@@ -34,12 +35,13 @@ export default async function ChequeosPage({ searchParams }: {
   if (grupos.error || operativos.error) return <p role="alert" className="rounded-lg bg-red-50 p-4">No se pudieron cargar los chequeos. Recarga para reintentar.</p>;
 
   const chequeos = (grupos.data ?? []) as Chequeo[];
-  const chequeo = chequeos.find(c => c.id === params.chequeo)
-    ?? chequeos.find(c => c.desde <= hoy && c.hasta >= hoy) ?? chequeos[0];
+  const chequeo = chequeos.find(c => c.id === params.chequeo);
   const sedes = (operativos.data ?? []) as SedeChequeo[];
   const cabecera = <CabeceraPagina seccion="Operativos" titulo="Chequeos" acciones={
     <>
-      <Link href="/operativos" className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Ver operativos</Link>
+      <Link href={chequeo ? ruta : "/operativos"} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">
+        {chequeo ? "Todos los chequeos" : "Ver operativos"}
+      </Link>
       <Link href={`${ruta}?modo=nuevo`} className="rounded-lg bg-sidebar px-3 py-2 text-sm font-semibold text-white">Nuevo chequeo</Link>
     </>
   } />;
@@ -51,9 +53,33 @@ export default async function ChequeosPage({ searchParams }: {
       <FormularioChequeo chequeo={actual} sedes={elegibles.map(({id,nombre,fecha,fecha_fin,direccion,chequeo_id}) => ({id,nombre,fecha,fecha_fin,direccion,chequeo_id}))} hoy={hoy} />
     </div>;
   }
-  if (!chequeo) return <div className="space-y-4">{cabecera}<p className="rounded-lg bg-white p-4">Crea un chequeo para juntar las sedes de un operativo.</p></div>;
+  if (!chequeo) {
+    const sedesPorChequeo = new Map<string, number>();
+    for (const s of sedes) {
+      if (s.chequeo_id && s.estado !== "cancelado") sedesPorChequeo.set(s.chequeo_id, (sedesPorChequeo.get(s.chequeo_id) ?? 0) + 1);
+    }
+    return <div className="mx-auto max-w-6xl space-y-4">
+      {cabecera}
+      {!chequeos.length ? <p className="rounded-lg bg-white p-4">Crea un chequeo para juntar las sedes de un operativo.</p>
+        : <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {chequeos.map(c => <li key={c.id}>
+            <Link href={`${ruta}?chequeo=${c.id}`} className="block rounded-lg border border-tinta/15 bg-white p-4 hover:border-brand">
+              <h2 className="text-lg font-bold">{c.nombre}</h2>
+              <p className="mt-1 text-sm text-tinta-suave">{fechaLegible(c.desde)} al {fechaLegible(c.hasta)} · {sedesPorChequeo.get(c.id) ?? 0} sedes</p>
+            </Link>
+          </li>)}
+        </ul>}
+    </div>;
+  }
 
   const integrantes = sedes.filter(s => s.chequeo_id === chequeo.id && s.estado !== "cancelado");
+  if (params.sede) {
+    const sede = integrantes.find(s => s.id === params.sede);
+    return <div className="mx-auto max-w-3xl space-y-4">{cabecera}
+      {sede ? <PersonasDeSede supabase={supabase} tenantId={tenantId} sede={sede} volver={`${ruta}?chequeo=${chequeo.id}`} />
+        : <p role="status" className="rounded-lg bg-white p-4">La sede ya no está en este chequeo.</p>}
+    </div>;
+  }
   const ids = integrantes.map(s => s.id);
   const lotes = [];
   for (let i = 0; i < ids.length; i += 50) lotes.push(ids.slice(i, i + 50));
@@ -90,12 +116,6 @@ export default async function ChequeosPage({ searchParams }: {
   const nombres = etiquetasReparto(tenant.data?.reparto_etiquetas);
   return <div className="mx-auto max-w-6xl space-y-5 pb-5">
     {cabecera}
-    {chequeos.length > 1 && <form action={ruta} className="flex flex-wrap items-end gap-2">
-      <label className="grid gap-1 text-sm font-semibold">Elegir chequeo
-        <select name="chequeo" defaultValue={chequeo.id} className="rounded-lg border bg-white px-3 py-2">{chequeos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-      </label>
-      <button className="rounded-lg bg-sidebar px-3 py-2 text-sm font-semibold text-white">Ver</button>
-    </form>}
     <section className="flex flex-wrap items-center justify-between gap-2">
       <div><h2 className="text-xl font-bold">{chequeo.nombre}</h2>
         <p className="text-sm text-tinta-suave">{fechaLegible(chequeo.desde)} al {fechaLegible(chequeo.hasta)} · {n.filas.length} sedes</p>
@@ -118,8 +138,11 @@ export default async function ChequeosPage({ searchParams }: {
       {!n.filas.length && <p className="rounded-lg bg-white p-4">Este chequeo todavía no tiene sedes asignadas.</p>}
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{n.filas.map(f => (
         <li key={f.sede.id} className="grid gap-2 rounded-lg border border-tinta/15 bg-white p-3">
-          <div><h3 className="font-bold">{f.sede.nombre}</h3>
-          <p className="text-sm text-tinta-suave">{fechaLegible(f.sede.fecha)}{f.sede.direccion ? ` · ${f.sede.direccion}` : ""}</p></div>
+          <Link href={`${ruta}?chequeo=${chequeo.id}&sede=${f.sede.id}`} className="block rounded-md hover:bg-crema-claro">
+            <h3 className="font-bold text-brand-dark underline">{f.sede.nombre}</h3>
+            <p className="text-sm text-tinta-suave">{fechaLegible(f.sede.fecha)}{f.sede.direccion ? ` · ${f.sede.direccion}` : ""}</p>
+            <span className="text-sm text-brand-dark">Ver personas y compras</span>
+          </Link>
           <p className="text-sm">{f.pacientes} atendidos · {f.ventas} ventas · {f.pares} pares · {f.marcos} marcos</p>
           <dl className="grid grid-cols-2 gap-2 text-sm">
             <div><dt>Cobrado</dt><dd className="font-semibold">{clp(f.cobrado)}</dd></div>
