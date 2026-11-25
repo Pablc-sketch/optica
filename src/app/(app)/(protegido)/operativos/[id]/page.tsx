@@ -469,7 +469,9 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               .join(" · ")}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {(rol === "admin" || rol === "clinico") && <Link href={`/pacientes?op=${operativo.id}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-brand-dark">Atención en terreno</Link>}
+          {puedeVender && <Link href={`/ventas?op=${operativo.id}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-brand-dark">Punto de venta</Link>}
           <a
             href={linkWsp}
             target="_blank"

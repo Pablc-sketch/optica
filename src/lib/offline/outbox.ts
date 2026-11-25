@@ -29,7 +29,16 @@ export type VentaFallida = VentaPendiente & { error: string; fallida: string };
 
 export const OUTBOX_EVENT = "optica-outbox-changed";
 
-const clave = (usuarioId: string, tipo: "pendientes" | "fallidas") => `optica.outbox.v2.${usuarioId}.${tipo}`;
+export function suscribirVentas(actualizar: () => void) {
+  window.addEventListener(OUTBOX_EVENT, actualizar);
+  window.addEventListener("storage", actualizar);
+  return () => {
+    window.removeEventListener(OUTBOX_EVENT, actualizar);
+    window.removeEventListener("storage", actualizar);
+  };
+}
+
+const clave = (usuarioId: string, tipo: "pendientes" | "fallidas" | "confirmadas") => `optica.outbox.v2.${usuarioId}.${tipo}`;
 
 // Formato antiguo (una cola global de filas sueltas). Se sigue leyendo
 // para no perder nada que haya quedado guardado antes de este cambio.
@@ -61,6 +70,10 @@ export function pendientes(usuarioId: string): VentaPendiente[] {
 
 export function fallidas(usuarioId: string): VentaFallida[] {
   return leer<VentaFallida>(clave(usuarioId, "fallidas"));
+}
+
+export function ventaConfirmada(usuarioId: string, ventaId: string) {
+  return leer<string>(clave(usuarioId, "confirmadas")).includes(ventaId);
 }
 
 export function legadoPendiente(): number {
@@ -97,10 +110,10 @@ let sincronizando: Promise<ResumenSync> | null = null;
 export type ResumenSync = { aplicadas: number; fallidas: number; pendientes: number; sinConexion: boolean };
 
 // Empuja la cola de este usuario, una venta a la vez y en orden.
-export function sincronizar(usuarioId: string, enviar: Enviar, supabase?: SupabaseClient): Promise<ResumenSync> {
+export function sincronizar(usuarioId: string, enviar: Enviar, supabase?: SupabaseClient, sePuedeEnviar: (venta: VentaInput) => boolean | Promise<boolean> = () => true): Promise<ResumenSync> {
   if (sincronizando) return sincronizando;
   const correr = async () => {
-    const trabajo = () => vaciarCola(usuarioId, enviar, supabase);
+    const trabajo = () => vaciarCola(usuarioId, enviar, supabase, sePuedeEnviar);
     const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
     if (locks) {
       return locks.request(`optica-sync-${usuarioId}`, { ifAvailable: true }, async (lock) =>
@@ -115,7 +128,7 @@ export function sincronizar(usuarioId: string, enviar: Enviar, supabase?: Supaba
   return sincronizando;
 }
 
-async function vaciarCola(usuarioId: string, enviar: Enviar, supabase?: SupabaseClient): Promise<ResumenSync> {
+async function vaciarCola(usuarioId: string, enviar: Enviar, supabase: SupabaseClient | undefined, sePuedeEnviar: (venta: VentaInput) => boolean | Promise<boolean>): Promise<ResumenSync> {
   let aplicadas = 0;
   const kPend = clave(usuarioId, "pendientes");
   const kFall = clave(usuarioId, "fallidas");
@@ -130,6 +143,7 @@ async function vaciarCola(usuarioId: string, enviar: Enviar, supabase?: Supabase
     const siguiente = pendientes(usuarioId).find((v) => !vistas.has(v.id));
     if (!siguiente) break;
     vistas.add(siguiente.id);
+    if (!(await sePuedeEnviar(siguiente.input))) continue;
 
     let resultado: ResultadoVenta;
     try {
@@ -140,6 +154,7 @@ async function vaciarCola(usuarioId: string, enviar: Enviar, supabase?: Supabase
     }
 
     if (resultado.ok) {
+      modificar<string>(clave(usuarioId, "confirmadas"), ids => [...ids.filter(id => id !== siguiente.id).slice(-19), siguiente.id]);
       modificar<VentaPendiente>(kPend, (cola) => cola.filter((v) => v.id !== siguiente.id));
       aplicadas++;
     } else {

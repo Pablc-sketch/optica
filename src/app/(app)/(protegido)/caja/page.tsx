@@ -36,7 +36,7 @@ export default async function Caja({ searchParams }: {
   if (vista === 'resumen') {
     const hoy = hoyEnChile();
     const [operativos, cuenta, caja, conteo, tenant] = await Promise.all([
-      leerTodas((a, b) => supabase.from('operativos').select('id,nombre,fecha,fecha_fin,hora_inicio,estado,costo_fides_real,costo_marco_unitario,costo_transporte,costo_arriendo,costo_viaticos,costo_otros,costo_ayudante,costo_equipos,costo_hospedaje,costo_comida,costo_peajes,comision_vendedora_pct,comision_vendedora_base,ahorro_pct')
+      leerTodas((a, b) => supabase.from('operativos').select('id,nombre,fecha,fecha_fin,hora_inicio,estado,archivado_en,pagos_saldados_en,costo_fides_real,costo_marco_unitario,costo_transporte,costo_arriendo,costo_viaticos,costo_otros,costo_ayudante,costo_equipos,costo_hospedaje,costo_comida,costo_peajes,comision_vendedora_pct,comision_vendedora_base,ahorro_pct')
         .eq('tenant_id', tenantId).order('id').range(a, b)),
       leerEstadoCuenta(tenantId),
       supabase.rpc('caja_global').single(),

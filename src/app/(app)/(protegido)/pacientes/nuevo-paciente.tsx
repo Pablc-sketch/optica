@@ -1,24 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { crearPaciente } from "@/lib/actions/pacientes";
+import { encolarAtencion } from "@/lib/offline/atenciones";
+import type { PacienteTerreno } from "@/lib/offline/datos-terreno";
+import { formatearRut } from "@/lib/rut";
 import { CampoFechaNacimiento, CampoRut, CampoTelefono } from "@/components/campos";
 
-export default function NuevoPaciente() {
+export default function NuevoPaciente({ usuarioId, alGuardar }: {
+  usuarioId?: string; alGuardar?: (paciente: PacienteTerreno) => void;
+} = {}) {
   const router = useRouter();
+  const intento = useRef("");
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
-  async function accion(formData: FormData) {
+  async function accion(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (guardando) return;
+    const formData = new FormData(evento.currentTarget);
     setGuardando(true);
     setError(null);
-    const resultado = await crearPaciente(formData);
-    setGuardando(false);
-    if (resultado.ok) {
-      router.push(`/pacientes/${resultado.id}`);
-    } else {
-      setError(resultado.error);
+    try {
+      if (usuarioId && alGuardar) {
+        const nombre = String(formData.get("nombre") ?? "").trim();
+        if (!nombre) {
+          setError("Escribe el nombre del paciente.");
+          return;
+        }
+        intento.current ||= crypto.randomUUID();
+        const id = intento.current;
+        await encolarAtencion(usuarioId, "paciente", formData, id);
+        intento.current = "";
+        alGuardar({ id, nombre, rut: formatearRut(String(formData.get("rut") ?? "")) || null });
+        return;
+      }
+      const resultado = await crearPaciente(formData);
+      if (resultado.ok) router.push(`/pacientes/${resultado.id}`);
+      else setError(resultado.error);
+    } catch {
+      setError("No se pudo guardar el paciente. Revisa el almacenamiento o la conexión y vuelve a intentar.");
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -28,7 +52,7 @@ export default function NuevoPaciente() {
   return (
     <details className="rounded-2xl bg-crema-claro p-4 shadow-sm">
       <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nuevo paciente</summary>
-      <form action={accion} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <form onSubmit={accion} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">
           Nombre completo *
           <input name="nombre" required className={input} />

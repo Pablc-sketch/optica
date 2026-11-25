@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { registrarVenta } from "@/lib/actions/ventas";
+import { ATENCIONES_EVENTO, enviarTerreno, leerAtenciones, reintentarAtencion, sincronizarAtenciones } from "@/lib/offline/atenciones";
+import { useAtenciones } from "@/lib/offline/use-atenciones";
 import { clp } from "@/lib/clp";
 import { requiereVoucher } from "@/lib/voucher";
 import CampoVoucher from "@/components/campo-voucher";
@@ -35,7 +35,10 @@ function suscribir(cb: () => void) {
 // motivo y se puede reintentar o descartar — nunca se pierde en silencio
 // (A04).
 export default function EstadoSync({ usuarioId }: { usuarioId: string }) {
-  const router = useRouter();
+  const atenciones = useAtenciones(usuarioId);
+  const atencionesFallidas = atenciones?.filter(a => a.error) ?? [];
+  const sincronizando = useRef(false);
+  const corteHasta = useRef(0);
   const [abierto, setAbierto] = useState(false);
 
   // Lectura directa del almacenamiento local como "store" externo: sin
@@ -54,50 +57,86 @@ export default function EstadoSync({ usuarioId }: { usuarioId: string }) {
   const listaFallidas = typeof window === "undefined" ? [] : fallidas(usuarioId);
 
   const intentarSync = useCallback(async () => {
-    if (!navigator.onLine) return;
-    if (pendientes(usuarioId).length === 0 && legadoPendiente() === 0) return;
-    const res = await sincronizar(usuarioId, registrarVenta, createClient());
-    if (res.aplicadas > 0) router.refresh();
-  }, [usuarioId, router]);
+    if (!navigator.onLine || sincronizando.current || Date.now() < corteHasta.current) return;
+    sincronizando.current = true;
+    try {
+      const clinicas = await leerAtenciones(usuarioId).catch(() => []);
+      if (clinicas.some(a => !a.error)) {
+        try {
+          await sincronizarAtenciones(usuarioId);
+        } catch {
+          corteHasta.current = Date.now() + 3000;
+        }
+      }
+      if (pendientes(usuarioId).length === 0 && legadoPendiente() === 0) return;
+      const resultado = await sincronizar(usuarioId, async venta => {
+        const respuesta = await enviarTerreno({ tipo: "venta", usuarioId, venta });
+        return respuesta.ok ? { ok: true, ventaId: venta.ventaId, otFolio: null } : respuesta;
+      }, legadoPendiente() ? createClient() : undefined, async venta => {
+        if (!venta.pacienteId && !venta.recetaId) return true;
+        const actuales = await leerAtenciones(usuarioId).catch(() => clinicas);
+        return !actuales.some(a => a.id === venta.pacienteId || a.id === venta.recetaId);
+      });
+      if (resultado.sinConexion) corteHasta.current = Date.now() + 3000;
+    } catch {
+      corteHasta.current = Date.now() + 3000;
+    } finally {
+      sincronizando.current = false;
+    }
+  }, [usuarioId]);
 
   useEffect(() => {
     const disparar = () => void intentarSync();
+    const reconectar = () => { corteHasta.current = 0; disparar(); };
     disparar();
-    window.addEventListener("online", disparar);
+    window.addEventListener("online", reconectar);
     window.addEventListener(OUTBOX_EVENT, disparar);
-    const timer = window.setInterval(disparar, 20000);
+    window.addEventListener(ATENCIONES_EVENTO, disparar);
+    document.addEventListener("visibilitychange", disparar);
+    const timer = window.setInterval(disparar, 6000);
     return () => {
-      window.removeEventListener("online", disparar);
+      window.removeEventListener("online", reconectar);
       window.removeEventListener(OUTBOX_EVENT, disparar);
+      window.removeEventListener(ATENCIONES_EVENTO, disparar);
+      document.removeEventListener("visibilitychange", disparar);
       window.clearInterval(timer);
     };
   }, [intentarSync]);
 
-  if (online && nPendientes === 0 && listaFallidas.length === 0) return null;
+  const totalFallidas = listaFallidas.length + atencionesFallidas.length;
+  const totalPendientes = nPendientes + (atenciones?.filter(a => !a.error).length ?? 0);
+  if (online && totalPendientes === 0 && totalFallidas === 0) return null;
 
   return (
     <div className="relative flex items-center gap-2 text-xs font-semibold">
       {!online && (
         <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">
-          Sin conexión{nPendientes > 0 ? ` · ${nPendientes} guardada${nPendientes === 1 ? "" : "s"}` : ""}
+          Sin conexión{totalPendientes > 0 ? ` · ${totalPendientes} por enviar` : ""}
         </span>
       )}
-      {online && nPendientes > 0 && (
-        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-sky-800">Sincronizando {nPendientes}…</span>
+      {online && totalPendientes > 0 && (
+        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-sky-800">{totalPendientes} por enviar</span>
       )}
-      {listaFallidas.length > 0 && (
+      {totalFallidas > 0 && (
         <button
           type="button"
           onClick={() => setAbierto((v) => !v)}
           className="rounded-full bg-red-100 px-2.5 py-1 text-red-800 hover:bg-red-200"
         >
-          ⚠ {listaFallidas.length} venta{listaFallidas.length === 1 ? "" : "s"} sin aplicar · revisar
+          Revisar {totalFallidas} {totalFallidas === 1 ? "registro" : "registros"}
         </button>
       )}
-      {abierto && listaFallidas.length > 0 && (
+      {abierto && totalFallidas > 0 && (
         <div className="absolute right-0 top-9 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-red-200 bg-white p-3 text-left font-normal shadow-lg">
-          <p className="mb-2 text-sm font-bold text-red-900">Ventas offline que el servidor no aceptó</p>
+          <p className="mb-2 text-sm font-bold text-red-900">Registros que requieren revisión</p>
           <ul className="flex flex-col gap-2">
+            {atencionesFallidas.map(a => (
+              <li key={a.id} className="rounded-lg bg-red-50 p-2">
+                <p className="font-semibold">{a.tipo === "paciente" ? "Alta de paciente" : "Receta"} · {new Date(a.creada).toLocaleTimeString("es-CL", { timeZone: "America/Santiago" })}</p>
+                <p className="mt-1">{a.error}</p>
+                <button type="button" onClick={() => void reintentarAtencion(a)} className="mt-2 rounded-md bg-brand px-2 py-1 font-semibold text-white">Reintentar</button>
+              </li>
+            ))}
             {listaFallidas.map((f) => {
               const total = f.input.items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0);
               return (

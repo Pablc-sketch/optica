@@ -321,6 +321,18 @@ export async function actualizarCadenciaOperativo(formData: FormData) {
   revalidatePath("/operativos/contactos");
 }
 
+export async function archivarOperativo(formData: FormData) {
+  const { supabase, tenantId } = await requerirPerfil({ roles: ["admin"], suscripcion: true });
+  const id = String(formData.get("id") ?? "");
+  const archivar = formData.get("archivar") === "1";
+  const query = supabase.from("operativos")
+    .update({ archivado_en: archivar ? new Date().toISOString() : null })
+    .eq("id", id).eq("tenant_id", tenantId);
+  const { error } = await (archivar ? query.eq("estado", "realizado") : query);
+  if (error) throw error;
+  for (const path of ["/operativos", "/ventas", "/pacientes", "/caja"]) revalidatePath(path);
+}
+
 // Borrar un operativo creado por error (por ejemplo, el mismo guardado dos
 // veces con la app lenta). Solo si está vacío: sin recetas, ventas,
 // órdenes ni retiros. Uno con datos no se borra nunca desde acá.

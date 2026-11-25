@@ -141,7 +141,10 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
       </>}
 
       {!error&&Number(deudaRes.data??0)>0&&<section className="rounded-2xl bg-amber-50 p-4"><h2 className="font-bold">Devolución personal prioritaria · {clp(Number(deudaRes.data))}</h2><p className="mt-2 text-sm">El reparto calculado es una proyección. Primero se devuelve el dinero financiado personalmente; los pagos de sueldos y ahorro quedan bloqueados hasta saldarlo.</p><Link href="/caja?ver=cuadrar#reintegros" className="mt-3 block font-semibold underline">Revisar la devolución</Link></section>}
-      {!error && <>
+      {!error && op.pagos_saldados_en && (
+        <p className="rounded-2xl bg-emerald-50 p-4 font-semibold text-emerald-900">Pagos del operativo saldados.</p>
+      )}
+      {!error && !op.pagos_saldados_en && <>
       <h2 id="costos" className="scroll-mt-6 text-lg font-bold">Costos por pagar</h2>
       <CostoFidesEditor operativoId={id} actual={op.costo_fides_real ?? null} nota={op.costo_fides_nota ?? null} />
       <ul className="flex flex-col gap-3">

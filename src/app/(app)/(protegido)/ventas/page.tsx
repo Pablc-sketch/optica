@@ -59,7 +59,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     supabase
       .from("operativos")
       .select("id, nombre, fecha, fecha_entrega_estimada, costo_marco_unitario")
-      .in("estado", ["planificado", "realizado"])
+      .in("estado", ["planificado", "realizado"]).is("archivado_en", null)
       .order("fecha", { ascending: false }),
     receta ? supabase.from("recetas").select("*").eq("id", receta).eq("tenant_id", tenantId).maybeSingle() : null,
   ]);

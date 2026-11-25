@@ -4,14 +4,16 @@ import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
 import { formatearTelefono } from "@/lib/formato";
 import NuevoPaciente from "./nuevo-paciente";
+import AtencionEnPagina from "./atencion-en-pagina";
+import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
 import EliminarPaciente from "./eliminar-paciente";
 
 export default async function PacientesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; pagina?: string }>;
+  searchParams: Promise<{ q?: string; pagina?: string; op?: string }>;
 }) {
-  const { q, pagina: entradaPagina } = await searchParams;
+  const { q, pagina: entradaPagina, op } = await searchParams;
   const pagina = Math.max(1,Math.min(10000,Number.parseInt(entradaPagina ?? "1",10) || 1));
   const supabase = await createClient();
   const {
@@ -46,6 +48,13 @@ export default async function PacientesPage({
   const rol = perfilRes.data?.rol ?? "";
   const puedeVerFichas = ["admin", "clinico", "ventas"].includes(rol);
 
+  const puedeAtender = rol === "admin" || rol === "clinico";
+  const [cotizar, operativos] = puedeAtender && user ? await Promise.all([
+    cargarCatalogoParaCotizar(supabase).catch(() => null),
+    supabase.from("operativos").select("id,nombre").in("estado", ["planificado", "realizado"]).is("archivado_en", null)
+      .order("fecha", { ascending: false }).limit(50),
+  ]) : [null, null];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -69,7 +78,9 @@ export default async function PacientesPage({
       </div>
 
       {["admin", "clinico"].includes(rol) ? (
-        <NuevoPaciente />
+        cotizar && operativos && user ? <AtencionEnPagina usuarioId={user.id} pacientes={pacientes ?? []}
+          operativos={operativos.data ?? []} operativoId={op} cotizar={cotizar} puedeVender={rol === "admin"} />
+          : <NuevoPaciente />
       ) : !puedeVerFichas && (
         <p className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
           Tu rol no tiene acceso a las fichas de pacientes. Consulta al administrador.
