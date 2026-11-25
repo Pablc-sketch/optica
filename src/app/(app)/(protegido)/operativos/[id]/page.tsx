@@ -471,6 +471,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {(rol === "admin" || rol === "clinico") && <Link href={`/pacientes?op=${operativo.id}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-brand-dark">Atención en terreno</Link>}
+          {rol === "admin" && operativo.chequeo_id && <Link href={`/operativos/chequeos?chequeo=${operativo.chequeo_id}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-brand-dark">Ver chequeo</Link>}
           {puedeVender && <Link href={`/ventas?op=${operativo.id}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-brand-dark">Punto de venta</Link>}
           <a
             href={linkWsp}

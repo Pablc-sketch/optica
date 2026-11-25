@@ -54,11 +54,11 @@ export function GastoOperativoForm({ sedes, sedeInicial, hoy, desdeGastos = fals
   </CajaFormulario>;
 }
 
-export function GastoGeneralForm({ hoy, digital, personal }: {
-  hoy: string; digital: string; personal: string;
+export function GastoGeneralForm({ hoy, digital, personal, chequeoId }: {
+  hoy: string; digital: string; personal: string; chequeoId?: string;
 }) {
   return <form action={crearGastoGlobal} className="grid gap-3">
-    <input type="hidden" name="volver_historial" value="1" />
+    {chequeoId ? <input type="hidden" name="chequeo_id" value={chequeoId} /> : <input type="hidden" name="volver_historial" value="1" />}
     <input type="hidden" name="id" value={randomUUID()} />
     <label className="block text-sm">Qué se pagó
       <input name="descripcion" placeholder="Ej. compra de bandejas" maxLength={250} required className={campo} />
@@ -68,7 +68,7 @@ export function GastoGeneralForm({ hoy, digital, personal }: {
     <label className="block text-sm">Categoría
       <select name="categoria" className={campo}>
         <option value="otro">Otro gasto</option>
-        <option value="compra_inventario">Inventario / equipamiento</option>
+        {!chequeoId && <option value="compra_inventario">Inventario / equipamiento</option>}
         <option value="arriendo">Arriendo</option>
       </select>
     </label>

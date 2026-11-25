@@ -84,7 +84,10 @@ export default async function Caja({ searchParams }: {
     return <div className="mx-auto flex max-w-5xl flex-col gap-4 pb-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <CabeceraPagina seccion="Operación" titulo="Caja" />
-        <ActualizarCajaMercadoPago compacto />
+        <div className="flex flex-wrap gap-2">
+          <Link href="/operativos/chequeos" className="rounded-lg bg-sidebar px-3 py-2 text-sm font-semibold text-white">Chequeos</Link>
+          <ActualizarCajaMercadoPago compacto />
+        </div>
       </div>
       {navegacion}
       {guardado}
