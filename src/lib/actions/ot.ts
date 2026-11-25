@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 
@@ -80,7 +79,7 @@ function parsearOrigen(valor: FormDataEntryValue | null): "stock" | "laboratorio
 }
 
 export async function actualizarOT(formData: FormData) {
-  const supabase = await createClient();
+  const { supabase, tenantId, rol } = await requerirPerfil({ roles: ["admin", "clinico", "ventas", "bodega"], suscripcion: true });
   const otId = String(formData.get("ot_id"));
 
   // Si el paciente trae su propio marco, no importa lo que haya quedado
@@ -93,12 +92,14 @@ export async function actualizarOT(formData: FormData) {
   // acá dejaba el ítem de venta y el stock con el marco anterior (A06). En
   // ese caso los marcos no se tocan desde la OT; se corrigen anulando y
   // rehaciendo la venta.
-  const { count: itemsVenta } = await supabase
+  const { count: itemsVenta, error: errorVenta } = await supabase
     .from("venta_items")
     .select("id", { count: "exact", head: true })
-    .eq("ot_id", otId);
+    .eq("ot_id", otId)
+    .eq("tenant_id", tenantId);
+  if (errorVenta) throw errorVenta;
   const marcos =
-    (itemsVenta ?? 0) > 0
+    rol === "bodega" || (itemsVenta ?? 0) > 0
       ? {}
       : {
           armazon_producto_id: marcoPropio ? null : String(formData.get("armazon_producto_id") ?? "").trim() || null,
@@ -111,8 +112,9 @@ export async function actualizarOT(formData: FormData) {
     .from("ordenes_trabajo")
     .update({
       ...marcos,
-      // La descripción del marco no mueve stock: se puede corregir siempre,
-      // también en órdenes con venta (ej. una que quedó "sin marco").
+      // El código impreso y la descripción son datos de la OT.
+      ...(formData.has("marco_codigo") ? { marco_codigo: String(formData.get("marco_codigo") ?? "").trim().slice(0, 80) || null } : {}),
+      ...(formData.has("marco_codigo_2") ? { marco_codigo_2: String(formData.get("marco_codigo_2") ?? "").trim().slice(0, 80) || null } : {}),
       marco_descripcion: String(formData.get("marco_descripcion") ?? "").trim().slice(0, 120) || null,
       marco_descripcion_2: String(formData.get("marco_descripcion_2") ?? "").trim().slice(0, 120) || null,
       posicion: parsearPosicion(formData.get("posicion")),
@@ -126,7 +128,10 @@ export async function actualizarOT(formData: FormData) {
       fecha_entrega_estimada: String(formData.get("fecha_entrega_estimada") ?? "").trim() || null,
       notas: String(formData.get("notas") ?? "").trim() || null,
     })
-    .eq("id", otId);
+    .eq("id", otId)
+    .eq("tenant_id", tenantId)
+    .select("id")
+    .single();
   if (error) throw error;
 
   revalidatePath(`/ot/${otId}`);

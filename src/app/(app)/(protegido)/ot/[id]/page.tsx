@@ -25,6 +25,24 @@ function fmtD(v: number | null): string {
   return (v > 0 ? "+" : "") + Number(v).toFixed(2);
 }
 
+function CampoCodigoMarco({ name, codigo, sku }: {
+  name: string; codigo: string | null; sku?: string | null;
+}) {
+  return <label className="flex flex-col gap-1 text-sm font-medium">
+    Código del marco
+    <input
+      type="text"
+      name={name}
+      defaultValue={codigo ?? ""}
+      placeholder={sku || "Ej. GYS8039"}
+      maxLength={80}
+      autoComplete="off"
+      spellCheck={false}
+      className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+    />
+  </label>;
+}
+
 export default async function DetalleOT({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -35,7 +53,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       .select(
         `id, folio, estado, tipo_lente, rango_receta, tratamiento, origen_cristal, proveedor_lab_id, posicion,
          armazon_producto_id, marco_propio, tipo_lente_2, rango_receta_2, tratamiento_2, armazon_producto_id_2,
-         marco_propio_2, posicion_2, origen_cristal_2, marco_descripcion, marco_descripcion_2,
+         marco_propio_2, posicion_2, origen_cristal_2, marco_descripcion, marco_descripcion_2, marco_codigo, marco_codigo_2,
          fecha_ingreso, fecha_entrega_estimada, fecha_entrega_real, notas,
          pacientes:paciente_id (nombre, rut, telefono, diabetes, hipertension, glaucoma, cirugia_ocular, alergias),
          recetas:receta_id (fecha, tipo, od_esfera, od_cilindro, od_eje, od_add, oi_esfera, oi_cilindro, oi_eje, oi_add, av_od, av_oi, dp, altura, notas),
@@ -97,10 +115,11 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
     if (!tipo) return "—";
     return distancia === "lejos" || distancia === "cerca" ? `${tipo} ${distancia}` : tipo;
   };
-  const fmtMarco = (m: Marco | null, propio: boolean, descrito?: string | null) => {
-    if (propio) return "Marco propio del paciente";
-    const delInventario = m ? `${m.sku ? `[${m.sku}] ` : ""}${m.marca ?? ""} ${m.nombre} ${m.color ?? ""}`.trim() : "";
-    return [delInventario, descrito ? `Marco ${descrito}` : ""].filter(Boolean).join(" · ") || "—";
+  const fmtMarco = (m: Marco | null, propio: boolean, descrito: string | null, codigo: string | null) => {
+    const sku = codigo ?? (propio ? null : m?.sku);
+    const nombre = propio ? "Marco propio del paciente" : [m?.marca, m?.nombre, m?.color].filter(Boolean).join(" ");
+    const marco = [sku ? `[${sku}]` : "", nombre].filter(Boolean).join(" ");
+    return [marco, !propio && descrito ? `Marco ${descrito}` : ""].filter(Boolean).join(" · ") || "—";
   };
 
   return (
@@ -118,8 +137,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
           ✎ Corregir lejos/cerca, marco, laboratorio o entrega
         </summary>
         <p className="mt-2 text-xs text-tinta-suave">
-          El tipo de lente y el tratamiento no se editan acá porque están ligados al precio ya
-          cobrado — para eso anula y rehace la venta, o ajusta el monto en &quot;Editar&quot; dentro de la venta.
+          Escribe el código que debe salir en la orden. El inventario se gestiona desde la venta.
         </p>
         <form action={actualizarOT} className="mt-3 flex flex-col gap-3">
           <input type="hidden" name="ot_id" value={ot.id} />
@@ -129,6 +147,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
               {tieneSegundoCristal ? "Cristal 1" : "Cristal"}
             </legend>
             <div className="flex flex-col gap-3">
+              <CampoCodigoMarco name="marco_codigo" codigo={ot.marco_codigo} sku={marco?.sku} />
               <label className="flex flex-col gap-1 text-sm font-medium">
                 ¿Es para lejos o para cerca?
                 <select
@@ -157,11 +176,11 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm font-medium">
-                Código o descripción del marco
+                Descripción del marco
                 <input
                   name="marco_descripcion"
                   defaultValue={ot.marco_descripcion ?? ""}
-                  placeholder="Ej. GYS8039 acetato negro"
+                  placeholder="Ej. acetato negro"
                   className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
                 />
               </label>
@@ -176,6 +195,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
             <fieldset className="rounded-xl border border-tinta-suave/25 p-3">
               <legend className="px-1 text-sm font-bold">Cristal 2</legend>
               <div className="flex flex-col gap-3">
+                <CampoCodigoMarco name="marco_codigo_2" codigo={ot.marco_codigo_2} sku={marco2?.sku} />
                 <label className="flex flex-col gap-1 text-sm font-medium">
                   ¿Es para lejos o para cerca?
                   <select
@@ -203,12 +223,12 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                     ))}
                   </select>
                 </label>
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                  Código o descripción del marco
+                <label className="flex flex-col gap-1 text-sm font-medium">
+                  Descripción del marco
                   <input
                     name="marco_descripcion_2"
                     defaultValue={ot.marco_descripcion_2 ?? ""}
-                    placeholder="Ej. GYS8039 acetato negro"
+                    placeholder="Ej. acetato negro"
                     className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
                   />
                 </label>
@@ -403,7 +423,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
             )}
           </p>
           <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento ?? "—"}</p>
-          <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco, ot.marco_propio, ot.marco_descripcion)}</p>
+          <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco, ot.marco_propio, ot.marco_descripcion, ot.marco_codigo)}</p>
         </div>
 
         {tieneSegundoCristal && (
@@ -417,7 +437,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
               )}
             </p>
             <p><span className="font-semibold">Cristal / Tratamiento:</span> {ot.tratamiento_2 ?? "—"}</p>
-            <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco2, ot.marco_propio_2, ot.marco_descripcion_2)}</p>
+            <p><span className="font-semibold">Marco de este cristal:</span> {fmtMarco(marco2, ot.marco_propio_2, ot.marco_descripcion_2, ot.marco_codigo_2)}</p>
           </div>
         )}
 
