@@ -14,8 +14,16 @@ const sedes = [
 describe('Caja del operativo', () => {
   it('abre la gira indicada sin arrastrar otras sedes de esas mismas fechas', () => {
     expect(sedesDeCaja(sedes, '2026-11-24').map(s => s.nombre)).toEqual(['Los Molles', 'Trapiche', 'Los Quinquelles']);
-    expect(sedesDeCaja(sedes, '2026-11-27').map(s => s.id)).toEqual(['viernes']);
+    expect(sedesDeCaja(sedes, '2026-11-27').map(s => s.nombre)).toEqual(['Los Molles', 'Trapiche', 'Los Quinquelles']);
     expect(sedesDeCaja(sedes, '2026-11-24', ['otra', 'desconocida']).map(s => s.id)).toEqual(['otra']);
+  });
+
+  it('incluye Minimarket y deja un cierre archivado fuera de la selección inicial', () => {
+    const minimarket = { id: '0aea4291-ba76-4092-b0f4-53178911ca19', nombre: 'Minimarket', fecha: '2026-11-25' };
+    const archivada = { ...sedes[0], archivado_en: '2026-11-25' };
+    const lista = [archivada, ...sedes.slice(1), minimarket];
+    expect(sedesDeCaja(lista, '2026-11-25').map(s => s.nombre)).toEqual(['Trapiche', 'Los Quinquelles', 'Minimarket']);
+    expect(sedesDeCaja(lista, '2026-11-25', [archivada.id])).toEqual([archivada]);
   });
 
   it('calcula el líquido de las ventas y distingue los abonos de la utilidad', () => {

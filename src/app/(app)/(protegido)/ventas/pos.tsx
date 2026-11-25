@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { coincidePaciente } from "@/lib/buscar-paciente";
@@ -9,7 +9,8 @@ import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
 import CampoVoucher from "@/components/campo-voucher";
 import { CampoPresupuestoPar, EstadoPresupuestoPar } from "@/components/presupuesto-par";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
-import { encolarVenta } from "@/lib/offline/outbox";
+import { encolarVenta, fallidas, pendientes, suscribirVentas, ventaConfirmada } from "@/lib/offline/outbox";
+import { useAtencionesParaVenta } from "@/lib/offline/use-atenciones";
 import { nivelesMarcoDisponibles, nivelesMarcoInventarioGlobal, nombreNivelMarco, NIVELES_MARCO, type NivelMarco, type RecargosMarcos } from "@/lib/niveles-marco";
 import { lineaRecargo, precioListaMarco } from "@/lib/recargos-venta";
 import { MAX_PARES } from "@/lib/venta-normalizar";
@@ -685,7 +686,7 @@ function SelectorArmazon({
 }
 
 export default function PuntoDeVenta({
-  pacientes,
+  pacientes: pacientesCargados,
   productos,
   costos,
   catalogoLab,
@@ -693,7 +694,7 @@ export default function PuntoDeVenta({
   factorVenta,
   sucursalId,
   vendedorId,
-  recetasPorPaciente,
+  recetasPorPaciente: recetasCargadas,
   operativos,
   operativoInicial,
   pacienteInicial,
@@ -725,7 +726,7 @@ export default function PuntoDeVenta({
   comisionCreditoPct?: number;
 }) {
   const router = useRouter();
-  const recetaInicial = pacienteInicial ? recetasPorPaciente[pacienteInicial] : undefined;
+  const recetaInicial = pacienteInicial ? recetasCargadas[pacienteInicial] : undefined;
   const operativoRecetaInicial = sugerirOperativoPorReceta && operativos.some(o => o.id === recetaInicial?.operativo_id)
     ? recetaInicial?.operativo_id : null;
   const [paso, setPaso] = useState(pacienteInicial ? 1 : 0);
@@ -736,7 +737,14 @@ export default function PuntoDeVenta({
     window.scrollTo({ top: 0 });
   }, [paso]);
   const [pacienteId, setPacienteId] = useState<string>(pacienteInicial ?? "");
+  const [recetaEnVenta, setRecetaEnVenta] = useState<RecetaResumen | undefined>(recetaInicial);
   const [operativoId, setOperativoId] = useState<string>(operativoInicial ?? operativoRecetaInicial ?? "");
+  const { locales, remotas, pendientes: atencionesPendientes } = useAtencionesParaVenta(vendedorId, operativoId);
+  const pacientes = useMemo(() => [...new Map([...pacientesCargados, ...locales?.pacientes ?? [], ...remotas?.pacientes ?? []]
+    .map(p => [p.id, p])).values()], [pacientesCargados, remotas, locales]);
+  const recetasPorPaciente: Record<string, RecetaResumen | undefined> = {
+    ...recetasCargadas, ...locales?.recetas, ...remotas?.recetas, ...atencionesPendientes.recetas,
+  };
   // Operativo de la jornada, fijado a mano ("hoy estamos en Educa"). Manda
   // sobre el operativo de la receta y se mantiene entre una venta y otra.
   const [operativoSesion, setOperativoSesion] = useState<string>(operativoInicial ?? "");
@@ -766,8 +774,19 @@ export default function PuntoDeVenta({
   // La última venta registrada: para abrir al tiro su comprobante o su
   // certificado Fonasa sin tener que buscarla.
   const [ultimaVenta, setUltimaVenta] = useState<string | null>(null);
+  const estadoVenta = useSyncExternalStore(suscribirVentas, () => {
+    if (!ultimaVenta || !vendedorId) return "nueva";
+    if (pendientes(vendedorId).some(v => v.id === ultimaVenta)) return "pendiente";
+    if (fallidas(vendedorId).some(v => v.id === ultimaVenta)) return "revisar";
+    return ventaConfirmada(vendedorId, ultimaVenta) ? "confirmada" : "sin-confirmar";
+  }, () => "nueva");
+  const mensajeMostrado = mensaje?.startsWith("✓ Venta guardada en este equipo")
+    ? estadoVenta === "confirmada" ? "✓ Venta registrada" : estadoVenta === "revisar"
+      ? "Venta guardada en este equipo. Revisa el aviso de sincronización."
+      : estadoVenta === "sin-confirmar" ? "Venta sin confirmación." : mensaje
+    : mensaje;
 
-  const receta = pacienteId ? recetasPorPaciente[pacienteId] : undefined;
+  const receta = recetaEnVenta;
   // Lo que trae precargado cada fila cuando se elige el paciente — cada
   // fila lo usa solo como valor inicial y lo puede cambiar sin problema.
   // Un elemento por par (Par 1, Par 2, …). Parten dos filas; se agregan más
@@ -1036,6 +1055,7 @@ export default function PuntoDeVenta({
     // pares no son de esta persona). Los productos sueltos se mantienen.
     setCarrito((prev) => prev.filter((l) => !l.cristal && !/^(armazon|premium)-/.test(l.key)));
     const r = recetasPorPaciente[id];
+    setRecetaEnVenta(r);
     // Si a este paciente lo atendieron en un operativo (ej. un condominio),
     // la venta queda ligada a ese mismo operativo — para que el cierre de
     // "cuánto se vendió en tal operativo" no dependa de que la vendedora se
@@ -1073,6 +1093,7 @@ export default function PuntoDeVenta({
     setPresupuestos({});
     setAcuerdo({ campo: "descuento", texto: "" });
     setPacienteId("");
+    setRecetaEnVenta(undefined);
     setOperativoId(operativoSesion);
     setAvisoContexto(null);
     setBuscaPaciente("");
@@ -1140,10 +1161,16 @@ export default function PuntoDeVenta({
     };
   }
 
-  function guardarSinConexion(venta: VentaInput) {
-    encolarVenta(vendedorId ?? "sin-usuario", venta);
-    reiniciar();
-    setMensaje("✓ Venta guardada sin conexión — se sincronizará sola al volver la señal");
+  function guardarEnEquipo(venta: VentaInput) {
+    try {
+      if (!vendedorId) throw new Error("Sesión no disponible");
+      encolarVenta(vendedorId, venta);
+      reiniciar();
+      setUltimaVenta(venta.ventaId);
+      setMensaje("✓ Venta guardada en este equipo. Se enviará automáticamente.");
+    } catch {
+      setMensaje("No se pudo guardar en este equipo. La venta sigue abierta para reintentar.");
+    }
   }
 
   async function cobrar() {
@@ -1154,8 +1181,8 @@ export default function PuntoDeVenta({
     setMensaje(null);
     const venta = armarVenta();
 
-    if (!navigator.onLine) {
-      guardarSinConexion(venta);
+    if (operativoId || !navigator.onLine) {
+      guardarEnEquipo(venta);
       setGuardando(false);
       return;
     }
@@ -1180,7 +1207,7 @@ export default function PuntoDeVenta({
       // Se cortó la conexión a mitad: puede que la venta haya alcanzado a
       // guardarse o no. Se encola con el MISMO id — si ya estaba guardada,
       // la base la reconoce y no la duplica.
-      guardarSinConexion(venta);
+      guardarEnEquipo(venta);
     } finally {
       setGuardando(false);
     }
@@ -1228,15 +1255,15 @@ export default function PuntoDeVenta({
         })}
       </ol>
 
-      {mensaje && (
+      {mensajeMostrado && (
         <p
           role="status"
           className={`rounded-lg px-3 py-2.5 text-sm font-medium ${
-            mensaje.startsWith("✓") ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"
+            mensajeMostrado.startsWith("✓") ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"
           }`}
         >
-          {mensaje}
-          {ultimaVenta && mensaje.startsWith("✓ Venta registrada") && (
+          {mensajeMostrado}
+          {ultimaVenta && mensajeMostrado.startsWith("✓ Venta registrada") && (
             <span className="mt-2 flex flex-wrap gap-2">
               <a
                 href={`/ventas/${ultimaVenta}/certificado-fonasa`}
@@ -1303,7 +1330,7 @@ export default function PuntoDeVenta({
 
           {/* La consulta ($5.000) se cobra aparte, sin armar una venta de
               lentes: queda en el operativo de hoy y cuadra con la máquina. */}
-          <RegistrarConsulta operativoId={operativoId || null} mercadoPago={mercadoPago} />
+          <RegistrarConsulta operativoId={operativoId || null} mercadoPago={mercadoPago} usuarioId={vendedorId} />
 
           <input
             type="search"

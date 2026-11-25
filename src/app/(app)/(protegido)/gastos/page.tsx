@@ -178,7 +178,7 @@ export default async function Gastos({ searchParams }: {
     return {
       id: sede.id, nombre: sede.nombre, fecha: sede.fecha, vendido: n.vendido, cobrado: n.cobrado, utilidad: n.cierre.gananciaLiquida,
       costo: n.cierre.gastoTotal, atendidos, pares: n.desglose.marcos, costoFidesActual: sede.costo_fides_real,
-      costos: costosDeSede(sede, n.desglose, pagos), costoMarco: sede.costo_marco_unitario,
+      costos: sede.pagos_saldados_en ? [] : costosDeSede(sede, n.desglose, pagos), costoMarco: sede.costo_marco_unitario,
       importes: Object.fromEntries(COSTOS.map(c => [c.clave, Number(sede[c.clave] ?? 0)])),
     };
   });

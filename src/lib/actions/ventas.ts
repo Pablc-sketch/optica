@@ -15,6 +15,7 @@ import { rangoParaPosicion } from "@/lib/cristales";
 import { normalizarVenta, ubicacionDeCupo, type ArmazonPedido, type CristalPedido, type ItemPedido } from "@/lib/venta-normalizar";
 import { verificarVoucherConProveedor } from '@/lib/verificar-voucher-proveedor';
 import { validarVoucher } from "@/lib/voucher";
+import { esFalloTemporal } from "@/lib/offline/errores";
 
 // Lo que manda el punto de venta, online u offline (es el mismo contrato:
 // la cola offline guarda exactamente esto y lo vuelve a mandar al
@@ -43,7 +44,7 @@ export type VentaInput = {
 
 export type ResultadoVenta =
   | { ok: true; ventaId: string; otFolio: number | null; otFolios?: number[] }
-  | { ok: false; error: string };
+  | { ok: false; error: string; transitorio?: boolean };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MEDIOS = ["efectivo", "debito", "credito", "transferencia"];
@@ -85,7 +86,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
     const { data, error } = await supabase.rpc("buscar_marcos_por_codigo", {
       p_codigos: [...new Set(porResolver.map(m => m.codigo))],
     });
-    if (error) return { ok: false, error: "No se pudo comprobar el código del marco. Intenta de nuevo." };
+    if (error) return { ok: false, transitorio: esFalloTemporal(error), error: "No se pudo comprobar el código del marco. Intenta de nuevo." };
     const coincidencias = (data ?? []) as { codigo: string; producto_id: string }[];
     const productosPorCodigo = new Map(coincidencias.map(m => [m.codigo, m.producto_id] as const));
     for (const { marco, codigo } of porResolver) {
@@ -107,9 +108,10 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       .from("recetas")
       .select("id, od_esfera, od_cilindro, od_add, oi_esfera, oi_cilindro, oi_add")
       .eq("paciente_id", input.pacienteId);
-    const { data } = input.recetaId
+    const { data, error } = input.recetaId
       ? await consulta.eq("id", input.recetaId).maybeSingle()
       : await consulta.order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) return { ok: false, transitorio: esFalloTemporal(error), error: "No se pudo cargar la receta." };
     if (input.recetaId && !data) return { ok: false, error: "La receta elegida no es de este paciente." };
     receta = data;
   }
@@ -127,9 +129,10 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   // Precio de lista de los productos (marcos, accesorios), para dejar a la
   // vista cuándo se vendieron con descuento o de regalo.
   const idsProductos = [...new Set(items.map((i) => i.productoId).filter((x): x is string => Boolean(x)))];
-  const { data: productos } = idsProductos.length
+  const { data: productos, error: errorProductos } = idsProductos.length
     ? await supabase.from("productos").select("id, precio_venta, recargo_marco").in("id", idsProductos)
-    : { data: [] as { id: string; precio_venta: number; recargo_marco: number | null }[] };
+    : { data: [], error: null };
+  if (errorProductos) return { ok: false, transitorio: esFalloTemporal(errorProductos), error: "No se pudo comprobar el inventario." };
   if ((productos ?? []).length !== idsProductos.length) return { ok: false, error: "Un producto de la venta no existe." };
 
   // Costo y origen, recalculados acá. Si el catálogo no se puede leer o
@@ -143,7 +146,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
     try {
       cotizar = await cargarCatalogoParaCotizar(supabase);
     } catch {
-      return { ok: false, error: "No se pudo leer el catálogo de precios. Revisa la conexión e intenta de nuevo." };
+      return { ok: false, transitorio: true, error: "No se pudo leer el catálogo de precios. Revisa la conexión e intenta de nuevo." };
     }
     const { data: tenant } = await supabase
       .from("tenants")
@@ -261,7 +264,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       })),
     },
   });
-  if (error) return { ok: false, error: `No se pudo guardar la venta: ${error.message}` };
+  if (error) return { ok: false, transitorio: esFalloTemporal(error), error: `No se pudo guardar la venta: ${error.message}` };
 
   revalidatePath("/ventas");
   revalidatePath("/ot");

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { createClient } from "@/lib/supabase/server";
-import { crearOperativo, cambiarEstadoOperativo } from "@/lib/actions/operativos";
+import { crearOperativo, cambiarEstadoOperativo, archivarOperativo } from "@/lib/actions/operativos";
 import { formatearTelefono } from "@/lib/formato";
 import { fechaLegible } from "@/lib/fechas";
 import { clp } from "@/lib/clp";
@@ -54,7 +54,7 @@ export default async function OperativosPage() {
     leerTodas((a, b) => supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, direccion, estado, notas"
+        "id, nombre, tipo_venue, fecha, direccion, estado, notas, archivado_en, pagos_saldados_en"
       )
       .order("fecha", { ascending: false }).order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("recetas").select("id, operativo_id").not("operativo_id", "is", null).order("id").range(a, b)),
@@ -124,9 +124,21 @@ export default async function OperativosPage() {
   const terminado = (o: (typeof lista)[number]) =>
     (o.estado === "cancelado" || o.estado === "realizado") && pendiente(o.id).lentes.size === 0 && pendiente(o.id).saldo === 0 && !pagosPorOperativo.has(o.id);
   const activos = lista
-    .filter((o) => !terminado(o))
+    .filter((o) => !o.archivado_en && !terminado(o))
     .sort((a, b) => Number(a.estado !== "planificado") - Number(b.estado !== "planificado") || a.fecha.localeCompare(b.fecha));
-  const terminados = lista.filter(terminado);
+  const terminados = lista.filter(o => o.archivado_en || terminado(o));
+
+  function botonArchivo(id: string, archivado: boolean) {
+    return (
+      <form action={archivarOperativo}>
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="archivar" value={archivado ? "0" : "1"} />
+        <button className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-xs font-semibold hover:bg-white">
+          {archivado ? "Restaurar" : "Archivar"}
+        </button>
+      </form>
+    );
+  }
 
   const input =
     "rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand";
@@ -185,7 +197,10 @@ export default async function OperativosPage() {
             )}
             {o.notas && <p className="mt-1 text-xs text-tinta-suave">{o.notas}</p>}
           </Link>
-          {botonEstado(o)}
+          <div className="flex flex-wrap gap-2">
+            {botonEstado(o)}
+            {o.estado === "realizado" && botonArchivo(o.id, false)}
+          </div>
         </div>
       </li>
     );
@@ -221,20 +236,22 @@ export default async function OperativosPage() {
 
         {terminados.length > 0 && (
           <details className="rounded-2xl bg-neutral-100 p-3">
-            <summary className="cursor-pointer text-sm font-semibold text-neutral-500">Terminados ({terminados.length})</summary>
+            <summary className="cursor-pointer text-sm font-semibold text-neutral-500">Archivados y terminados ({terminados.length})</summary>
             <ul className="mt-2 flex flex-col gap-1.5">
               {terminados.map((o) => (
-                <li key={o.id}>
+                <li key={o.id} className="flex items-center gap-2">
                   <Link
                     href={`/operativos/${o.id}`}
-                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-3 py-2 text-neutral-500 hover:bg-neutral-200"
+                    className="flex flex-1 flex-wrap items-baseline justify-between gap-2 rounded-xl px-3 py-2 text-neutral-500 hover:bg-neutral-200"
                   >
                     <span className="font-medium">{o.nombre}</span>
                     <span className="text-xs">
                       {fechaLegible(o.fecha)}
                       {o.estado === "cancelado" && " · cancelado"}
+                      {o.pagos_saldados_en && " · pagos saldados"}
                     </span>
                   </Link>
+                  {o.archivado_en && botonArchivo(o.id, true)}
                 </li>
               ))}
             </ul>

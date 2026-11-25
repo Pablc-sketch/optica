@@ -4,7 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { registrarConsulta } from "@/lib/actions/ventas";
 import { clp } from "@/lib/clp";
-import { PRECIO_CONSULTA } from "@/lib/consulta";
+import { DESCRIPCION_CONSULTA, PRECIO_CONSULTA } from "@/lib/consulta";
+import { encolarVenta } from "@/lib/offline/outbox";
 import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
 import CampoVoucher from "@/components/campo-voucher";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
@@ -18,7 +19,7 @@ const MEDIOS = [
 
 // Cobrar una o varias consultas ($5.000 c/u) en el operativo elegido, en
 // dos toques. Entra a la caja del operativo y cuadra con Mercado Pago.
-export default function RegistrarConsulta({ operativoId, mercadoPago = false }: { operativoId: string | null; mercadoPago?: boolean }) {
+export default function RegistrarConsulta({ operativoId, mercadoPago = false, usuarioId }: { operativoId: string | null; mercadoPago?: boolean; usuarioId?: string | null }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [cantidad, setCantidad] = useState(1);
@@ -31,17 +32,31 @@ export default function RegistrarConsulta({ operativoId, mercadoPago = false }: 
   function registrar() {
     iniciar(async () => {
       id.current ??= crypto.randomUUID();
-      const r = await registrarConsulta({ consultaId: id.current, operativoId, monto: PRECIO_CONSULTA, medioPago: medio, cantidad, numeroVoucher });
-      if (r.ok) {
+      try {
+        const local = Boolean(usuarioId && (operativoId || !navigator.onLine));
+        if (local && usuarioId) {
+          encolarVenta(usuarioId, {
+            ventaId: id.current, operativoId, fecha: new Date().toISOString(), pacienteId: null,
+            items: [{ descripcion: DESCRIPCION_CONSULTA, cantidad, precioUnitario: PRECIO_CONSULTA }],
+            abonoInicial: PRECIO_CONSULTA * cantidad, medioPago: medio, numeroVoucher, cristales: [], armazones: [],
+          });
+        } else {
+          const r = await registrarConsulta({ consultaId: id.current, operativoId, monto: PRECIO_CONSULTA, medioPago: medio, cantidad, numeroVoucher });
+          if (!r.ok) {
+            setMensaje(r.error ?? "No se pudo registrar");
+            return;
+          }
+        }
         id.current = null;
         setAbierto(false);
         setCantidad(1);
         setMedio("");
         setNumeroVoucher("");
-        setMensaje(`✓ ${cantidad === 1 ? "Consulta registrada" : `${cantidad} consultas registradas`} (${clp(PRECIO_CONSULTA * cantidad)})`);
-        router.refresh();
-      } else {
-        setMensaje(r.error ?? "No se pudo registrar");
+        setMensaje(local ? "✓ Cobro de consulta guardado en este equipo." :
+          `✓ ${cantidad === 1 ? "Consulta registrada" : `${cantidad} consultas registradas`} (${clp(PRECIO_CONSULTA * cantidad)})`);
+        if (!local) router.refresh();
+      } catch {
+        setMensaje("No se pudo guardar el cobro. Puedes volver a intentarlo.");
       }
     });
   }

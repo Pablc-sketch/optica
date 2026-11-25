@@ -48,7 +48,7 @@ export default async function FichaPaciente({ params, searchParams }: { params: 
       )
     : null;
 
-  const [{ data: recetas }, { data: operativos }, cotizar, { data: rol }] = await Promise.all([
+  const [{ data: recetas }, { data: operativos }, cotizar, { data: rol }, { data: { user } }] = await Promise.all([
     supabase
       .from("recetas")
       .select("*")
@@ -60,7 +60,7 @@ export default async function FichaPaciente({ params, searchParams }: { params: 
     supabase
       .from("operativos")
       .select("id, nombre, fecha, estado")
-      .in("estado", ["planificado", "realizado"])
+      .in("estado", ["planificado", "realizado"]).is("archivado_en", null)
       .order("fecha", { ascending: false }),
     // Misma matriz real del punto de venta, con la lista del laboratorio:
     // para que la sugerencia calce directo con lo que va a ver la
@@ -68,6 +68,7 @@ export default async function FichaPaciente({ params, searchParams }: { params: 
     // mismo que después se le cobra.
     cargarCatalogoParaCotizar(supabase),
     supabase.rpc("jwt_rol"),
+    supabase.auth.getUser(),
   ]);
   const puedeVender = rol === "admin" || rol === "ventas";
   const operativoInicial = operativos?.find(o => o.id === op)?.id;
@@ -185,6 +186,7 @@ export default async function FichaPaciente({ params, searchParams }: { params: 
       </details>
 
       {(rol === "admin" || rol === "clinico") && <NuevaReceta
+        usuarioId={user?.id}
         pacienteId={paciente.id}
         operativos={operativos ?? []}
         operativoInicial={operativoInicial}

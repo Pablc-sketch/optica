@@ -28,6 +28,7 @@ export async function cargarPendientes(supabase: Awaited<ReturnType<typeof creat
     const n = numerosDeOperativo(op, (ventas.data ?? []).filter((v) => v.operativo_id === op.id) as unknown as VentaParaCierre[],
       Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
     utilidadOperativos += n.cierre.gananciaLiquida;
+    if (op.pagos_saldados_en) continue;
     const pagos = pagosConAsignaciones((gastos.data ?? []).filter((g) => g.operativo_id === op.id), asignaciones.data ?? [], op.id);
     const costos = pendientesCostos(op, pagos);
     const pagadoA = (persona: string) => (retiros.data ?? []).filter((r) => r.operativo_id === op.id && r.persona === persona).reduce((s, r) => s + r.monto, 0);

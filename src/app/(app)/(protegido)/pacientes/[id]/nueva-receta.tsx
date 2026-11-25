@@ -5,6 +5,8 @@ import { useRef, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { rutaVentaReceta } from "@/lib/contexto-venta";
 import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
+import { encolarAtencion } from "@/lib/offline/atenciones";
+import { useAtenciones } from "@/lib/offline/use-atenciones";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
 import { CampoPresupuestoPar, EstadoPresupuestoPar } from "@/components/presupuesto-par";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
@@ -305,6 +307,8 @@ export default function NuevaReceta({
   receta,
   operativoInicial,
   puedeVender = false,
+  usuarioId,
+  abierto = false,
 }: {
   pacienteId: string;
   operativos: { id: string; nombre: string }[];
@@ -316,6 +320,8 @@ export default function NuevaReceta({
   receta?: RecetaExistente;
   operativoInicial?: string;
   puedeVender?: boolean;
+  usuarioId?: string;
+  abierto?: boolean;
 }) {
   // Qué se le va a hacer al paciente. "Multifocal" es UN lente que sirve
   // para lejos y cerca; "dos pares" son dos lentes monofocales distintos.
@@ -363,6 +369,7 @@ export default function NuevaReceta({
   // dibujar la página) y se renueva al empezar otra receta.
   const idNuevo = useRef("");
   const [guardada, setGuardada] = useState<{ id: string; operativoId: string } | null>(null);
+  const atenciones = useAtenciones(usuarioId, guardada?.id);
   const [guardando, iniciar] = useTransition();
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
   const [cambiosGuardados, setCambiosGuardados] = useState(false);
@@ -383,7 +390,8 @@ export default function NuevaReceta({
         }
         if (!idNuevo.current) idNuevo.current = crypto.randomUUID();
         formData.set("receta_id_nuevo", idNuevo.current);
-        await crearReceta(formData);
+        if (usuarioId) await encolarAtencion(usuarioId, "receta", formData, idNuevo.current);
+        else await crearReceta(formData);
         setGuardada({ id: idNuevo.current, operativoId: String(formData.get("operativo_id") ?? "") });
       } catch {
         setErrorGuardado("No se pudo confirmar el guardado. Tus datos siguen en pantalla. Revisa la conexión y vuelve a intentar.");
@@ -392,13 +400,15 @@ export default function NuevaReceta({
   }
 
   if (guardada) {
+    const registro = atenciones?.find(a => a.id === guardada.id);
+    const pendiente = usuarioId && (!atenciones || registro);
     return (
       <div className="flex flex-col items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-emerald-900 shadow-sm">
-        <p className="font-semibold">✓ Receta guardada. Ya aparece en el historial.</p>
-        <div className="flex flex-wrap gap-3 text-sm font-semibold">
+        <p className="font-semibold">{registro?.error ? "Receta guardada en este equipo. Revisa el aviso de sincronización." : pendiente ? "✓ Receta guardada en este equipo. Se enviará automáticamente." : "✓ Receta guardada."}</p>
+        {!pendiente && <div className="flex flex-wrap gap-3 text-sm font-semibold">
           <Link className="underline" href={`/pacientes/${pacienteId}/receta/${guardada.id}`}>Ver receta</Link>
           {puedeVender && <Link className="underline" href={rutaVentaReceta(guardada.id, guardada.operativoId)}>Abrir esta receta en caja</Link>}
-        </div>
+        </div>}
         <button
           type="button"
           onClick={() => {
@@ -673,7 +683,7 @@ export default function NuevaReceta({
   if (receta) return contenido;
 
   return (
-    <details open={operativoInicial ? true : undefined} className="rounded-2xl bg-crema-claro p-4 shadow-sm">
+    <details open={abierto || operativoInicial ? true : undefined} className="rounded-2xl bg-crema-claro p-4 shadow-sm">
       <summary className="cursor-pointer font-semibold text-brand-dark">＋ Nueva receta</summary>
       {contenido}
     </details>

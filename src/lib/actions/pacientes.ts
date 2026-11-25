@@ -5,8 +5,11 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatearRut } from "@/lib/rut";
 import { fechaCortaAISO, formatearTelefono } from "@/lib/formato";
-import { leerSugerenciasExtra } from "@/lib/sugerencias";
-import { hoyEnChile } from "@/lib/fechas";
+import { diaEnChile, hoyEnChile } from "@/lib/fechas";
+import { esFalloTemporal } from "@/lib/offline/errores";
+import { numeroReceta, resumenReceta, sugerenciasTerreno, textoReceta } from "@/lib/offline/datos-terreno";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // El tenant_id NO viaja en el formulario: el insert va sin tenant y la
 // base lo exige vía RLS; lo tomamos del perfil del usuario autenticado
@@ -22,15 +25,17 @@ async function tenantDelUsuario() {
   return { supabase, tenantId: perfil.tenant_id as string, userId: user.id };
 }
 
-export async function crearPaciente(formData: FormData) {
+export async function crearPaciente(formData: FormData, idNuevo?: string) {
   const { supabase, tenantId } = await tenantDelUsuario();
 
   const nombre = String(formData.get("nombre") ?? "").trim();
   if (!nombre) return { ok: false as const, error: "El nombre es obligatorio." };
+  if (idNuevo && !UUID.test(idNuevo)) return { ok: false as const, error: "Paciente inválido." };
 
   const { data, error } = await supabase
     .from("pacientes")
     .insert({
+      ...(idNuevo ? { id: idNuevo } : {}),
       tenant_id: tenantId,
       nombre,
       rut: formatearRut(String(formData.get("rut") ?? "")) || null,
@@ -45,7 +50,13 @@ export async function crearPaciente(formData: FormData) {
   // error de servidor. El caso más común no es un fallo técnico sino de
   // permisos: bodega no puede tocar fichas clínicas (RLS), así que conviene
   // decirlo en castellano en vez de mostrar una pantalla rota.
+  if (error?.code === "23505" && idNuevo) {
+    const anterior = await supabase.from("pacientes").select("id").eq("tenant_id", tenantId).eq("id", idNuevo).maybeSingle();
+    if (anterior.error) throw anterior.error;
+    if (anterior.data) return { ok: true as const, id: idNuevo };
+  }
   if (error) {
+    if (esFalloTemporal(error)) throw error;
     const esPermiso = error.code === "42501" || /row-level security|policy/i.test(error.message);
     return {
       ok: false as const,
@@ -162,75 +173,36 @@ export async function actualizarFichaClinica(formData: FormData) {
   revalidatePath(`/pacientes/${pacienteId}`);
 }
 
-export async function crearReceta(formData: FormData) {
+export async function crearReceta(formData: FormData, fechaCaptura?: string) {
   const { supabase, tenantId, userId } = await tenantDelUsuario();
-
-  const pacienteId = String(formData.get("paciente_id"));
-  const num = (k: string) => {
-    const v = String(formData.get(k) ?? "").replace(",", ".").trim();
-    return v === "" ? null : Number(v);
-  };
-
-  // La adición se carga una sola vez (casi siempre es la misma para los dos
-  // ojos) pero la tabla igual guarda od_add/oi_add por separado, para no
-  // tener que migrar todo lo que ya lee esas dos columnas (receta impresa,
-  // historial, etc.).
-  const add = num("add");
-
-  // Id que genera el formulario: si la misma receta llega dos veces (doble
-  // toque mientras guarda), la segunda choca con la primera y no se duplica.
+  const pacienteId = String(formData.get("paciente_id") ?? "");
   const idNuevo = String(formData.get("receta_id_nuevo") ?? "");
-  const idValido = /^[0-9a-f-]{36}$/i.test(idNuevo) ? idNuevo : undefined;
-
+  const idValido = UUID.test(idNuevo);
+  const fecha = fechaCaptura && Number.isFinite(Date.parse(fechaCaptura)) ? diaEnChile(fechaCaptura) : hoyEnChile();
+  const { id, sugerencias_extra, ...datos } = resumenReceta(idNuevo, formData);
   const { error } = await supabase.from("recetas").insert({
-    ...(idValido ? { id: idValido } : {}),
-    tenant_id: tenantId,
-    paciente_id: pacienteId,
-    profesional_id: userId,
-    // Explícita en vez de dejarla en el default de la columna
-    // (current_date): ese default lo evalúa Postgres en UTC, así que una
-    // receta tomada de noche en Chile quedaba fechada al día siguiente.
-    fecha: hoyEnChile(),
-    // Si el examen se tomó en un operativo en terreno: sirve para filtrar
-    // reportes por operativo y para el seguimiento de exámenes que todavía
-    // no se convirtieron en venta.
-    operativo_id: String(formData.get("operativo_id") ?? "").trim() || null,
-    od_esfera: num("od_esfera"),
-    od_cilindro: num("od_cilindro"),
-    od_eje: num("od_eje"),
-    od_add: add,
-    oi_esfera: num("oi_esfera"),
-    oi_cilindro: num("oi_cilindro"),
-    oi_eje: num("oi_eje"),
-    oi_add: add,
-    av_od: String(formData.get("av_od") ?? "").trim() || null,
-    av_oi: String(formData.get("av_oi") ?? "").trim() || null,
-    dp: num("dp"),
-    altura: num("altura"),
-    tipo: String(formData.get("tipo") ?? "lejos"),
-    notas: String(formData.get("notas") ?? "").trim() || null,
-    // Lo que el tecnólogo ya conversó con el paciente sobre qué le
-    // conviene: se precarga sola en el punto de venta al buscarlo por RUT.
-    sugerencia_tipo_lente: String(formData.get("sugerencia_tipo_lente") ?? "").trim() || null,
-    sugerencia_tratamiento: String(formData.get("sugerencia_tratamiento") ?? "").trim() || null,
-    sugerencia_tipo_lente_cerca: String(formData.get("sugerencia_tipo_lente_cerca") ?? "").trim() || null,
-    sugerencia_tratamiento_cerca: String(formData.get("sugerencia_tratamiento_cerca") ?? "").trim() || null,
-    // Solo si hay pares extra: así guardar una receta normal no depende de
-    // que la columna exista (si falta la migración, no rompe).
-    ...conExtras(formData),
-    observacion_venta: String(formData.get("observacion_venta") ?? "").trim() || null,
+    ...(idValido ? { id } : {}),
+    tenant_id: tenantId, paciente_id: pacienteId, profesional_id: userId, fecha,
+    ...datos,
+    ...(sugerencias_extra.length ? { sugerencias_extra } : {}),
+    od_eje: numeroReceta(formData, "od_eje"), oi_eje: numeroReceta(formData, "oi_eje"),
+    av_od: textoReceta(formData, "av_od"), av_oi: textoReceta(formData, "av_oi"),
+    dp: numeroReceta(formData, "dp"), altura: numeroReceta(formData, "altura"),
+    notas: textoReceta(formData, "notas"), observacion_venta: textoReceta(formData, "observacion_venta"),
   });
-
-  if (error && error.code === "23505" && idValido) return;
-  if (error) throw error;
-
-  // La receta recién cargada es la que tomará la OT al cobrar en el POS.
-  await supabase.from("pacientes").update({ ultima_visita: hoyEnChile() }).eq("id", pacienteId);
-
+  if (error) {
+    if (error.code !== "23505" || !idValido) throw error;
+    const anterior = await supabase.from("recetas").select("id").eq("tenant_id", tenantId)
+      .eq("paciente_id", pacienteId).eq("id", idNuevo).maybeSingle();
+    if (anterior.error) throw anterior.error;
+    if (!anterior.data) throw error;
+  }
+  const visita = await supabase.from("pacientes").update({ ultima_visita: fecha }).eq("id", pacienteId)
+    .or(`ultima_visita.is.null,ultima_visita.lt.${fecha}`);
+  if (visita.error) throw visita.error;
   revalidatePath(`/pacientes/${pacienteId}`);
   revalidatePath("/ventas");
-  const operativoId = String(formData.get("operativo_id") ?? "").trim();
-  if (operativoId) revalidatePath(`/operativos/${operativoId}`);
+  if (datos.operativo_id) revalidatePath(`/operativos/${datos.operativo_id}`);
 }
 
 // Corregir una receta ya guardada (el tecnólogo se equivocó al tipear, o el
@@ -240,19 +212,8 @@ export async function crearReceta(formData: FormData) {
 // Los pares extra que dejó sugeridos el tecnólogo (extra_tipo_0,
 // extra_tratamiento_0, extra_posicion_0, …). Los que quedaron sin elegir
 // se descartan.
-function sugerenciasExtraDelFormulario(formData: FormData) {
-  const n = Math.min(Number(formData.get("extras_cantidad") ?? 0) || 0, 4);
-  return leerSugerenciasExtra(
-    Array.from({ length: n }, (_, i) => ({
-      tipo_lente: String(formData.get(`extra_tipo_${i}`) ?? "").trim(),
-      tratamiento: String(formData.get(`extra_tratamiento_${i}`) ?? "").trim(),
-      posicion: String(formData.get(`extra_posicion_${i}`) ?? "") || null,
-    }))
-  );
-}
-
 function conExtras(formData: FormData) {
-  const extras = sugerenciasExtraDelFormulario(formData);
+  const extras = sugerenciasTerreno(formData);
   const habiaExtras = Number(formData.get("extras_cantidad") ?? 0) > 0 || Number(formData.get("extras_habia") ?? 0) > 0;
   return extras.length > 0 || habiaExtras ? { sugerencias_extra: extras } : {};
 }
