@@ -10,6 +10,7 @@ import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 import { leerTodas } from "@/lib/leer-todas";
 import ActualizarCaja from "./actualizar-caja";
 import FormularioChequeo from "./formulario";
+import { IndicadoresCaja, IndicadoresChequeo } from "./indicadores";
 import PersonasDeSede from "./personas-de-sede";
 
 const ruta = "/operativos/chequeos";
@@ -22,8 +23,8 @@ function lotesDe(ids: string[]) {
   return lotes;
 }
 
-function Recuadro({ etiqueta, valor, destacado = false }: { etiqueta: string; valor: number | string; destacado?: boolean }) {
-  return <div className={`min-w-0 rounded-lg border px-3 py-3 sm:p-4 ${destacado ? "border-sky-800 bg-sky-950 text-white" : "border-tinta/15 bg-white"}`}>
+function RecuadroReparto({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  return <div className="min-w-0 rounded-lg border border-tinta/15 bg-white p-3 sm:p-4">
     <dt className="text-sm font-semibold">{etiqueta}</dt>
     <dd className="mt-1 break-words text-xl font-bold tabular-nums sm:text-2xl">{valor}</dd>
   </div>;
@@ -134,8 +135,9 @@ export default async function ChequeosPage({ searchParams }: {
 
   const vinculados = asignaciones.flatMap(res => res.data ?? []);
   const gastosCompartidos = compartidos.reduce((suma, g) => suma + gastoDeResultado(g, vinculados), 0);
+  const ventas = datos.flatMap(([, v]) => v.data ?? []) as unknown as VentaChequeo[];
   const n = resumirChequeo(integrantes, datos.flatMap(([r]) => r.data ?? []) as AtencionChequeo[],
-    datos.flatMap(([, v]) => v.data ?? []) as unknown as VentaChequeo[], gastosCompartidos, Number(chequeo.ahorro_pct),
+    ventas, gastosCompartidos, Number(chequeo.ahorro_pct),
     Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
   const caja = resumirCajaChequeo(n, chequeo.id, [...propios, ...gastosExternos.flatMap(res => res.data ?? [])],
     vinculados, devoluciones.flatMap(res => res.data ?? []), retiros);
@@ -149,56 +151,23 @@ export default async function ChequeosPage({ searchParams }: {
       </div>
       <Link href={`${ruta}?chequeo=${chequeo.id}&modo=editar`} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Asignar sedes</Link>
     </section>
-    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      <Recuadro etiqueta="Total vendido" valor={clp(n.vendido)} />
-      <Recuadro etiqueta="Ya cobrado" valor={clp(n.cobrado)} />
-      <Recuadro etiqueta="Cobrar al entregar" valor={clp(n.porCobrarEntrega)} destacado />
-      <Recuadro etiqueta="Utilidad estimada" valor={clp(n.utilidad)} destacado />
-      <Recuadro etiqueta="Pacientes atendidos" valor={n.pacientes} />
-      <Recuadro etiqueta="Ventas de productos" valor={n.ventas} />
-      <Recuadro etiqueta="Pares de lentes" valor={n.pares} />
-      <Recuadro etiqueta="Marcos" valor={n.marcos} />
-    </dl>
-    {n.porCobrar > n.porCobrarEntrega && <p className="text-sm">Otros saldos por cobrar · {clp(n.porCobrar - n.porCobrarEntrega)}</p>}
-    <section aria-label="Caja del chequeo" className="space-y-3">
-      <h2 className="text-lg font-bold">Caja del chequeo</h2>
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <Recuadro etiqueta="Caja registrada" valor={clp(caja.cajaRegistrada)} />
-        <Recuadro etiqueta="Queda tras pagar" valor={clp(caja.saldoTrasPagos)} destacado />
-        <Recuadro etiqueta="Quedaría tras cobrar todo" valor={clp(caja.proyectado)} />
-      </dl>
-      <p className="text-sm text-tinta-suave">Incluye la comisión de tarjeta estimada y los gastos ingresados. Saldo del chequeo antes de ahorro y reparto. La utilidad estima el resultado de todas las ventas y descuenta el costo de los marcos usados.</p>
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Recuadro etiqueta="Cristales" valor={clp(caja.cristales)} />
-        <Recuadro etiqueta="Marcos usados (estimado)" valor={clp(caja.marcos)} />
-        <Recuadro etiqueta="Comida registrada" valor={caja.comida ? clp(caja.comida) : "Sin registrar"} />
-        <Recuadro etiqueta="Gastos y reintegros pagados" valor={clp(caja.salidas)} />
-        <Recuadro etiqueta="Por pagar al laboratorio" valor={clp(caja.fidesPendiente)} />
-        <Recuadro etiqueta="Otros gastos por pagar" valor={clp(caja.terrenoPendiente)} />
-        <Recuadro etiqueta="Comisión de venta pendiente" valor={clp(caja.comisionPendiente)} />
-        <Recuadro etiqueta="Reembolsos por pagar" valor={clp(caja.porReembolsar)} />
-      </dl>
-      {caja.adelantos.length > 0 && <div className="rounded-lg border border-tinta/15 bg-white p-3">
-        <h3 className="font-semibold">Devoluciones pendientes</h3>
-        <ul className="space-y-1 text-sm">{caja.adelantos.map(({ gasto, saldo }) => <li key={gasto.id}>
-          <div className="flex justify-between gap-2"><span>{gasto.descripcion}{gasto.monto_estimado ? " (estimado)" : ""}</span><b>{clp(saldo)}</b></div>
-          {gasto.nota && <p className="text-tinta-suave">{gasto.nota}</p>}
-        </li>)}</ul>
-        <Link href="/gastos#adelantos-personales" className="mt-2 inline-block text-sm text-brand-dark underline">Ver adelantos y devolver al pagar</Link>
-      </div>}
-    </section>
-    <section aria-label="Sedes" className="space-y-2">
-      <h2 className="text-lg font-bold">Por sede</h2>
+    <IndicadoresChequeo resumen={n} ventas={ventas} />
+    <IndicadoresCaja resumen={n} caja={caja} hoy={hoy} chequeoId={chequeo.id} comidaGuardada={params.guardado === "comida"} />
+    <section aria-labelledby="sedes-chequeo" className="space-y-2">
+      <h2 id="sedes-chequeo" className="text-lg font-bold">Por sede</h2>
       {!n.filas.length && <p className="rounded-lg bg-white p-4">Este chequeo todavía no tiene sedes asignadas.</p>}
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{n.filas.map(f => (
         <li key={f.sede.id} className="grid gap-2 rounded-lg border border-tinta/15 bg-white p-3">
           <Link href={`${ruta}?chequeo=${chequeo.id}&sede=${f.sede.id}`} className="block rounded-md hover:bg-crema-claro">
             <h3 className="font-bold text-brand-dark underline">{f.sede.nombre}</h3>
-            <p className="text-sm text-tinta-suave">{fechaLegible(f.sede.fecha)}{f.sede.direccion ? ` · ${f.sede.direccion}` : ""}</p>
+            <p className="text-sm text-tinta-suave">{fechaLegible(f.sede.fecha)}{f.sede.hora_inicio ? ` · ${f.sede.hora_inicio.slice(0, 5)}` : ""}{f.sede.direccion ? ` · ${f.sede.direccion}` : ""}</p>
             <span className="text-sm text-brand-dark">Ver personas y compras</span>
           </Link>
           <p className="text-sm">{f.pacientes} atendidos · {f.ventas} ventas · {f.pares} pares · {f.marcos} marcos</p>
           <dl className="grid grid-cols-2 gap-2 text-sm">
+            <div className="col-span-2 flex flex-wrap items-baseline justify-between gap-x-2 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-2 text-sky-950">
+              <dt className="font-semibold">Total vendido</dt><dd className="text-lg font-bold tabular-nums">{clp(f.vendido)}</dd>
+            </div>
             <div><dt>Cobrado</dt><dd className="font-semibold">{clp(f.cobrado)}</dd></div>
             <div><dt>Por cobrar</dt><dd className="font-semibold">{clp(f.porCobrar)}</dd></div>
             <div><dt>Cristales</dt><dd className="font-semibold">{clp(f.desglose.totalCristales)}</dd></div>
@@ -213,11 +182,7 @@ export default async function ChequeosPage({ searchParams }: {
       ))}</ul>
     </section>
     {params.guardado === "1" && <p role="status" className="text-sm text-emerald-800">Gasto guardado.</p>}
-    <details className="rounded-lg border border-tinta/15 bg-white p-4">
-      <summary className="cursor-pointer font-semibold">Registrar comida</summary>
-      <div className="mt-4 max-w-lg"><GastoGeneralForm hoy={hoy} digital="Cuenta de la óptica" personal="Dinero personal" chequeoId={chequeo.id} comida /></div>
-    </details>
-    <details open={params.guardado === "1" ? true : undefined} className="rounded-lg border border-tinta/15 bg-white p-4">
+    <details id="gastos-compartidos" open={params.guardado === "1" ? true : undefined} className="scroll-mt-40 rounded-lg border border-tinta/15 bg-white p-4 lg:scroll-mt-20">
       <summary className="cursor-pointer font-semibold">Gastos compartidos · {clp(n.gastosCompartidos)}</summary>
       {compartidos.filter(g => g.categoria !== "compra_inventario").map(g => <p key={g.id} className="mt-2 flex justify-between gap-2 text-sm"><span>{g.descripcion} · {fechaLegible(g.fecha)}</span><b>{clp(g.monto)}</b></p>)}
       <div className="mt-4 max-w-lg"><GastoGeneralForm hoy={hoy} digital="Cuenta de la óptica" personal="Dinero personal" chequeoId={chequeo.id} /></div>
@@ -225,10 +190,10 @@ export default async function ChequeosPage({ searchParams }: {
     <details className="rounded-lg border border-tinta/15 bg-white p-4">
       <summary className="cursor-pointer font-semibold">Reparto pendiente estimado</summary>
       <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Recuadro etiqueta={nombres.isadora} valor={clp(caja.comisionPendiente)} />
-        <Recuadro etiqueta="Ahorro" valor={clp(caja.repartoPendiente.ahorro)} />
-        <Recuadro etiqueta={nombres.madre} valor={clp(caja.repartoPendiente.madre)} />
-        <Recuadro etiqueta={nombres.pablo} valor={clp(caja.repartoPendiente.pablo)} />
+        <RecuadroReparto etiqueta={nombres.isadora} valor={clp(caja.comisionPendiente)} />
+        <RecuadroReparto etiqueta="Ahorro" valor={clp(caja.repartoPendiente.ahorro)} />
+        <RecuadroReparto etiqueta={nombres.madre} valor={clp(caja.repartoPendiente.madre)} />
+        <RecuadroReparto etiqueta={nombres.pablo} valor={clp(caja.repartoPendiente.pablo)} />
       </dl>
     </details>
   </div>;
