@@ -30,7 +30,7 @@ function Recuadro({ etiqueta, valor, color, nota, abierto, ancho, id, children }
   return <details
     id={id}
     open={abierto}
-    className={`group/recuadro min-w-0 scroll-mt-20 rounded-lg border ${colores[color]} ${ancho ? "col-span-2" : ""}`}
+    className={`group/recuadro min-w-0 scroll-mt-40 rounded-lg border lg:scroll-mt-20 ${colores[color]} ${ancho ? "col-span-2" : ""}`}
   >
     <summary className="block min-h-28 cursor-pointer list-none rounded-lg p-3 shadow-[0_3px_0_rgb(15_23_42/0.12)] hover:shadow-[inset_0_2px_5px_rgb(15_23_42/0.14)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current active:shadow-[inset_0_3px_6px_rgb(15_23_42/0.2)] motion-safe:transition-[transform,box-shadow] motion-safe:duration-150 motion-safe:hover:translate-y-0.5 motion-safe:active:translate-y-1 sm:p-4 [&::-webkit-details-marker]:hidden">
       <span className="flex items-start justify-between gap-2">

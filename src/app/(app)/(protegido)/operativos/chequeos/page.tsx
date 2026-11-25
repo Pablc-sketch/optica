@@ -182,7 +182,7 @@ export default async function ChequeosPage({ searchParams }: {
       ))}</ul>
     </section>
     {params.guardado === "1" && <p role="status" className="text-sm text-emerald-800">Gasto guardado.</p>}
-    <details id="gastos-compartidos" open={params.guardado === "1" ? true : undefined} className="scroll-mt-20 rounded-lg border border-tinta/15 bg-white p-4">
+    <details id="gastos-compartidos" open={params.guardado === "1" ? true : undefined} className="scroll-mt-40 rounded-lg border border-tinta/15 bg-white p-4 lg:scroll-mt-20">
       <summary className="cursor-pointer font-semibold">Gastos compartidos · {clp(n.gastosCompartidos)}</summary>
       {compartidos.filter(g => g.categoria !== "compra_inventario").map(g => <p key={g.id} className="mt-2 flex justify-between gap-2 text-sm"><span>{g.descripcion} · {fechaLegible(g.fecha)}</span><b>{clp(g.monto)}</b></p>)}
       <div className="mt-4 max-w-lg"><GastoGeneralForm hoy={hoy} digital="Cuenta de la óptica" personal="Dinero personal" chequeoId={chequeo.id} /></div>
