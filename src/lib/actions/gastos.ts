@@ -53,6 +53,8 @@ export async function crearGastoGlobal(formData: FormData) {
   const nota = String(formData.get("nota") ?? "").trim();
   const monto = montoCaja(formData.get("monto"));
   const categoria = String(formData.get("categoria") ?? "");
+  const chequeoId = String(formData.get("chequeo_id") ?? "");
+  if (chequeoId && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(chequeoId)) throw new Error("Chequeo no válido.");
   if (!fechaValidaDocumento(fecha) || fecha > hoyEnChile() || !descripcion || descripcion.length > 250 || nota.length>1000 || monto === null) throw new Error("Revisa la fecha, descripción y monto del gasto.");
   const fuente = String(formData.get("caja") ?? "");
   if (!["digital", "efectivo", "personal"].includes(fuente)) throw new Error("Elige de dónde salió el dinero.");
@@ -61,6 +63,7 @@ export async function crearGastoGlobal(formData: FormData) {
 
   const { error } = await supabase.from("gastos_globales").insert({
     ...(id ? { id } : {}),
+    ...(chequeoId ? { chequeo_id: chequeoId } : {}),
     tenant_id: tenantId,
     fecha,
     descripcion,
@@ -77,6 +80,10 @@ export async function crearGastoGlobal(formData: FormData) {
   revalidatePath("/reportes");
   revalidatePath("/");
   revalidatePath("/caja");
+  if (chequeoId) {
+    revalidatePath("/operativos/chequeos");
+    redirect(`/operativos/chequeos?chequeo=${chequeoId}&guardado=1`);
+  }
   if (fuente === 'personal' || formData.get('volver_gastos') === '1') redirect('/gastos?guardado=1#adelantos-personales');
   if (formData.get("volver_historial") === "1") redirect("/gastos?ver=historial&guardado=1");
   if (formData.get("volver_caja") === "1") redirect("/caja?guardado=1");

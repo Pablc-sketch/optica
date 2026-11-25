@@ -211,6 +211,9 @@ export default async function OperativosPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <CabeceraPagina seccion="En terreno" titulo="Operativos" />
         <div className="flex flex-wrap gap-2">
+          <Link href="/operativos/chequeos" className="rounded-xl bg-sidebar px-4 py-3 text-sm font-semibold text-white">
+            Chequeos
+          </Link>
           <Link href="/operativos/agenda" className="rounded-xl bg-sky-900 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-800">
             Abrir calendario
           </Link>
