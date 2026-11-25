@@ -84,7 +84,8 @@ export async function crearGastoGlobal(formData: FormData) {
   revalidatePath("/caja");
   if (chequeoId) {
     revalidatePath("/operativos/chequeos");
-    redirect(`/operativos/chequeos?chequeo=${chequeoId}&guardado=1`);
+    const destino = `/operativos/chequeos?chequeo=${chequeoId}`;
+    redirect(comida ? `${destino}&guardado=comida#comida-chequeo` : `${destino}&guardado=1`);
   }
   if (fuente === 'personal' || formData.get('volver_gastos') === '1') redirect('/gastos?guardado=1#adelantos-personales');
   if (formData.get("volver_historial") === "1") redirect("/gastos?ver=historial&guardado=1");
