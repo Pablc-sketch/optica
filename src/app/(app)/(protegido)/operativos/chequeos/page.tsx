@@ -81,7 +81,7 @@ export default async function ChequeosPage({ searchParams }: {
         : <p role="status" className="rounded-lg bg-white p-4">La sede ya no está en este chequeo.</p>}
     </div>;
   }
-  const datos = await cargarCajaChequeo(supabase, tenantId, chequeo, integrantes);
+  const datos = await cargarCajaChequeo(supabase, tenantId, chequeo, integrantes, hoy);
   if (!datos) return <div className="space-y-4">{cabecera}<p role="alert" className="rounded-lg bg-red-50 p-4">No se pudo calcular el chequeo. Recarga para reintentar.</p></div>;
   const { n, caja, compartidos, ventas, tenant } = datos;
   const nombres = etiquetasReparto(tenant?.reparto_etiquetas);

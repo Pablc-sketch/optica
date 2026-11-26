@@ -73,7 +73,7 @@ describe("Caja del chequeo", () => {
       [{ gasto_id: compra.id, monto: 4000 }], []);
     expect(parcial).toMatchObject({
       cristales: 7000, marcos: 5000, comida: 5000, fidesPendiente: 5000, porReembolsar: 30_000,
-      cajaRegistrada: 59_000, saldoTrasPagos: 13_000, proyectado: 53_000,
+      cajaRegistrada: 59_000, saldoTrasPagos: 8_000, proyectado: 48_000,
     });
   });
 });
@@ -90,4 +90,20 @@ it("calcula la comisión sobre todas las ventas del chequeo y reserva el adelant
     porCobrar: 495_000,
     reparto: { utilidadDisponible: 720_000, ahorro: 144_000, parteMadre: 345_600, partePablo: 230_400 },
   });
+});
+
+it("descuenta el IVA antes del ahorro y no vuelve a reservar un pago del SII ya asignado a la caja", () => {
+  const n = resumirChequeo([sede("a")], [], [venta("a", 100_000, 70_000)],
+    0, 20, 0, 0, { comisionIsadoraPct: 10, parteMadrePct: 50 }, 0, 10_000);
+  expect(n).toMatchObject({
+    iva: 10_000, comisionVentas: 10_000,
+    reparto: { utilidadDisponible: 80_000, ahorro: 16_000, parteMadre: 32_000, partePablo: 32_000 },
+  });
+  const abonoSii: GastoChequeo = {
+    id: "f29", fecha: "2026-12-01", descripcion: "Pago de impuesto", monto: 4000, caja: "digital",
+    categoria: "otro", operativo_id: null, chequeo_id: "grupo", nota: null, monto_estimado: false,
+  };
+  const caja = resumirCajaChequeo(n, "grupo", [abonoSii], [], [], [], new Set([abonoSii.id]));
+  expect(caja).toMatchObject({ gastosPagados: 4000, ivaPendienteCaja: 6000, saldoTrasPagos: 50_000 });
+  expect(resumirCajaChequeo(n, "grupo", [], [], [], []).saldoTrasPagos).toBe(caja.saldoTrasPagos);
 });

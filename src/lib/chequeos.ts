@@ -53,6 +53,7 @@ export function resumirChequeo(
   gastosCompartidos: number, ahorroPct: number, debito: number, credito: number,
   reglas?: { comisionIsadoraPct: number; parteMadrePct: number },
   reservaCompraPersonal = 0,
+  iva = 0,
 ) {
   const atendidos = new Set<string>();
   let vendidoAcumulado = 0;
@@ -98,10 +99,10 @@ export function resumirChequeo(
   const total = (campo: "ventas" | "pares" | "marcos" | "conSaldo" | "vendido" | "cobrado" | "porCobrar" | "porCobrarEntrega" | "utilidad" | "comisionVentas") =>
     filas.reduce((suma, sede) => suma + sede[campo], 0);
   const utilidad = total("utilidad") - gastosCompartidos;
-  const reparto = calcularSueldos(0, utilidad - reservaCompraPersonal, { comisionVendedoraPct: 0, comisionVendedoraBase: "venta_total", ahorroPct, parteMadrePct: reglas?.parteMadrePct });
+  const reparto = calcularSueldos(0, utilidad - reservaCompraPersonal - iva, { comisionVendedoraPct: 0, comisionVendedoraBase: "venta_total", ahorroPct, parteMadrePct: reglas?.parteMadrePct });
   return {
     filas, pacientes: atendidos.size, ventas: total("ventas"), pares: total("pares"), marcos: total("marcos"),
     conSaldo: total("conSaldo"), vendido: total("vendido"), cobrado: total("cobrado"), porCobrar: total("porCobrar"), porCobrarEntrega: total("porCobrarEntrega"),
-    utilidad, comisionVentas: total("comisionVentas"), reparto, gastosCompartidos, reservaCompraPersonal,
+    utilidad, iva, comisionVentas: total("comisionVentas"), reparto, gastosCompartidos, reservaCompraPersonal,
   };
 }

@@ -8,7 +8,7 @@ import { guardarRepartoChequeo } from "@/lib/actions/chequeos";
 import { guardarPagoCostosChequeo } from "@/lib/actions/cierre";
 import type { Chequeo, SedeChequeo } from "@/lib/chequeos";
 import { clp } from "@/lib/clp";
-import type { cargarCajaChequeo, cargarSiiMensual } from "@/lib/datos-caja-chequeo";
+import type { cargarCajaChequeo } from "@/lib/datos-caja-chequeo";
 import { etiquetasReparto } from "@/lib/etiquetas-reparto";
 import { fechaLegible } from "@/lib/fechas";
 import type { SaldoMercadoPago } from "@/lib/mercadopago-saldo";
@@ -108,12 +108,11 @@ function RecuadroCostos({ datos, titulo, clave, chequeo, hoy }: {
   </details>;
 }
 
-export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, efectivo, efectivoVerificado, cuenta, bancoRegistrado, sii }: {
+export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, efectivo, efectivoVerificado, cuenta, bancoRegistrado }: {
   chequeo: Chequeo; opciones: Chequeo[]; sedes: SedeChequeo[]; datos: Datos; hoy: string;
   efectivo: number | null; efectivoVerificado: boolean; cuenta: SaldoMercadoPago; bancoRegistrado: number | null;
-  sii: Awaited<ReturnType<typeof cargarSiiMensual>>;
 }) {
-  const { caja, n } = datos;
+  const { caja, n, sii } = datos;
   const nombres = etiquetasReparto(datos.tenant?.reparto_etiquetas);
   const saldoEnVivo = cuenta.estado === "disponible";
   const saldo = saldoEnVivo ? cuenta.disponible : bancoRegistrado;
@@ -123,7 +122,9 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, e
   const partePamela = Number(chequeo.reparto_pamela_pct ?? 50);
   const gastosPagados = caja.pagados.toSorted((a, b) => b.gasto.fecha.localeCompare(a.gasto.fecha));
   const sedesPorId = new Map(sedes.map(s => [s.id, s.nombre]));
-  const mesSii = sii && new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(sii.periodo));
+  const formatoMes = new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric", timeZone: "UTC" });
+  const mesSii = sii && formatoMes.format(new Date(sii.periodo));
+  const mesPago = sii && formatoMes.format(new Date(sii.siguiente));
 
   return <>
     <section aria-label="Saldos de la óptica" className="space-y-2">
@@ -206,6 +207,10 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, e
 
     <section id="reparto" className="space-y-3 scroll-mt-20" aria-labelledby="titulo-reparto">
       <h2 id="titulo-reparto" className="text-xl font-bold">Reparto del chequeo</h2>
+      <dl className="grid grid-cols-2 gap-2 sm:gap-3">
+        <Indicador titulo="Líquido para ahorro y reparto" valor={n.reparto.utilidadDisponible} tono="verde" detalle="Después de IVA, costos, gastos y comisión" />
+        <Indicador titulo="IVA reservado del chequeo" valor={n.iva} tono="ambar" detalle={datos.ivaSinCredito ? "Estimado sin crédito fiscal de los meses sin datos" : "Incluido en el cálculo del líquido"} />
+      </dl>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <Indicador titulo={nombres.isadora} valor={n.comisionVentas} detalle={`${comision}% de las ventas`} tono="azul" />
         <Indicador titulo="Ahorro" valor={n.reparto.ahorro} detalle={`${ahorro}% del líquido`} tono="verde" />
@@ -213,10 +218,10 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, e
         <Indicador titulo={nombres.pablo} valor={n.reparto.partePablo} detalle={`${100 - partePamela}% del resto`} />
       </dl>
       <p className="text-sm text-tinta-suave">
-        Vendido <b>{clp(n.vendido)}</b> · Líquido estimado para reparto <b>{clp(n.reparto.utilidadDisponible)}</b>
+        Vendido <b>{clp(n.vendido)}</b> · Reparto estimado sobre las ventas
         {n.reservaCompraPersonal > 0 && <> · Incluye reserva para devolver {clp(n.reservaCompraPersonal)} de inventario</>}
       </p>
-      <p className="text-sm text-tinta-suave">Caja del chequeo después de compromisos <b>{clp(caja.saldoTrasPagos)}</b></p>
+      <p className="text-sm text-tinta-suave">Caja cobrada del chequeo después de compromisos e IVA <b>{clp(caja.saldoTrasPagos)}</b></p>
       <Desplegable titulo="Editar porcentajes">
         <CajaFormulario guardar={guardarRepartoChequeo} texto="Guardar reparto">
           <input type="hidden" name="chequeo_id" value={chequeo.id} />
@@ -229,10 +234,20 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, e
       </Desplegable>
     </section>
 
-    <Desplegable titulo={sii ? `SII mensual · ${sii.declarado ? "Saldo declarado" : "Reserva estimada"} ${clp(sii.saldo)}` : "SII mensual"}>
-      {sii && <p className="text-sm capitalize">{mesSii}{sii.venceEl && ` · Vence el ${fechaLegible(sii.venceEl)}`}</p>}
-      {sii && !sii.declarado && <p className="mt-1 text-sm text-tinta-suave">Confirma el monto y el vencimiento del F29 con el contador.</p>}
-      <Link href="/impuestos" className="mt-2 inline-block text-sm font-semibold underline">Ver control del SII</Link>
-    </Desplegable>
+    <section aria-labelledby="iva-mensual" className="space-y-2">
+      <h2 id="iva-mensual" className="text-lg font-bold">IVA mensual de la óptica</h2>
+      <Desplegable tono="ambar" titulo={<span>
+        IVA estimado por reservar <b className="block text-2xl tabular-nums">{sii ? clp(sii.ivaPendiente) : "Por verificar"}</b>
+        {sii && <span className="block text-sm font-normal">{mesSii} · Pago en {mesPago}</span>}
+      </span>}>
+        {sii && <dl className="space-y-1 text-sm">
+          <div className="flex justify-between gap-2"><dt>IVA de ventas</dt><dd>{clp(sii.debito)}</dd></div>
+          <div className="flex justify-between gap-2"><dt>Crédito fiscal registrado</dt><dd>{clp(sii.creditoFiscal)}</dd></div>
+          <div className="flex justify-between gap-2"><dt>Saldo F29 {sii.declarado ? "declarado" : "estimado"}</dt><dd>{clp(sii.saldo)}</dd></div>
+          {sii.venceEl && <div className="flex justify-between gap-2"><dt>Vencimiento registrado</dt><dd>{fechaLegible(sii.venceEl)}</dd></div>}
+        </dl>}
+        <Link href="/impuestos" className="mt-2 inline-block text-sm font-semibold underline">Ver control del SII</Link>
+      </Desplegable>
+    </section>
   </>;
 }

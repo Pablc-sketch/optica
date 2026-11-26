@@ -21,7 +21,7 @@ import { pagosConAsignaciones, type PagoCosto } from '@/lib/pagos-operativo';
 import { resumirCaja } from '@/lib/caja';
 import CajaDelChequeo from '@/components/caja-del-chequeo';
 import VistaGastos, { type FiltrosGastos } from '@/components/vista-gastos';
-import { cargarCajaChequeo, cargarSiiMensual } from '@/lib/datos-caja-chequeo';
+import { cargarCajaChequeo } from '@/lib/datos-caja-chequeo';
 import type { Chequeo, SedeChequeo } from '@/lib/chequeos';
 import CajaHistorial from '@/components/caja-historial';
 export const dynamic = 'force-dynamic';
@@ -57,16 +57,15 @@ export default async function Caja({ searchParams }: {
       <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudieron cargar los chequeos de la caja.</p>
     </div>;
     if (chequeo) {
-      const [integrantes, cuenta, caja, conteo, sii] = await Promise.all([
+      const [integrantes, cuenta, caja, conteo] = await Promise.all([
         leerTodas((a,b) => supabase.from('operativos').select('*').eq('tenant_id', tenantId).eq('chequeo_id', chequeo.id)
           .neq('estado', 'cancelado').order('fecha').order('hora_inicio', { nullsFirst: false }).order('id').range(a,b)),
         leerEstadoCuenta(tenantId),
         supabase.rpc('caja_global').single(),
         supabase.from('caja_conteos').select('contado,esperado').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(1),
-        cargarSiiMensual(supabase, tenantId, hoy),
       ]);
       const sedes = (integrantes.data ?? []) as SedeChequeo[];
-      const datos = integrantes.error ? null : await cargarCajaChequeo(supabase, tenantId, chequeo, sedes);
+      const datos = integrantes.error ? null : await cargarCajaChequeo(supabase, tenantId, chequeo, sedes, hoy);
       const t = caja.error ? null : caja.data as { entro_efectivo: number; salio_efectivo: number; entro_digital: number;
         entro_debito: number; entro_credito: number; salio_digital: number } | null;
       const libro = t && datos ? resumirCaja({
@@ -83,7 +82,7 @@ export default async function Caja({ searchParams }: {
         {guardado}
         {datos ? <CajaDelChequeo chequeo={chequeo} opciones={chequeos} sedes={sedes} datos={datos} hoy={hoy}
           efectivo={efectivoContado ?? libro?.hayEfectivo ?? null} efectivoVerificado={efectivoContado !== null}
-          cuenta={cuenta.saldo} bancoRegistrado={libro?.hayDigital ?? null} sii={sii} />
+          cuenta={cuenta.saldo} bancoRegistrado={libro?.hayDigital ?? null} />
           : <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudo calcular el chequeo. Recarga para reintentar.</p>}
       </div>;
     }
