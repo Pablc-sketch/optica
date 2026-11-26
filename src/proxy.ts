@@ -13,6 +13,7 @@ export async function proxy(request: NextRequest) {
   if (rutaMarca === '/api/integraciones/mercadopago/sync') return NextResponse.next();
   // Webhook de WhatsApp: Meta no tiene sesión; la ruta exige la firma de Meta.
   if (rutaMarca === '/api/whatsapp/webhook') return NextResponse.next();
+  if (rutaMarca === "/avisos-altura-sw.js") return NextResponse.next();
   if (rutaMarca === "/conoce") return NextResponse.next();
   if (rutaMarca === "/optica-global" || rutaMarca === "/optica-global/opengraph-image") {
     return NextResponse.next();
@@ -70,7 +71,8 @@ export async function proxy(request: NextRequest) {
     destino.cookies.delete(COOKIE_ACTIVIDAD);
     return destino;
   }
-  if (user && hayQueRefrescar(ultimo, ahora)) {
+  const consultaAutomatica = ruta === "/api/avisos-altura" && request.method === "GET";
+  if (user && !consultaAutomatica && hayQueRefrescar(ultimo, ahora)) {
     response.cookies.set(COOKIE_ACTIVIDAD, String(ahora), {
       httpOnly: true,
       secure: true,

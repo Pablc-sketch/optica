@@ -2,6 +2,9 @@
 
 import { claveCodigoMarco } from "@/lib/buscar-producto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { tipoConAltura } from "@/lib/avisos-altura";
+import { clavePublicaAvisos, enviarAvisosAltura } from "@/lib/avisos-altura-push";
 import { revalidarOperacionVenta } from "@/lib/revalidar-venta";
 import { diaEnChile, sumarDias } from "@/lib/fechas";
 import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
@@ -271,7 +274,12 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
   revalidatePath("/laboratorio");
   revalidatePath("/reportes");
   revalidarOperacionVenta();
-  const res = data as { ot_folio: number | null; ot_folios?: number[] | null };
+  const res = data as { ot_folio: number | null; ot_folios?: number[] | null; repetida?: boolean };
+  if (!res.repetida && clavePublicaAvisos() && cristales.some(c => tipoConAltura(c.tipoLente))) {
+    after(async () => {
+      await enviarAvisosAltura(tenantId, input.ventaId).catch(() => {});
+    });
+  }
   return { ok: true, ventaId: input.ventaId, otFolio: res.ot_folio ?? null, otFolios: res.ot_folios ?? [] };
 }
 
