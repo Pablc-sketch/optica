@@ -1,122 +1,259 @@
 import CabeceraPagina from "@/components/cabecera-pagina";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { fechaLegible } from "@/lib/fechas";
+import { exigirRolPagina } from "@/lib/autorizacion";
+import { clp } from "@/lib/clp";
+import { ESTADOS_ENTREGA, ordenarPedidosPorSede, paresOT, sedesDeOrden, type EstadoOTEntrega } from "@/lib/entregas";
+import { diaEnChile, fechaConDia, fechaLegible } from "@/lib/fechas";
 import { leerTodas } from "@/lib/leer-todas";
-import { esConsulta } from "@/lib/consulta";
 import TarjetaCobro, { type FilaCobro } from "../cobros/tarjeta-cobro";
 
-// Entrega: los lentes que faltan por entregar, agrupados por operativo para
-// que siempre se sepa de cuál son. Primero los que ya están listos.
-type Ot = { id: string; estado: string; tipo_lente: string | null; tipo_lente_2: string | null };
-type Grupo = { clave: string; nombre: string; fecha: string | null; filas: FilaCobro[] };
+type Relacion<T> = T | T[] | null;
+type Paciente = { nombre: string; telefono: string | null };
+type Orden = EstadoOTEntrega & {
+  id: string;
+  folio: number;
+  fecha_ingreso: string;
+  operativo_id: string | null;
+  recetas: Relacion<{ operativo_id: string | null }>;
+  pacientes: Relacion<Paciente>;
+  venta_items: { venta_id: string }[];
+};
+type Venta = {
+  id: string;
+  total: number;
+  operativo_id: string | null;
+  pacientes: Relacion<Paciente>;
+  pagos_abonos: { monto: number }[];
+  venta_items: { ot_id: string | null; ordenes_trabajo: Relacion<EstadoOTEntrega> }[];
+};
+type Operativo = {
+  id: string;
+  nombre: string;
+  fecha: string;
+  chequeo_id: string | null;
+  fecha_entrega_estimada: string | null;
+  hora_entrega: string | null;
+  lugar_entrega: string | null;
+  direccion: string | null;
+  estado: string;
+};
+type Chequeo = { id: string; nombre: string; desde: string; hasta: string };
+type OrdenRevisada = { ot: Orden; operativoId: string | null; sedes: string[]; problema: string | null };
+type Revision = { ordenes: Orden[]; sedes: string[]; problema: string; venta?: Venta };
 
-function totalesPendientes(filas: FilaCobro[]) {
-  return filas.reduce((suma, fila) => ({
-    listos: suma.listos + fila.listos,
-    enProceso: suma.enProceso + fila.enProceso,
-  }), { listos: 0, enProceso: 0 });
+function uno<T>(relacion: Relacion<T>) {
+  return Array.isArray(relacion) ? (relacion[0] ?? null) : relacion;
 }
 
-export default async function Entregas() {
-  const supabase = await createClient();
-  const res = await leerTodas((a, b) => supabase
-    .from("ventas")
-    .select(
-      `id, total, fecha, operativos:operativo_id (id, nombre, fecha), pacientes:paciente_id (nombre, telefono), pagos_abonos (monto),
-       venta_items (descripcion, ot_id, ordenes_trabajo:ot_id (id, estado, tipo_lente, tipo_lente_2))`
-    )
-    .eq("anulada", false)
-    .order("fecha", { ascending: false })
-    .order("id").range(a, b));
+function cantidad(n: number, singular: string, plural = singular + "s") {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
 
-  const unico = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
-  const grupos = new Map<string, Grupo>();
+function sumar(filas: FilaCobro[]) {
+  return filas.reduce((total, fila) => ({
+    listos: total.listos + fila.listos,
+    enProceso: total.enProceso + fila.enProceso,
+    saldo: total.saldo + fila.saldo,
+  }), { listos: 0, enProceso: 0, saldo: 0 });
+}
 
-  for (const v of res.data ?? []) {
-    const items = v.venta_items ?? [];
-    if (items.length > 0 && items.every((i) => esConsulta((i as { descripcion: string | null }).descripcion))) continue;
-    const ots = new Map<string, Ot>();
-    for (const item of items) {
-      const ot = unico((item as { ordenes_trabajo?: Ot | Ot[] | null }).ordenes_trabajo);
-      if (ot) ots.set(ot.id, ot);
-    }
-    const pares = (o: Ot) => (o.tipo_lente ? 1 : 0) + (o.tipo_lente_2 ? 1 : 0) || 1;
-    const sumar = (f: (o: Ot) => boolean) => [...ots.values()].filter(f).reduce((s, o) => s + pares(o), 0);
-    const listos = sumar((o) => o.estado === "listo");
-    const enProceso = sumar((o) => !["listo", "entregado", "cancelado"].includes(o.estado));
-    if (listos + enProceso === 0) continue;
+function CargaFallida() {
+  return <>
+    <CabeceraPagina seccion="Operación" titulo="Entregas" />
+    <p role="alert" className="rounded-xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
+      No se pudieron cargar las entregas. Recarga para reintentar.
+    </p>
+  </>;
+}
 
-    const paciente = unico(v.pacientes as unknown as { nombre: string; telefono: string | null } | { nombre: string; telefono: string | null }[] | null);
-    const op = unico(v.operativos as unknown as { id: string; nombre: string; fecha: string } | { id: string; nombre: string; fecha: string }[] | null);
-    const pagado = (v.pagos_abonos ?? []).reduce((s: number, p: { monto: number }) => s + p.monto, 0);
-    const clave = op?.id ?? "sin";
-    const grupo = grupos.get(clave) ?? { clave, nombre: op?.nombre ?? "Sin operativo", fecha: op?.fecha ?? null, filas: [] };
-    grupo.filas.push({
-      ventaId: v.id,
-      nombre: paciente?.nombre ?? "Sin paciente",
-      telefono: paciente?.telefono ?? null,
-      total: v.total,
-      pagado,
-      saldo: Math.max(0, v.total - pagado),
-      listos,
-      enProceso,
-      entregados: sumar((o) => o.estado === "entregado"),
-    });
-    grupos.set(clave, grupo);
+export default async function Entregas({ searchParams }: {
+  searchParams: Promise<{ chequeo?: string; op?: string }>;
+}) {
+  const { supabase, tenantId } = await exigirRolPagina(["admin", "ventas"]);
+  const { chequeo: chequeoId, op: operativoId } = await searchParams;
+  const [ots, ops, chequeos] = await Promise.all([
+    leerTodas((a, b) => supabase.from("ordenes_trabajo")
+      .select("id,folio,estado,tipo_lente,tipo_lente_2,fecha_ingreso,operativo_id,recetas:receta_id(operativo_id),pacientes:paciente_id(nombre,telefono),venta_items(venta_id)")
+      .eq("tenant_id", tenantId).not("estado", "in", "(entregado,cancelado)").order("folio").order("id").range(a, b)),
+    leerTodas((a, b) => supabase.from("operativos")
+      .select("id,nombre,fecha,chequeo_id,fecha_entrega_estimada,hora_entrega,lugar_entrega,direccion,estado")
+      .eq("tenant_id", tenantId).order("fecha").order("hora_inicio", { nullsFirst: false }).order("id").range(a, b)),
+    leerTodas((a, b) => supabase.from("chequeos").select("id,nombre,desde,hasta")
+      .eq("tenant_id", tenantId).order("desde", { ascending: false }).order("id").range(a, b)),
+  ]);
+  if (ots.error || ops.error || chequeos.error) return <CargaFallida />;
+
+  const ordenes = ots.data as Orden[];
+  const sedes = ops.data as Operativo[];
+  const chequeo = (chequeos.data as Chequeo[]).find(c => c.id === chequeoId);
+  const sedeSeleccionada = sedes.find(s => s.id === operativoId && (!chequeoId || s.chequeo_id === chequeo?.id));
+  if ((chequeoId && !chequeo) || (operativoId && !sedeSeleccionada)) {
+    return <p>Este grupo de entregas no está disponible. <Link className="underline" href="/entregas">Ver todas</Link></p>;
   }
 
-  const lista = [...grupos.values()]
-    .map((g) => ({
-      ...g,
-      filas: g.filas.sort((a, b) => Number(b.listos > 0) - Number(a.listos > 0) || b.saldo - a.saldo),
-    }))
-    .sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? ""));
-  const total = totalesPendientes(lista.flatMap(g => g.filas));
+  const ventasIds = [...new Set(ordenes.flatMap(ot => ot.venta_items.map(item => item.venta_id)))];
+  const lotes = [];
+  for (let i = 0; i < ventasIds.length; i += 100) lotes.push(ventasIds.slice(i, i + 100));
+  const resultados = await Promise.all(lotes.map(ids => leerTodas((a, b) => supabase.from("ventas")
+    .select("id,total,operativo_id,pacientes:paciente_id(nombre,telefono),pagos_abonos(monto),venta_items(ot_id,ordenes_trabajo:ot_id(estado,tipo_lente,tipo_lente_2))")
+    .eq("tenant_id", tenantId).eq("anulada", false).in("id", ids).order("id").range(a, b))));
+  if (resultados.some(res => res.error)) return <CargaFallida />;
+
+  const ventas = resultados.flatMap(res => res.data ?? []) as Venta[];
+  const sedesPorId = new Map(sedes.map(sede => [sede.id, sede]));
+  const ventasPorId = new Map(ventas.map(venta => [venta.id, venta]));
+  const ordenesPorVenta = new Map<string, OrdenRevisada[]>();
+  const porRevisar: Revision[] = [];
+  const otsConVentaAmbigua = new Set<string>();
+
+  for (const ot of ordenes) {
+    const idsVenta = [...new Set(ot.venta_items.map(item => item.venta_id))].filter(id => ventasPorId.has(id));
+    const referencias = [ot.operativo_id, uno(ot.recetas)?.operativo_id, ...idsVenta.map(id => ventasPorId.get(id)?.operativo_id)];
+    const sedesOT = sedesDeOrden(referencias);
+    const [sede] = sedesOT;
+    if (idsVenta.length !== 1) {
+      if (idsVenta.length > 1) otsConVentaAmbigua.add(ot.id);
+      porRevisar.push({
+        ordenes: [ot],
+        sedes: sedesOT,
+        problema: idsVenta.length > 1 ? "La OT está vinculada a más de una venta activa." : "La OT no tiene una venta activa vinculada.",
+      });
+      continue;
+    }
+    const problema = sedesOT.length > 1 ? "La sede difiere entre la OT, la venta o la receta."
+      : sede && (!sedesPorId.has(sede) || sedesPorId.get(sede)?.estado === "cancelado") ? "La sede registrada no está disponible." : null;
+    const idVenta = idsVenta[0];
+    const vinculadas = ordenesPorVenta.get(idVenta) ?? [];
+    vinculadas.push({ ot, operativoId: sede ?? null, sedes: sedesOT, problema });
+    ordenesPorVenta.set(idVenta, vinculadas);
+  }
+
+  const filasPorSede = new Map<string | null, FilaCobro[]>();
+  for (const venta of ventas) {
+    const vinculadas = ordenesPorVenta.get(venta.id) ?? [];
+    if (!vinculadas.length) continue;
+    const { sede, sedes: referencias, problema } = ordenarPedidosPorSede(vinculadas);
+    const tieneOrdenAmbigua = venta.venta_items.some(item => item.ot_id && otsConVentaAmbigua.has(item.ot_id));
+    const otsVenta = vinculadas.map(v => v.ot);
+    if (problema || tieneOrdenAmbigua) {
+      porRevisar.push({ ordenes: otsVenta, sedes: referencias, problema: problema ?? "El pedido comparte una OT con otra venta.", venta });
+      continue;
+    }
+    const persona = uno(venta.pacientes);
+    const pagado = venta.pagos_abonos.reduce((total, pago) => total + pago.monto, 0);
+    const listos = otsVenta.filter(ot => ot.estado === "listo").reduce((total, ot) => total + paresOT(ot), 0);
+    const entregadas = new Map<string, EstadoOTEntrega>();
+    for (const item of venta.venta_items) {
+      const ot = uno(item.ordenes_trabajo);
+      if (item.ot_id && ot?.estado === "entregado") entregadas.set(item.ot_id, ot);
+    }
+    const filas = filasPorSede.get(sede) ?? [];
+    filas.push({
+      ventaId: venta.id, nombre: persona?.nombre ?? "Sin paciente", telefono: persona?.telefono ?? null,
+      total: venta.total, pagado, saldo: Math.max(0, venta.total - pagado), listos,
+      enProceso: otsVenta.reduce((total, ot) => total + paresOT(ot), 0) - listos,
+      entregados: [...entregadas.values()].reduce((total, ot) => total + paresOT(ot), 0),
+      ordenes: otsVenta.map(ot => ({ id: ot.id, folio: ot.folio, pares: paresOT(ot), estado: ESTADOS_ENTREGA[ot.estado] ?? ot.estado })),
+    });
+    filasPorSede.set(sede, filas);
+  }
+
+  const enVista = sedes.filter(sede => sedeSeleccionada ? sede.id === sedeSeleccionada.id
+    : chequeo ? sede.chequeo_id === chequeo.id && sede.estado !== "cancelado" : filasPorSede.has(sede.id));
+  const idsEnVista = new Set(enVista.map(sede => sede.id));
+  const revisiones = porRevisar.filter(revision => {
+    if (!chequeo && !sedeSeleccionada) return true;
+    if (revision.sedes.length || sedeSeleccionada) return revision.sedes.some(id => idsEnVista.has(id));
+    return chequeo && revision.ordenes.some(ot => {
+      const dia = diaEnChile(ot.fecha_ingreso);
+      return dia >= chequeo.desde && dia <= chequeo.hasta;
+    });
+  });
+  const fechas = [...new Set(enVista.flatMap(sede => sede.fecha_entrega_estimada ?? []))].sort();
+  const fechasConSedes = [...fechas, null].map(fecha => ({
+    fecha, sedes: enVista.filter(sede => sede.fecha_entrega_estimada === fecha),
+  })).filter(grupo => grupo.sedes.length);
+  const sinOperativo = !chequeo && !sedeSeleccionada ? filasPorSede.get(null) ?? [] : [];
+  const filasVisibles = [...enVista.flatMap(sede => filasPorSede.get(sede.id) ?? []), ...sinOperativo];
+  const total = sumar(filasVisibles);
+
+  function pedidos(filas: FilaCobro[]) {
+    return filas.length > 0 && <ul className="mt-3 grid gap-2 lg:grid-cols-2">
+      {[...filas].sort((a, b) => Number(b.listos > 0) - Number(a.listos > 0) || a.nombre.localeCompare(b.nombre, "es"))
+        .map(fila => <TarjetaCobro key={fila.ventaId} fila={fila} />)}
+    </ul>;
+  }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <CabeceraPagina seccion="Operación" titulo="Entregas" />
-          <p className="text-sm text-tinta-suave">
-            {res.error ? "Entregas no disponibles" : lista.length === 0 ? "Todo entregado" : `${total.listos} pares listos · ${total.enProceso} en laboratorio`}
-          </p>
-        </div>
-        <Link href="/avisos" className="rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900">
+    <div className="mx-auto flex max-w-6xl flex-col gap-5">
+      <CabeceraPagina seccion="Operación" titulo={chequeo ? `Entregas · ${chequeo.nombre}` : "Entregas"} acciones={
+        <Link href="/avisos" className="rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white">
           Avisar que están listos
         </Link>
-      </div>
-
-      {res.error && (
-        <p className="rounded-xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
-          No se pudieron cargar las entregas. Vuelve a intentar.
-        </p>
+      } />
+      {Boolean(chequeos.data?.length || sedeSeleccionada) && (
+        <nav aria-label="Filtrar entregas por chequeo" className="flex flex-wrap gap-2">
+          {[{ href: "/entregas", nombre: "Todas", activo: !chequeo && !sedeSeleccionada },
+            ...(chequeos.data ?? []).map(c => ({ href: `/entregas?chequeo=${c.id}`, nombre: c.nombre, activo: c.id === chequeo?.id && !sedeSeleccionada })),
+          ].map(filtro => <Link key={filtro.href} href={filtro.href} aria-current={filtro.activo ? "page" : undefined}
+            className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${filtro.activo ? "border-brand bg-brand/10 text-brand-dark" : "bg-white"}`}>
+            {filtro.nombre}
+          </Link>)}
+        </nav>
       )}
-
-      {lista.length === 0 && !res.error && (
-        <p className="rounded-2xl bg-white p-6 text-center text-lg font-semibold text-emerald-800 shadow-sm">Todo entregado ✓</p>
-      )}
-
-      {lista.map((g) => {
-        const { listos, enProceso } = totalesPendientes(g.filas);
-        return (
-          <section key={g.clave} className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-tinta/10 pb-1">
-              <h2 className="text-lg font-bold">{g.nombre}</h2>
-              <p className="text-sm text-tinta-suave">
-                {g.fecha ? `${fechaLegible(g.fecha)} · ` : ""}
-                <b className={listos > 0 ? "text-emerald-700" : ""}>{listos} pares listos</b> · {enProceso} en laboratorio
-              </p>
-            </div>
-            <ul className="flex flex-col gap-3">
-              {g.filas.map((f) => (
-                <TarjetaCobro key={f.ventaId} fila={f} />
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+      <p className="rounded-xl bg-white p-3 text-sm tabular-nums">
+        <b>{cantidad(filasVisibles.length, "pedido")} · {cantidad(total.listos + total.enProceso, "par", "pares")}</b>
+        {" · "}{cantidad(total.listos, "listo")} · {total.enProceso} en proceso · {clp(total.saldo)} por cobrar
+      </p>
+      {fechasConSedes.map(grupo => (
+        <section key={grupo.fecha ?? "por-coordinar"} className="space-y-2">
+          <h2 className="text-lg font-bold">
+            {grupo.fecha ? `Entrega planificada · ${fechaConDia(grupo.fecha)}` : "Fecha de entrega por coordinar"}
+          </h2>
+          {grupo.sedes.map(sede => {
+            const filas = filasPorSede.get(sede.id) ?? [];
+            const { listos, enProceso, saldo } = sumar(filas);
+            const ubicacion = [
+              sede.hora_entrega ?? (grupo.fecha ? "Hora por confirmar" : null),
+              sede.lugar_entrega ?? (sede.direccion ? `Sede en ${sede.direccion}` : null),
+            ].filter(Boolean).join(" · ");
+            return <details key={sede.id} id={`sede-${sede.id}`} open={sedeSeleccionada?.id === sede.id || undefined}
+              className="scroll-mt-32 rounded-2xl border border-tinta/15 bg-crema-claro p-3 sm:p-4">
+              <summary className="cursor-pointer">
+                <span className="font-bold">{sede.nombre}</span>
+                <span className="ml-2 text-xs text-tinta-suave">Operativo {fechaLegible(sede.fecha)}{ubicacion && ` · ${ubicacion}`}</span>
+                <span className="mt-1 block text-sm">
+                  {filas.length ? <>
+                    {cantidad(filas.length, "pedido")} · {cantidad(listos + enProceso, "par", "pares")} · <b>{cantidad(listos, "par listo", "pares listos")}</b> · {enProceso} en proceso · {clp(saldo)} por cobrar
+                  </> : "Sin pedidos pendientes registrados"}
+                </span>
+              </summary>
+              <Link href={`/avisos?op=${sede.id}`} className="mt-2 inline-block text-sm font-semibold text-brand-dark underline">
+                Coordinar fecha, hora y lugar
+              </Link>
+              {pedidos(filas)}
+            </details>;
+          })}
+        </section>
+      ))}
+      {sinOperativo.length > 0 && <section><h2 className="text-lg font-bold">Pedidos sin operativo</h2>{pedidos(sinOperativo)}</section>}
+      {revisiones.length > 0 && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <h2 className="font-bold text-amber-950">Órdenes por revisar</h2>
+        <ul className="mt-2 space-y-2 text-sm">
+          {revisiones.map(({ ordenes, sedes: referencias, problema, venta }) => (
+            <li key={venta?.id ?? ordenes[0].id} className="rounded-lg bg-white p-3">
+              <p className="font-semibold">{uno(ordenes[0].pacientes)?.nombre ?? "Sin paciente"} · {problema}</p>
+              {referencias.length > 0 && <p>{referencias.map(id => sedesPorId.get(id)?.nombre ?? "Sede desconocida").join(" / ")}</p>}
+              <div className="flex flex-wrap gap-3">
+                {ordenes.map(ot => <Link key={ot.id} href={`/ot/${ot.id}`} className="underline">OT #{ot.folio}</Link>)}
+                {venta && <Link href={`/ventas/${venta.id}`} className="underline">Ver venta</Link>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>}
+      {fechasConSedes.length === 0 && sinOperativo.length === 0 && revisiones.length === 0
+        && <p className="rounded-2xl bg-white p-6 text-center font-semibold">Sin entregas pendientes</p>}
     </div>
   );
 }
