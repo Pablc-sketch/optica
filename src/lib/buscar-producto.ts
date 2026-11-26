@@ -35,3 +35,25 @@ export function filtrarProductos<T extends ProductoBuscable>(productos: readonly
   const exacto = (producto: T) => Number(Boolean(codigo && compacto(producto.sku ?? "") === codigo));
   return coincidencias.sort((a, b) => exacto(b) - exacto(a) || Number((b.stock ?? 0) > 0) - Number((a.stock ?? 0) > 0));
 }
+
+export function sugerirMarcosPorCodigo<T extends ProductoBuscable>(marcos: readonly T[], entrada: string): T[] {
+  const clave = claveCodigoMarco(entrada);
+  if (!clave) return [];
+  const exacto = marcoPorCodigo(marcos, entrada);
+  if (exacto) return [exacto];
+  return marcos.filter(marco => claveCodigoMarco(marco.sku ?? "").startsWith(clave))
+    .sort((a, b) => Number((b.stock ?? 0) > 0) - Number((a.stock ?? 0) > 0)).slice(0, 6);
+}
+
+export function sugerirDetallesMarco(opciones: readonly (string | null | undefined)[], entrada: string): string[] {
+  const busca = normalizar(entrada.trim());
+  const vistos = new Set<string>();
+  return opciones.flatMap(opcion => {
+    const valor = opcion?.trim();
+    if (!valor) return [];
+    const clave = normalizar(valor);
+    if (vistos.has(clave) || !clave.includes(busca)) return [];
+    vistos.add(clave);
+    return [valor];
+  }).slice(0, 10);
+}

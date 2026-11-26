@@ -102,10 +102,14 @@ export async function actualizarOT(formData: FormData) {
     rol === "bodega" || (itemsVenta ?? 0) > 0
       ? {}
       : {
-          armazon_producto_id: marcoPropio ? null : String(formData.get("armazon_producto_id") ?? "").trim() || null,
-          marco_propio: marcoPropio,
-          armazon_producto_id_2: marcoPropio2 ? null : String(formData.get("armazon_producto_id_2") ?? "").trim() || null,
-          marco_propio_2: marcoPropio2,
+          ...(formData.has("armazon_producto_id") ? {
+            armazon_producto_id: marcoPropio ? null : String(formData.get("armazon_producto_id") ?? "").trim() || null,
+            marco_propio: marcoPropio,
+          } : {}),
+          ...(formData.has("armazon_producto_id_2") ? {
+            armazon_producto_id_2: marcoPropio2 ? null : String(formData.get("armazon_producto_id_2") ?? "").trim() || null,
+            marco_propio_2: marcoPropio2,
+          } : {}),
         };
 
   const { error } = await supabase

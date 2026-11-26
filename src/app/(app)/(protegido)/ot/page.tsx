@@ -7,7 +7,7 @@ import EliminarOT from "./eliminar-ot";
 import { rutaAvisoEntrega } from "@/lib/avisos";
 import { clp } from "@/lib/clp";
 import { leerTodas } from "@/lib/leer-todas";
-import { saldoUnicoPorVenta } from "@/lib/saldo-ordenes";
+import { ordenDeCobroPorVenta, saldoUnicoPorVenta } from "@/lib/saldo-ordenes";
 import { hoyEnChile, diaEnChile, fechaLegible } from "@/lib/fechas";
 import AbonoForm from "@/components/abono-form";
 import Tarjeta from "@/components/tarjeta";
@@ -112,6 +112,7 @@ export default async function TableroOT() {
     (ot) => ot.fecha_entrega_estimada && ot.fecha_entrega_estimada < hoy
   ).length;
   const totalPorCobrar = saldoUnicoPorVenta([...ventaPorOT.values()]);
+  const ordenDeCobro = ordenDeCobroPorVenta(ots, ventaPorOT);
 
   return (
     <div className="flex flex-col gap-4">
@@ -190,13 +191,16 @@ export default async function TableroOT() {
                   const paciente = ot.pacientes as unknown as { nombre: string; telefono: string | null } | null;
                   const venta = ventaPorOT.get(ot.id);
                   const saldo = venta?.saldo ?? 0;
+                  const ordenPrincipal = venta && ordenDeCobro.get(venta.ventaId);
+                  const muestraCobro = ordenPrincipal?.id === ot.id;
                   const sede = sedePorOT.get(ot.id);
                   const revisar = revisarIds.has(ot.id);
                   const rutaAviso = rutaAvisoEntrega(sede?.id, ot.paciente_id);
                   return (
                     <article
                       key={ot.id}
-                      className={`rounded-2xl bg-white p-3 shadow-[0_2px_8px_-3px_rgba(61,57,41,0.15)] transition hover:shadow-[0_6px_18px_-4px_rgba(61,57,41,0.22)] ${
+                      id={`ot-${ot.id}`}
+                      className={`scroll-mt-20 rounded-2xl bg-white p-3 shadow-[0_2px_8px_-3px_rgba(61,57,41,0.15)] transition hover:shadow-[0_6px_18px_-4px_rgba(61,57,41,0.22)] target:outline-2 target:outline-brand ${
                         atrasada ? "ring-1 ring-red-200" : ""
                       }`}
                     >
@@ -230,12 +234,17 @@ export default async function TableroOT() {
                       <p className="text-xs text-tinta-suave">
                         Tomada el {fechaLegible(diaEnChile(ot.fecha_ingreso))}
                       </p>
-                      {saldo > 0 && (
+                      {saldo > 0 && muestraCobro && (
                         <p className="mt-1 rounded-lg bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
-                          Debe {clp(saldo)}
+                          Saldo de la venta {clp(saldo)}
                         </p>
                       )}
-                      {col.estado === "listo" && venta && saldo > 0 && (
+                      {saldo > 0 && ordenPrincipal && !muestraCobro && (
+                        <Link href={`#ot-${ordenPrincipal.id}`} className="mt-1 block text-xs font-semibold text-brand-dark underline">
+                          Misma venta · cobro en OT #{ordenPrincipal.folio}
+                        </Link>
+                      )}
+                      {col.estado === "listo" && venta && saldo > 0 && muestraCobro && (
                         <div className="mt-2">
                           <AbonoForm mercadoPago={mercadoPago} ventaId={venta.ventaId} saldo={saldo} compacto />
                         </div>

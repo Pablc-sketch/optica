@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filtrarProductos } from "../src/lib/buscar-producto";
+import { filtrarProductos, sugerirDetallesMarco, sugerirMarcosPorCodigo } from "../src/lib/buscar-producto";
 
 const productos = [
   { nombre: "Deportivo verde", marca: "Lacrosse", sku: "LY-2187L C-2", stock: 0 },
@@ -15,6 +15,22 @@ describe("búsqueda de productos del punto de venta", () => {
 
   it("conserva las variantes y muestra primero la que tiene stock", () => {
     expect(filtrarProductos(productos, "LY-2187L")).toEqual([productos[1], productos[0]]);
+  });
+
+  it("acota los códigos por prefijo y deja solo el exacto frente a códigos más largos", () => {
+    const marcos = [
+      { nombre: "Primero", marca: null, sku: "XZ318 C-1", stock: 0 },
+      { nombre: "Segundo", marca: null, sku: "XZ318 C-10", stock: 2 },
+    ];
+    expect(sugerirMarcosPorCodigo(marcos, "xz318c")).toEqual([marcos[1], marcos[0]]);
+    expect(sugerirMarcosPorCodigo(marcos, "xz318 c1")).toEqual([marcos[0]]);
+    expect(sugerirMarcosPorCodigo(marcos, "XZ318 C-3")).toEqual([]);
+  });
+
+  it("sugiere detalles según lo escrito y admite palabras sin coincidencia", () => {
+    expect(sugerirDetallesMarco(["Dorado", "Café", "cafe", "Plateado"], "caf")).toEqual(["Café"]);
+    expect(sugerirDetallesMarco(["Acetato", "Metal", "TR90"], "met")).toEqual(["Metal"]);
+    expect(sugerirDetallesMarco(["Dorado", "Café"], "Verde agua")).toEqual([]);
   });
 
   it("permite buscar por modelo y código de color o por nombre sin tildes", () => {
