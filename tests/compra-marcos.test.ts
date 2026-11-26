@@ -60,3 +60,10 @@ describe("lista de compra de marcos", () => {
     expect(codigoEnDescripcion("AA123C2 NEGRO METAL")).toBe("AA123C2");
   });
 });
+
+it("usa el saldo de un código registrado aunque su proveedor esté vacío", () => {
+  const { filas } = prepararCompraMarcos([
+    { ...marco, producto: "pt" }, { ...marco, par: 2, producto: "pt" },
+  ], [{ id: "pt", sku: "AA-123 C-2", marca: null, material: "Metal", proveedor: null, stock: -1 }], [], "Sin proveedor");
+  expect(filas[0]).toMatchObject({ porComprar: 1, stock: -1, enMano: null, descripcion: "Metal" });
+});

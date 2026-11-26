@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { claveCodigoMarco as normalizar } from "@/lib/buscar-producto";
 
 type MarcoVendido = {
   orden: string;
@@ -17,6 +18,8 @@ type MarcoCatalogo = {
   id: string;
   sku: string | null;
   marca: string | null;
+  material?: string | null;
+  color?: string | null;
   proveedor: string | null;
   stock: number | null;
 };
@@ -51,8 +54,6 @@ export type RevisionMarco = {
   descripcion: string | null;
   motivo: string;
 };
-
-const normalizar = (codigo: string) => codigo.toUpperCase().replace(/[\s-]+/g, "");
 
 export function codigoEnDescripcion(descripcion: string | null) {
   const texto = descripcion?.trim() ?? "";
@@ -117,6 +118,10 @@ export function prepararCompraMarcos(
       continue;
     }
     const codigoNormal = normalizar(codigo);
+    if (!codigoNormal) {
+      agregarRevision(marco, codigo, "Falta el código del marco.");
+      continue;
+    }
     if (corregido && registrado?.sku && normalizar(registrado.sku) !== codigoNormal) {
       agregarRevision(marco, codigo, `El inventario descontó el código ${registrado.sku}.`);
       continue;
@@ -150,12 +155,13 @@ export function prepararCompraMarcos(
     const revision = huella(grupo.marcos.map(marco => `${marco.orden}:${marco.par}`).sort().join(","));
     const nota = notas.get(clave);
     const conteo = nota?.revision === revision ? nota : null;
-    const stock = grupo.producto?.proveedor ? grupo.producto.stock : null;
+    const stock = grupo.producto?.stock ?? null;
     const pedidos = grupo.marcos.length;
     const enMano = stock === null ? conteo?.en_mano ?? null : null;
     const porComprar = stock !== null ? Math.min(pedidos, Math.max(0, grupo.sinRebaja - stock))
       : enMano === null ? null : Math.max(0, pedidos - enMano);
-    const descripcion = grupo.producto?.marca || grupo.marcos.map(m => descripcionMarco(m.descripcion)).find(Boolean) || "";
+    const descripcion = [grupo.producto?.marca, grupo.producto?.material, grupo.producto?.color].filter(Boolean).join(" · ")
+      || grupo.marcos.map(m => descripcionMarco(m.descripcion)).find(Boolean) || "";
     filas.push({
       clave, revision, codigo: grupo.codigo, proveedor: grupo.proveedor, descripcion,
       folios: [...new Set(grupo.marcos.map(m => m.folio))].sort((a, b) => a - b),

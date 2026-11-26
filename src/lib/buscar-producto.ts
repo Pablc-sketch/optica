@@ -4,6 +4,8 @@ type ProductoBuscable = {
   sku?: string | null;
   modelo?: string | null;
   codigo_color?: string | null;
+  color?: string | null;
+  material?: string | null;
   stock?: number;
 };
 
@@ -23,10 +25,12 @@ export function marcoPorCodigo<T extends ProductoBuscable>(marcos: readonly T[],
 export function filtrarProductos<T extends ProductoBuscable>(productos: readonly T[], entrada: string): T[] {
   const consulta = normalizar(entrada.trim());
   const codigo = compacto(consulta);
+  const palabras = consulta.split(/\s+/).map(compacto).filter(Boolean);
   const coincidencias = !codigo ? [...productos] : productos.filter((producto) => {
     const variante = [producto.modelo, producto.codigo_color].filter(Boolean).join(" ");
-    const campos = [producto.sku ?? "", producto.nombre, variante, producto.marca ?? ""];
-    return normalizar(campos.join(" ")).includes(consulta) || campos.some((campo) => compacto(campo).includes(codigo));
+    const campos = [producto.sku ?? "", producto.nombre, variante, producto.marca ?? "",
+      producto.material ?? "", producto.color ?? "", producto.codigo_color ?? ""].map(compacto);
+    return campos.some(campo => campo.includes(codigo)) || palabras.every(palabra => campos.some(campo => campo.includes(palabra)));
   });
   const exacto = (producto: T) => Number(Boolean(codigo && compacto(producto.sku ?? "") === codigo));
   return coincidencias.sort((a, b) => exacto(b) - exacto(a) || Number((b.stock ?? 0) > 0) - Number((a.stock ?? 0) > 0));

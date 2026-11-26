@@ -8,6 +8,7 @@ import { requerirPerfil, SinPermiso } from "@/lib/autorizacion";
 import { montoANumero } from "@/lib/formato";
 import { uuidAgenda } from "@/lib/agenda-terreno";
 import { leerCargaMarcos } from "@/lib/carga-marcos";
+import { prepararCodigoDeMarco } from "@/lib/ficha-marco";
 
 // El stock nunca se escribe a mano: se registra un movimiento y el trigger
 // trg_movimiento_stock lo aplica. Así queda historial de por qué cambió.
@@ -158,7 +159,7 @@ export async function cargarStockMarcos(formData: FormData) {
     if (carga.error) return { ok: false as const, error: carga.error.code === "23505"
       ? "Ya se guardó otra lista con esta solicitud. Revisa el stock antes de volver a cargar."
       : "No se pudo completar la carga. Revisa la conexión y vuelve a intentar." };
-    for (const ruta of ["/inventario", "/ventas", "/precios", "/"]) revalidatePath(ruta);
+    for (const ruta of ["/inventario", "/inventario/compras", "/ventas", "/precios", "/"]) revalidatePath(ruta);
     return { ok: true as const, resultado: carga.data as { creados: number; codigos: number; unidades: number } };
   } catch (e) {
     if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
@@ -262,4 +263,55 @@ export async function actualizarStockMinimo(formData: FormData) {
   if (error) throw error;
   revalidatePath("/inventario");
   revalidatePath("/inventario/compras");
+}
+
+const datoMarco = (form: FormData, campo: string) => String(form.get(campo) ?? "").trim().slice(0, 80) || null;
+
+export async function agregarMarcoAlInventario(form: FormData) {
+  const id = String(form.get("id") ?? "");
+  const sucursal = String(form.get("sucursal_id") ?? "");
+  const cantidadTexto = String(form.get("cantidad") ?? "");
+  const cantidad = Number(cantidadTexto);
+  const proveedorId = String(form.get("proveedor_id") ?? "").trim() || null;
+  const codigo = prepararCodigoDeMarco(String(form.get("codigo") ?? ""), String(form.get("codigo_color") ?? ""));
+  if (codigo.error) return { ok: false as const, error: codigo.error };
+  if (!uuidAgenda.test(id) || !uuidAgenda.test(sucursal) || (proveedorId && !uuidAgenda.test(proveedorId))
+    || !/^\d+$/.test(cantidadTexto) || cantidad > 24999750) {
+    return { ok: false as const, error: "Revisa la cantidad, la sucursal y el proveedor." };
+  }
+  try {
+    const { supabase } = await requerirPerfil({ roles: ["admin", "ventas", "bodega"], suscripcion: true });
+    const { error } = await supabase.rpc("cargar_stock_marcos", {
+      p_id: id, p_sucursal: sucursal, p_modo: "entrada", p_filas: [{
+        codigo: codigo.codigo, modelo: codigo.modelo, codigo_color: codigo.codigoColor,
+        cantidad, marca: datoMarco(form, "marca"), material: datoMarco(form, "material"),
+        color: datoMarco(form, "color"), proveedor_id: proveedorId,
+      }],
+    });
+    if (error) return { ok: false as const, error: error.code === "23505"
+      ? "Esta carga ya se procesó con otros datos. Revisa el inventario."
+      : "No se pudo guardar el marco. Intenta de nuevo." };
+    for (const ruta of ["/inventario", "/inventario/compras", "/ventas", "/precios"]) revalidatePath(ruta);
+    return { ok: true as const, codigo: codigo.codigo };
+  } catch (error) {
+    if (error instanceof SinPermiso) return { ok: false as const, error: error.message };
+    throw error;
+  }
+}
+
+export async function actualizarFichaMarco(form: FormData) {
+  const productoId = String(form.get("producto_id") ?? "");
+  if (!uuidAgenda.test(productoId)) return { ok: false as const, error: "Marco inválido." };
+  try {
+    const { supabase, tenantId } = await requerirPerfil({ roles: ["admin", "ventas", "bodega"], suscripcion: true });
+    const { data, error } = await supabase.from("productos").update({
+      marca: datoMarco(form, "marca"), material: datoMarco(form, "material"), color: datoMarco(form, "color"),
+    }).eq("tenant_id", tenantId).eq("categoria", "armazon").eq("id", productoId).select("id").maybeSingle();
+    if (error || !data) return { ok: false as const, error: "No se pudo guardar la ficha del marco." };
+    for (const ruta of ["/inventario", "/inventario/compras", "/ventas"]) revalidatePath(ruta);
+    return { ok: true as const };
+  } catch (error) {
+    if (error instanceof SinPermiso) return { ok: false as const, error: error.message };
+    throw error;
+  }
 }

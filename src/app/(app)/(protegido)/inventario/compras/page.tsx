@@ -13,7 +13,10 @@ const sinConteo = (filas: FilaCompraMarcos[]) => filas.reduce((total, fila) => t
 export default async function ListaCompraMarcos() {
   const { supabase, tenantId } = await exigirRolPagina(["admin", "ventas"]);
   const cabecera = <CabeceraPagina seccion="Inventario" titulo="Lista de compra de marcos" acciones={
-    <Link href="/inventario" className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Ver inventario</Link>
+    <>
+      <Link href="/inventario?estado=negativos#stock" className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Ver stock negativo</Link>
+      <Link href="/inventario" className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Inventario</Link>
+    </>
   } />;
   const [resultado, manualesRes] = await Promise.all([
     cargarCompraMarcos(supabase, tenantId).catch(() => null),

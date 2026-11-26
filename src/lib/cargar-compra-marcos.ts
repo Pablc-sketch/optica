@@ -15,7 +15,7 @@ export async function cargarCompraMarcos(supabase: Awaited<ReturnType<typeof cre
       "id,folio,tipo_lente,tipo_lente_2,armazon_producto_id,armazon_producto_id_2,marco_propio,marco_propio_2,marco_codigo,marco_codigo_2,marco_descripcion,marco_descripcion_2,operativos:operativo_id(nombre),venta_items(venta_id)"
     ).eq("tenant_id", tenantId).not("estado", "in", "(listo,entregado,cancelado)").order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("productos")
-      .select("id,sku,marca,proveedores:proveedor_id(nombre),inventario(stock_actual)")
+      .select("id,sku,marca,material,color,proveedores:proveedor_id(nombre),inventario(stock_actual)")
       .eq("tenant_id", tenantId).eq("categoria", "armazon").order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("lista_compra_marcos").select("clave,revision,en_mano,comprados")
       .eq("tenant_id", tenantId).order("clave").range(a, b)),
@@ -53,6 +53,7 @@ export async function cargarCompraMarcos(supabase: Awaited<ReturnType<typeof cre
   });
   const productos = catalogo.data.map(p => ({
     id: p.id as string, sku: p.sku as string | null, marca: p.marca as string | null,
+    material: p.material as string | null, color: p.color as string | null,
     proveedor: uno(p.proveedores as unknown as Relacion<{ nombre: string }>)?.nombre ?? null,
     stock: p.inventario.length ? p.inventario.reduce((suma, registro) => suma + Number(registro.stock_actual), 0) : null,
   }));
