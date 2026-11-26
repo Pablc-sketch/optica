@@ -6,6 +6,8 @@ import { exigirRolPagina } from "@/lib/autorizacion";
 import { actualizarStockMinimo, registrarMovimiento } from "@/lib/actions/inventario";
 import { clp } from "@/lib/clp";
 import { filtrarProductos } from "@/lib/buscar-producto";
+import { formatoCodigoColor } from "@/lib/ficha-marco";
+import FichaMarco from "./ficha-marco";
 import NuevoProducto from "./nuevo-producto";
 import NuevoProductoMasivo from "./nuevo-producto-masivo";
 import NuevoProveedor from "./nuevo-proveedor";
@@ -13,6 +15,7 @@ import NuevoProveedor from "./nuevo-proveedor";
 type Producto = {
   nombre: string;
   marca: string | null;
+  material: string | null;
   color: string | null;
   modelo: string | null;
   codigo_color: string | null;
@@ -32,14 +35,21 @@ const TIPOS: Record<string, { etiqueta: string; clase: string }> = {
   ajuste: { etiqueta: "Ajuste", clase: "bg-amber-100 text-amber-800" },
 };
 const porPagina = 25;
+const entrada = (texto: string | undefined) => typeof texto === "string" ? texto.trim().slice(0, 100) : "";
+const opciones = (valores: (string | null)[]) => [...new Set(valores.filter((valor): valor is string => Boolean(valor)))]
+  .sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
 
 export default async function InventarioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sucursal?: string; q?: string; estado?: string; pagina?: string }>;
+  searchParams: Promise<{ sucursal?: string; q?: string; estado?: string; pagina?: string; marca?: string; material?: string; color?: string }>;
 }) {
-  const { sucursal, q, estado, pagina: paginaPedida } = await searchParams;
-  const busca = typeof q === "string" ? q.trim().slice(0, 100) : "";
+  const params = await searchParams;
+  const { sucursal, estado, pagina: paginaPedida } = params;
+  const busca = entrada(params.q);
+  const marca = entrada(params.marca);
+  const material = entrada(params.material);
+  const color = entrada(params.color);
   const { supabase, rol } = await exigirRolPagina(["admin", "ventas", "bodega", "clinico"]);
   const puedeEditar = rol !== "clinico";
 
@@ -57,7 +67,7 @@ export default async function InventarioPage({
     leerTodas((a,b) => supabase
       .from("inventario")
       .select(
-        "id, stock_actual, stock_minimo, producto_id, sucursal_id, productos:producto_id (nombre, marca, color, sku, modelo, codigo_color, precio_venta, categoria, imagen_url)"
+        "id, stock_actual, stock_minimo, producto_id, sucursal_id, productos:producto_id (nombre, marca, material, color, sku, modelo, codigo_color, precio_venta, categoria, imagen_url)"
       )
       .eq("sucursal_id", sucursalActiva ?? "")
       .order("stock_actual").order("id").range(a,b)),
@@ -80,9 +90,20 @@ export default async function InventarioPage({
   });
   const marcos = filas.filter(f => f.categoria === "armazon");
   const disponibles = marcos.reduce((total, f) => total + Math.max(0, f.stock), 0);
-  const negativos = filas.filter(f => f.stock < 0).length;
-  const enLista = filtrarProductos(filas.filter(f => estado === "disponibles" ? f.stock > 0
-    : estado === "agotados" ? f.stock === 0 : estado === "negativos" ? f.stock < 0 : true), busca);
+  const negativos = marcos.filter(f => f.stock < 0);
+  const porReponer = negativos.reduce((total, f) => total - f.stock, 0);
+  const colores = (f: Producto) => [f.color, formatoCodigoColor(f.codigo_color)];
+  const camposFiltro = [
+    { nombre: "marca", titulo: "Marca", activo: marca, valores: opciones(marcos.map(f => f.marca)) },
+    { nombre: "material", titulo: "Material", activo: material, valores: opciones(marcos.map(f => f.material)) },
+    { nombre: "color", titulo: "Color o variante", activo: color, valores: opciones(marcos.flatMap(f => colores(f))) },
+  ];
+  const filtrando = camposFiltro.some(filtro => filtro.activo);
+  const enLista = filtrarProductos(filas.filter(f => {
+    const enEstado = estado === "disponibles" ? f.stock > 0 : estado === "agotados" ? f.stock === 0
+      : estado === "negativos" ? f.stock < 0 : true;
+    return enEstado && (!marca || f.marca === marca) && (!material || f.material === material) && (!color || colores(f).includes(color));
+  }), busca);
   const valorInventario = stock.reduce((total, s) => {
     const p = uno(s.productos as unknown as Producto | Producto[] | null);
     return total + (p?.precio_venta ?? 0) * Math.max(0, s.stock_actual);
@@ -94,6 +115,7 @@ export default async function InventarioPage({
     const params = new URLSearchParams({ sucursal: sucursalActiva });
     if (busca) params.set("q", busca);
     if (estado) params.set("estado", estado);
+    for (const filtro of camposFiltro) if (filtro.activo) params.set(filtro.nombre, filtro.activo);
     if (n > 1) params.set("pagina", String(n));
     return `/inventario?${params}#stock`;
   }
@@ -128,60 +150,81 @@ export default async function InventarioPage({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="text-sm text-tinta-suave">Marcos disponibles</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-800">{disponibles}</p>
-        </div>
-        <Link href={`/inventario?sucursal=${sucursalActiva}&estado=negativos#stock`} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="text-sm text-tinta-suave">Códigos con saldo negativo</p>
-          <p className={`mt-1 text-2xl font-bold ${negativos > 0 ? "text-amber-800" : ""}`}>{negativos}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <Link href={`/inventario?sucursal=${sucursalActiva}&estado=disponibles#stock`} className="rounded-xl border border-tinta/10 bg-white p-3">
+          <span className="text-sm font-medium">Disponibles</span>
+          <b className="block text-xl tabular-nums text-emerald-800">{disponibles}</b>
+        </Link>
+        <Link href={`/inventario?sucursal=${sucursalActiva}&estado=negativos#stock`} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <span className="text-sm font-medium">Unidades por reponer</span>
+          <b className="block text-xl tabular-nums text-amber-950">{porReponer}</b>
+          <span className="text-xs text-amber-950">{negativos.length} {negativos.length === 1 ? "código" : "códigos"} en negativo</span>
         </Link>
       </div>
 
-      {puedeEditar && <NuevoProductoMasivo key={sucursalActiva} sucursalId={sucursalActiva} />}
+      {puedeEditar && <details className="rounded-xl border border-tinta/10 bg-white p-3 sm:p-4">
+        <summary className="cursor-pointer font-bold text-brand-dark">Agregar marco</summary>
+        <p className="mb-3 mt-2 text-sm text-tinta-suave">Si el código ya está cargado, se suman las unidades ingresadas.</p>
+        <FichaMarco key={sucursalActiva} sucursalId={sucursalActiva} proveedores={proveedores.filter(p => p.tipo !== "laboratorio")} />
+      </details>}
 
-      <section id="stock" className="scroll-mt-5">
+      <section id="stock" className="scroll-mt-24" aria-label="Stock de inventario">
         <form action="/inventario#stock" className="mb-3 flex flex-wrap items-end gap-2">
           <input type="hidden" name="sucursal" value={sucursalActiva} />
-          <label className="grid min-w-36 flex-1 gap-1 text-sm font-semibold">Buscar por código, modelo o marca
-            <input name="q" type="search" defaultValue={busca} maxLength={100} placeholder="Ej. LY-2187L C-2"
-              className="rounded-xl border border-tinta/20 bg-white px-3 py-2.5 font-normal" />
+          <label className="grid min-w-40 flex-1 gap-1 text-sm font-semibold">Buscar marco
+            <input name="q" type="search" defaultValue={busca} maxLength={100} placeholder="Código, marca, material o color"
+              className="rounded-lg border border-tinta/20 bg-white px-3 py-2.5 font-normal" />
           </label>
           <label className="grid gap-1 text-sm font-semibold">Stock
-            <select name="estado" defaultValue={estado ?? ""} className="rounded-xl border border-tinta/20 bg-white px-3 py-2.5">
+            <select name="estado" defaultValue={estado ?? ""} className="rounded-lg border border-tinta/20 bg-white px-3 py-2.5">
               <option value="">Todos</option><option value="disponibles">Disponibles</option>
-              <option value="agotados">Agotados</option><option value="negativos">Saldos negativos</option>
+              <option value="agotados">Agotados</option><option value="negativos">En negativo</option>
             </select>
           </label>
-          <button className="rounded-xl bg-tinta px-4 py-2.5 text-sm font-semibold text-white">Buscar</button>
-          {(busca || estado) && <Link href={`/inventario?sucursal=${sucursalActiva}#stock`} className="rounded-xl px-2 py-2.5 text-sm font-semibold underline">Limpiar</Link>}
+          <button className="rounded-lg bg-tinta px-4 py-2.5 text-sm font-semibold text-white">Buscar</button>
+          {(busca || estado || filtrando) && <Link href={`/inventario?sucursal=${sucursalActiva}#stock`} className="px-2 py-2.5 text-sm font-semibold underline">Limpiar</Link>}
+          <details open={filtrando || undefined} className="basis-full text-sm">
+            <summary className="cursor-pointer py-1 font-semibold text-brand-dark">Filtros de marca, material y color</summary>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">{camposFiltro.map(filtro => (
+              <label key={filtro.nombre} className="grid gap-1 text-sm font-medium">{filtro.titulo}
+                <select name={filtro.nombre} defaultValue={filtro.activo} className="min-w-0 rounded-lg border border-tinta/20 bg-white px-2 py-2">
+                  <option value="">Todos</option>
+                  {filtro.valores.map(valor => <option key={valor} value={valor}>{valor}</option>)}
+                </select>
+              </label>
+            ))}</div>
+          </details>
         </form>
         {enLista.length === 0 ? (
           <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
             {stock.length ? "No hay coincidencias con esa búsqueda." : "Aún no hay productos cargados en esta sucursal."}
           </p>
         ) : (
-          <ul className="flex flex-col gap-2 rounded-2xl bg-crema-claro p-3 shadow-sm">
+          <ul className="divide-y divide-tinta/10 overflow-hidden rounded-xl border border-tinta/10 bg-white">
             {visibles.map(({ fila: s, ...p }) => {
-              const critico = s.stock_actual <= s.stock_minimo;
+              const codigoColor = formatoCodigoColor(p.codigo_color);
+              const nombre = p.sku && p.nombre !== p.sku ? p.nombre : null;
+              const variante = [p.color, codigoColor].filter(Boolean).join(" ");
+              const descripcion = [p.marca, nombre, p.material, variante].filter(Boolean).join(" · ");
               return (
-                <li key={s.id} className={`rounded-xl px-3 py-2.5 ${critico ? "bg-brand/10" : "bg-white"}`}>
+                <li key={s.id} className="px-3 py-2.5">
                   <div className="flex flex-wrap items-center gap-2">
                     {p.categoria === "armazon" && p.imagen_url && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={p.imagen_url} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
                     )}
-                    <div className="min-w-32 flex-1 break-words text-sm">
-                      {p.sku && <p className="font-bold">{p.sku}</p>}
-                      {(!p.sku || p.sku !== p.nombre || p.marca || p.color) &&
-                        <p className="text-tinta-suave">{[p.marca, p.nombre, p.color].filter(Boolean).join(" · ")}</p>}
+                    <div className="min-w-0 flex-1 break-words text-sm">
+                      <p className="font-bold">{p.sku || p.nombre}</p>
+                      {descripcion && <p className="text-xs text-tinta-suave">{descripcion}</p>}
                     </div>
-                    <span className={`text-sm font-bold tabular-nums ${critico ? "text-brand-dark" : ""}`}>
-                      {s.stock_actual < 0 ? `Por reponer · ${-s.stock_actual}`
-                        : s.stock_actual === 0 ? "Agotado" : `${s.stock_actual} ${s.stock_actual === 1 ? "unidad" : "unidades"}`}
+                    <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-bold tabular-nums ${s.stock_actual < 0 ? "bg-amber-50 text-amber-950" : "bg-crema-claro text-tinta"}`}>
+                      {s.stock_actual === 0 ? "Agotado" : `Stock ${s.stock_actual}`}
                     </span>
-                    {puedeEditar && <details className="basis-full rounded-lg px-1 py-1 open:border open:border-tinta/10 open:p-3"><summary className="cursor-pointer text-xs font-semibold text-tinta-suave">Ajustar stock</summary>
+                    {puedeEditar && <details className="shrink-0 open:basis-full open:rounded-lg open:border open:border-tinta/10 open:p-3">
+                    <summary className="cursor-pointer py-0.5 text-xs font-semibold text-tinta-suave">{p.categoria === "armazon" ? "Ficha" : "Ajustar stock"}</summary>
+                    {p.categoria === "armazon" && <div className="my-2 border-b border-tinta/10 pb-3">
+                      <FichaMarco key={`${s.producto_id}:${p.marca}:${p.material}:${p.color}`} datos={{ id: s.producto_id, marca: p.marca, material: p.material, color: p.color }} />
+                    </div>}
                     <form action={actualizarStockMinimo} className="flex items-center gap-1">
                       <input type="hidden" name="inventario_id" value={s.id} />
                       <span className="text-xs text-tinta-suave">Mínimo</span>
@@ -266,6 +309,7 @@ export default async function InventarioPage({
         <summary className="cursor-pointer font-semibold">Catálogo y proveedores</summary>
         <div className="mt-3 flex flex-col gap-3">
           <p className="text-sm text-tinta-suave">{marcos.length} códigos de marcos · Valor de stock a precio de venta {clp(valorInventario)}</p>
+          {puedeEditar && <NuevoProductoMasivo key={sucursalActiva} sucursalId={sucursalActiva} />}
           {puedeEditar && <NuevoProducto sucursales={sucursales} sucursalActiva={sucursalActiva} proveedores={proveedores} />}
           {puedeEditar && <NuevoProveedor />}
           {proveedores.length > 0 && <ul className="divide-y divide-tinta/10">
