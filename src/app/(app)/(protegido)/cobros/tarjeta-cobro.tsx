@@ -21,6 +21,7 @@ export type FilaCobro = {
   listos: number;
   enProceso: number;
   entregados: number;
+  ordenes?: { id: string; folio: number; pares: number; estado: string }[];
 };
 
 const MEDIOS = [
@@ -43,11 +44,12 @@ export default function TarjetaCobro({ fila, mercadoPago = false }: { fila: Fila
   const operacion = useRef<string | null>(null);
 
   const digitos = String(fila.telefono ?? "").replace(/\D/g, "");
+  const etiquetaEnProceso = fila.ordenes ? "En proceso" : "En laboratorio";
   const estado =
     fila.listos > 0
-      ? { texto: fila.enProceso > 0 ? `${fila.listos} listo · ${fila.enProceso} en laboratorio` : "Lente listo", clase: "bg-emerald-700 text-white" }
+      ? { texto: fila.enProceso > 0 ? `${fila.listos} listo · ${fila.enProceso} ${etiquetaEnProceso.toLowerCase()}` : "Lente listo", clase: "bg-emerald-700 text-white" }
       : fila.enProceso > 0
-        ? { texto: "En laboratorio", clase: "bg-amber-100 text-amber-900" }
+        ? { texto: etiquetaEnProceso, clase: "bg-amber-100 text-amber-900" }
         : fila.entregados > 0
           ? { texto: "Entregado", clase: "bg-neutral-200 text-neutral-700" }
           : null;
@@ -104,6 +106,14 @@ export default function TarjetaCobro({ fila, mercadoPago = false }: { fila: Fila
         </div>
       </div>
 
+      {fila.ordenes?.length ? (
+        <ul aria-label="Órdenes del pedido" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {fila.ordenes.map(ot => <li key={ot.id}>
+            <Link className="font-semibold text-brand-dark underline" href={`/ot/${ot.id}`}>OT #{ot.folio}</Link>
+            {" · "}{ot.pares} {ot.pares === 1 ? "par" : "pares"} · {ot.estado}
+          </li>)}
+        </ul>
+      ) : null}
       {fila.saldo>0 && <CobrarPoint ventaId={fila.ventaId} saldo={fila.saldo}/>}
       <div className="mt-3 flex flex-wrap gap-2">
         {fila.saldo > 0 && !abierto && (

@@ -149,7 +149,10 @@ export default async function ChequeosPage({ searchParams }: {
       <div><h2 className="text-xl font-bold">{chequeo.nombre}</h2>
         <p className="text-sm text-tinta-suave">{fechaLegible(chequeo.desde)} al {fechaLegible(chequeo.hasta)} · {n.filas.length} sedes</p>
       </div>
-      <Link href={`${ruta}?chequeo=${chequeo.id}&modo=editar`} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Asignar sedes</Link>
+      <div className="flex flex-wrap gap-2">
+        <Link href={`/entregas?chequeo=${chequeo.id}`} className="rounded-lg bg-sidebar px-3 py-2 text-sm font-semibold text-white">Entregas por sede</Link>
+        <Link href={`${ruta}?chequeo=${chequeo.id}&modo=editar`} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Asignar sedes</Link>
+      </div>
     </section>
     <IndicadoresChequeo resumen={n} ventas={ventas} />
     <IndicadoresCaja resumen={n} caja={caja} hoy={hoy} chequeoId={chequeo.id} comidaGuardada={params.guardado === "comida"} />
@@ -176,6 +179,7 @@ export default async function ChequeosPage({ searchParams }: {
           </dl>
           <div className="flex flex-wrap gap-3 text-sm font-semibold text-brand-dark">
             {f.conSaldo > 0 && <Link className="underline" href={`/cobros?op=${f.sede.id}&ver=deben`}>Ver a quién cobrar ({f.conSaldo})</Link>}
+            <Link className="underline" href={`/entregas?chequeo=${chequeo.id}&op=${f.sede.id}`}>Ver pedidos</Link>
             <Link className="underline" href={`/operativos/${f.sede.id}/cierre`}>Gastos y reparto</Link>
           </div>
         </li>

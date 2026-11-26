@@ -145,6 +145,8 @@ export async function actualizarOperativo(formData: FormData) {
   revalidatePath(RUTA_AGENDA);
   revalidatePath("/");
   revalidatePath("/ventas");
+  revalidatePath("/entregas");
+  revalidatePath("/ot");
 }
 
 export async function cambiarEstadoOperativo(formData: FormData) {
@@ -161,6 +163,8 @@ export async function cambiarEstadoOperativo(formData: FormData) {
   revalidatePath("/operativos/calendario");
   revalidatePath(RUTA_AGENDA);
   revalidatePath("/");
+  revalidatePath("/entregas");
+  revalidatePath("/ot");
 }
 
 function parsearMonto(valor: FormDataEntryValue | null): number {
@@ -377,5 +381,7 @@ export async function actualizarEntregaOperativo(formData: FormData): Promise<{ 
   revalidatePath(`/operativos/${id}`);
   revalidatePath("/operativos/calendario");
   revalidatePath("/avisos");
+  revalidatePath("/entregas");
+  revalidatePath("/ot");
   return { ok: true };
 }

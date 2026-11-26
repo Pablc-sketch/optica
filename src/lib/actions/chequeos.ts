@@ -23,5 +23,6 @@ export async function guardarChequeo(_estado: string, form: FormData): Promise<s
   if (error || !data) return "No se pudo guardar el chequeo. Intenta de nuevo.";
   revalidatePath("/operativos", "layout");
   revalidatePath("/caja");
+  revalidatePath("/entregas");
   redirect(`/operativos/chequeos?chequeo=${data}`);
 }
