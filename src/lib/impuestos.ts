@@ -1,13 +1,28 @@
 import { fechaValidaDocumento } from './fecha-documentos';
+import { diaEnChile } from './fechas';
 export type MesImpuesto = {
   periodo:string; ventas_afectas:number|null; credito_fiscal:number; ppm:number; otros:number;
   recargos:number; total_declarado:number|null; vence_el:string|null; nota:string; version:number;
 };
 export type PagoImpuesto = {id:string;periodo:string;gasto_id:string;anulado_en:string|null};
 export const periodoValido=(p:string)=>/^\d{4}-(0[1-9]|1[0-2])-01$/.test(p)&&fechaValidaDocumento(p);
+export function periodoTributario(venta: { fecha: string; boleta_fecha: string | null }) {
+  return (venta.boleta_fecha ?? diaEnChile(venta.fecha)).slice(0, 7) + "-01";
+}
+
+export function ivaIncluido(ventasBrutas: number) {
+  return Math.round(ventasBrutas * 19 / 119);
+}
+
+export function ivaDelChequeo(ventasChequeo: number, mes: { iva: number; registradas: number; afectas: number } | null) {
+  if (!mes) return ivaIncluido(ventasChequeo);
+  const base = Math.max(mes.registradas, mes.afectas, ventasChequeo);
+  return base > 0 ? Math.round(mes.iva * ventasChequeo / base) : 0;
+}
+
 export function impuestoDeMes(m:MesImpuesto,ventasRegistradas:number,pagado:number,hoy:string) {
   const ventas=m.ventas_afectas??ventasRegistradas;
-  const debito=Math.round(ventas*19/119);
+  const debito=ivaIncluido(ventas);
   const iva=Math.max(0,debito-m.credito_fiscal);
   const estimado=iva+m.ppm+m.otros+m.recargos;
   // El total F29 ingresado incluye sus recargos; nunca sumarlos otra vez.

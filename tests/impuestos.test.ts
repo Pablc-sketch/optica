@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {impuestoDeMes,resumirImpuestos,mesesDesde,validarMesImpuesto,type MesImpuesto} from '../src/lib/impuestos';
+import {impuestoDeMes,ivaDelChequeo,periodoTributario,resumirImpuestos,mesesDesde,validarMesImpuesto,type MesImpuesto} from '../src/lib/impuestos';
 const mes:MesImpuesto={periodo:'2026-09-01',ventas_afectas:null,credito_fiscal:0,ppm:0,otros:0,recargos:0,total_declarado:null,vence_el:null,nota:'',version:0};
 describe('control mensual SII',()=>{
  it('reserva IVA desde el bruto sin confundirlo con deuda oficial',()=>{
@@ -34,4 +34,18 @@ describe('control mensual SII',()=>{
   expect(validarMesImpuesto({...mes,credito_fiscal:-1},'2026-11-18')).toBeTruthy();
   expect(validarMesImpuesto({...mes,vence_el:'2026-02-30'},'2026-11-18')).toBeTruthy();
  });
+});
+
+describe('IVA para el reparto del chequeo', () => {
+  it('atribuye la parte del IVA neto del mes al chequeo y respeta ventas de fuera de Lentia', () => {
+    expect(ivaDelChequeo(119_000, { registradas: 238_000, afectas: 238_000, iva: 30_000 })).toBe(15_000);
+    expect(ivaDelChequeo(119_000, { registradas: 119_000, afectas: 238_000, iva: 30_000 })).toBe(15_000);
+    expect(ivaDelChequeo(119_000, { registradas: 238_000, afectas: 0, iva: 0 })).toBe(0);
+    expect(ivaDelChequeo(119_000, null)).toBe(19_000);
+  });
+  it('usa la fecha de boleta o la fecha de la venta en horario de Chile', () => {
+    const fecha = '2026-12-01T01:00:00Z';
+    expect(periodoTributario({ fecha, boleta_fecha: null })).toBe('2026-11-01');
+    expect(periodoTributario({ fecha, boleta_fecha: '2026-12-01' })).toBe('2026-12-01');
+  });
 });

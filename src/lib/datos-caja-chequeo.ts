@@ -3,7 +3,7 @@ import type { createClient } from "./supabase/server";
 import { gastoDeResultado, resumirCajaChequeo } from "./caja-chequeo";
 import { resumirChequeo, type AtencionChequeo, type Chequeo, type SedeChequeo, type VentaChequeo } from "./chequeos";
 import { inicioDelDia } from "./fechas";
-import { impuestoDeMes, type MesImpuesto } from "./impuestos";
+import { impuestoDeMes, ivaDelChequeo, periodoTributario, type MesImpuesto } from "./impuestos";
 import { leerTodas } from "./leer-todas";
 import { disponibleDeGasto } from "./pagos-operativo";
 
@@ -18,7 +18,7 @@ function lotesDe(ids: string[]) {
 
 export async function cargarCajaChequeo(
   supabase: Awaited<ReturnType<typeof createClient>>, tenantId: string,
-  chequeo: Chequeo, integrantes: SedeChequeo[],
+  chequeo: Chequeo, integrantes: SedeChequeo[], hoy: string,
 ) {
   const lotes = lotesDe(integrantes.map(s => s.id));
   const [datos, gastos, tenant] = await Promise.all([
@@ -26,7 +26,7 @@ export async function cargarCajaChequeo(
       leerTodas((a, b) => supabase.from("recetas").select("id,operativo_id,paciente_id").eq("tenant_id", tenantId)
         .in("operativo_id", lote).order("id").range(a, b)),
       leerTodas((a, b) => supabase.from("ventas").select(
-        `id,operativo_id,total,pagos_abonos(monto,medio_pago),
+        `id,operativo_id,total,fecha,boleta_fecha,pagos_abonos(monto,medio_pago),
          venta_items(producto_id,cantidad,precio_unitario,descripcion,descuento,cristal_slot,
            ordenes_trabajo:ot_id(estado,costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2,marco_propio,marco_propio_2,armazon_producto_id,armazon_producto_id_2),
            productos:producto_id(costo,categoria))`
@@ -50,13 +50,23 @@ export async function cargarCajaChequeo(
   const idsPropios = new Set(propios.map(g => g.id));
   const externos = [...new Set(asignacionesLocales.map(a => a.gasto_id).filter(id => !idsPropios.has(id)))];
   const lotesGasto = lotesDe([...idsPropios, ...externos]);
-  const [asignaciones, devoluciones, gastosExternos] = await Promise.all([
+  const ventas = datos.flatMap(([, v]) => v.data ?? []) as unknown as (VentaChequeo & { fecha: string; boleta_fecha: string | null })[];
+  const mesActual = hoy.slice(0, 7) + "-01";
+  const ventasPorPeriodo = new Map<string, number>([[mesActual, 0]]);
+  for (const venta of ventas) {
+    const periodo = periodoTributario(venta);
+    ventasPorPeriodo.set(periodo, (ventasPorPeriodo.get(periodo) ?? 0) + venta.total);
+  }
+  const [asignaciones, devoluciones, gastosExternos, periodos] = await Promise.all([
     Promise.all(lotesGasto.map(lote => leerTodas((a, b) => supabase.from("gastos_asignaciones")
       .select(columnasAsignacion).eq("tenant_id", tenantId).in("gasto_id", lote).is("anulado_en", null).order("id").range(a, b)))),
     Promise.all(lotesGasto.map(lote => leerTodas((a, b) => supabase.from("caja_movimientos")
       .select("id,gasto_id,monto").eq("tenant_id", tenantId).eq("tipo", "devolucion").in("gasto_id", lote).order("id").range(a, b)))),
     Promise.all(lotesDe(externos).map(lote => leerTodas((a, b) => supabase.from("gastos_globales")
       .select(columnasGasto).eq("tenant_id", tenantId).in("id", lote).order("id").range(a, b)))),
+    Promise.all([...ventasPorPeriodo].map(async ([periodo, monto]) => ({
+      periodo, monto, sii: await cargarSiiPeriodo(supabase, tenantId, periodo, hoy),
+    }))),
   ]);
   if (datos.some(lote => lote.some(res => res.error)) || gastos.error || tenant.error
       || [...asignaciones, ...devoluciones, ...gastosExternos].some(res => res.error)) {
@@ -64,25 +74,26 @@ export async function cargarCajaChequeo(
   }
 
   const vinculados = asignaciones.flatMap(res => res.data ?? []);
+  const gastosSii = new Set(periodos.flatMap(p => p.sii?.gastosSii ?? []));
   const gastosCompartidos = propios.reduce((suma, g) =>
-    suma + (g.descripcion.startsWith("SII F29 · ") ? 0 : gastoDeResultado(g, vinculados)), 0);
+    suma + (gastosSii.has(g.id) || g.descripcion.startsWith("SII F29 · ") ? 0 : gastoDeResultado(g, vinculados)), 0);
   const reservaCompraPersonal = propios.filter(g => g.caja === "personal" && g.categoria === "compra_inventario")
     .reduce((suma, g) => suma + disponibleDeGasto(g, vinculados), 0);
-  const ventas = datos.flatMap(([, v]) => v.data ?? []) as unknown as VentaChequeo[];
+  const iva = periodos.reduce((suma, p) => suma + ivaDelChequeo(p.monto, p.sii), 0);
+  const ivaSinCredito = periodos.some(p => p.monto > 0 && !p.sii);
   const n = resumirChequeo(integrantes, datos.flatMap(([r]) => r.data ?? []) as AtencionChequeo[],
     ventas, gastosCompartidos, Number(chequeo.ahorro_pct),
     Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0),
     { comisionIsadoraPct: Number(chequeo.comision_isadora_pct ?? 10), parteMadrePct: Number(chequeo.reparto_pamela_pct ?? 50) },
-    reservaCompraPersonal);
+    reservaCompraPersonal, iva);
   const caja = resumirCajaChequeo(n, chequeo.id, [...propios, ...gastosExternos.flatMap(res => res.data ?? [])],
-    vinculados, devoluciones.flatMap(res => res.data ?? []), retiros);
-  return { n, caja, compartidos, ventas, tenant: tenant.data };
+    vinculados, devoluciones.flatMap(res => res.data ?? []), retiros, gastosSii);
+  return { n, caja, compartidos, ventas, ivaSinCredito, sii: periodos.find(p => p.periodo === mesActual)?.sii ?? null, tenant: tenant.data };
 }
 
-export async function cargarSiiMensual(
-  supabase: Awaited<ReturnType<typeof createClient>>, tenantId: string, hoy: string,
+async function cargarSiiPeriodo(
+  supabase: Awaited<ReturnType<typeof createClient>>, tenantId: string, periodo: string, hoy: string,
 ) {
-  const periodo = hoy.slice(0, 7) + "-01";
   const [anio, mes] = periodo.split("-").map(Number);
   const siguiente = new Date(Date.UTC(anio, mes, 1)).toISOString().slice(0, 10);
   const [declaracion, conDocumento, sinDocumento, pagos] = await Promise.all([
@@ -91,7 +102,7 @@ export async function cargarSiiMensual(
       .gte("boleta_fecha", periodo).lt("boleta_fecha", siguiente).order("id").range(a,b)),
     leerTodas((a, b) => supabase.from("ventas").select("id,total").eq("tenant_id", tenantId).eq("anulada", false)
       .is("boleta_fecha", null).gte("fecha", inicioDelDia(periodo)).lt("fecha", inicioDelDia(siguiente)).order("id").range(a,b)),
-    leerTodas((a, b) => supabase.from("impuestos_pagos").select("id,gastos_globales:gasto_id(monto)")
+    leerTodas((a, b) => supabase.from("impuestos_pagos").select("id,gasto_id,gastos_globales:gasto_id(monto)")
       .eq("tenant_id", tenantId).eq("periodo", periodo).is("anulado_en", null).order("id").range(a,b)),
   ]);
   if (declaracion.error || conDocumento.error || sinDocumento.error || pagos.error) return null;
@@ -102,5 +113,8 @@ export async function cargarSiiMensual(
   }, 0);
   const formulario = (declaracion.data as MesImpuesto | null) ?? { periodo, ventas_afectas: null, credito_fiscal: 0,
     ppm: 0, otros: 0, recargos: 0, total_declarado: null, vence_el: null, nota: "", version: -1 };
-  return { ...impuestoDeMes(formulario, registradas, pagado, hoy), periodo, venceEl: formulario.vence_el };
+  const calculo = impuestoDeMes(formulario, registradas, pagado, hoy);
+  return { ...calculo, periodo, siguiente, venceEl: formulario.vence_el, registradas,
+    afectas: formulario.ventas_afectas ?? registradas, creditoFiscal: formulario.credito_fiscal,
+    ivaPendiente: Math.min(calculo.iva, calculo.saldo), gastosSii: pagos.data.map(p => p.gasto_id) };
 }

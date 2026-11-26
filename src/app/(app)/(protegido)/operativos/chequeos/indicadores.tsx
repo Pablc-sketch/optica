@@ -96,10 +96,12 @@ export function IndicadoresChequeo({ resumen: n, ventas }: { resumen: Resumen; v
       nota={n.porCobrar > n.porCobrarEntrega ? `Otros cobros · ${clp(n.porCobrar - n.porCobrarEntrega)}` : undefined}>
       {n.porCobrarEntrega ? <PorSede resumen={n} campo="porCobrarEntrega" moneda cobros /> : <p>Sin cobros pendientes en entregas.</p>}
     </Recuadro>
-    <Recuadro etiqueta="Utilidad estimada" valor={clp(n.utilidad)} color="violeta">
+    <Recuadro etiqueta="Utilidad antes de IVA" valor={clp(n.utilidad)} color="violeta">
       <Datos moneda filas={[
         { etiqueta: "Total vendido", valor: n.vendido },
         { etiqueta: "Costos y comisiones", valor: n.vendido - n.utilidad },
+        { etiqueta: "IVA del chequeo", valor: n.iva },
+        { etiqueta: "Líquido para ahorro y reparto", valor: n.reparto.utilidadDisponible },
       ]} />
       <p>Antes del ahorro y el reparto.</p>
     </Recuadro>
@@ -147,7 +149,8 @@ export function IndicadoresCaja({ resumen, caja, hoy, chequeoId, comidaGuardada 
       <Recuadro etiqueta="Queda tras pagar" valor={clp(caja.saldoTrasPagos)} color="verde">
         <Datos moneda filas={[
           { etiqueta: "Caja registrada", valor: caja.cajaRegistrada },
-          { etiqueta: "Pagos pendientes", valor: caja.cajaRegistrada - caja.saldoTrasPagos },
+          { etiqueta: "Pagos pendientes", valor: caja.cajaRegistrada - caja.saldoTrasPagos - caja.ivaPendienteCaja },
+          { etiqueta: "Reserva de IVA pendiente", valor: caja.ivaPendienteCaja },
         ]} />
         <p>Antes del ahorro y el reparto.</p>
       </Recuadro>

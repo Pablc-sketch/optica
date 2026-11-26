@@ -5,7 +5,7 @@ import {hoyEnChile} from '@/lib/fechas';
 import {fechaValidaDocumento} from '@/lib/fecha-documentos';
 import {uuidAgenda} from '@/lib/agenda-terreno';
 import {validarMesImpuesto,periodoValido,type MesImpuesto} from '@/lib/impuestos';
-function refrescar(){for(const p of ['/impuestos','/gastos','/caja','/pagos','/reportes','/'])revalidatePath(p);}
+function refrescar(){for(const p of ['/impuestos','/gastos','/caja','/operativos/chequeos','/pagos','/reportes','/'])revalidatePath(p);}
 export async function guardarImpuesto(m:MesImpuesto){
   try{
     const {supabase,tenantId}=await requerirPerfil({roles:['admin'],suscripcion:true});
