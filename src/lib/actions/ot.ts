@@ -136,6 +136,7 @@ export async function actualizarOT(formData: FormData) {
 
   revalidatePath(`/ot/${otId}`);
   revalidatePath("/ot");
+  revalidatePath("/inventario/compras");
   revalidatePath("/laboratorio");
   revalidatePath("/");
 }

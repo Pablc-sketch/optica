@@ -102,7 +102,11 @@ export default async function InventarioPage({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <CabeceraPagina seccion="Administración" titulo="Inventario" />
+          <CabeceraPagina seccion="Administración" titulo="Inventario" acciones={(rol === "admin" || rol === "ventas") && (
+            <Link href="/inventario/compras" className="rounded-lg bg-sidebar px-3 py-2 text-sm font-semibold text-white">
+              Lista de compra
+            </Link>
+          )} />
           <p className="text-sm text-tinta-suave">{actual.nombre}</p>
         </div>
         {sucursales && sucursales.length > 1 && (

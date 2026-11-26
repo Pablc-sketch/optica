@@ -132,7 +132,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      <details className="rounded-2xl bg-crema-claro p-4 shadow-sm print:hidden">
+      <details id="corregir-ot" className="scroll-mt-32 rounded-2xl bg-crema-claro p-4 shadow-sm print:hidden">
         <summary className="cursor-pointer font-semibold text-brand-dark">
           ✎ Corregir lejos/cerca, marco, laboratorio o entrega
         </summary>
