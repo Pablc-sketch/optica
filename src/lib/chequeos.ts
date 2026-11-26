@@ -3,10 +3,10 @@ import { esVentaDeConsulta } from "./consulta";
 import type { ItemConCosto } from "./costo-venta";
 import { calcularSueldos } from "./sueldos";
 
-export type Chequeo = { id: string; nombre: string; desde: string; hasta: string; ahorro_pct: number };
+export type Chequeo = { id: string; nombre: string; desde: string; hasta: string; ahorro_pct: number; comision_isadora_pct?: number; reparto_pamela_pct?: number };
 export type SedeChequeo = OperativoParaCierre & {
   id: string; nombre: string; fecha: string; fecha_fin: string | null; hora_inicio?: string | null;
-  direccion: string | null; estado: string; chequeo_id: string | null;
+  direccion: string | null; estado: string; pagos_saldados_en?: string | null; chequeo_id: string | null;
 };
 export type AtencionChequeo = { operativo_id: string; paciente_id: string };
 type MarcoOT = {
@@ -26,7 +26,7 @@ function uno<T>(valor: T | T[] | null | undefined) {
   return Array.isArray(valor) ? valor[0] : valor;
 }
 
-function contarLentesYMarcos(items: ItemChequeo[]) {
+export function contarLentesYMarcos(items: ItemChequeo[]) {
   let pares = 0;
   let marcos = 0;
   const stock = new Map<string, number>();
@@ -51,8 +51,11 @@ function contarLentesYMarcos(items: ItemChequeo[]) {
 export function resumirChequeo(
   sedes: SedeChequeo[], atenciones: AtencionChequeo[], ventas: VentaChequeo[],
   gastosCompartidos: number, ahorroPct: number, debito: number, credito: number,
+  reglas?: { comisionIsadoraPct: number; parteMadrePct: number },
+  reservaCompraPersonal = 0,
 ) {
   const atendidos = new Set<string>();
+  let vendidoAcumulado = 0;
   const filas = sedes.map(sede => {
     const pacientes = new Set(atenciones.filter(a => a.operativo_id === sede.id).map(a => a.paciente_id));
     for (const p of pacientes) atendidos.add(p);
@@ -78,20 +81,27 @@ export function resumirChequeo(
       marcos += cantidades.marcos;
     }
     const numeros = numerosDeOperativo(sede, operaciones, debito, credito, marcos);
+    let comisionVentas = numeros.cierre.isadora;
+    if (reglas) {
+      const tasa = reglas.comisionIsadoraPct / 100;
+      const anterior = Math.round(vendidoAcumulado * tasa);
+      vendidoAcumulado += numeros.vendido;
+      comisionVentas = Math.round(vendidoAcumulado * tasa) - anterior;
+    }
     return {
       sede, pacientes: pacientes.size, ventas: ventasProductos, pares, marcos, conSaldo,
       vendido: numeros.vendido, cobrado: numeros.cobrado, porCobrar, porCobrarEntrega,
       desglose: numeros.desglose, comisionTarjeta: numeros.cierre.comisionTarjeta,
-      utilidad: numeros.cierre.gananciaLiquida, comisionVentas: numeros.cierre.isadora,
+      utilidad: numeros.cierre.utilidad - comisionVentas, comisionVentas,
     };
   });
   const total = (campo: "ventas" | "pares" | "marcos" | "conSaldo" | "vendido" | "cobrado" | "porCobrar" | "porCobrarEntrega" | "utilidad" | "comisionVentas") =>
     filas.reduce((suma, sede) => suma + sede[campo], 0);
   const utilidad = total("utilidad") - gastosCompartidos;
-  const reparto = calcularSueldos(0, utilidad, { comisionVendedoraPct: 0, comisionVendedoraBase: "venta_total", ahorroPct });
+  const reparto = calcularSueldos(0, utilidad - reservaCompraPersonal, { comisionVendedoraPct: 0, comisionVendedoraBase: "venta_total", ahorroPct, parteMadrePct: reglas?.parteMadrePct });
   return {
     filas, pacientes: atendidos.size, ventas: total("ventas"), pares: total("pares"), marcos: total("marcos"),
     conSaldo: total("conSaldo"), vendido: total("vendido"), cobrado: total("cobrado"), porCobrar: total("porCobrar"), porCobrarEntrega: total("porCobrarEntrega"),
-    utilidad, comisionVentas: total("comisionVentas"), reparto, gastosCompartidos,
+    utilidad, comisionVentas: total("comisionVentas"), reparto, gastosCompartidos, reservaCompraPersonal,
   };
 }

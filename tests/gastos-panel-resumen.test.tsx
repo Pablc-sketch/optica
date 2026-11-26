@@ -8,7 +8,7 @@ vi.mock('@/lib/autorizacion',()=>({exigirRolPagina}));
 vi.mock('@/lib/catalogo-laboratorio',()=>({cargarCatalogoParaCotizar}));
 vi.mock('@/components/gastos-panel',()=>({default:()=> <section>LISTADO_GASTOS</section>}));
 vi.mock('@/components/simulador-salida',()=>({default:(props:Record<string,unknown>)=>{capturarSimulador(props);return <section>SIMULADOR</section>;}}));
-import Gastos from '../src/app/(app)/(protegido)/gastos/page';
+import VistaGastos from '@/components/vista-gastos';
 function consulta(tabla:string){
   const q:Record<string,unknown>={};
   for(const metodo of ['select','eq','order','range','single','is'])q[metodo]=()=>q;
@@ -20,7 +20,7 @@ const operativo=(id:string,nombre:string,fecha:string,costo:number)=>({
   costo_marco_unitario:5000,costo_fides_real:null,comision_vendedora_pct:0,comision_vendedora_base:'venta_total',ahorro_pct:20,
 });
 async function pantalla(filtros:{op?:string|string[];desde?:string;hasta?:string;ver?:string}={}){
-  return renderToStaticMarkup(await Gastos({searchParams:Promise.resolve(filtros)}));
+  return renderToStaticMarkup(await VistaGastos({filtros:{...filtros,detalle:filtros.ver}}));
 }
 function resumen(html:string){return html.match(/<section[^>]+aria-label="Resumen de gastos"[\s\S]*?<\/section>/)?.[0]??'';}
 beforeEach(()=>{
@@ -55,7 +55,7 @@ describe('resumen de gastos y navegación de rentabilidad',()=>{
   it('filtra la sede y preserva sede y fechas al abrir el simulador',async()=>{
     const html=await pantalla({op:'b',desde:'2026-11-02',hasta:'2026-11-03'});
     expect(resumen(html)).toContain('230.000');expect(resumen(html)).not.toContain('310.000');
-    expect(html).toContain('href="/gastos?op=b&amp;desde=2026-11-02&amp;hasta=2026-11-03&amp;ver=rentabilidad"');
+    expect(html).toContain('href="/caja?op=b&amp;desde=2026-11-02&amp;hasta=2026-11-03&amp;ver=gastos&amp;detalle=rentabilidad"');
     expect(html).not.toContain('desde=2026-11-23');
   });
   it('conserva las sedes elegidas desde Caja al pasar al historial', async () => {
@@ -68,7 +68,7 @@ describe('resumen de gastos y navegación de rentabilidad',()=>{
     ], error: null };
     const pendiente = await pantalla({ op: ['a', 'b'] });
     expect(resumen(pendiente)).toContain('90.000');
-    expect(pendiente).toContain('href="/gastos?op=a&amp;op=b&amp;ver=historial"');
+    expect(pendiente).toContain('href="/caja?op=a&amp;op=b&amp;ver=gastos&amp;detalle=historial"');
     const historial = await pantalla({ ver: 'historial', op: ['a', 'b'], desde: '2026-11-03' });
     expect(historial).toContain('Cristales / laboratorio');
     expect(historial).toContain('Gasto de Sur');
@@ -88,7 +88,7 @@ describe('resumen de gastos y navegación de rentabilidad',()=>{
   it('el simulador no impone las fechas de noviembre y volver a gastos conserva los filtros',async()=>{
     const html=await pantalla({ver:'rentabilidad',op:'a',desde:'2026-11-01',hasta:'2026-11-02'});
     expect(html).toContain('SIMULADOR');expect(html).not.toContain('LISTADO_GASTOS');
-    expect(html).toContain('href="/gastos?op=a&amp;desde=2026-11-01&amp;hasta=2026-11-02"');
+    expect(html).toContain('href="/caja?op=a&amp;desde=2026-11-01&amp;hasta=2026-11-02&amp;ver=gastos"');
     expect(html).not.toContain('desde=2026-11-23');
   });
   it('el simulador incluye generales no asignados una sola vez, excluye stock y no aplica un preset',async()=>{

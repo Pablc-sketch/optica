@@ -1,9 +1,9 @@
 import Link from "next/link";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import { GastoGeneralForm } from "@/components/registro-gasto";
-import { gastoDeResultado, resumirCajaChequeo } from "@/lib/caja-chequeo";
+import { cargarCajaChequeo } from "@/lib/datos-caja-chequeo";
 import { exigirRolPagina } from "@/lib/autorizacion";
-import { resumirChequeo, type AtencionChequeo, type Chequeo, type SedeChequeo, type VentaChequeo } from "@/lib/chequeos";
+import type { Chequeo, SedeChequeo } from "@/lib/chequeos";
 import { clp } from "@/lib/clp";
 import { etiquetasReparto } from "@/lib/etiquetas-reparto";
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
@@ -14,15 +14,6 @@ import { IndicadoresCaja, IndicadoresChequeo } from "./indicadores";
 import PersonasDeSede from "./personas-de-sede";
 
 const ruta = "/operativos/chequeos";
-const columnasGasto = "id,fecha,descripcion,monto,caja,categoria,operativo_id,chequeo_id,nota,monto_estimado";
-const columnasAsignacion = "id,gasto_id,operativo_id,clave,monto,anulado_en";
-
-function lotesDe(ids: string[]) {
-  const lotes = [];
-  for (let i = 0; i < ids.length; i += 50) lotes.push(ids.slice(i, i + 50));
-  return lotes;
-}
-
 function RecuadroReparto({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return <div className="min-w-0 rounded-lg border border-tinta/15 bg-white p-3 sm:p-4">
     <dt className="text-sm font-semibold">{etiqueta}</dt>
@@ -37,7 +28,7 @@ export default async function ChequeosPage({ searchParams }: {
   const params = await searchParams;
   const hoy = hoyEnChile();
   const [grupos, operativos] = await Promise.all([
-    leerTodas((a, b) => supabase.from("chequeos").select("id,nombre,desde,hasta,ahorro_pct")
+    leerTodas((a, b) => supabase.from("chequeos").select("id,nombre,desde,hasta,ahorro_pct,comision_isadora_pct,reparto_pamela_pct")
       .eq("tenant_id", tenantId).order("desde", { ascending: false }).order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("operativos").select("*").eq("tenant_id", tenantId)
       .order("fecha").order("hora_inicio", { nullsFirst: false }).order("id").range(a, b)),
@@ -90,58 +81,10 @@ export default async function ChequeosPage({ searchParams }: {
         : <p role="status" className="rounded-lg bg-white p-4">La sede ya no está en este chequeo.</p>}
     </div>;
   }
-  const lotes = lotesDe(integrantes.map(s => s.id));
-  const [datos, gastos, tenant] = await Promise.all([
-    Promise.all(lotes.map(lote => Promise.all([
-      leerTodas((a, b) => supabase.from("recetas").select("id,operativo_id,paciente_id").eq("tenant_id", tenantId)
-        .in("operativo_id", lote).order("id").range(a, b)),
-      leerTodas((a, b) => supabase.from("ventas").select(
-        `id,operativo_id,total,pagos_abonos(monto,medio_pago),
-         venta_items(producto_id,cantidad,precio_unitario,descripcion,descuento,cristal_slot,
-           ordenes_trabajo:ot_id(estado,costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2,marco_propio,marco_propio_2,armazon_producto_id,armazon_producto_id_2),
-           productos:producto_id(costo,categoria))`
-      ).eq("tenant_id", tenantId).eq("anulada", false).in("operativo_id", lote).order("id").range(a, b)),
-      leerTodas((a, b) => supabase.from("gastos_globales").select(columnasGasto).eq("tenant_id", tenantId)
-        .in("operativo_id", lote).order("id").range(a, b)),
-      leerTodas((a, b) => supabase.from("gastos_asignaciones").select(columnasAsignacion).eq("tenant_id", tenantId)
-        .in("operativo_id", lote).is("anulado_en", null).order("id").range(a, b)),
-      leerTodas((a, b) => supabase.from("retiros_sueldo").select("id,persona,monto").eq("tenant_id", tenantId)
-        .in("operativo_id", lote).order("id").range(a, b)),
-    ]))),
-    leerTodas((a, b) => supabase.from("gastos_globales").select(columnasGasto).eq("tenant_id", tenantId)
-      .eq("chequeo_id", chequeo.id).order("fecha", { ascending: false }).order("id").range(a, b)),
-    supabase.from("tenants").select("comision_debito_pct,comision_credito_pct,reparto_etiquetas").eq("id", tenantId).single(),
-  ]);
-  const compartidos = gastos.data ?? [];
-  const directos = datos.flatMap(([, , g]) => g.data ?? []);
-  const asignacionesLocales = datos.flatMap(([, , , a]) => a.data ?? []);
-  const retiros = datos.flatMap(([, , , , r]) => r.data ?? []);
-  const propios = [...compartidos, ...directos];
-  const idsPropios = new Set(propios.map(g => g.id));
-  const externos = [...new Set(asignacionesLocales.map(a => a.gasto_id).filter(id => !idsPropios.has(id)))];
-  const lotesGasto = lotesDe([...idsPropios, ...externos]);
-  const [asignaciones, devoluciones, gastosExternos] = await Promise.all([
-    Promise.all(lotesGasto.map(lote => leerTodas((a, b) => supabase.from("gastos_asignaciones")
-      .select(columnasAsignacion).eq("tenant_id", tenantId).in("gasto_id", lote).is("anulado_en", null).order("id").range(a, b)))),
-    Promise.all(lotesGasto.map(lote => leerTodas((a, b) => supabase.from("caja_movimientos")
-      .select("id,gasto_id,monto").eq("tenant_id", tenantId).eq("tipo", "devolucion").in("gasto_id", lote).order("id").range(a, b)))),
-    Promise.all(lotesDe(externos).map(lote => leerTodas((a, b) => supabase.from("gastos_globales")
-      .select(columnasGasto).eq("tenant_id", tenantId).in("id", lote).order("id").range(a, b)))),
-  ]);
-  if (datos.some(lote => lote.some(res => res.error)) || gastos.error || tenant.error
-      || [...asignaciones, ...devoluciones, ...gastosExternos].some(res => res.error)) {
-    return <div className="space-y-4">{cabecera}<p role="alert" className="rounded-lg bg-red-50 p-4">No se pudo calcular el chequeo. Recarga para reintentar.</p></div>;
-  }
-
-  const vinculados = asignaciones.flatMap(res => res.data ?? []);
-  const gastosCompartidos = compartidos.reduce((suma, g) => suma + gastoDeResultado(g, vinculados), 0);
-  const ventas = datos.flatMap(([, v]) => v.data ?? []) as unknown as VentaChequeo[];
-  const n = resumirChequeo(integrantes, datos.flatMap(([r]) => r.data ?? []) as AtencionChequeo[],
-    ventas, gastosCompartidos, Number(chequeo.ahorro_pct),
-    Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
-  const caja = resumirCajaChequeo(n, chequeo.id, [...propios, ...gastosExternos.flatMap(res => res.data ?? [])],
-    vinculados, devoluciones.flatMap(res => res.data ?? []), retiros);
-  const nombres = etiquetasReparto(tenant.data?.reparto_etiquetas);
+  const datos = await cargarCajaChequeo(supabase, tenantId, chequeo, integrantes);
+  if (!datos) return <div className="space-y-4">{cabecera}<p role="alert" className="rounded-lg bg-red-50 p-4">No se pudo calcular el chequeo. Recarga para reintentar.</p></div>;
+  const { n, caja, compartidos, ventas, tenant } = datos;
+  const nombres = etiquetasReparto(tenant?.reparto_etiquetas);
   return <div className="mx-auto max-w-6xl space-y-5 pb-5">
     {cabecera}
     <ActualizarCaja />
@@ -150,6 +93,7 @@ export default async function ChequeosPage({ searchParams }: {
         <p className="text-sm text-tinta-suave">{fechaLegible(chequeo.desde)} al {fechaLegible(chequeo.hasta)} · {n.filas.length} sedes</p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <Link href={`/caja?chequeo=${chequeo.id}`} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Caja y gastos</Link>
         <Link href={`/entregas?chequeo=${chequeo.id}`} className="rounded-lg bg-sidebar px-3 py-2 text-sm font-semibold text-white">Entregas por sede</Link>
         <Link href={`${ruta}?chequeo=${chequeo.id}&modo=editar`} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Asignar sedes</Link>
       </div>

@@ -34,7 +34,9 @@ export async function registrarMovimientoCaja(_: ResultadoCaja, f: FormData): Pr
     const { error } = await supabase.from('caja_movimientos').insert({ id, tenant_id: tenantId, tipo, caja, fecha, monto, descripcion, gasto_id: gastoId });
     if (error && error.code !== '23505') return { error: tipo === 'devolucion' ? 'No se pudo guardar: revisa el saldo pendiente y la fecha del gasto.' : 'No se pudo guardar el movimiento. Vuelve a intentar.' };
   }
-  for (const ruta of ['/','/caja','/reportes']) revalidatePath(ruta);
+  for (const ruta of ['/','/caja','/reportes','/gastos','/operativos/chequeos']) revalidatePath(ruta);
+  const volver = String(f.get('volver_chequeo') ?? '');
+  if (uuidAgenda.test(volver)) redirect(`/caja?chequeo=${volver}&guardado=1`);
   redirect(f.get('volver_gastos')==='1'?'/gastos?guardado=1#adelantos-personales':'/caja?guardado=1');
 }
 
@@ -85,6 +87,8 @@ export async function registrarGastoCajaOperativo(_: ResultadoCaja, f: FormData)
 
   for (const ruta of ['/', '/caja', '/gastos', '/reportes', '/pagos', '/pagos/revisar', '/impuestos', '/operativos',
     `/operativos/${operativo}`, `/operativos/${operativo}/cierre`]) revalidatePath(ruta);
+  const volver = String(f.get('volver_chequeo') ?? '');
+  if (uuidAgenda.test(volver)) redirect(`/caja?chequeo=${volver}&guardado=1#gastos`);
   if (f.get('volver_gastos') === '1') redirect(`/gastos?ver=historial&op=${operativo}&guardado=1`);
   const params = new URLSearchParams({ guardado: '1' });
   for (const sede of f.getAll('sede')) {

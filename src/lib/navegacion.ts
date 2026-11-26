@@ -4,8 +4,7 @@ const ENLACES: EnlaceMenu[] = [
   { href: '/ventas', label: 'Vender', principal: true, movil: true },
   { href: '/cobros', label: 'Cobros', principal: true, movil: true },
   { href: '/entregas', label: 'Entregas', principal: true },
-  { href: '/caja', label: 'Caja', principal: true, movil: true },
-  { href: '/gastos', label: 'Gastos', principal: true, movil: true },
+  { href: '/caja', label: 'Caja y gastos', principal: true, movil: true },
   { href: '/impuestos', label: 'SII mensual' },
   { href: '/operativos/agenda', label: 'Calendario', principal: true, movil: true },
   { href: '/pacientes', label: 'Pacientes' },
@@ -29,7 +28,7 @@ export function menuParaRol(rol: string, _mercadoPago: boolean, superadmin = fal
   return superadmin ? [...nav, { href: '/superadmin', label: 'Ópticas' }] : nav;
 }
 export function enlaceActivo(nav: EnlaceMenu[], pathname: string) {
-  const ruta = nav.some(n => n.href === '/caja') && ['/pagos','/reportes','/boleta','/seguros'].some(p => pathname === p || pathname.startsWith(p+'/')) ? '/caja' : pathname;
+  const ruta = nav.some(n => n.href === '/caja') && ['/gastos','/pagos','/reportes','/boleta','/seguros'].some(p => pathname === p || pathname.startsWith(p+'/')) ? '/caja' : pathname;
   return nav.filter(n => n.href === '/' ? ruta === '/' : ruta === n.href || ruta.startsWith(n.href + '/'))
     .sort((a,b) => b.href.length - a.href.length)[0]?.href;
 }
