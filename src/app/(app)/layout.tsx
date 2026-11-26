@@ -8,6 +8,8 @@ import Icono from "@/components/icono";
 import NavLinks from "@/components/nav-links";
 import AsistenteIA from "@/components/asistente-ia";
 import BarraCarga from "@/components/barra-carga";
+import BandejaAlturas from "@/components/bandeja-alturas";
+import { clavePublicaAvisos } from "@/lib/avisos-altura-push";
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import { menuParaRol } from "@/lib/navegacion";
 import { mercadoPagoConfigurado } from "@/lib/mercadopago-sync";
@@ -115,6 +117,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <p className="truncate text-xs font-semibold" title={perfil.nombre}>{perfil.nombre}</p>
               <p className="text-xs capitalize text-sidebar-text">{perfil.rol}</p>
             </div>
+            {vigente && (perfil.rol === "admin" || perfil.rol === "clinico") && (
+              <BandejaAlturas tenantId={perfil.tenant_id} clavePush={clavePublicaAvisos()} />
+            )}
             <form action={cerrarSesion}>
               <button aria-label="Cerrar sesión" title="Cerrar sesión" className="flex items-center gap-1.5 rounded-lg border border-white/20 px-2.5 py-2 text-xs font-medium hover:bg-white/10">
                 <Icono nombre="salir" className="size-4" /> <span className="lg:sr-only">Salir</span>
