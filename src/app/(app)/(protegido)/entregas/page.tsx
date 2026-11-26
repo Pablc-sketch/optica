@@ -187,9 +187,12 @@ export default async function Entregas({ searchParams }: {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
       <CabeceraPagina seccion="Operación" titulo={chequeo ? `Entregas · ${chequeo.nombre}` : "Entregas"} acciones={
-        <Link href="/avisos" className="rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white">
-          Avisar que están listos
-        </Link>
+        <>
+          <Link href="/inventario/compras" className="rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold">Comprar marcos</Link>
+          <Link href="/avisos" className="rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white">
+            Avisar que están listos
+          </Link>
+        </>
       } />
       {Boolean(chequeos.data?.length || sedeSeleccionada) && (
         <nav aria-label="Filtrar entregas por chequeo" className="flex flex-wrap gap-2">

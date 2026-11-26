@@ -44,6 +44,7 @@ export async function registrarMovimiento(formData: FormData) {
   if (error) throw error;
 
   revalidatePath("/inventario");
+  revalidatePath("/inventario/compras");
   revalidatePath("/ventas");
   revalidatePath("/");
 }
@@ -133,6 +134,7 @@ export async function crearProducto(formData: FormData) {
   }
 
   revalidatePath("/inventario");
+  revalidatePath("/inventario/compras");
   revalidatePath("/ventas");
   revalidatePath("/precios");
   return { ok: true, id: producto.id as string };
@@ -220,6 +222,7 @@ export async function subirFotoProducto(formData: FormData) {
   if (error) return { ok: false as const, error: "La imagen se subió, pero no se pudo guardar." };
 
   revalidatePath("/inventario");
+  revalidatePath("/inventario/compras");
   return { ok: true as const, url: urlConVersion };
 }
 
@@ -245,6 +248,7 @@ export async function crearProveedor(formData: FormData) {
   if (error) return { ok: false, error: "No se pudo crear el proveedor." };
 
   revalidatePath("/inventario");
+  revalidatePath("/inventario/compras");
   return { ok: true };
 }
 
@@ -257,4 +261,5 @@ export async function actualizarStockMinimo(formData: FormData) {
   const { error } = await supabase.from("inventario").update({ stock_minimo: minimo }).eq("id", id);
   if (error) throw error;
   revalidatePath("/inventario");
+  revalidatePath("/inventario/compras");
 }
