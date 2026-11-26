@@ -26,12 +26,13 @@ function Fuente({ digital, personal }: { digital: string; personal: string }) {
   </label>;
 }
 
-export function GastoOperativoForm({ sedes, sedeInicial, hoy, desdeGastos = false }: {
-  sedes: SedeCaja[]; sedeInicial?: string; hoy: string; desdeGastos?: boolean;
+export function GastoOperativoForm({ sedes, sedeInicial, hoy, desdeGastos = false, cajaChequeoId }: {
+  sedes: SedeCaja[]; sedeInicial?: string; hoy: string; desdeGastos?: boolean; cajaChequeoId?: string;
 }) {
   const unica = sedes.length === 1 ? sedes[0] : null;
   return <CajaFormulario guardar={registrarGastoCajaOperativo} texto="Guardar gasto">
     <input type="hidden" name="id" value={randomUUID()} />
+    {cajaChequeoId && <input type="hidden" name="volver_chequeo" value={cajaChequeoId} />}
     {desdeGastos ? <input type="hidden" name="volver_gastos" value="1" />
       : sedes.map(s => <input key={s.id} type="hidden" name="sede" value={s.id} />)}
     {unica ? <>
@@ -54,22 +55,28 @@ export function GastoOperativoForm({ sedes, sedeInicial, hoy, desdeGastos = fals
   </CajaFormulario>;
 }
 
-export function GastoGeneralForm({ hoy, digital, personal, chequeoId, comida = false }: {
-  hoy: string; digital: string; personal: string; chequeoId?: string; comida?: boolean;
+export function GastoGeneralForm({ hoy, digital, personal, chequeoId, comida = false, desdeCaja = false }: {
+  hoy: string; digital: string; personal: string; chequeoId?: string; comida?: boolean; desdeCaja?: boolean;
 }) {
   return <form action={crearGastoGlobal} className="grid gap-3">
+    {desdeCaja && <input type="hidden" name="volver_caja" value="1" />}
     {chequeoId ? <input type="hidden" name="chequeo_id" value={chequeoId} /> : <input type="hidden" name="volver_historial" value="1" />}
     <input type="hidden" name="id" value={randomUUID()} />
     {comida && <input type="hidden" name="comida" value="1" />}
     <label className="block text-sm">{comida ? "Detalle de comida" : "Qué se pagó"}
-      <input name="descripcion" placeholder={comida ? "Ej. almuerzos, pagó Pablo" : "Ej. compra de bandejas"} maxLength={250} required className={campo} />
+      <input name="descripcion" placeholder={comida ? "Ej. almuerzos, pagó Pablo" : "Ej. bencina para entregas"} maxLength={250} required className={campo} />
     </label>
     <ImporteYFecha hoy={hoy} />
     <Fuente digital={digital} personal={personal} />
     {!comida && <label className="block text-sm">Categoría
       <select name="categoria" className={campo}>
         <option value="otro">Otro gasto</option>
-        {!chequeoId && <option value="compra_inventario">Inventario / equipamiento</option>}
+        {desdeCaja && <>
+          <option value="bencina">Bencina y transporte</option>
+          <option value="comida">Comida</option>
+          <option value="peajes">Peajes y TAG</option>
+        </>}
+        <option value="compra_inventario">Inventario / equipamiento</option>
         <option value="arriendo">Arriendo</option>
       </select>
     </label>}

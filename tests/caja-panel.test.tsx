@@ -99,7 +99,7 @@ describe('panel financiero de Caja',()=>{
   it('sin saldo externo no presenta el saldo calculado como liquidez',async()=>{leerEstadoCuenta.mockResolvedValue({saldo:{estado:'no_habilitado'},estado:'error',ultimaCorrecta:null,errorCodigo:'PAGOS_HTTP_401'});const s=await html();expect(s).toContain('Por verificar');expect(s).not.toContain('230.000');});
   it('envía las devoluciones a Gastos y conserva la prioridad sin restar la deuda de caja',async()=>{
     tablas.gastos_globales={data:[{id:'g',fecha:'2026-11-01',descripcion:'Compra de prueba',monto:150000,caja:'personal',monto_estimado:true}],error:null};
-    const cuadrar=await html('cuadrar');expect(cuadrar).toContain('/gastos?personal=1#adelantos-personales');expect(cuadrar).not.toContain('Compra de prueba');
+    const cuadrar=await html('cuadrar');expect(cuadrar).toContain('/caja?ver=gastos&amp;personal=1#adelantos-personales');expect(cuadrar).not.toContain('Compra de prueba');
     expect(cuadrar).toContain('Primero se devuelve el dinero personal');expect(cuadrar).not.toContain('230.000');
   });
   it('el historial por operativo excluye traslados globales y otros operativos',()=>{

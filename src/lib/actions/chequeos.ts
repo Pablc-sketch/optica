@@ -26,3 +26,23 @@ export async function guardarChequeo(_estado: string, form: FormData): Promise<s
   revalidatePath("/entregas");
   redirect(`/operativos/chequeos?chequeo=${data}`);
 }
+
+export async function guardarRepartoChequeo(_estado: { error?: string }, form: FormData): Promise<{ error?: string }> {
+  const { supabase, tenantId } = await requerirPerfil({ roles: ["admin"], suscripcion: true });
+  const id = String(form.get("chequeo_id") ?? "");
+  const valores = ["comision_isadora_pct", "ahorro_pct", "reparto_pamela_pct"].map(clave => {
+    const texto = String(form.get(clave) ?? "").trim().replace(",", ".");
+    return /^\d{1,3}(?:\.\d{1,2})?$/.test(texto) ? Number(texto) : NaN;
+  });
+  if (!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id) ||
+      valores.some(valor => !Number.isFinite(valor) || valor < 0 || valor > 100)) {
+    return { error: "Ingresa porcentajes entre 0 y 100." };
+  }
+  const [comision_isadora_pct, ahorro_pct, reparto_pamela_pct] = valores;
+  const { data, error } = await supabase.from("chequeos").update({ comision_isadora_pct, ahorro_pct, reparto_pamela_pct })
+    .eq("tenant_id", tenantId).eq("id", id).select("id").maybeSingle();
+  if (error || !data) return { error: "No se pudo guardar el reparto." };
+  revalidatePath("/operativos/chequeos");
+  revalidatePath("/caja");
+  redirect(`/caja?chequeo=${id}&guardado=1#reparto`);
+}

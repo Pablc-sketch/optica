@@ -51,10 +51,12 @@ export async function crearGastoGlobal(formData: FormData) {
   const fecha = String(formData.get("fecha") ?? "").trim();
   const detalle = String(formData.get("descripcion") ?? "").trim();
   const comida = formData.get("comida") === "1";
-  const descripcion = comida && detalle ? `Comida · ${detalle}` : detalle;
+  const categoria = String(formData.get("categoria") ?? "");
+  const etiquetas: Record<string, string> = { comida: "Comida", bencina: "Bencina y transporte", peajes: "Peajes y TAG" };
+  const prefijo = comida ? etiquetas.comida : Object.hasOwn(etiquetas, categoria) ? etiquetas[categoria] : "";
+  const descripcion = prefijo && detalle ? `${prefijo} · ${detalle}` : detalle;
   const nota = String(formData.get("nota") ?? "").trim();
   const monto = montoCaja(formData.get("monto"));
-  const categoria = String(formData.get("categoria") ?? "");
   const chequeoId = String(formData.get("chequeo_id") ?? "");
   if (chequeoId && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(chequeoId)) throw new Error("Chequeo no válido.");
   if (!fechaValidaDocumento(fecha) || fecha > hoyEnChile() || !descripcion || descripcion.length > 250 || nota.length>1000 || monto === null) throw new Error("Revisa la fecha, descripción y monto del gasto.");
@@ -84,6 +86,7 @@ export async function crearGastoGlobal(formData: FormData) {
   revalidatePath("/caja");
   if (chequeoId) {
     revalidatePath("/operativos/chequeos");
+    if (formData.get("volver_caja") === "1") redirect(`/caja?chequeo=${chequeoId}&guardado=1#gastos`);
     const destino = `/operativos/chequeos?chequeo=${chequeoId}`;
     redirect(comida ? `${destino}&guardado=comida#comida-chequeo` : `${destino}&guardado=1`);
   }

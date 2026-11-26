@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ from: vi.fn(), perfil: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/autorizacion", () => ({ requerirPerfil: mock.perfil, SinPermiso: class SinPermiso extends Error {} }));
-import { registrarPagoCosto } from "../src/lib/actions/cierre";
+import { registrarPagoCosto, registrarPagosChequeo } from "../src/lib/actions/cierre";
 import { idPagoCosto } from "../src/lib/id-pago";
 
 const operativoId = "11111111-1111-4111-a111-111111111111";
@@ -75,5 +75,50 @@ describe("registro de un pago", () => {
   it("rechaza montos negativos y categorías inventadas antes de consultar", async () => {
     expect((await registrarPagoCosto({ ...input, monto: -1 })).ok).toBe(false);
     expect(mock.from).not.toHaveBeenCalled();
+  });
+});
+
+describe("pago global de costos del chequeo", () => {
+  const chequeo = "22222222-2222-4222-a222-222222222222";
+  const otraSede = "33333333-3333-4333-a333-333333333333";
+  const inputs = [operativoId, otraSede].map(id => ({
+    ...input, operativoId: id, clave: "fides" as const, monto: 15_000,
+  }));
+
+  function prepararGrupo(segundoChequeo = chequeo) {
+    const escritura = respuesta(null);
+    let gastosConsultados = 0;
+    let operativosConsultados = 0;
+    mock.from.mockImplementation((tabla: string) => {
+      if (tabla === "operativos") {
+        const primero = operativosConsultados++ === 0;
+        return respuesta({ id: primero ? operativoId : otraSede, nombre: "Sede", chequeo_id: primero ? chequeo : segundoChequeo,
+          estado: "completado", costo_fides_real: 15_000 }).builder;
+      }
+      if (tabla === "gastos_globales") {
+        const numero = gastosConsultados++;
+        if (numero < 2) return respuesta(null).builder;
+        if (numero < 4) return respuesta([]).builder;
+        return escritura.builder;
+      }
+      if (tabla === "tenants") return { select: () => ({ single: () => Promise.resolve({ data: {}, error: null }) }) };
+      return respuesta([]).builder;
+    });
+    return escritura;
+  }
+
+  it("inserta todas las sedes en una sola operación", async () => {
+    const escritura = prepararGrupo();
+    expect(await registrarPagosChequeo(chequeo, inputs)).toEqual({ ok: true });
+    expect(escritura.insertar).toHaveBeenCalledExactlyOnceWith([
+      expect.objectContaining({ operativo_id: operativoId, monto: 15_000 }),
+      expect.objectContaining({ operativo_id: otraSede, monto: 15_000 }),
+    ]);
+  });
+
+  it("no escribe si una sede ya no pertenece al chequeo", async () => {
+    const escritura = prepararGrupo("otro");
+    expect(await registrarPagosChequeo(chequeo, inputs)).toMatchObject({ ok: false });
+    expect(escritura.insertar).not.toHaveBeenCalled();
   });
 });

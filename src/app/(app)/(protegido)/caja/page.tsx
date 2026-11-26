@@ -19,19 +19,75 @@ import ResumenCajaOperativo from '@/components/resumen-caja-operativo';
 import CajaFormulario from '@/components/caja-formulario';
 import { pagosConAsignaciones, type PagoCosto } from '@/lib/pagos-operativo';
 import { resumirCaja } from '@/lib/caja';
+import CajaDelChequeo from '@/components/caja-del-chequeo';
+import VistaGastos, { type FiltrosGastos } from '@/components/vista-gastos';
+import { cargarCajaChequeo, cargarSiiMensual } from '@/lib/datos-caja-chequeo';
+import type { Chequeo, SedeChequeo } from '@/lib/chequeos';
 import CajaHistorial from '@/components/caja-historial';
 export const dynamic = 'force-dynamic';
 const campo = 'w-full min-w-0 rounded-xl border px-3 py-2.5';
-const vistas = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['pendientes', 'Pendientes'], ['cuadrar', 'Cuadrar']] as const;
+const vistas = [['resumen', 'Resumen'], ['gastos', 'Gastos'], ['movimientos', 'Movimientos'], ['pendientes', 'Pendientes'], ['cuadrar', 'Cuadrar']] as const;
 export default async function Caja({ searchParams }: {
-  searchParams: Promise<{ guardado?: string; ver?: string; operativo?: string; sede?: string | string[] }>;
+  searchParams: Promise<FiltrosGastos & { chequeo?: string; ver?: string; operativo?: string; sede?: string | string[] }>;
 }) {
   const { supabase, tenantId } = await exigirRolPagina(['admin']);
   const piloto = esPilotoTerreno(tenantId);
   const params = await searchParams;
   const vista = vistas.find(([clave]) => clave === params.ver)?.[0] ?? 'resumen';
-  const navegacion = <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-4">{vistas.map(([clave,nombre]) => <Link key={clave} href={clave === 'resumen' ? '/caja' : `/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>;
+  const navegacion = <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-5">{vistas.map(([clave,nombre]) => <Link key={clave} href={clave === 'resumen' ? '/caja' : `/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>;
   const guardado = params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>;
+
+  if (vista === 'gastos') return <div className="mx-auto max-w-6xl space-y-4 pb-6">
+    <CabeceraPagina seccion="Operación" titulo="Caja y gastos" />
+    {navegacion}
+    <VistaGastos filtros={params} />
+  </div>;
+
+  if (vista === 'resumen' && params.sede === undefined) {
+    const hoy = hoyEnChile();
+    const grupos = await leerTodas((a, b) => supabase.from('chequeos')
+      .select('id,nombre,desde,hasta,ahorro_pct,comision_isadora_pct,reparto_pamela_pct')
+      .eq('tenant_id', tenantId).order('desde', { ascending: false }).order('id').range(a, b));
+    const chequeos = (grupos.data ?? []) as Chequeo[];
+    const chequeo = chequeos.find(c => c.id === params.chequeo)
+      ?? chequeos.find(c => c.desde <= hoy && hoy <= c.hasta)
+      ?? chequeos.find(c => c.desde <= hoy);
+    if (grupos.error) return <div className="space-y-4">
+      <CabeceraPagina seccion="Operación" titulo="Caja y gastos" />{navegacion}
+      <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudieron cargar los chequeos de la caja.</p>
+    </div>;
+    if (chequeo) {
+      const [integrantes, cuenta, caja, conteo, sii] = await Promise.all([
+        leerTodas((a,b) => supabase.from('operativos').select('*').eq('tenant_id', tenantId).eq('chequeo_id', chequeo.id)
+          .neq('estado', 'cancelado').order('fecha').order('hora_inicio', { nullsFirst: false }).order('id').range(a,b)),
+        leerEstadoCuenta(tenantId),
+        supabase.rpc('caja_global').single(),
+        supabase.from('caja_conteos').select('contado,esperado').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(1),
+        cargarSiiMensual(supabase, tenantId, hoy),
+      ]);
+      const sedes = (integrantes.data ?? []) as SedeChequeo[];
+      const datos = integrantes.error ? null : await cargarCajaChequeo(supabase, tenantId, chequeo, sedes);
+      const t = caja.error ? null : caja.data as { entro_efectivo: number; salio_efectivo: number; entro_digital: number;
+        entro_debito: number; entro_credito: number; salio_digital: number } | null;
+      const libro = t && datos ? resumirCaja({
+        entroEfectivo: t.entro_efectivo, salioEfectivo: t.salio_efectivo, entroDigital: t.entro_digital,
+        entroDebito: t.entro_debito, entroCredito: t.entro_credito, salioDigital: t.salio_digital,
+      }, {
+        comisionDebitoPct: Number(datos.tenant?.comision_debito_pct ?? 0),
+        comisionCreditoPct: Number(datos.tenant?.comision_credito_pct ?? 0),
+      }) : null;
+      const efectivoContado = libro && !conteo.error ? efectivoDesdeConteo(libro.hayEfectivo, conteo.data?.[0]) : null;
+      return <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-6">
+        <CabeceraPagina seccion="Operación" titulo="Caja y gastos" acciones={<ActualizarCajaMercadoPago compacto />} />
+        {navegacion}
+        {guardado}
+        {datos ? <CajaDelChequeo chequeo={chequeo} opciones={chequeos} sedes={sedes} datos={datos} hoy={hoy}
+          efectivo={efectivoContado ?? libro?.hayEfectivo ?? null} efectivoVerificado={efectivoContado !== null}
+          cuenta={cuenta.saldo} bancoRegistrado={libro?.hayDigital ?? null} sii={sii} />
+          : <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudo calcular el chequeo. Recarga para reintentar.</p>}
+      </div>;
+    }
+  }
 
   if (vista === 'resumen') {
     const hoy = hoyEnChile();
@@ -163,7 +219,7 @@ export default async function Caja({ searchParams }: {
       </>}
       {vista==='movimientos' && <>
       <section id="nuevo-gasto" className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold text-red-700">Gastos</h2>
-        <Link href="/gastos?ver=registrar" className="mt-2 inline-block py-2 text-sm font-semibold underline">Registrar gasto</Link>
+        <Link href="/caja?ver=gastos&detalle=registrar" className="mt-2 inline-block py-2 text-sm font-semibold underline">Registrar gasto</Link>
       </section>
       <details id="traspasos" open className="scroll-mt-6 rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold">Trasladar entre efectivo y cuenta</summary><p className="my-3 text-sm text-tinta-suave">Registra un depósito o retiro que ya hiciste. Lentia no mueve dinero.</p>
         <CajaFormulario><input type="hidden" name="id" value={randomUUID()} /><input type="hidden" name="caja" value="digital" />
@@ -190,7 +246,7 @@ export default async function Caja({ searchParams }: {
         <p className="mt-2 text-sm text-tinta-suave">{deudaPersonal > 0 ? 'Primero se devuelve el dinero personal.' : 'Saldo verificado de caja menos compromisos y ahorro pendientes.'}</p>
       </details>
       <Link href="/caja?ver=movimientos" className="rounded-xl bg-white p-4 text-center font-semibold">Revisar movimientos y diferencias →</Link>
-      <Link href="/gastos?personal=1#adelantos-personales" className="block rounded-2xl border border-tinta/20 bg-white p-5 text-base font-semibold">Gastos personales y devoluciones →</Link>
+      <Link href="/caja?ver=gastos&personal=1#adelantos-personales" className="block rounded-2xl border border-tinta/20 bg-white p-5 text-base font-semibold">Gastos personales y devoluciones →</Link>
       </>}
     </>}
   </div>;

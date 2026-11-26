@@ -19,10 +19,12 @@ export function resumirCajaChequeo(
   devoluciones: Devolucion[], retiros: Retiro[],
 ) {
   const sedes = new Set(resumen.filas.map(f => f.sede.id));
-  const costos = resumen.filas.flatMap(f => {
+  const costosPorSede = resumen.filas.map(f => {
     const pagos = gastos.filter(g => g.operativo_id === f.sede.id);
-    return costosDeSede(f.sede, f.desglose, pagosConAsignaciones(pagos, asignaciones, f.sede.id));
+    const costos = costosDeSede(f.sede, f.desglose, pagosConAsignaciones(pagos, asignaciones, f.sede.id));
+    return { sede: f.sede, costos: f.sede.pagos_saldados_en ? costos.map(c => ({ ...c, pagado: Math.max(c.total, c.pagado) })) : costos };
   });
+  const costos = costosPorSede.flatMap(f => f.costos);
   const montoCostos = (clave: string) => costos.filter(c => c.clave === clave).reduce((total, c) => total + c.total, 0);
   const fidesPendiente = costos.filter(c => c.clave === "fides").reduce((total, c) => total + Math.max(0, c.total - c.pagado), 0);
   let gastosPagados = 0;
@@ -30,6 +32,7 @@ export function resumirCajaChequeo(
   let porReembolsar = 0;
   let comidaCompartida = 0;
   const adelantos = [];
+  const pagados = [];
   for (const gasto of gastos) {
     const propia = gasto.chequeo_id === chequeoId || (gasto.operativo_id !== null && sedes.has(gasto.operativo_id));
     const repartos = asignaciones.filter(a => a.gasto_id === gasto.id && !a.anulado_en);
@@ -45,9 +48,10 @@ export function resumirCajaChequeo(
       const saldo = importe - reintegro;
       reintegrosPagados += reintegro;
       porReembolsar += saldo;
-      if (saldo > 0) adelantos.push({ gasto, saldo });
+      if (saldo > 0) adelantos.push({ gasto, saldo, saldoReal: Math.max(0, gasto.monto - devuelto) });
     } else {
       gastosPagados += importe;
+      pagados.push({ gasto, importe });
     }
   }
   const otrosPendientes = COSTOS.map(({ clave, titulo }) => ({
@@ -63,9 +67,10 @@ export function resumirCajaChequeo(
   const cajaRegistrada = resumen.cobrado - comisionTarjeta - salidas - retirosNetos;
   const saldoTrasPagos = cajaRegistrada - fidesPendiente - terrenoPendiente - porReembolsar - comisionPendiente;
   return {
+    costosPorSede,
     cristales: montoCostos("fides"), marcos: montoCostos("marcos"), comida: montoCostos("costo_comida") + comidaCompartida,
     fidesPendiente, terrenoPendiente, otrosPendientes, salidas, gastosPagados, reintegrosPagados, retirosNetos,
-    comisionTarjeta, comisionPendiente, porReembolsar, adelantos, cajaRegistrada, saldoTrasPagos,
+    comisionTarjeta, comisionPendiente, porReembolsar, adelantos, pagados, cajaRegistrada, saldoTrasPagos,
     proyectado: saldoTrasPagos + resumen.porCobrar,
     repartoPendiente: {
       madre: Math.max(0, resumen.reparto.parteMadre - yaRetirado("madre")),

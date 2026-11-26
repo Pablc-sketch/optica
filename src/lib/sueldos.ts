@@ -20,6 +20,7 @@ export type ParametrosSueldo = {
   comisionVendedoraPct: number;
   comisionVendedoraBase: BaseComision;
   ahorroPct: number;
+  parteMadrePct?: number;
   // Parte de lo vendido que NO lleva comisión de vendedora (las consultas
   // cobradas aparte). Solo se descuenta cuando la base es "venta_total".
   ventaSinComision?: number;
@@ -56,7 +57,7 @@ export function calcularSueldos(
   // parteMadre se redondea y partePablo se calcula por diferencia (no los
   // dos por separado) para que la suma de las dos partes cuadre siempre
   // con restoParaDividir, sin perder ni ganar un peso por el redondeo.
-  const parteMadre = Math.round(restoParaDividir / 2);
+  const parteMadre = Math.round(restoParaDividir * (parametros.parteMadrePct ?? 50) / 100);
   const partePablo = restoParaDividir - parteMadre;
   return {
     ventaTotal,

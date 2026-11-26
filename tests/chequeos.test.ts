@@ -77,3 +77,17 @@ describe("Caja del chequeo", () => {
     });
   });
 });
+
+it("calcula la comisión sobre todas las ventas del chequeo y reserva el adelanto de inventario antes del reparto", () => {
+  const consulta = {
+    ...venta("b", 5000, 5000),
+    venta_items: [{ cantidad: 1, producto_id: null, precio_unitario: 5000, descripcion: "Consulta / receta" }],
+  };
+  const n = resumirChequeo([sede("a"), sede("b")], [], [venta("a", 1_245_000, 750_000), consulta],
+    130_000, 20, 0, 0, { comisionIsadoraPct: 10, parteMadrePct: 60 }, 275_000);
+  expect(n).toMatchObject({
+    vendido: 1_250_000, comisionVentas: 125_000, reservaCompraPersonal: 275_000,
+    porCobrar: 495_000,
+    reparto: { utilidadDisponible: 720_000, ahorro: 144_000, parteMadre: 345_600, partePablo: 230_400 },
+  });
+});
