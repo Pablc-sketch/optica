@@ -1,7 +1,7 @@
 import { describe,it,expect,vi,afterEach } from 'vitest';
 import { menuParaRol,enlaceActivo } from '../src/lib/navegacion';
 import { filtrosCajaMercadoPago,estadoPagoMercadoPago } from '../src/lib/mercadopago-caja';
-import { saldoUnicoPorVenta } from '../src/lib/saldo-ordenes';
+import { ordenDeCobroPorVenta, saldoUnicoPorVenta } from '../src/lib/saldo-ordenes';
 import { inicioDelDia,finDelDia,diaEnChile } from '../src/lib/fechas';
 afterEach(()=>vi.useRealTimers());
 describe('auditoría de caja y navegación',()=>{
@@ -37,6 +37,24 @@ describe('auditoría de caja y navegación',()=>{
   });
   it('no cuenta dos veces la deuda de una venta con dos órdenes',()=>{
     expect(saldoUnicoPorVenta([{ventaId:'A',saldo:30000},{ventaId:'A',saldo:30000},{ventaId:'B',saldo:12000},{ventaId:'C',saldo:-1000}])).toBe(42000);
+  });
+  it('muestra el cobro en una sola OT de cada venta y lo mantiene accesible al entregar', () => {
+    const primera = { id: 'ot-1', folio: 20, estado: 'laboratorio' };
+    const segunda = { id: 'ot-2', folio: 21, estado: 'laboratorio' };
+    const otra = { id: 'ot-3', folio: 22, estado: 'laboratorio' };
+    const ventaPorOT = new Map([
+      [primera.id, { ventaId: 'A', saldo: 30000 }],
+      [segunda.id, { ventaId: 'A', saldo: 30000 }],
+      [otra.id, { ventaId: 'B', saldo: 30000 }],
+    ]);
+
+    const enLaboratorio = ordenDeCobroPorVenta([segunda, otra, primera], ventaPorOT);
+    expect(enLaboratorio).toEqual(new Map([['A', primera], ['B', otra]]));
+
+    const lista = { ...segunda, estado: 'listo' };
+    const paraEntrega = ordenDeCobroPorVenta([primera, lista, otra], ventaPorOT);
+    expect(paraEntrega.get('A')).toEqual(lista);
+    expect(ordenDeCobroPorVenta([primera, otra], ventaPorOT).get('A')).toEqual(primera);
   });
   it('incluye la hora repetida de abril y respeta la medianoche inexistente de septiembre',()=>{
     expect(inicioDelDia('2026-09-06')).toBe('2026-09-06T04:00:00.000Z');

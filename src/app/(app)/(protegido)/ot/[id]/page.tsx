@@ -25,6 +25,34 @@ function fmtD(v: number | null): string {
   return (v > 0 ? "+" : "") + Number(v).toFixed(2);
 }
 
+type Marco = { sku: string | null; nombre: string; marca: string | null; color: string | null };
+
+function ElegirMarcoInventario({ sufijo, armazonId, propio, armazones }: {
+  sufijo: "" | "_2"; armazonId: string | null; propio: boolean; armazones: (Marco & { id: string })[];
+}) {
+  return <details className="rounded-lg border border-tinta-suave/20 p-2">
+    <summary className="cursor-pointer text-sm font-semibold text-brand-dark">Elegir del inventario</summary>
+    <label className="mt-2 flex flex-col gap-1 text-sm font-medium">
+      Marco del inventario
+      <select
+        name={`armazon_producto_id${sufijo}`}
+        defaultValue={armazonId ?? ""}
+        className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+      >
+        <option value="">— Sin marco —</option>
+        {armazonId && !armazones.some(p => p.id === armazonId) && <option value={armazonId}>Marco asignado</option>}
+        {armazones.map(p => <option key={p.id} value={p.id}>
+          {[p.sku && `[${p.sku}]`, p.marca, p.nombre, p.color].filter(Boolean).join(" ")}
+        </option>)}
+      </select>
+    </label>
+    <label className="mt-2 flex items-center gap-2 text-sm font-medium">
+      <input type="checkbox" name={`marco_propio${sufijo}`} defaultChecked={propio} className="h-4 w-4" />
+      El paciente trae su propio marco
+    </label>
+  </details>;
+}
+
 function CampoCodigoMarco({ name, codigo, sku }: {
   name: string; codigo: string | null; sku?: string | null;
 }) {
@@ -47,7 +75,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const supabase = await createClient();
 
-  const [otRes, tenantRes, responsableRes, armazonesRes, laboratoriosRes] = await Promise.all([
+  const [otRes, tenantRes, responsableRes, ventaRes, rolRes, laboratoriosRes] = await Promise.all([
     supabase
       .from("ordenes_trabajo")
       .select(
@@ -73,12 +101,21 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
       .order("titulo_profesional", { ascending: true, nullsFirst: false })
       .limit(1)
       .maybeSingle(),
-    supabase.from("productos").select("id, nombre, marca, color, sku").eq("categoria", "armazon").order("marca"),
+    supabase.from("venta_items").select("id", { count: "exact", head: true }).eq("ot_id", id),
+    supabase.rpc("jwt_rol"),
     supabase.from("proveedores").select("id, nombre").eq("tipo", "laboratorio").order("nombre"),
   ]);
 
   const ot = otRes.data;
   if (!ot) notFound();
+
+  const sePuedeEditarInventario = !ventaRes.error && ventaRes.count === 0 && !rolRes.error
+    && ["admin", "clinico", "ventas"].includes(rolRes.data);
+  const armazonesRes = sePuedeEditarInventario
+    ? await supabase.from("productos").select("id,nombre,marca,color,sku").eq("categoria", "armazon").order("marca")
+    : null;
+  const sePuedeElegirMarco = sePuedeEditarInventario && !armazonesRes?.error;
+  const armazones = armazonesRes?.data ?? [];
 
   const responsable = responsableRes.data;
 
@@ -100,7 +137,6 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
     oi_esfera: number | null; oi_cilindro: number | null; oi_eje: number | null; oi_add: number | null;
     av_od: string | null; av_oi: string | null; dp: number | null; altura: number | null; notas: string | null;
   } | null;
-  type Marco = { sku: string | null; nombre: string; marca: string | null; color: string | null };
   const marco = ot.productos as unknown as Marco | null;
   const marco2 = ot.productos_2 as unknown as Marco | null;
   const tieneSegundoCristal = Boolean(ot.tipo_lente_2 || ot.tratamiento_2);
@@ -160,21 +196,9 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                   <option value="cerca">Cerca</option>
                 </select>
               </label>
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                Marco de este cristal
-                <select
-                  name="armazon_producto_id"
-                  defaultValue={ot.armazon_producto_id ?? ""}
-                  className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
-                >
-                  <option value="">— Sin marco —</option>
-                  {(armazonesRes.data ?? []).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {[p.sku && `[${p.sku}]`, p.marca, p.nombre, p.color].filter(Boolean).join(" ")}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {sePuedeElegirMarco && <ElegirMarcoInventario
+                sufijo="" armazonId={ot.armazon_producto_id} propio={ot.marco_propio} armazones={armazones}
+              />}
               <label className="flex flex-col gap-1 text-sm font-medium">
                 Descripción del marco
                 <input
@@ -183,10 +207,6 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                   placeholder="Ej. acetato negro"
                   className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
                 />
-              </label>
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input type="checkbox" name="marco_propio" defaultChecked={ot.marco_propio} className="h-4 w-4" />
-                El paciente trae su propio marco (no descuenta stock)
               </label>
             </div>
           </fieldset>
@@ -208,21 +228,9 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                     <option value="cerca">Cerca</option>
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm font-medium">
-                  Marco de este cristal
-                  <select
-                    name="armazon_producto_id_2"
-                    defaultValue={ot.armazon_producto_id_2 ?? ""}
-                    className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
-                  >
-                    <option value="">— Sin marco —</option>
-                    {(armazonesRes.data ?? []).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {[p.sku && `[${p.sku}]`, p.marca, p.nombre, p.color].filter(Boolean).join(" ")}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {sePuedeElegirMarco && <ElegirMarcoInventario
+                  sufijo="_2" armazonId={ot.armazon_producto_id_2} propio={ot.marco_propio_2} armazones={armazones}
+                />}
                 <label className="flex flex-col gap-1 text-sm font-medium">
                   Descripción del marco
                   <input
@@ -231,10 +239,6 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
                     placeholder="Ej. acetato negro"
                     className="rounded-lg border border-tinta-suave/30 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
                   />
-                </label>
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input type="checkbox" name="marco_propio_2" defaultChecked={ot.marco_propio_2} className="h-4 w-4" />
-                  El paciente trae su propio marco (no descuenta stock)
                 </label>
                 <div className="flex gap-2 text-sm">
                   {(["laboratorio", "stock"] as const).map((op) => (

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { useRouter } from "next/navigation";
 import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { coincidePaciente } from "@/lib/buscar-paciente";
-import { filtrarProductos, marcoPorCodigo } from "@/lib/buscar-producto";
+import { filtrarProductos, marcoPorCodigo, sugerirDetallesMarco, sugerirMarcosPorCodigo } from "@/lib/buscar-producto";
 import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
 import CampoVoucher from "@/components/campo-voucher";
 import { CampoPresupuestoPar, EstadoPresupuestoPar } from "@/components/presupuesto-par";
@@ -30,7 +30,7 @@ import { costoRealCristal, origenCristal as origenDelCristal, precioVentaCristal
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
-type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string; sku?: string | null; modelo?: string | null; codigo_color?: string | null; recargo_marco?: number | null; stock?: number; costo?: number };
+type Producto = { id: string; nombre: string; marca: string | null; precio_venta: number; categoria: string; sku?: string | null; modelo?: string | null; codigo_color?: string | null; material?: string | null; color?: string | null; recargo_marco?: number | null; stock?: number; costo?: number };
 // Una fila del catálogo de /precios: el precio al que se vende, más el
 // puente hacia la lista del laboratorio para poder calcular el costo real.
 type CostoCristal = {
@@ -509,6 +509,39 @@ function FilaLente({
 const TIPOS_MARCO = ["acetato", "metal", "semi al aire", "al aire", "TR90"];
 const COLORES_MARCO = ["negro", "café", "carey", "dorado", "plateado", "rojo", "azul", "rosado", "transparente", "gris"];
 
+function EntradaDetalleMarco({ etiqueta, valor, opciones, alCambiar }: {
+  etiqueta: string; valor: string; opciones: readonly (string | null | undefined)[]; alCambiar: (valor: string) => void;
+}) {
+  return <div className="space-y-1.5">
+    <label className="grid gap-1 text-sm font-semibold text-amber-900">
+      {etiqueta}
+      <input value={valor} onChange={event => alCambiar(event.target.value)} placeholder={`Escribe el ${etiqueta.toLowerCase()}`}
+        maxLength={40} autoComplete="off" className="rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:border-amber-500" />
+    </label>
+    <div className="flex flex-wrap gap-1.5">
+      {sugerirDetallesMarco(opciones, valor).map(opcion => <button key={opcion} type="button" onClick={() => alCambiar(opcion)}
+        className={`rounded-full border px-2.5 py-1.5 text-xs font-semibold ${opcion === valor ? "border-amber-800 bg-amber-800 text-white" : "border-amber-800/25 bg-white text-amber-900"}`}>
+        {opcion}
+      </button>)}
+    </div>
+  </div>;
+}
+
+function OpcionMarco({ producto: p, alElegir }: { producto: Producto; alElegir: (producto: Producto) => void }) {
+  return <button type="button" onClick={() => alElegir(p)}
+    className="flex w-full items-center gap-2 rounded-lg bg-crema-claro px-3 py-2 text-left text-sm transition hover:bg-amber-50">
+    <span className="min-w-0 flex-1">
+      <strong className="block break-words">{p.sku || p.nombre}</strong>
+      {(p.marca || p.material || p.color || (p.sku && p.nombre !== p.sku)) && <small className="block text-tinta-suave">
+        {[p.marca, p.sku && p.nombre !== p.sku ? p.nombre : null, p.material, p.color].filter(Boolean).join(" · ")}
+      </small>}
+    </span>
+    {p.stock !== undefined && <span className={`shrink-0 text-xs font-semibold ${p.stock > 0 ? "text-emerald-800" : "text-amber-900"}`}>
+      {p.stock > 0 ? `Stock ${p.stock}` : p.stock < 0 ? `Saldo ${p.stock}` : "Para encargar"}
+    </span>}
+  </button>;
+}
+
 function SelectorArmazon({
   etiqueta,
   productos,
@@ -529,19 +562,18 @@ function SelectorArmazon({
   const [busca, setBusca] = useState("");
   const [tipoMarco, setTipoMarco] = useState("");
   const [colorMarco, setColorMarco] = useState("");
-  // El código o modelo del marco (lo que trae la etiqueta), aparte del
-  // color: así sale en el pedido sin tener que cargar el marco al inventario.
-  const [codigoMarco, setCodigoMarco] = useState("");
-  const descripcion = [
-    [tipoMarco, colorMarco.trim().toLowerCase()].filter(Boolean).join(" "),
-    codigoMarco.trim() ? `cód. ${codigoMarco.trim().toUpperCase()}` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const armazones = useMemo(() => productos.filter((p) => p.categoria === "armazon"), [productos]);
-  const filtrados = useMemo(() => filtrarProductos(armazones, busca), [armazones, busca]);
+  const codigoMarco = busca.trim();
+  const referencia = codigoMarco ? `cód. ${codigoMarco}` : "";
+  const detalle = [tipoMarco.trim(), colorMarco.trim()].filter(Boolean).join(" ");
+  const descripcion = [detalle.slice(0, 104 - (referencia ? referencia.length + 3 : 0)).trim(), referencia].filter(Boolean).join(" · ");
+  const armazones = useMemo(() => productos.filter(p => p.categoria === "armazon"), [productos]);
+  const filtrados = useMemo(() => {
+    const sugerencias = sugerirMarcosPorCodigo(armazones, busca);
+    return sugerencias.length ? sugerencias : filtrarProductos(armazones, busca);
+  }, [armazones, busca]);
   const marcoExacto = marcoPorCodigo(armazones, busca);
-  const descritoEnInventario = marcoPorCodigo(armazones, codigoMarco);
+  const materiales = [...TIPOS_MARCO, ...armazones.map(p => p.material)];
+  const colores = [...COLORES_MARCO, ...armazones.map(p => p.color)];
 
   return (
     <fieldset className="flex-1 rounded-xl border border-amber-300 bg-white p-3">
@@ -574,6 +606,7 @@ function SelectorArmazon({
                 e.preventDefault();
                 if (marcoExacto) onElegir(marcoExacto);
               }}
+              maxLength={80}
               placeholder="Ej. LY-2187L C-2"
               autoComplete="off"
               autoCapitalize="characters"
@@ -582,26 +615,7 @@ function SelectorArmazon({
             />
           </label>
           <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto">
-            {filtrados.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => onElegir(p)}
-                  className="flex w-full items-center gap-2 rounded-lg bg-crema-claro px-3 py-2 text-left text-sm transition hover:bg-amber-50"
-                >
-                  <span className="flex-1 truncate">
-                    {p.marca ? `${p.marca} ` : ""}
-                    {p.nombre}
-                    {p.sku && p.sku !== p.nombre && <small className="block font-semibold">{p.sku}</small>}
-                  </span>
-                  {p.stock !== undefined && (
-                    <span className={`shrink-0 text-xs font-semibold ${p.stock > 0 ? "text-emerald-800" : "text-amber-900"}`}>
-                      {p.stock > 0 ? `Stock ${p.stock}` : p.stock < 0 ? `Por encargar · saldo ${p.stock}` : "Sin stock · por encargar"}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
+            {filtrados.map(p => <li key={p.id}><OpcionMarco producto={p} alElegir={onElegir} /></li>)}
             {filtrados.length === 0 && (
               <li className="rounded-lg bg-crema-claro px-3 py-2 text-xs text-tinta-suave">
                 {armazones.length === 0 ? "No hay armazones cargados en Inventario." : "Sin coincidencias."}
@@ -615,70 +629,20 @@ function SelectorArmazon({
           >
             👓 El paciente trae su propio marco
           </button>
-          <details className="rounded-lg border border-amber-200">
-            <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-amber-900">Describir un marco fuera del inventario</summary>
-            <div className="flex flex-col gap-2 rounded-lg bg-amber-50 p-2.5">
-              <p className="text-xs text-amber-900">Solo se descuenta stock si el código coincide con un marco cargado.</p>
-              <div className="flex flex-wrap gap-1.5">
-                {TIPOS_MARCO.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTipoMarco(t)}
-                    className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${
-                      tipoMarco === t ? "border-amber-800 bg-amber-800 text-white" : "border-amber-800/25 bg-white text-amber-900"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
+          {!marcoExacto && <>
+            <details className="rounded-lg border border-amber-200">
+              <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-amber-900">Escribir material y color</summary>
+              <div className="space-y-3 rounded-lg bg-amber-50 p-2.5">
+                <EntradaDetalleMarco etiqueta="Material" valor={tipoMarco} opciones={materiales} alCambiar={setTipoMarco} />
+                <EntradaDetalleMarco etiqueta="Color" valor={colorMarco} opciones={colores} alCambiar={setColorMarco} />
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {COLORES_MARCO.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setColorMarco(c)}
-                    className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                      colorMarco === c ? "border-tinta bg-tinta text-white" : "border-tinta/20 bg-white text-tinta"
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-              <input
-                value={colorMarco}
-                onChange={(e) => setColorMarco(e.target.value)}
-                placeholder="Color u otro detalle (ej. carey con dorado)"
-                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:border-amber-500"
-              />
-              <label className="flex flex-col gap-1 text-sm font-bold text-amber-900">
-                Código del marco (el de la etiqueta)
-                <input
-                  value={codigoMarco}
-                  onChange={(e) => setCodigoMarco(e.target.value)}
-                  placeholder="Ej. GYS8039"
-                  maxLength={80}
-                  spellCheck={false}
-                  autoCapitalize="characters"
-                  className="w-full rounded-xl border-2 border-amber-300 bg-white px-3 py-3 text-lg font-bold uppercase tracking-wide outline-none focus:border-amber-600"
-                />
-              </label>
-              <button
-                type="button"
-                disabled={!descritoEnInventario && !codigoMarco.trim() && (!tipoMarco || !colorMarco.trim())}
-                onClick={() => {
-                  if (descritoEnInventario) onElegir(descritoEnInventario);
-                  else onDescribir(descripcion, codigoMarco.trim() || undefined);
-                }}
-                className="rounded-lg bg-amber-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40"
-              >
-                {descritoEnInventario ? `Usar ${descritoEnInventario.sku} del inventario`
-                  : descripcion ? "Usar este marco" : "Escribe el código o describe el marco"}
-              </button>
-            </div>
-          </details>
+            </details>
+            {(codigoMarco || (tipoMarco.trim() && colorMarco.trim())) && <button type="button"
+              onClick={() => onDescribir(descripcion, codigoMarco || undefined)}
+              className="rounded-lg bg-amber-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-amber-900">
+              {codigoMarco ? `Usar código escrito · ${codigoMarco}` : "Usar descripción"}
+            </button>}
+          </>}
         </div>
       )}
     </fieldset>

@@ -22,7 +22,7 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
     // en pantalla en vez de esconderlo (A12).
     supabase.from("pacientes").select("id, nombre, rut", { count: "exact" }).order("nombre").limit(2000),
     leerTodas((a, b) => supabase.from("productos")
-      .select("id, nombre, marca, precio_venta, categoria, sku, modelo, codigo_color, recargo_marco, costo")
+      .select("id, nombre, marca, material, color, precio_venta, categoria, sku, modelo, codigo_color, recargo_marco, costo")
       .eq("tenant_id", tenantId).order("marca").order("id").range(a, b)),
     supabase
       .from("costos_cristales")
