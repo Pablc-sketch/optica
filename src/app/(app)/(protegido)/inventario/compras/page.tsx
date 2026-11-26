@@ -3,6 +3,8 @@ import CabeceraPagina from "@/components/cabecera-pagina";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { cargarCompraMarcos } from "@/lib/cargar-compra-marcos";
 import type { FilaCompraMarcos } from "@/lib/compra-marcos";
+import { leerTodas } from "@/lib/leer-todas";
+import AgregarMarco, { type MarcoManual } from "./agregar-marco";
 import AnotarCompra from "./anotar-compra";
 
 const pendientes = (filas: FilaCompraMarcos[]) => filas.reduce((total, fila) => total + (fila.comprado ? 0 : (fila.porComprar ?? 0)), 0);
@@ -13,14 +15,21 @@ export default async function ListaCompraMarcos() {
   const cabecera = <CabeceraPagina seccion="Inventario" titulo="Lista de compra de marcos" acciones={
     <Link href="/inventario" className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Ver inventario</Link>
   } />;
-  const resultado = await cargarCompraMarcos(supabase, tenantId).catch(() => null);
-  if (!resultado) return <div className="space-y-4">{cabecera}
+  const [resultado, manualesRes] = await Promise.all([
+    cargarCompraMarcos(supabase, tenantId).catch(() => null),
+    leerTodas((a, b) => supabase.from("lista_compra_marcos_manuales").select("id,codigo,proveedor,cantidad,comprado")
+      .eq("tenant_id", tenantId).order("comprado").order("proveedor").order("codigo").order("id").range(a, b)),
+  ]);
+  if (!resultado || manualesRes.error) return <div className="space-y-4">{cabecera}
     <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-900">
-      No se pudo cargar la lista. Recarga para volver a consultar los pedidos.
+      No se pudo cargar la lista. Recarga para volver a intentar.
     </p>
   </div>;
 
   const { filas, revisar } = resultado;
+  const manuales: MarcoManual[] = manualesRes.data;
+  const pendientesManuales = manuales.reduce((total, fila) => total + (fila.comprado ? 0 : fila.cantidad), 0);
+  const sugerencias = [...new Set([...filas.map(fila => fila.proveedor), ...manuales.map(fila => fila.proveedor)])].sort();
   const utiles = filas.filter(fila => fila.stock === null || (fila.porComprar ?? 0) > 0);
   const porProveedor = new Map<string, FilaCompraMarcos[]>();
   for (const fila of utiles) {
@@ -36,7 +45,7 @@ export default async function ListaCompraMarcos() {
     <p className="text-sm text-tinta-suave">Marcos de ventas vigentes con OT pendientes de preparar. Anota solo las unidades disponibles para estos pedidos.</p>
     <dl className="grid grid-cols-3 gap-2">
       {[
-        ["Por comprar", pendientes(utiles)],
+        ["Por comprar", pendientes(utiles) + pendientesManuales],
         ["Unidades por contar", sinConteo(utiles)],
         ["Por revisar", revisar.length],
       ].map(([titulo, total]) => <div key={titulo} className="rounded-xl border border-tinta/10 bg-white p-3">
@@ -44,7 +53,30 @@ export default async function ListaCompraMarcos() {
         <dd className="mt-1 text-xl font-bold tabular-nums">{total}</dd>
       </div>)}
     </dl>
-    {!utiles.length && !revisar.length && <p className="rounded-xl bg-white p-4 font-semibold">No hay marcos pendientes de compra.</p>}
+    <details className="rounded-xl border border-tinta/10 bg-white p-3 sm:p-4">
+      <summary className="cursor-pointer font-bold text-brand-dark">Agregar marco</summary>
+      <p className="mb-3 mt-2 text-sm text-tinta-suave">Anota las unidades adicionales que quieres comprar.</p>
+      <AgregarMarco proveedores={sugerencias} />
+    </details>
+    {manuales.length > 0 && <section className="space-y-2" aria-labelledby="agregados-a-mano">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="agregados-a-mano" className="text-lg font-bold">Agregados a mano</h2>
+        <p className="text-sm text-tinta-suave">{pendientesManuales} por comprar</p>
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {manuales.map(fila => <li key={fila.id} className="rounded-xl border border-tinta/10 bg-white p-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="min-w-0 break-words font-bold">{fila.codigo}</h3>
+            <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${fila.comprado ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-950"}`}>
+              {fila.comprado ? "Comprado" : `Comprar ${fila.cantidad}`}
+            </span>
+          </div>
+          <p className="mb-3 text-sm text-tinta-suave">{fila.proveedor}</p>
+          <AgregarMarco key={`${fila.cantidad}:${fila.comprado}`} fila={fila} />
+        </li>)}
+      </ul>
+    </section>}
+    {!utiles.length && !revisar.length && !manuales.length && <p className="rounded-xl bg-white p-4 font-semibold">No hay marcos pendientes de compra.</p>}
     {proveedores.map(([proveedor, modelos]) => <section key={proveedor} className="space-y-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-bold">{proveedor}</h2>
