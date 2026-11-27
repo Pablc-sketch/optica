@@ -5,6 +5,7 @@ import TableroOT from "../src/app/(app)/(protegido)/ot/page";
 const { range } = vi.hoisted(() => ({ range: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    rpc: async () => ({ data: "admin", error: null }),
     from: (tabla: string) => {
       const query = { select: () => query, eq: () => query, in: () => query, not: () => query,
         order: () => query, range: () => range(tabla), maybeSingle: async () => ({ data: { id: "prueba" } }) };

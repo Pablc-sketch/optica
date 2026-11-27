@@ -20,7 +20,7 @@ const colores = {
   pizarra: "border-slate-300 bg-slate-50 text-slate-950",
 } as const;
 
-type Resumen = ReturnType<typeof resumirChequeo>;
+type Resumen = ReturnType<typeof resumirChequeo> & { reparto: Caja["reparto"] };
 type Caja = ReturnType<typeof resumirCajaChequeo>;
 
 function Recuadro({ etiqueta, valor, color, nota, abierto, ancho, id, children }: {
@@ -101,7 +101,7 @@ export function IndicadoresChequeo({ resumen: n, ventas }: { resumen: Resumen; v
         { etiqueta: "Total vendido", valor: n.vendido },
         { etiqueta: "Costos y comisiones", valor: n.vendido - n.utilidad },
         { etiqueta: "IVA del chequeo", valor: n.iva },
-        { etiqueta: "Líquido para ahorro y reparto", valor: n.reparto.utilidadDisponible },
+        { etiqueta: "Proyección antes de ahorro y reparto", valor: n.reparto.utilidadDisponible },
       ]} />
       <p>Antes del ahorro y el reparto.</p>
     </Recuadro>

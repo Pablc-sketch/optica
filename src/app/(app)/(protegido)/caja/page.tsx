@@ -6,11 +6,11 @@ import { exigirRolPagina } from '@/lib/autorizacion';
 import { cargarPendientes } from '@/lib/resumen-pendientes';
 import { leerTodas } from '@/lib/leer-todas';
 import { clp } from '@/lib/clp';
-import { hoyEnChile, fechaLegible, diaEnChile } from '@/lib/fechas';
+import { hoyEnChile, fechaLegible } from '@/lib/fechas';
 import {etiquetasReparto} from '@/lib/etiquetas-reparto';
 import { pendientePersonal } from '@/lib/caja-fuentes';
 import {leerEstadoCuenta} from '@/lib/cuenta-mercadopago';
-import { efectivoDesdeConteo, prioridadCaja, confirmarSaldoDesdeRegistro } from '@/lib/caja-verificada';
+import { efectivoDesdeConteo, prioridadCaja } from '@/lib/caja-verificada';
 import { resumenSedeCaja, sedesDeCaja } from '@/lib/caja-operativo';
 import type { VentaParaCierre } from '@/lib/cierre-operativo';
 import ActualizarCajaMercadoPago from '@/components/actualizar-caja-mercadopago';
@@ -21,8 +21,9 @@ import { pagosConAsignaciones, type PagoCosto } from '@/lib/pagos-operativo';
 import { resumirCaja } from '@/lib/caja';
 import CajaDelChequeo from '@/components/caja-del-chequeo';
 import VistaGastos, { type FiltrosGastos } from '@/components/vista-gastos';
-import { cargarCajaChequeo } from '@/lib/datos-caja-chequeo';
-import type { Chequeo, SedeChequeo } from '@/lib/chequeos';
+import { buscarAmbitoReparto, cargarCajaChequeo, COLUMNAS_CHEQUEO } from '@/lib/datos-caja-chequeo';
+import { saldosReparto } from '@/lib/datos-reparto-disponible';
+import type { Chequeo } from '@/lib/chequeos';
 import CajaHistorial from '@/components/caja-historial';
 export const dynamic = 'force-dynamic';
 const campo = 'w-full min-w-0 rounded-xl border px-3 py-2.5';
@@ -46,49 +47,33 @@ export default async function Caja({ searchParams }: {
   if (vista === 'resumen' && params.sede === undefined) {
     const hoy = hoyEnChile();
     const grupos = await leerTodas((a, b) => supabase.from('chequeos')
-      .select('id,nombre,desde,hasta,ahorro_pct,comision_isadora_pct,reparto_pamela_pct')
+      .select(COLUMNAS_CHEQUEO)
       .eq('tenant_id', tenantId).order('desde', { ascending: false }).order('id').range(a, b));
     const chequeos = (grupos.data ?? []) as Chequeo[];
-    const chequeo = chequeos.find(c => c.id === params.chequeo)
+    const preferido = chequeos.find(c => c.id === params.chequeo)
       ?? chequeos.find(c => c.desde <= hoy && hoy <= c.hasta)
       ?? chequeos.find(c => c.desde <= hoy);
     if (grupos.error) return <div className="space-y-4">
       <CabeceraPagina seccion="Operación" titulo="Caja y gastos" />{navegacion}
       <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudieron cargar los chequeos de la caja.</p>
     </div>;
-    if (chequeo) {
-      const [integrantes, cuenta, caja, conteo, bancoConfirmado] = await Promise.all([
-        leerTodas((a,b) => supabase.from('operativos').select('*').eq('tenant_id', tenantId).eq('chequeo_id', chequeo.id)
-          .neq('estado', 'cancelado').order('fecha').order('hora_inicio', { nullsFirst: false }).order('id').range(a,b)),
-        leerEstadoCuenta(tenantId),
-        supabase.rpc('caja_global').single(),
-        supabase.from('caja_conteos').select('contado,esperado,created_at').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(1),
-        supabase.from('caja_saldos_confirmados').select('saldo,saldo_registrado,confirmado_en').eq('tenant_id', tenantId).order('confirmado_en', { ascending: false }).order('id').limit(1),
-      ]);
-      const sedes = (integrantes.data ?? []) as SedeChequeo[];
-      const datos = integrantes.error ? null : await cargarCajaChequeo(supabase, tenantId, chequeo, sedes, hoy);
-      const t = caja.error ? null : caja.data as { entro_efectivo: number; salio_efectivo: number; entro_digital: number;
-        entro_debito: number; entro_credito: number; salio_digital: number } | null;
-      const libro = t && datos ? resumirCaja({
-        entroEfectivo: t.entro_efectivo, salioEfectivo: t.salio_efectivo, entroDigital: t.entro_digital,
-        entroDebito: t.entro_debito, entroCredito: t.entro_credito, salioDigital: t.salio_digital,
-      }, {
-        comisionDebitoPct: Number(datos.tenant?.comision_debito_pct ?? 0),
-        comisionCreditoPct: Number(datos.tenant?.comision_credito_pct ?? 0),
-      }) : null;
-      const conteoGuardado = conteo.error ? null : conteo.data?.[0];
-      const efectivoContado = libro ? efectivoDesdeConteo(libro.hayEfectivo, conteoGuardado) : null;
-      const efectivoVerificado = Boolean(conteoGuardado && libro?.hayEfectivo === conteoGuardado.esperado
-        && diaEnChile(conteoGuardado.created_at) === hoy);
-      const bancoManual = confirmarSaldoDesdeRegistro(libro?.hayDigital ?? null, hoy, bancoConfirmado.error ? null : bancoConfirmado.data?.[0]);
+    if (params.operativo || preferido) {
+      const versionInicial = await supabase.rpc('version_caja_reparto');
+      const ambito = await buscarAmbitoReparto(supabase, tenantId,
+        params.operativo ? { operativo: params.operativo } : { chequeo: preferido?.id });
+      const datos = ambito && await cargarCajaChequeo(supabase, tenantId, ambito.chequeo, ambito.sedes, hoy);
+      const saldos = datos && await saldosReparto(supabase, tenantId, hoy, datos.tenant);
+      const versionFinal = await supabase.rpc('version_caja_reparto');
+      const version = !versionInicial.error && !versionFinal.error && versionInicial.data === versionFinal.data
+        ? versionFinal.data as string | null : null;
       return <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-6">
         <CabeceraPagina seccion="Operación" titulo="Caja y gastos" acciones={<ActualizarCajaMercadoPago compacto />} />
         {navegacion}
         {guardado}
-        {datos ? <CajaDelChequeo chequeo={chequeo} opciones={chequeos} sedes={sedes} datos={datos} hoy={hoy}
-          efectivo={efectivoContado ?? libro?.hayEfectivo ?? null} efectivoVerificado={efectivoVerificado}
-          cuenta={cuenta.saldo} bancoRegistrado={libro?.hayDigital ?? null} bancoManual={bancoManual} />
-          : <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudo calcular el chequeo. Recarga para reintentar.</p>}
+        {ambito && datos && saldos
+          ? <CajaDelChequeo chequeo={ambito.chequeo} opciones={chequeos} sedes={ambito.sedes} datos={datos}
+            hoy={hoy} saldos={saldos} version={version} />
+          : <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudo calcular el reparto. Recarga para reintentar.</p>}
       </div>;
     }
   }
@@ -183,7 +168,7 @@ export default async function Caja({ searchParams }: {
   const banco = cuentaProveedor?.saldo;
   const prioridad = prioridadCaja(efectivoVerificado, banco?.estado === "disponible" ? banco.disponible : null, deudaPersonal);
   const base = pendientes.resumen;
-  const p = piloto ? {...base,total:base.costos,ahorro:0,personas:{pablo:0,madre:0,isadora:0}} : {...base,total:base.total+(pendientes.impuestosPendientes??0)};
+  const p = { ...base, total: base.costos + (pendientes.impuestosPendientes ?? 0) };
 
   const operativoId = (vista==='movimientos'||vista==='pendientes') && (operativos.data ?? []).some(o => o.id === params.operativo) ? params.operativo! : '';
   const ventasFiltradas = (ventas.data ?? []).filter(v => !operativoId || v.operativo_id === operativoId);
@@ -192,7 +177,7 @@ export default async function Caja({ searchParams }: {
   const pendientesFiltrados = p.operativos.filter(o => !operativoId || o.operativoId === operativoId);
   const fecha = hoyEnChile();
   const nombres=etiquetasReparto(tenant.data?.reparto_etiquetas);
-  const filas = [[nombres.pablo,p.personas.pablo],[nombres.madre,p.personas.madre],[nombres.isadora,p.personas.isadora],['Laboratorio',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos],['SII declarado por pagar',pendientes.impuestosPendientes??0]] as const;
+  const filas = [['Laboratorio',p.fides],['Marcos / armazones',p.marcos],['Gastos de operativos',p.gastos],['SII declarado por pagar',pendientes.impuestosPendientes??0]] as const;
   return <div className="flex flex-col gap-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><CabeceraPagina seccion="Operación" titulo="Caja" /><div className="flex flex-wrap items-center gap-3">{vista === "cuadrar" && <ActualizarCajaMercadoPago compacto />}<Link href="/impuestos" className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold">SII mensual</Link></div></div>
     {navegacion}
@@ -204,19 +189,19 @@ export default async function Caja({ searchParams }: {
       <div className="grid grid-cols-2 gap-3"><Link href="/cobros" className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Clientes por cobrar</p><b className="text-2xl tabular-nums">{clp(porCobrar)}</b><p className="mt-2 text-sm underline">Gestionar cobros →</p></Link><Link href={piloto ? "/reportes" : "/pagos/revisar"} className="rounded-2xl bg-tinta p-4 font-semibold text-white">Confirmar o corregir pagos, gastos y ahorro →</Link></div>
       <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="text-lg font-bold">Por operativo</h2>
       {pendientesFiltrados.length===0 && <p className="mt-3 text-sm">Sin pagos ni ahorro pendientes.</p>}
-      {pendientesFiltrados.map(o=><Link key={o.operativoId} href={`/operativos/${o.operativoId}/cierre`} className="mt-3 block rounded-xl border p-3"><b>{o.nombre}</b><p className="text-xs text-tinta-suave">{fechaLegible(o.fecha)}</p><dl className="mt-2 grid grid-cols-2 gap-2 text-sm">{[['Laboratorio',o.fides],['Marcos',o.marcos],['Gastos',o.gastos],[nombres.pablo,o.personas.pablo],[nombres.madre,o.personas.madre],[nombres.isadora,o.personas.isadora],['Ahorro por separar',o.ahorro]].map(([n,m])=><div key={n} className="flex justify-between gap-2"><dt>{n}</dt><dd className="tabular-nums">{clp(Number(m))}</dd></div>)}</dl></Link>)}
+      {pendientesFiltrados.map(o=><Link key={o.operativoId} href={`/operativos/${o.operativoId}/cierre`} className="mt-3 block rounded-xl border p-3"><b>{o.nombre}</b><p className="text-xs text-tinta-suave">{fechaLegible(o.fecha)}</p><dl className="mt-2 grid grid-cols-2 gap-2 text-sm">{[['Laboratorio',o.fides],['Marcos',o.marcos],['Gastos',o.gastos]].map(([n,m])=><div key={n} className="flex justify-between gap-2"><dt>{n}</dt><dd className="tabular-nums">{clp(Number(m))}</dd></div>)}</dl></Link>)}
       </section>
       <div className="flex flex-wrap gap-4 px-1 text-sm">
         <Link href={piloto ? "/reportes" : "/pagos/revisar"} className="underline">Ahorro registrado · {clp((retiros.data ?? []).filter(r => r.persona === 'ahorro').reduce((s, r) => s + r.monto, 0))}</Link>
         <Link href="/reportes" className="underline">Reportes</Link>
       </div>
-      <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-bold text-red-700">Total de la óptica por pagar · {clp(p.total+deudaPersonal)}</summary>
+      <details className="rounded-2xl bg-white p-4 shadow-sm"><summary className="cursor-pointer font-bold text-red-700">Costos y obligaciones de la óptica · {clp(p.total+deudaPersonal)}</summary>
       <div className="pt-2">
         <dl className="mt-2 divide-y divide-tinta/10">{filas.filter(([,monto])=>monto>0).map(([nombre,monto]) => <div key={nombre} className="flex justify-between gap-3 py-2"><dt>{nombre}</dt><dd className="font-semibold tabular-nums">{clp(monto)}</dd></div>)}
           <div className="flex justify-between gap-3 py-2"><dt>{piloto ? 'Gastos por reembolsar' : `Devolver a ${nombres.pablo} · gastos personales`}</dt><dd className="font-semibold tabular-nums">{clp(deudaPersonal)}</dd></div>
           <div className="flex justify-between gap-3 py-3 font-bold"><dt>Total pendiente</dt><dd>{clp(p.total+deudaPersonal)}</dd></div>
-        </dl><p className="text-xs text-tinta-suave">Pendientes y ahorro aún no descontados del saldo bancario.</p>
-        {p.ahorro > 0 && <p className="mt-2 text-sm">Ahorro por separar: {clp(p.ahorro)}</p>}
+        </dl><p className="text-xs text-tinta-suave">Costos registrados. Consulta el reparto y el ahorro de cada chequeo en Resumen.</p>
+        <Link href="/caja#reparto" className="mt-2 block text-sm font-semibold underline">Ver reparto y ahorro</Link>
         <Link href={piloto ? "/agenda/equipos" : "/pagos"} className="mt-3 inline-block rounded-xl border px-3 py-2 font-semibold">Ver y registrar pagos →</Link>
       </div>
       </details>
@@ -245,9 +230,9 @@ export default async function Caja({ searchParams }: {
         </details>
       </section>
       <CuentaBancaria enlaceExterno={false} tenantId={tenantId} cuenta={cuentaProveedor} registrado={{saldo:saldo.hayDigital,maquina:(t?.entro_debito ?? 0)+(t?.entro_credito ?? 0),transferencias:(t?.entro_digital ?? 0)-(t?.entro_debito ?? 0)-(t?.entro_credito ?? 0),salidas:saldo.salioDigital,comisiones:saldo.comisionTarjeta}} />
-      <details className="rounded-2xl bg-white p-4"><summary className="cursor-pointer font-semibold">Disponible para repartir</summary>
-        <p className="mt-3 text-2xl font-bold tabular-nums">{deudaPersonal > 0 ? clp(0) : prioridad.paraRepartir === null ? 'Por verificar' : clp(Math.max(0, prioridad.paraRepartir - p.total - p.ahorro))}</p>
-        <p className="mt-2 text-sm text-tinta-suave">{deudaPersonal > 0 ? 'Primero se devuelve el dinero personal.' : 'Saldo verificado de caja menos compromisos y ahorro pendientes.'}</p>
+      <details className="rounded-2xl bg-white p-4"><summary className="cursor-pointer font-semibold">Saldo tras costos registrados</summary>
+        <p className="mt-3 text-2xl font-bold tabular-nums">{deudaPersonal > 0 ? clp(0) : prioridad.paraRepartir === null ? 'Por verificar' : clp(Math.max(0, prioridad.paraRepartir - p.total))}</p>
+        <p className="mt-2 text-sm text-tinta-suave">{deudaPersonal > 0 ? 'Primero se devuelve el dinero personal.' : 'Saldo verificado menos costos registrados. El disponible para socios y ahorro está en el reparto de cada chequeo.'}</p>
       </details>
       <Link href="/caja?ver=movimientos" className="rounded-xl bg-white p-4 text-center font-semibold">Revisar movimientos y diferencias →</Link>
       <Link href="/caja?ver=gastos&personal=1#adelantos-personales" className="block rounded-2xl border border-tinta/20 bg-white p-5 text-base font-semibold">Gastos personales y devoluciones →</Link>

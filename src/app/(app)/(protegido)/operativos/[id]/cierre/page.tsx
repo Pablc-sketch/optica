@@ -3,11 +3,12 @@ import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirRolPagina } from "@/lib/autorizacion";
-import {etiquetasReparto} from '@/lib/etiquetas-reparto';
+import { cargarRepartoOperativo } from "@/lib/datos-caja-chequeo";
+import { hoyEnChile } from "@/lib/fechas";
+import ResumenReparto from "@/components/resumen-reparto";
 import { clp } from "@/lib/clp";
 import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
-import FilaPago from "./fila-pago";
 import PagoCostoOperativo from "@/components/pago-costo-operativo";
 import { pagadoCon, pendientesCostos, PREFIJO_FIDES, PREFIJO_MARCOS, pagosConAsignaciones } from "@/lib/pagos-operativo";
 import { leerTodas } from "@/lib/leer-todas";
@@ -21,7 +22,7 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
   if (esPilotoTerreno(tenantId)) redirect("/operativos/"+id);
 
-  const [opRes, ventasRes, tenantRes, retirosRes, fidesRes, asignacionesRes, deudaRes] = await Promise.all([
+  const [opRes, ventasRes, tenantRes, reparto, fidesRes, asignacionesRes, deudaRes] = await Promise.all([
     supabase.from("operativos").select("*").eq("id", id).maybeSingle(),
     leerTodas((a, b) => supabase
       .from("ventas")
@@ -34,15 +35,14 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
       .eq("operativo_id", id)
       .eq("anulada", false).order("id").range(a, b)),
     supabase.from("tenants").select("comision_debito_pct, comision_credito_pct, reparto_etiquetas").single(),
-    leerTodas((a, b) => supabase.from("retiros_sueldo").select("id, persona, monto").eq("operativo_id", id).order("id").range(a, b)),
+    cargarRepartoOperativo(supabase, tenantId, id, hoyEnChile()),
     leerTodas((a, b) => supabase.from("gastos_globales").select("id, descripcion, monto").eq("operativo_id", id).order("id").range(a, b)),
     leerTodas((a,b) => supabase.from("gastos_asignaciones").select("id,gasto_id,operativo_id,clave,monto,anulado_en").eq("operativo_id",id).order("id").range(a,b)),
     supabase.rpc('deuda_personal_pendiente'),
   ]);
-  const nombres=etiquetasReparto(tenantRes.data?.reparto_etiquetas);
   const op = opRes.data;
   if (!op) notFound();
-  const error = opRes.error ?? tenantRes.error ?? ventasRes.error ?? retirosRes.error ?? fidesRes.error ?? asignacionesRes.error ?? deudaRes.error;
+  const error = opRes.error ?? tenantRes.error ?? ventasRes.error ?? fidesRes.error ?? asignacionesRes.error ?? deudaRes.error;
 
   const ventas = ventasRes.data ?? [];
   const n = numerosDeOperativo(
@@ -53,8 +53,6 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
   );
   const { vendido, cobrado, gastos, desglose, cierre: c } = n;
 
-  const pagadoA = (persona: string) =>
-    (retirosRes.data ?? []).filter((r) => r.persona === persona).reduce((s, r) => s + r.monto, 0);
   const pagos = pagosConAsignaciones(fidesRes.data ?? [],asignacionesRes.data ?? [],id);
   const fidesPagado = pagadoCon(pagos, PREFIJO_FIDES);
   const marcosPagado = pagadoCon(pagos, PREFIJO_MARCOS);
@@ -152,16 +150,10 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         <PagoCostoOperativo clave="marcos" titulo={`Reponer marcos (${desglose.marcos})`} operativoId={id} total={desglose.totalArmazones} pagado={marcosPagado} />
         {costos.map((costo) => <PagoCostoOperativo key={costo.clave} operativoId={id} {...costo} />)}
       </ul>
-      <h2 id="sueldos" className="scroll-mt-6 text-lg font-bold">Remuneraciones</h2>
-      <ul className="flex flex-col gap-3">
-        <FilaPago tipo="ayudante" operativoId={id} monto={op.costo_ayudante ?? 0} />
-        <FilaPago tipo="sueldo" operativoId={id} persona="isadora" nombre={nombres.isadora} monto={c.isadora} pagado={pagadoA("isadora")} />
-        <FilaPago tipo="sueldo" operativoId={id} persona="madre" nombre={nombres.madre} monto={c.madre} pagado={pagadoA("madre")} />
-        <FilaPago tipo="sueldo" operativoId={id} persona="pablo" nombre={nombres.pablo} monto={c.pablo} pagado={pagadoA("pablo")} />
-      </ul>
-
-      <h2 id="ahorro" className="scroll-mt-6 text-lg font-bold">Ahorro por separar</h2>
-      <ul><FilaPago tipo="sueldo" operativoId={id} persona="ahorro" nombre="Ahorro del negocio" monto={c.ahorro} pagado={pagadoA("ahorro")} /></ul>
+      <section id="sueldos" className="space-y-2 scroll-mt-6">
+        <h2 className="text-lg font-bold">Reparto</h2>
+        <ResumenReparto resumen={reparto} />
+      </section>
       </>}
     </div>
   );

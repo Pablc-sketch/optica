@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { clp } from '@/lib/clp';
 import { fechaLegible } from '@/lib/fechas';
 import { revisarMovimiento } from '@/lib/actions/revision-financiera';
-import { conceptoProtegido, diferenciaRevision, PERSONAS_REVISION, type MovimientoRevision } from '@/lib/revision-financiera';
+import { conceptoProtegido, PERSONAS_REVISION, type MovimientoRevision } from '@/lib/revision-financiera';
 import { COSTOS, prefijoCosto, PREFIJO_FIDES, PREFIJO_MARCOS } from '@/lib/pagos-operativo';
 import type { OperativoPorPagar } from '@/lib/por-pagar';
 
@@ -72,14 +72,7 @@ export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, histo
       <label className="text-sm">Buscar<input className={campo} value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(0); }} placeholder="Concepto o nota" /></label>
     </div>
     <p className="text-sm">{base.filter(m => !m.confirmado_en).length} por confirmar · {base.filter(m => m.confirmado_en).length} confirmados</p>
-    {op && <section className="rounded-2xl bg-white p-4"><h2 className="font-bold">{op.nombre} · calculado y registrado</h2><div className="mt-2 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="py-2">Concepto</th><th>Calculado</th><th>Registrado</th><th>Diferencia</th></tr></thead><tbody>
-      {Object.entries(PERSONAS_REVISION).map(([persona,nombre]) => {
-        const calculado = persona === 'ahorro' ? op.ahorro : op.sueldos[persona as keyof typeof op.sueldos];
-        const real = base.filter(m => m.tabla === 'retiros_sueldo' && m.persona === persona).reduce((s,m) => s + m.monto,0);
-        const d = diferenciaRevision(calculado,real);
-        return <tr key={persona} className="border-t border-tinta/10"><th className="py-3 pr-3">{nombre}</th><td className="pr-3">{clp(calculado)}</td><td className="pr-3">{clp(real)}</td><td className={d.extra ? 'text-amber-800' : ''}>{d.extra ? `${clp(d.extra)} extra` : d.pendiente ? `${clp(d.pendiente)} ${persona === 'ahorro' ? 'sin separar' : 'pendiente'}` : 'Cuadra'}</td></tr>;
-      })}
-    </tbody></table></div><p className="mt-2 text-xs text-tinta-suave">Registrado incluye movimientos por confirmar. El cálculo del reparto no cambia al corregir un pago.</p><Link href={`/operativos/${op.operativoId}/cierre`} className="mt-3 inline-block underline">Ver costos y reparto del operativo →</Link></section>}
+    {op && <Link href={`/caja?operativo=${op.operativoId}#reparto`} className="rounded-xl bg-white p-3 text-sm font-semibold underline">Ver reparto en Caja · {op.nombre}</Link>}
     <div className="flex flex-wrap gap-2"><button disabled={pendiente} onClick={() => nuevo()} className="rounded-xl bg-tinta px-4 py-3 font-semibold text-white">Agregar pago o gasto omitido</button><button disabled={pendiente} onClick={() => nuevo(true)} className="rounded-xl border px-4 py-3 font-semibold">No aparté ahorro</button></div>
     {editor && <EditorMovimiento key={editor.movimiento.id} {...editor} operativos={operativos} hoy={hoy} onCerrar={() => setEditor(null)} onGuardado={() => { setEditor(null); setAviso('Guardado y confirmado. Caja y pendientes actualizados.'); router.refresh(); }} />}
     {aviso && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">{aviso}</p>}
@@ -88,7 +81,7 @@ export function ChequeoFinanciero({ movimientos, operativos, hoy, inicial, histo
       <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold">{titulo(m)}{m.tabla === 'retiros_sueldo' && m.monto < 0 ? ' · aporte al negocio' : ''}</h2><p className="text-sm text-tinta-suave">{nombreOp(m.operativo_id)} · {fechaLegible(m.fecha)} · {origen(m.caja)}</p></div><b className="shrink-0 tabular-nums">{clp(m.monto)}</b></div>
       {m.motivo && <p className="mt-1 text-sm">{m.motivo}</p>}
       <p className={`mt-2 text-sm ${m.confirmado_en ? 'text-emerald-800' : 'text-amber-800'}`}>{m.confirmado_en ? `Confirmado · ${new Date(m.confirmado_en).toLocaleString('es-CL',{ timeZone:'America/Santiago',dateStyle:'short',timeStyle:'short' })}` : 'Por confirmar'}{m.monto === 0 ? ' · sin salida de dinero' : ''}</p>
-      <div className="mt-3 flex gap-2">{!m.confirmado_en && <button disabled={pendiente || !!editor} onClick={() => confirmar(m)} className="rounded-xl bg-emerald-50 px-4 py-2 font-semibold text-emerald-900">Confirmar</button>}<button disabled={pendiente || !!editor} onClick={() => { setAviso(''); setEditor({movimiento:m,nuevo:false}); }} className="rounded-xl border px-4 py-2 font-semibold">Corregir</button></div>
+      <div className="mt-3 flex gap-2">{!m.confirmado_en && <button disabled={pendiente || !!editor} onClick={() => confirmar(m)} className="rounded-xl bg-emerald-50 px-4 py-2 font-semibold text-emerald-900">Confirmar</button>}{!m.reparto_verificado && <button disabled={pendiente || !!editor} onClick={() => { setAviso(''); setEditor({movimiento:m,nuevo:false}); }} className="rounded-xl border px-4 py-2 font-semibold">Corregir</button>}</div>
     </article>)}</div>
     {filas.length === 0 && <p className="rounded-xl bg-white p-4">Sin registros con estos filtros.</p>}
     {paginas > 1 && <nav className="flex items-center justify-between" aria-label="Páginas de movimientos"><button disabled={paginaActual===0} onClick={() => setPagina(paginaActual-1)} className="rounded-xl border p-3">Anterior</button><span>{paginaActual+1} / {paginas}</span><button disabled={paginaActual===paginas-1} onClick={() => setPagina(paginaActual+1)} className="rounded-xl border p-3">Siguiente</button></nav>}

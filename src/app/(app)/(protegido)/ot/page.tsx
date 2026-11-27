@@ -33,6 +33,7 @@ const COLUMNAS = [
 
 export default async function TableroOT() {
   const supabase = await createClient();
+  const { data: rol } = await supabase.rpc("jwt_rol");
   const [tenantRes, otsRes, sedesRes] = await Promise.all([
     supabase.from("tenants").select("id").maybeSingle(),
     leerTodas((a, b) => supabase
@@ -214,7 +215,7 @@ export default async function TableroOT() {
                             {atrasada ? " ⚠" : ""}
                           </span>
                         )}
-                        <EliminarOT otId={ot.id} folio={ot.folio} compacto />
+                        {rol === "admin" && <EliminarOT otId={ot.id} folio={ot.folio} compacto />}
                       </div>
                       <p className="min-w-0 break-words text-sm font-medium">{paciente?.nombre ?? "—"}</p>
                       {sede && <p className="text-xs font-semibold text-brand-dark">{sede.nombre}</p>}

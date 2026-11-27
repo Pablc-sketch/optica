@@ -1,4 +1,4 @@
-import { calcularSueldos } from "./sueldos";
+import { calcularReparto, retirosPorPersona, type ReglasReparto, type RetiroReparto } from "./reparto";
 import type { resumirChequeo } from "./chequeos";
 import { COSTOS, PREFIJO_REPOSICION_MARCOS, costosDeSede, disponibleDeGasto, pagosConAsignaciones, type AsignacionCosto } from "./pagos-operativo";
 
@@ -8,7 +8,6 @@ export type GastoChequeo = {
   nota: string | null; monto_estimado: boolean;
 };
 type Devolucion = { gasto_id: string | null; monto: number };
-type Retiro = { persona: string; monto: number };
 type Resumen = ReturnType<typeof resumirChequeo>;
 
 export function gastoDeResultado(gasto: GastoChequeo, asignaciones: AsignacionCosto[]) {
@@ -17,8 +16,8 @@ export function gastoDeResultado(gasto: GastoChequeo, asignaciones: AsignacionCo
 
 export function resumirCajaChequeo(
   resumen: Resumen, chequeoId: string, gastos: GastoChequeo[], asignaciones: AsignacionCosto[],
-  devoluciones: Devolucion[], retiros: Retiro[], gastosSii: ReadonlySet<string> = new Set(),
-  reglas?: { ahorroPct: number; parteMadrePct: number },
+  devoluciones: Devolucion[], retiros: RetiroReparto[], gastosSii: ReadonlySet<string>,
+  reglas: ReglasReparto,
 ) {
   const sedes = new Set(resumen.filas.map(f => f.sede.id));
   const costosPorSede = resumen.filas.map(f => {
@@ -73,29 +72,19 @@ export function resumirCajaChequeo(
   const salidas = gastosPagados + reintegrosPagados;
   const retirosNetos = retiros.reduce((total, r) => total + r.monto, 0);
   const comisionTarjeta = resumen.filas.reduce((total, f) => total + f.comisionTarjeta, 0);
-  const yaRetirado = (persona: string) => retiros.filter(r => r.persona === persona).reduce((total, r) => total + r.monto, 0);
-  const comisionPendiente = Math.max(0, resumen.comisionVentas - yaRetirado("isadora"));
+  const retirado = retirosPorPersona(retiros);
+  const comisionPendiente = Math.max(0, resumen.comisionVentas - retirado.isadora);
   const cajaRegistrada = resumen.cobrado - comisionTarjeta - salidas - retirosNetos;
   const ivaPendienteCaja = Math.max(0, resumen.iva - pagosSiiEnCaja);
   const coberturaMarcos = Math.min(reservaMarcosInicial, reposicionMarcos);
   const marcosPendientes = reservaMarcosInicial - coberturaMarcos;
   const saldoTrasPagos = cajaRegistrada - fidesPendiente - marcosPendientes - terrenoPendiente
     - porReembolsar - comisionPendiente - ivaPendienteCaja;
-  const proyectado = saldoTrasPagos + resumen.porCobrar;
-  const reparto = reglas ? calcularSueldos(0,
-    proyectado + yaRetirado("madre") + yaRetirado("pablo") + yaRetirado("ahorro"),
-    { comisionVendedoraPct: 0, comisionVendedoraBase: "venta_total", ...reglas },
-  ) : resumen.reparto;
+  const reparto = calcularReparto(saldoTrasPagos, resumen.porCobrar, comisionPendiente, retirado, reglas);
   return {
-    costosPorSede, reparto, reposicionMarcos, coberturaMarcos,
+    ...reparto, costosPorSede, reposicionMarcos, coberturaMarcos,
     cristales: montoCostos("fides"), marcos: montoCostos("marcos"), comida: montoCostos("costo_comida") + comidaCompartida,
     fidesPendiente, marcosPendientes, ivaPendienteCaja, terrenoPendiente, otrosPendientes, salidas, gastosPagados, reintegrosPagados, retirosNetos,
     comisionTarjeta, comisionPendiente, porReembolsar, adelantos, pagados, cajaRegistrada, saldoTrasPagos,
-    proyectado,
-    repartoPendiente: {
-      madre: Math.max(0, reparto.parteMadre - yaRetirado("madre")),
-      pablo: Math.max(0, reparto.partePablo - yaRetirado("pablo")),
-      ahorro: Math.max(0, reparto.ahorro - yaRetirado("ahorro")),
-    },
   };
 }

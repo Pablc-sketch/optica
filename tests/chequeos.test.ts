@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { gastoDeResultado, resumirCajaChequeo, type GastoChequeo } from "@/lib/caja-chequeo";
 import { resumirChequeo, type SedeChequeo, type VentaChequeo } from "@/lib/chequeos";
 
+const reglas = { ahorroPct: 20, parteMadrePct: 50 };
+
 const sede = (id: string): SedeChequeo => ({
   id, nombre: id, fecha: "2026-11-25", fecha_fin: null, estado: "planificado",
   direccion: null, chequeo_id: "grupo", costo_transporte: 0, costo_arriendo: 0,
@@ -22,11 +24,10 @@ describe("Resumen de chequeos", () => {
       { operativo_id: "b", paciente_id: "p1" },
       { operativo_id: "b", paciente_id: "p2" },
       { operativo_id: "fuera", paciente_id: "p3" },
-    ], [venta("a", 50_000, 60_000), venta("b", 30_000, 15_000)], 5000, 20, 0, 0);
+    ], [venta("a", 50_000, 60_000), venta("b", 30_000, 15_000)], 5000, 0, 0);
     expect(resumen).toMatchObject({
       pacientes: 2, ventas: 2, vendido: 80_000, cobrado: 75_000, porCobrar: 15_000,
       utilidad: 67_000, gastosCompartidos: 5000, comisionVentas: 8000,
-      reparto: { ahorro: 13_400, partePablo: 26_800, parteMadre: 26_800 },
     });
   });
 
@@ -45,7 +46,7 @@ describe("Resumen de chequeos", () => {
     }, {
       ...venta("a", 5000, 5000),
       venta_items: [{ cantidad: 1, producto_id: null, precio_unitario: 5000, descripcion: "Consulta / receta" }],
-    }], 0, 20, 0, 0);
+    }], 0, 0, 0);
     expect(resumen).toMatchObject({ pares: 2, marcos: 2, ventas: 1, vendido: 55_000, comisionVentas: 5000, utilidad: 27_000 });
   });
 });
@@ -67,10 +68,10 @@ describe("Caja del chequeo", () => {
     const resumen = resumirChequeo([sede("a")], [], [
       { ...venta("a", 100_000, 70_000), venta_items: items },
       { ...venta("a", 10_000, 0), venta_items: [{ ...items[0], ordenes_trabajo: null }] },
-    ], gastoDeResultado(compra, []) + gastoDeResultado(comida, []), 20, 0, 0);
+    ], gastoDeResultado(compra, []) + gastoDeResultado(comida, []), 0, 0);
     expect(resumen).toMatchObject({ porCobrar: 40_000, porCobrarEntrega: 30_000, utilidad: 82_000 });
     const parcial = resumirCajaChequeo(resumen, "grupo", [compra, comida, laboratorio], [],
-      [{ gasto_id: compra.id, monto: 4000 }], []);
+      [{ gasto_id: compra.id, monto: 4000 }], [], new Set(), reglas);
     expect(parcial).toMatchObject({
       cristales: 7000, marcos: 5000, comida: 5000, fidesPendiente: 5000, porReembolsar: 30_000,
       cajaRegistrada: 59_000, saldoTrasPagos: 8_000, proyectado: 48_000,
@@ -78,34 +79,32 @@ describe("Caja del chequeo", () => {
   });
 });
 
-it("calcula la comisión sobre todas las ventas del chequeo y reserva el adelanto de inventario antes del reparto", () => {
+it("excluye las consultas de la comisión del chequeo", () => {
   const consulta = {
     ...venta("b", 5000, 5000),
     venta_items: [{ cantidad: 1, producto_id: null, precio_unitario: 5000, descripcion: "Consulta / receta" }],
   };
   const n = resumirChequeo([sede("a"), sede("b")], [], [venta("a", 1_245_000, 750_000), consulta],
-    130_000, 20, 0, 0, { comisionIsadoraPct: 10, parteMadrePct: 60 }, 275_000);
+    130_000, 0, 0, 10, 275_000);
   expect(n).toMatchObject({
-    vendido: 1_250_000, comisionVentas: 125_000, reservaCompraPersonal: 275_000,
+    vendido: 1_250_000, comisionVentas: 124_500, reservaCompraPersonal: 275_000,
     porCobrar: 495_000,
-    reparto: { utilidadDisponible: 720_000, ahorro: 144_000, parteMadre: 345_600, partePablo: 230_400 },
   });
 });
 
 it("descuenta el IVA antes del ahorro y no vuelve a reservar un pago del SII ya asignado a la caja", () => {
   const n = resumirChequeo([sede("a")], [], [venta("a", 100_000, 70_000)],
-    0, 20, 0, 0, { comisionIsadoraPct: 10, parteMadrePct: 50 }, 0, 10_000);
+    0, 0, 0, 10, 0, 10_000);
   expect(n).toMatchObject({
     iva: 10_000, comisionVentas: 10_000,
-    reparto: { utilidadDisponible: 80_000, ahorro: 16_000, parteMadre: 32_000, partePablo: 32_000 },
   });
   const abonoSii: GastoChequeo = {
     id: "f29", fecha: "2026-12-01", descripcion: "Pago de impuesto", monto: 4000, caja: "digital",
     categoria: "otro", operativo_id: null, chequeo_id: "grupo", nota: null, monto_estimado: false,
   };
-  const caja = resumirCajaChequeo(n, "grupo", [abonoSii], [], [], [], new Set([abonoSii.id]));
+  const caja = resumirCajaChequeo(n, "grupo", [abonoSii], [], [], [], new Set([abonoSii.id]), reglas);
   expect(caja).toMatchObject({ gastosPagados: 4000, ivaPendienteCaja: 6000, saldoTrasPagos: 50_000 });
-  expect(resumirCajaChequeo(n, "grupo", [], [], [], []).saldoTrasPagos).toBe(caja.saldoTrasPagos);
+  expect(resumirCajaChequeo(n, "grupo", [], [], [], [], new Set(), reglas).saldoTrasPagos).toBe(caja.saldoTrasPagos);
 });
 
 it("aplica una reposición pagada a la reserva de marcos y registra su desembolso completo", () => {
@@ -120,9 +119,7 @@ it("aplica una reposición pagada a la reserva de marcos y registra su desembols
     ordenes_trabajo: { costo_laboratorio: 6000, costo_laboratorio_2: null, estado: "laboratorio",
       marco_propio: false, marco_propio_2: false, armazon_producto_id: null, armazon_producto_id_2: null },
   }] };
-  const n = resumirChequeo([sede("a")], [], [ventaLente], 0, 20, 0, 0,
-    { comisionIsadoraPct: 10, parteMadrePct: 50 }, 10_000, 10_000);
-  const reglas = { ahorroPct: 20, parteMadrePct: 50 };
+  const n = resumirChequeo([sede("a")], [], [ventaLente], 0, 0, 0, 10, 10_000, 10_000);
   const calcular = (gastos: GastoChequeo[], devuelto = 0) => resumirCajaChequeo(n, "grupo", gastos, [],
     [{ gasto_id: adelanto.id, monto: devuelto }], [], new Set(), reglas);
 
@@ -134,4 +131,35 @@ it("aplica una reposición pagada a la reserva de marcos y registra su desembols
     porReembolsar: 10_000, proyectado: 57_000, repartoPendiente: { ahorro: 11_400, madre: 22_800, pablo: 22_800 } });
   expect(calcular([adelanto, compra], 10_000)).toMatchObject({ porReembolsar: 0, reintegrosPagados: 10_000, proyectado: 57_000 });
   expect(calcular([adelanto, { ...compra, monto: 3000 }])).toMatchObject({ coberturaMarcos: 3000, marcosPendientes: 2000, proyectado: 59_000 });
+});
+
+it("cuadra el ejemplo de la auditoría y difiere el reparto hasta que entre el saldo", () => {
+  const operativo = { ...sede("a"), costo_transporte: 20_000, costo_equipos: 52_000 };
+  const lente = (total: number, pagado: number, medio: string, costo: number, marcoPropio: boolean) => ({
+    ...venta("a", total, pagado),
+    pagos_abonos: [{ monto: pagado, medio_pago: medio }],
+    venta_items: [{ cantidad: 1, producto_id: null, precio_unitario: total, ordenes_trabajo: {
+      costo_laboratorio: costo, costo_laboratorio_2: null, marco_propio: marcoPropio, marco_propio_2: false,
+      armazon_producto_id: null, armazon_producto_id_2: null,
+    } }],
+  });
+  const resumen = resumirChequeo([operativo], [], [
+    lente(120_000, 120_000, "debito", 30_000, false),
+    lente(90_000, 40_000, "efectivo", 25_000, true),
+    { ...venta("a", 5000, 5000), venta_items: [{ cantidad: 1, producto_id: null,
+      precio_unitario: 5000, descripcion: "Consulta / receta" }] },
+  ], 0, 2, 0, 10, 0, 34_328);
+  const caja = resumirCajaChequeo(resumen, "grupo", [], [], [], [], new Set(), reglas);
+  expect(caja).toMatchObject({ marcos: 5000, comisionPendiente: 21_000, saldoTrasPagos: -24_728, proyectado: 25_272 });
+  expect(caja.repartoPendiente).toEqual({ isadora: 21_000, ahorro: 5054, madre: 10_109, pablo: 10_109 });
+  expect(caja.pagableConCaja(1_000_000)).toEqual({ isadora: 0, ahorro: 0, madre: 0, pablo: 0 });
+});
+
+it("limita los pagos de socios y ahorro a caja incluso si hubo un retiro por sobre la participación", () => {
+  const resumen = resumirChequeo([sede("a")], [], [venta("a", 100_000, 100_000)], 0, 0, 0, 10);
+  const caja = resumirCajaChequeo(resumen, "grupo", [], [], [], [{ persona: "madre", monto: 50_000 }], new Set(), reglas);
+  const pagable = caja.pagableConCaja(10_000);
+  expect(pagable.madre).toBe(0);
+  expect(pagable.pablo + pagable.ahorro).toBe(10_000);
+  expect(pagable.isadora).toBe(10_000);
 });

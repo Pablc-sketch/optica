@@ -1,7 +1,6 @@
 import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { fechaValidaDocumento } from "@/lib/fecha-documentos";
-import { gastosDeOperativo } from "@/lib/gastos-operativo";
 import { createClient } from "@/lib/supabase/server";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { clp } from "@/lib/clp";
@@ -17,21 +16,22 @@ import {
   primerDiaDelMes,
   ultimoDiaDelMes,
 } from "@/lib/fechas";
-import { desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
-import { calcularSueldos, sumarDesgloses, type BaseComision } from "@/lib/sueldos";
+import { desglosarCostos } from "@/lib/costo-venta";
 import { calcularCaja, resumirCaja } from "@/lib/caja";
 import { salidasDeMovimiento } from "@/lib/caja-fuentes";
 import { leerTodas } from "@/lib/leer-todas";
-import { conCostoFidesReal } from "@/lib/costo-fides-real";
 import {
   actualizarComisionMedioPago,
   crearGastoGlobal,
   crearRetiro,
   eliminarGastoGlobal,
   eliminarRetiro,
-  pagarSueldo,
 } from "@/lib/actions/gastos";
-import { esVentaDeConsulta, totalConsultas } from "@/lib/consulta";
+import { esVentaDeConsulta } from "@/lib/consulta";
+import { etiquetasReparto } from "@/lib/etiquetas-reparto";
+import { PERSONAS_REPARTO } from "@/lib/reparto";
+import CajaFormulario from "@/components/caja-formulario";
+import { asociarRetiroHistorico } from "@/lib/actions/reparto";
 import FiltroPagos from "./filtro-pagos";
 
 const PERSONAS: Record<string, string> = {
@@ -87,75 +87,6 @@ type ItemVenta = {
 // La caja se elige en el mismo botón y es obligatoria: es la pregunta que
 // hay que contestar sí o sí para que el cuadre de mañana siga en pie
 // ("¿esos $56.000 salieron del sobre o de la cuenta?").
-function TarjetaSueldo({
-  icono,
-  nombre,
-  persona,
-  total,
-  adelantos,
-  pagado,
-  pendiente,
-  mes,
-  hoy,
-  verbo = "Pagar",
-  acento,
-}: {
-  icono: string;
-  nombre: string;
-  persona: string;
-  total: number;
-  adelantos: number;
-  pagado: number;
-  pendiente: number;
-  mes: string;
-  hoy: string;
-  verbo?: string;
-  acento?: boolean;
-}) {
-  return (
-    <div className="relative flex flex-col overflow-hidden rounded-3xl bg-white p-4 shadow-[0_2px_10px_-3px_rgba(61,57,41,0.15)]">
-      <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-brand to-accent" />
-      <p className="flex items-center gap-1.5 text-sm text-tinta-suave">
-        <span className="text-base">{icono}</span>
-        {nombre}
-      </p>
-      <p className={`mt-1 text-2xl font-bold ${acento ? "text-brand-dark" : "text-tinta"}`}>
-        {clp(pendiente)}
-      </p>
-      <p className="text-xs text-tinta-suave">
-        de {clp(total)}
-        {adelantos > 0 && <> · ya retiró {clp(adelantos)}</>}
-      </p>
-
-      {pagado > 0 && (
-        <p className="mt-2 self-start rounded-full bg-green-700 px-2.5 py-1 text-xs font-bold text-white">
-          ✓ {verbo === "Apartar" ? "APARTADO" : "PAGADO"} {clp(pagado)}
-        </p>
-      )}
-
-      {pendiente > 0 && (
-        <form action={pagarSueldo} className="mt-2 flex flex-wrap items-center gap-1.5 print:hidden">
-          <input type="hidden" name="persona" value={persona} />
-          <input type="hidden" name="monto" value={pendiente} />
-          <input type="hidden" name="fecha" value={hoy} />
-          <input type="hidden" name="mes" value={mes} />
-          <select
-            name="caja"
-            defaultValue="efectivo"
-            aria-label="¿De qué caja sale?"
-            className="rounded-lg border border-tinta-suave/30 bg-white px-2 py-1 text-xs outline-none focus:border-brand"
-          >
-            <option value="efectivo">💵 del efectivo</option>
-            <option value="digital">🏦 de la caja digital</option>
-          </select>
-          <BotonEnviar className="rounded-lg bg-brand px-2.5 py-1 text-xs font-bold text-white transition hover:bg-brand-dark">{verbo} · marcar realizado</BotonEnviar>
-        </form>
-      )}
-    </div>
-  );
-}
-
-// supabase-js tipa las relaciones como objeto o arreglo según el caso.
 function uno<T>(rel: T | T[] | null): T | null {
   if (Array.isArray(rel)) return rel[0] ?? null;
   return rel;
@@ -245,16 +176,10 @@ export default async function ReportesPage({
   // habría mostrado menos plata de la real sin decir nada.
   const cajaGlobalQuery = supabase.rpc("caja_global").single();
 
-  // Sueldos: la comisión de cada operativo se paga el día que se entregan
-  // los lentes (fecha_entrega_estimada), no el día del operativo — un
-  // operativo de fin de mes con entrega a la semana siguiente paga en el
-  // mes que viene, no en el que se hizo. Sin fecha de entrega (caso raro),
-  // se usa la fecha del operativo como respaldo. Se trae todo y se filtra
-  // en el servidor por esa fecha efectiva porque no es una sola columna.
   const operativosTodosQuery = supabase
     .from("operativos")
     .select(
-      "id, nombre, fecha, fecha_fin, fecha_entrega_estimada, comision_vendedora_pct, comision_vendedora_base, ahorro_pct, costo_transporte, costo_arriendo, costo_viaticos, costo_otros, costo_ayudante, costo_equipos, costo_fides_real, costo_hospedaje, costo_comida, costo_peajes, costo_marco_unitario"
+      "id, nombre, fecha, fecha_fin, chequeo_id, estado, costo_fides_real, costo_marco_unitario"
     )
     .order("fecha", { ascending: true });
 
@@ -270,7 +195,7 @@ export default async function ReportesPage({
   const retirosQuery = supabase
     .from("retiros_sueldo")
     .select(
-      "id, persona, fecha, monto, medio_pago, caja, es_sueldo, motivo, operativo_id, operativos:operativo_id (nombre)"
+      "id, persona, fecha, monto, medio_pago, caja, es_sueldo, motivo, operativo_id, chequeo_id, reparto_verificado, operativos:operativo_id (nombre), chequeos:chequeo_id (nombre)"
     )
     .gte("fecha", primerDiaDelMes(mes))
     .lte("fecha", ultimoDiaDelMes(mes))
@@ -299,7 +224,7 @@ export default async function ReportesPage({
     retirosQuery,
     retirosPeriodoQuery,
     gastosGlobalesPeriodoQuery,
-    supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
+    supabase.from("tenants").select("comision_debito_pct, comision_credito_pct, reparto_etiquetas").single(),
     cajaGlobalQuery,
     leerTodas((a,b) => supabase.from("caja_movimientos").select("tipo,monto,caja,id").gte("fecha",desde).lte("fecha",hasta).order("id").range(a,b)),
   ]);
@@ -308,124 +233,22 @@ export default async function ReportesPage({
   const ventas = ventasRes.data ?? [];
   const items = (itemsRes.data ?? []) as unknown as ItemVenta[];
   const pagos = pagosRes.data ?? [];
-  // La comisión de cada operativo se paga el día que se entregan los
-  // lentes, no el día del operativo — así que el mes que corresponde es
-  // el de fecha_entrega_estimada, con la fecha del operativo como
-  // respaldo si por algo no está definida.
-  const fechaDePago = (o: { fecha: string; fecha_entrega_estimada: string | null }) =>
-    o.fecha_entrega_estimada ?? o.fecha;
-  const operativosDelMes = (operativosTodosRes.data ?? []).filter((o) => {
-    const f = fechaDePago(o);
-    return f >= primerDiaDelMes(mes) && f <= ultimoDiaDelMes(mes);
-  });
+  const operativosDelMes = (operativosTodosRes.data ?? []).filter(o =>
+    o.estado !== "cancelado" && o.fecha <= ultimoDiaDelMes(mes) && (o.fecha_fin ?? o.fecha) >= primerDiaDelMes(mes));
+  const destinosMes = [...new Map(operativosDelMes.map(o => [o.chequeo_id ?? o.id, o])).values()];
   const gastosGlobales = gastosGlobalesRes.data ?? [];
   const retiros = retirosRes.data ?? [];
   const comisionDebitoPct = Number(tenantRes.data?.comision_debito_pct ?? 0);
   const comisionCreditoPct = Number(tenantRes.data?.comision_credito_pct ?? 0);
   const totalGastosGlobales = gastosGlobales.reduce((s, g) => s + g.monto, 0);
-  // Dos cosas que mueven la misma plata pero se leen distinto: un ADELANTO
-  // es lo que alguien sacó a cuenta de su sueldo antes de que se pagara, y
-  // un SUELDO PAGADO es la entrega final. Las dos se restan de lo que se le
-  // debe; separarlas es para que en pantalla se distinga "ya retiró
-  // $20.000" de "el sueldo ya está pagado".
-  const retirosPorPersona = new Map<string, number>();
-  const adelantosPorPersona = new Map<string, number>();
-  const sueldoPagadoPorPersona = new Map<string, number>();
-  for (const r of retiros) {
-    retirosPorPersona.set(r.persona, (retirosPorPersona.get(r.persona) ?? 0) + r.monto);
-    const destino = r.es_sueldo ? sueldoPagadoPorPersona : adelantosPorPersona;
-    destino.set(r.persona, (destino.get(r.persona) ?? 0) + r.monto);
-  }
+  const nombresReparto = { ...etiquetasReparto(tenantRes.data?.reparto_etiquetas), ahorro: "Ahorro" };
+  const retirosSinAsignar = retiros.filter(r => !r.operativo_id && !r.chequeo_id && r.monto !== 0);
+  const gruposRes = await leerTodas((a, b) => supabase.from("chequeos").select("id,nombre,desde")
+    .eq("tenant_id", tenantId).order("desde", { ascending: false }).order("id").range(a, b));
+  const grupos = gruposRes.data ?? [];
+  const pagadoMes = (persona: string) => retiros
+    .filter(r => r.persona === persona && r.es_sueldo).reduce((suma, r) => suma + r.monto, 0);
 
-  // Venta total y costo real de CADA operativo del mes, para poder
-  // calcularle el sueldo a cada uno con sus propios porcentajes (pueden
-  // cambiar de un operativo a otro) y después sumar el total del mes por
-  // persona. Una sola consulta para todos, agrupada en el cliente, en vez
-  // de una consulta por operativo.
-  const idsOperativosMes = operativosDelMes.map((o) => o.id);
-  const [ventasMesRes, itemsMesRes, pagosMesRes] = idsOperativosMes.length
-    ? await Promise.all([
-        supabase.from("ventas").select("total, operativo_id").eq("anulada", false).in("operativo_id", idsOperativosMes),
-        supabase
-          .from("venta_items")
-          .select(
-            `cantidad, precio_unitario, descuento, cristal_slot, descripcion,
-             productos:producto_id (costo, categoria),
-             ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
-             ventas!inner (operativo_id, anulada)`
-          )
-          .eq("ventas.anulada", false)
-          .in("ventas.operativo_id", idsOperativosMes),
-        // Para restar la comisión de la máquina, igual que "Cerrar operativo".
-        supabase
-          .from("pagos_abonos")
-          .select("monto, medio_pago, ventas!inner (operativo_id, anulada)")
-          .eq("ventas.anulada", false)
-          .in("ventas.operativo_id", idsOperativosMes),
-      ])
-    : [
-        { data: [] as { total: number; operativo_id: string | null }[] },
-        { data: [] as unknown[] },
-        { data: [] as unknown[] },
-      ];
-  const comisionPorOperativo = new Map<string, number>();
-  for (const p of (pagosMesRes.data ?? []) as {
-    monto: number;
-    medio_pago: string | null;
-    ventas: { operativo_id: string | null } | { operativo_id: string | null }[] | null;
-  }[]) {
-    const rel = Array.isArray(p.ventas) ? p.ventas[0] : p.ventas;
-    if (!rel?.operativo_id) continue;
-    const pct = p.medio_pago === "debito" ? comisionDebitoPct : p.medio_pago === "credito" ? comisionCreditoPct : 0;
-    comisionPorOperativo.set(rel.operativo_id, (comisionPorOperativo.get(rel.operativo_id) ?? 0) + (p.monto * pct) / 100);
-  }
-  const ventasMes = ventasMesRes.data ?? [];
-  const itemsMes = (itemsMesRes.data ?? []) as unknown as (ItemConCosto & {
-    ventas: { operativo_id: string | null } | { operativo_id: string | null }[] | null;
-  })[];
-
-  const itemsPorOperativo = new Map<string, ItemConCosto[]>();
-  for (const item of itemsMes) {
-    const rel = Array.isArray(item.ventas) ? item.ventas[0] : item.ventas;
-    const opId = rel?.operativo_id;
-    if (!opId) continue;
-    if (!itemsPorOperativo.has(opId)) itemsPorOperativo.set(opId, []);
-    itemsPorOperativo.get(opId)!.push(item);
-  }
-  const ventaPorOperativo = new Map<string, number>();
-  for (const v of ventasMes) {
-    if (!v.operativo_id) continue;
-    ventaPorOperativo.set(v.operativo_id, (ventaPorOperativo.get(v.operativo_id) ?? 0) + v.total);
-  }
-
-  const sueldosPorOperativo = operativosDelMes.map((o) => {
-    const ventaTotal = ventaPorOperativo.get(o.id) ?? 0;
-    const costoProductos = conCostoFidesReal(desglosarCostos(itemsPorOperativo.get(o.id) ?? [], o.costo_marco_unitario ?? undefined),o.costo_fides_real).total;
-    const costoOperativo = gastosDeOperativo(o);
-    const utilidadNeta = ventaTotal - costoProductos - costoOperativo - Math.round(comisionPorOperativo.get(o.id) ?? 0);
-    const sueldo = calcularSueldos(ventaTotal, utilidadNeta, {
-      comisionVendedoraPct: Number(o.comision_vendedora_pct),
-      comisionVendedoraBase: o.comision_vendedora_base as BaseComision,
-      ahorroPct: Number(o.ahorro_pct),
-      // Consultas: a la utilidad sí, a la comisión de Isadora no.
-      ventaSinComision: totalConsultas((itemsPorOperativo.get(o.id) ?? []) as unknown as Parameters<typeof totalConsultas>[0]),
-    });
-    return { operativo: o, sueldo };
-  });
-  const sueldoMesTotal = sumarDesgloses(sueldosPorOperativo.map((s) => s.sueldo));
-
-  // Lo que cada persona ya sacó por adelantado (retiros_sueldo) se resta de
-  // lo que le corresponde este mes — un retiro no es un gasto del negocio,
-  // es plata que ya era suya y se la llevó antes de que se calculara el
-  // reparto. Nunca queda negativo: si sacó más de lo que le tocaba, ese
-  // exceso no se le "cobra" acá (es una conversación aparte con esa
-  // persona, no algo que el reporte deba mostrar en rojo).
-  const pendientePorPersona = {
-    isadora: Math.max(0, sueldoMesTotal.comisionIsadora - (retirosPorPersona.get("isadora") ?? 0)),
-    madre: Math.max(0, sueldoMesTotal.parteMadre - (retirosPorPersona.get("madre") ?? 0)),
-    pablo: Math.max(0, sueldoMesTotal.partePablo - (retirosPorPersona.get("pablo") ?? 0)),
-    ahorro: Math.max(0, sueldoMesTotal.ahorro - (retirosPorPersona.get("ahorro") ?? 0)),
-  };
 
   const totalVendido = ventas.reduce((s, v) => s + v.total, 0);
   // Ticket de LENTES: sin las ventas que son solo consulta ($5.000).
@@ -882,116 +705,22 @@ export default async function ReportesPage({
             </button>
           </form>
         </div>
-        <p className="mb-2 text-xs text-tinta-suave">
-          Por el mes en que se entregan los lentes.
-        </p>
-        {operativosDelMes.length === 0 ? (
-          <p className="rounded-2xl bg-crema-claro p-4 text-sm text-tinta-suave">
-            Sin operativos en este mes.
-          </p>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <TarjetaSueldo
-                icono="🧑‍💼"
-                nombre="Isadora · por entregar"
-                persona="isadora"
-                total={sueldoMesTotal.comisionIsadora}
-                adelantos={adelantosPorPersona.get("isadora") ?? 0}
-                pagado={sueldoPagadoPorPersona.get("isadora") ?? 0}
-                pendiente={pendientePorPersona.isadora}
-                mes={mes}
-                hoy={hoyEnChile()}
-              />
-              <TarjetaSueldo
-                icono="👩"
-                nombre="Pamela (mamá) · por entregar"
-                persona="madre"
-                total={sueldoMesTotal.parteMadre}
-                adelantos={adelantosPorPersona.get("madre") ?? 0}
-                pagado={sueldoPagadoPorPersona.get("madre") ?? 0}
-                pendiente={pendientePorPersona.madre}
-                mes={mes}
-                hoy={hoyEnChile()}
-              />
-              <TarjetaSueldo
-                icono="🧑"
-                nombre="Pablo · por entregar"
-                persona="pablo"
-                total={sueldoMesTotal.partePablo}
-                adelantos={adelantosPorPersona.get("pablo") ?? 0}
-                pagado={sueldoPagadoPorPersona.get("pablo") ?? 0}
-                pendiente={pendientePorPersona.pablo}
-                mes={mes}
-                hoy={hoyEnChile()}
-              />
-              <TarjetaSueldo
-                icono="🏦"
-                nombre="Ahorro del negocio · por apartar"
-                persona="ahorro"
-                total={sueldoMesTotal.ahorro}
-                adelantos={adelantosPorPersona.get("ahorro") ?? 0}
-                pagado={sueldoPagadoPorPersona.get("ahorro") ?? 0}
-                pendiente={pendientePorPersona.ahorro}
-                mes={mes}
-                hoy={hoyEnChile()}
-                verbo="Apartar"
-                acento
-              />
-            </div>
-            <p className="mt-2 text-xs text-tinta-suave print:hidden">
-              Los adelantos se anotan abajo, en «Retiros y aportes».
-            </p>
-            <div className="mt-3 overflow-x-auto rounded-2xl bg-crema-claro p-3 shadow-sm">
-              <table className="w-full min-w-150 text-sm">
-                <thead>
-                  <tr className="text-left text-tinta-suave">
-                    <th className="py-1.5 pr-2">Operativo</th>
-                    <th className="py-1.5 pr-2 text-right">Vendido</th>
-                    <th className="py-1.5 pr-2 text-right">Utilidad neta</th>
-                    <th className="py-1.5 pr-2 text-right">Isadora</th>
-                    <th className="py-1.5 pr-2 text-right">Ahorro</th>
-                    <th className="py-1.5 pr-2 text-right">Mamá</th>
-                    <th className="py-1.5 text-right">Pablo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sueldosPorOperativo.map(({ operativo: o, sueldo }) => (
-                    <tr key={o.id} className="border-t border-tinta-suave/10">
-                      <td className="py-1.5 pr-2">
-                        <a href={`/operativos/${o.id}`} className="hover:underline">
-                          {o.nombre}
-                        </a>
-                        <span className="ml-1 text-xs text-tinta-suave">
-                          se paga {fechaLegible(fechaDePago(o))}
-                        </span>
-                      </td>
-                      <td className="py-1.5 pr-2 text-right">{clp(sueldo.ventaTotal)}</td>
-                      <td className={`py-1.5 pr-2 text-right ${sueldo.utilidadNeta < 0 ? "text-red-700" : ""}`}>
-                        {clp(sueldo.utilidadNeta)}
-                      </td>
-                      <td className="py-1.5 pr-2 text-right">{clp(sueldo.comisionIsadora)}</td>
-                      <td className="py-1.5 pr-2 text-right">{clp(sueldo.ahorro)}</td>
-                      <td className="py-1.5 pr-2 text-right">{clp(sueldo.parteMadre)}</td>
-                      <td className="py-1.5 text-right">{clp(sueldo.partePablo)}</td>
-                    </tr>
-                  ))}
-                  <tr className="border-t-2 border-tinta-suave/20 font-bold">
-                    <td className="py-1.5 pr-2">Total del mes</td>
-                    <td className="py-1.5 pr-2 text-right">{clp(sueldoMesTotal.ventaTotal)}</td>
-                    <td className={`py-1.5 pr-2 text-right ${sueldoMesTotal.utilidadNeta < 0 ? "text-red-700" : ""}`}>
-                      {clp(sueldoMesTotal.utilidadNeta)}
-                    </td>
-                    <td className="py-1.5 pr-2 text-right">{clp(sueldoMesTotal.comisionIsadora)}</td>
-                    <td className="py-1.5 pr-2 text-right">{clp(sueldoMesTotal.ahorro)}</td>
-                    <td className="py-1.5 pr-2 text-right">{clp(sueldoMesTotal.parteMadre)}</td>
-                    <td className="py-1.5 text-right">{clp(sueldoMesTotal.partePablo)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        <p className="mb-2 text-sm text-tinta-suave">Pagos registrados durante el mes seleccionado.</p>
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {PERSONAS_REPARTO.map(persona => <div className="rounded-xl bg-white p-3" key={persona}>
+            <dt>{nombresReparto[persona]}</dt><dd className="font-semibold tabular-nums">{clp(pagadoMes(persona))}</dd>
+          </div>)}
+        </dl>
+        {retirosSinAsignar.length > 0 && <p className="my-2 rounded-lg bg-amber-50 p-2 text-sm">
+          {retirosSinAsignar.length} movimientos pendientes de asociar a un chequeo u operativo.
+        </p>}
+        {destinosMes.length > 0 && <ul className="mt-3 space-y-1 text-sm">
+          {destinosMes.map(o => <li key={o.id}>
+            <Link className="font-semibold underline" href={`/caja?${o.chequeo_id ? "chequeo" : "operativo"}=${o.chequeo_id ?? o.id}#reparto`}>
+              {o.chequeo_id ? `Reparto · ${grupos.find(g => g.id === o.chequeo_id)?.nombre ?? o.nombre}` : `Reparto · ${o.nombre}`}
+            </Link>
+          </li>)}
+        </ul>}
       </section>}
 
       <section className="print:hidden">
@@ -1080,7 +809,7 @@ export default async function ReportesPage({
       </section>
 
       {!piloto && <section className="print:hidden">
-        <h2 className="mb-1 font-semibold">Retiros y aportes del mes</h2>
+        <h2 id="retiros" className="mb-1 scroll-mt-12 font-semibold">Retiros y aportes del mes</h2>
         <p className="mb-2 text-xs text-tinta-suave">
           Retiro: descuenta sueldo y caja. Aporte: aumenta lo que se debe y la caja.
         </p>
@@ -1154,6 +883,8 @@ export default async function ReportesPage({
               const operativoNombre = uno(
                 r.operativos as unknown as { nombre: string } | { nombre: string }[] | null
               )?.nombre;
+              const chequeoNombre = uno(r.chequeos as unknown as { nombre: string } | { nombre: string }[] | null)?.nombre;
+              const destinoNombre = chequeoNombre ?? operativoNombre;
               const esAporte = r.monto < 0;
               const etiqueta = esAporte ? "Aporte" : r.es_sueldo ? "Sueldo pagado" : "Retiro";
               const colorEtiqueta = esAporte
@@ -1164,7 +895,7 @@ export default async function ReportesPage({
               return (
                 <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
                   <span className="text-xs text-tinta-suave">{fechaLegible(r.fecha)}</span>
-                  <span className="font-medium">{PERSONAS[r.persona] ?? r.persona}</span>
+                  <span className="font-medium">{nombresReparto[r.persona as keyof typeof nombresReparto] ?? r.persona}</span>
                   <span className={`rounded-md px-1.5 py-0.5 text-xs font-bold ${colorEtiqueta}`}>
                     {etiqueta}
                   </span>
@@ -1172,15 +903,29 @@ export default async function ReportesPage({
                     {r.caja === "efectivo" ? "💵" : "🏦"} {CAJAS_LABEL[r.caja] ?? r.caja}
                   </span>
                   <span className="flex-1 text-xs text-tinta-suave">
-                    {[r.motivo, operativoNombre ? `contra ${operativoNombre}` : null, r.medio_pago ? MEDIOS_PAGO_LABEL[r.medio_pago] : null]
+                    {[r.motivo, destinoNombre ? `contra ${destinoNombre}` : null, r.medio_pago ? MEDIOS_PAGO_LABEL[r.medio_pago] : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </span>
                   <span className="font-semibold">{clp(Math.abs(r.monto))}</span>
-                  <form action={eliminarRetiro}>
+                  {!r.reparto_verificado && !r.es_sueldo && <form action={eliminarRetiro}>
                     <input type="hidden" name="id" value={r.id} />
                     <BotonEnviar className="text-xs font-medium text-red-700 hover:underline">Quitar</BotonEnviar>
-                  </form>
+                  </form>}
+                  {!r.operativo_id && !r.chequeo_id && r.monto !== 0 && <details className="w-full">
+                    <summary className="cursor-pointer text-xs font-semibold">Asociar movimiento histórico</summary>
+                    <CajaFormulario guardar={asociarRetiroHistorico} texto="Asociar">
+                      <input type="hidden" name="id" value={r.id} />
+                      <label className="text-sm">Chequeo u operativo
+                        <select name="destino" required className="block w-full rounded-lg border px-2 py-1.5">
+                          <option value="">Elige el destino</option>
+                          {grupos.map(g => <option key={g.id} value={`chequeo:${g.id}`}>{g.nombre} · {fechaLegible(g.desde)}</option>)}
+                          {(operativosTodosRes.data ?? []).filter(o => !o.chequeo_id && o.estado !== "cancelado").map(o =>
+                            <option key={o.id} value={`operativo:${o.id}`}>{o.nombre} · {fechaLegible(o.fecha)}</option>)}
+                        </select>
+                      </label>
+                    </CajaFormulario>
+                  </details>}
                 </li>
               );
             })}

@@ -1,3 +1,6 @@
+import { clp } from "@/lib/clp";
+import CajaFormulario from "@/components/caja-formulario";
+import { confirmarDevolucionVenta } from "@/lib/actions/documentos-venta";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -31,6 +34,9 @@ export default async function EditarVenta({ params }: { params: Promise<{ id: st
     .eq("id", id)
     .single();
   if (!venta) notFound();
+
+  const devoluciones = venta.anulada && admin ? await supabase.from("devoluciones_venta")
+    .select("abono_id,monto,caja,devuelto_en,referencia").eq("venta_id", id).order("abono_id") : null;
 
   const paciente = venta.pacientes as unknown as { nombre: string; rut: string | null } | null;
   // Dos cristales de la misma venta comparten la misma OT y pueden tener
@@ -82,11 +88,31 @@ export default async function EditarVenta({ params }: { params: Promise<{ id: st
         </p>
       ) : (
         <>
-          <EditarDocumentosVenta venta={venta} admin={admin} />
+          {admin && <EditarDocumentosVenta venta={venta} admin={admin} />}
           <EditarItemsVenta ventaId={venta.id} items={items} total={venta.total} />
-          <div className="flex justify-end"><AnularVenta ventaId={venta.id} /></div>
+          {admin && <div className="flex justify-end"><AnularVenta ventaId={venta.id} /></div>}
         </>
       )}
+      {devoluciones && <section className="space-y-3 rounded-2xl bg-white p-4">
+        <h2 className="font-semibold">Devoluciones de la venta</h2>
+        {devoluciones.error && <p role="alert">No se pudo leer el registro de devoluciones.</p>}
+        {devoluciones.data?.length === 0 && (venta.pagos_abonos?.length ?? 0) > 0 &&
+          <p className="text-sm text-amber-800">Anulación histórica con abonos pendientes de conciliar.</p>}
+        {devoluciones.data?.map(d => <div key={d.abono_id} className="space-y-2 border-t border-tinta/10 pt-2">
+          <p className="text-sm"><strong>{clp(d.monto)}</strong> · {d.caja === "digital" ? "Cuenta de la óptica" : "Efectivo"}
+            {d.devuelto_en ? ` · Devuelto · ${d.referencia}` : " · Pendiente"}</p>
+          {!d.devuelto_en && <details>
+            <summary className="cursor-pointer text-sm font-semibold">Confirmar devolución ya realizada</summary>
+            <CajaFormulario guardar={confirmarDevolucionVenta} texto="Registrar devolución realizada">
+              <input type="hidden" name="abono" value={d.abono_id} />
+              <input type="hidden" name="venta" value={venta.id} />
+              <label className="text-sm">Referencia del comprobante
+                <input name="referencia" required minLength={3} maxLength={250} className="block w-full rounded-lg border px-3 py-2" />
+              </label>
+            </CajaFormulario>
+          </details>}
+        </div>)}
+      </section>}
     </div>
   );
 }
