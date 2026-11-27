@@ -184,8 +184,7 @@ export default async function OperativosPage() {
                 </span>
               )}
               {pend.saldo > 0 && <span className="rounded-full bg-red-600 px-2.5 py-1 text-white">Falta cobrar {clp(pend.saldo)}</span>}
-              {pagos && pagos.total > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-950">Por pagar {clp(pagos.total)}</span>}
-              {pagos && pagos.ahorro > 0 && <span className="rounded-full bg-white px-2.5 py-1 text-emerald-800">Ahorro por separar</span>}
+              {pagos && pagos.total > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-950">Costos por pagar {clp(pagos.total)}</span>}
               {examenes > 0 && <span className="rounded-full bg-white px-2.5 py-1 text-tinta">{examenes} examinados</span>}
               {venta && <span className="rounded-full bg-white px-2.5 py-1 text-tinta">{clp(venta.total)} vendido</span>}
             </p>

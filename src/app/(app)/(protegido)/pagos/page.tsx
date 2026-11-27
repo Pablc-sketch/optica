@@ -12,6 +12,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   if (esPilotoTerreno(tenantId)) redirect("/agenda/equipos");
   const { ver } = await searchParams;
   const vista = VISTAS.find((v) => v.clave === ver) ?? VISTAS[0];
+  if (vista.clave !== "costos") redirect("/caja#reparto");
   const { resumen, error, sinAsignar } = await cargarPendientes(supabase);
   const filas = resumen.operativos.filter((o) => o[vista.clave] > 0);
   return <div className="mx-auto flex max-w-2xl flex-col gap-4">

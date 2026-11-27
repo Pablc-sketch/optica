@@ -155,7 +155,7 @@ export async function actualizarOT(formData: FormData) {
 export async function eliminarOT(formData: FormData) {
   let supabase;
   try {
-    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+    ({ supabase } = await requerirPerfil({ roles: ["admin"], suscripcion: true }));
   } catch (e) {
     if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
     throw e;

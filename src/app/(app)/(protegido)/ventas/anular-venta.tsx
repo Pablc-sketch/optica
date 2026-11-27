@@ -33,7 +33,7 @@ export default function AnularVenta({ ventaId, compacto }: { ventaId: string; co
 
   return (
     <div className="flex flex-col gap-1.5 rounded-lg bg-red-50 p-3 text-xs text-red-800" onClick={(e) => e.stopPropagation()}>
-      <p>¿Anular esta venta? Se devuelve el stock y se cancela la orden de trabajo ligada (si no se ha entregado). No se puede deshacer.</p>
+      <p>¿Anular esta venta? Se devuelve el stock y se cancela la orden de trabajo ligada (si no se ha entregado). Si hubo abonos, quedarán como devolución pendiente. Registra la devolución en el detalle cuando se haya hecho.</p>
       <input
         value={motivo}
         onChange={(e) => setMotivo(e.target.value)}

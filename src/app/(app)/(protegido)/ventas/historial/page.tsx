@@ -36,7 +36,9 @@ const ESTADO_PAGO: Record<string, { label: string; clase: string }> = {
 // del punto de venta y hacía esa pantalla lenta y recargada.
 export default async function HistorialVentas() {
   const supabase = await createClient();
-  const { data: tenant } = await supabase.from("tenants").select("id").maybeSingle();
+  const [{ data: tenant }, { data: rol }] = await Promise.all([
+    supabase.from("tenants").select("id").maybeSingle(), supabase.rpc("jwt_rol"),
+  ]);
   const mercadoPago = mercadoPagoConfigurado(tenant?.id ?? "");
   const ventasRes = await supabase
     .from("ventas")
@@ -139,6 +141,8 @@ export default async function HistorialVentas() {
                       </span>
                     )}
                     {v.anulada && <span className="font-bold">{clp(v.total)}</span>}
+                    {v.anulada && rol === "admin" && abonado > 0 && <Link href={`/ventas/${v.id}`}
+                      className="rounded-lg border border-tinta/30 px-2 py-1 text-xs font-semibold">Ver devolución</Link>}
                     <Link
                       href={`/ventas/${v.id}/comprobante`}
                       className="rounded-lg border border-tinta-suave/30 px-2 py-1 text-xs font-medium text-tinta-suave transition hover:bg-white"
@@ -161,7 +165,7 @@ export default async function HistorialVentas() {
                         ✎ Editar
                       </Link>
                     )}
-                    {!v.anulada && <AnularVenta ventaId={v.id} compacto />}
+                    {rol === "admin" && !v.anulada && <AnularVenta ventaId={v.id} compacto />}
                   </div>
                   {v.anulada && v.anulada_motivo && (
                     <p className="mt-1 text-xs italic text-tinta-suave">Motivo: {v.anulada_motivo}</p>

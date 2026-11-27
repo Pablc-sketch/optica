@@ -38,6 +38,8 @@ export async function registrarMovimientoCaja(_: ResultadoCaja, f: FormData): Pr
   for (const ruta of ['/','/caja','/reportes','/gastos','/operativos/chequeos']) revalidatePath(ruta);
   const volver = String(f.get('volver_chequeo') ?? '');
   if (uuidAgenda.test(volver)) redirect(`/caja?chequeo=${volver}&guardado=1`);
+  const operativo = String(f.get('volver_operativo') ?? '');
+  if (uuidAgenda.test(operativo)) redirect(`/caja?operativo=${operativo}&guardado=1`);
   redirect(f.get('volver_gastos')==='1'?'/gastos?guardado=1#adelantos-personales':'/caja?guardado=1');
 }
 
@@ -103,8 +105,9 @@ export async function confirmarSaldoBanco(_: ResultadoCaja, form: FormData): Pro
   const { supabase, tenantId } = await requerirPerfil({ roles: ['admin'], suscripcion: true });
   const id = String(form.get('id') ?? '');
   const chequeo = String(form.get('chequeo') ?? '');
+  const operativo = String(form.get('operativo') ?? '');
   const monto = montoCaja(form.get('saldo'), true);
-  if (!uuidAgenda.test(id) || !uuidAgenda.test(chequeo) || monto === null || monto > 999999999999) {
+  if (!uuidAgenda.test(id) || !uuidAgenda.test(chequeo || operativo) || monto === null || monto > 999999999999) {
     return { error: 'Ingresa el saldo que ves en la cuenta.' };
   }
   const [totales, tenant] = await Promise.all([
@@ -122,5 +125,5 @@ export async function confirmarSaldoBanco(_: ResultadoCaja, form: FormData): Pro
     .insert({ id, tenant_id: tenantId, saldo: monto, saldo_registrado: libro.hayDigital });
   if (error && error.code !== '23505') return { error: 'No se pudo confirmar el saldo.' };
   revalidatePath('/caja');
-  redirect(`/caja?chequeo=${chequeo}&guardado=1#saldos`);
+  redirect(`/caja?${chequeo ? "chequeo" : "operativo"}=${chequeo || operativo}&guardado=1#saldos`);
 }

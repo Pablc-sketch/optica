@@ -5,6 +5,7 @@ export type MovimientoRevision = {
   id: string; tabla: 'gastos_globales' | 'retiros_sueldo'; fecha: string; monto: number;
   caja: string; operativo_id: string | null; revision_version: number; confirmado_en: string | null;
   descripcion?: string; categoria?: string; persona?: string; motivo?: string | null; es_sueldo?: boolean;
+  reparto_verificado?: boolean;
 };
 export function diferenciaRevision(calculado: number, registrado: number) {
   return { pendiente: Math.max(0, calculado - registrado), extra: Math.max(0, registrado - calculado) };

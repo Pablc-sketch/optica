@@ -12,9 +12,9 @@ const sedes = [
 ];
 
 describe('Caja del operativo', () => {
-  it('abre la gira indicada sin arrastrar otras sedes de esas mismas fechas', () => {
-    expect(sedesDeCaja(sedes, '2026-11-24').map(s => s.nombre)).toEqual(['Los Molles', 'Trapiche', 'Los Quinquelles']);
-    expect(sedesDeCaja(sedes, '2026-11-27').map(s => s.nombre)).toEqual(['Los Molles', 'Trapiche', 'Los Quinquelles']);
+  it('muestra sedes activas en ausencia de un chequeo o filtro', () => {
+    expect(sedesDeCaja(sedes, '2026-11-24').map(s => s.nombre)).toEqual(['Los Quinquelles', 'Otra sede']);
+    expect(sedesDeCaja(sedes, '2026-11-27').map(s => s.nombre)).toEqual(['Viernes']);
     expect(sedesDeCaja(sedes, '2026-11-24', ['otra', 'desconocida']).map(s => s.id)).toEqual(['otra']);
   });
 
@@ -22,7 +22,7 @@ describe('Caja del operativo', () => {
     const minimarket = { id: '0aea4291-ba76-4092-b0f4-53178911ca19', nombre: 'Minimarket', fecha: '2026-11-25' };
     const archivada = { ...sedes[0], archivado_en: '2026-11-25' };
     const lista = [archivada, ...sedes.slice(1), minimarket];
-    expect(sedesDeCaja(lista, '2026-11-25').map(s => s.nombre)).toEqual(['Trapiche', 'Los Quinquelles', 'Minimarket']);
+    expect(sedesDeCaja(lista, '2026-11-25').map(s => s.nombre)).toEqual(['Minimarket']);
     expect(sedesDeCaja(lista, '2026-11-25', [archivada.id])).toEqual([archivada]);
   });
 

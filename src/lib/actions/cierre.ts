@@ -8,7 +8,7 @@ import { hoyEnChile } from "@/lib/fechas";
 import { COSTOS, prefijoCosto, PREFIJO_MARCOS, type ClaveCosto, pagosConAsignaciones } from "@/lib/pagos-operativo";
 import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import { leerTodas } from "@/lib/leer-todas";
-import { idPagoCosto, claveConRevisiones } from "@/lib/id-pago";
+import { idPagoCosto } from "@/lib/id-pago";
 import { contarLentesYMarcos, type VentaChequeo } from "@/lib/chequeos";
 import { montoCaja } from "@/lib/caja-fuentes";
 
@@ -32,7 +32,6 @@ function refrescar(operativoId: string) {
 const UUID = /^[0-9a-f-]{36}$/i;
 // Marca de los movimientos que crea esta pantalla: "Deshacer" solo toca
 // estos, nunca un adelanto o un pago anotado a mano en Reportes.
-const MOTIVO_CIERRE = "Pago del operativo (cierre)";
 const PREFIJO_FIDES = "Fides · ";
 
 export async function actualizarCostoFides(_: { error?: string; guardado?: boolean }, f: FormData): Promise<{ error?: string; guardado?: boolean }> {
@@ -153,97 +152,6 @@ export async function registrarPagosChequeo(chequeoId: string, inputs: PagoCosto
   return guardarPagosCosto(inputs, chequeoId);
 }
 
-// "Le pagué a X": queda anotado como sueldo pagado de ESTE operativo y la
-// plata sale de la cuenta (o del efectivo). Así la caja deja de mostrar
-// plata que ya se repartió.
-export async function marcarSueldoPagado(input: {
-  operativoId: string;
-  persona: "isadora" | "madre" | "pablo" | "ahorro";
-  // Lo que le corresponde EN TOTAL en este operativo. Se paga solo lo que
-  // falta: tocar dos veces, o en dos pestañas, no paga dos veces.
-  objetivo: number;
-  caja: "digital" | "efectivo";
-}): Promise<Resultado> {
-  let ctx;
-  try {
-    ctx = await admin();
-  } catch (e) {
-    if (e instanceof SinPermiso) return { ok: false, error: e.message };
-    throw e;
-  }
-  if (!UUID.test(input.operativoId)) return { ok: false, error: "Operativo inválido." };
-  if (!["isadora", "madre", "pablo", "ahorro"].includes(input.persona)) return { ok: false, error: "Persona inválida." };
-  if (!Number.isInteger(input.objetivo) || input.objetivo <= 0) return { ok: false, error: "Monto inválido." };
-  if (input.caja !== "digital" && input.caja !== "efectivo") return { ok: false, error: "Caja inválida." };
-  const { data: op, error: opError } = await ctx.supabase.from("operativos").select("*")
-    .eq("id", input.operativoId).eq("tenant_id", ctx.tenantId).maybeSingle();
-  if (opError || !op) return { ok: false, error: "Operativo no disponible." };
-  const [ventas, tenant] = await Promise.all([
-    leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
-      venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
-        ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
-        productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
-    ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
-  ]);
-  if (ventas.error || tenant.error) return { ok: false, error: "No se pudo comprobar el reparto." };
-  const n = numerosDeOperativo(op, ventas.data as unknown as VentaParaCierre[],
-    Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0));
-  if (input.objetivo !== n.cierre[input.persona]) return { ok: false, error: "El reparto cambió. Recarga antes de pagar." };
-  const { data: previos, error: errPrevios } = await ctx.supabase
-    .from("retiros_sueldo")
-    .select("id, monto, revision_version")
-    .eq("operativo_id", input.operativoId)
-    .eq("persona", input.persona);
-  if (errPrevios) return { ok: false, error: errPrevios.message };
-  const yaPagado = (previos ?? []).reduce((s, r) => s + r.monto, 0);
-  const falta = input.objetivo - yaPagado;
-  if (falta <= 0) return { ok: true };
-  const { error } = await ctx.supabase.from("retiros_sueldo").insert({
-    id: idPagoCosto(input.operativoId, claveConRevisiones(`retiro:${input.persona}`, previos ?? []), yaPagado),
-    tenant_id: ctx.tenantId,
-    persona: input.persona,
-    fecha: hoyEnChile(),
-    monto: falta,
-    medio_pago: input.caja === "efectivo" ? "efectivo" : "transferencia",
-    caja: input.caja,
-    es_sueldo: true,
-    motivo: MOTIVO_CIERRE,
-    operativo_id: input.operativoId,
-  });
-  if (error) return { ok: false, error: error.message };
-  refrescar(input.operativoId);
-  return { ok: true };
-}
-
-// Deshacer un "pagado" tocado por error: borra SOLO el último pago que
-// marcó esta pantalla para esa persona en este operativo. Los adelantos y
-// pagos anotados a mano quedan como están.
-export async function deshacerSueldoPagado(input: { operativoId: string; persona: string }): Promise<Resultado> {
-  let ctx;
-  try {
-    ctx = await admin();
-  } catch (e) {
-    if (e instanceof SinPermiso) return { ok: false, error: e.message };
-    throw e;
-  }
-  const { data: ultimo, error: errUltimo } = await ctx.supabase
-    .from("retiros_sueldo")
-    .select("id")
-    .eq("operativo_id", input.operativoId)
-    .eq("persona", input.persona)
-    .in("motivo", [MOTIVO_CIERRE, "Pago del operativo"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (errUltimo) return { ok: false, error: errUltimo.message };
-  if (!ultimo) return { ok: false, error: "No hay un pago marcado desde esta pantalla para deshacer." };
-  const { error } = await ctx.supabase.from("retiros_sueldo").delete().eq("id", ultimo.id);
-  if (error) return { ok: false, error: error.message };
-  refrescar(input.operativoId);
-  return { ok: true };
-}
-
-// Lo que se le pagó al ayudante (ej. Diego). Es costo del operativo.
 export async function guardarAyudante(input: { operativoId: string; monto: number }): Promise<Resultado> {
   let ctx;
   try {

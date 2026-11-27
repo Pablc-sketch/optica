@@ -326,7 +326,7 @@ export async function actualizarVoucherAbono(formData: FormData) {
 export async function anularVenta(formData: FormData) {
   let supabase;
   try {
-    ({ supabase } = await requerirPerfil({ roles: ["admin", "ventas"], suscripcion: true }));
+    ({ supabase } = await requerirPerfil({ roles: ["admin"], suscripcion: true }));
   } catch (e) {
     if (e instanceof SinPermiso) return { ok: false as const, error: e.message };
     throw e;
@@ -341,6 +341,9 @@ export async function anularVenta(formData: FormData) {
   if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/ventas");
+  revalidatePath("/ventas/historial");
+  revalidatePath(`/ventas/${ventaId}`, "layout");
+  revalidatePath("/caja");
   revalidatePath("/ot");
   revalidatePath("/reportes");
   revalidatePath("/laboratorio");

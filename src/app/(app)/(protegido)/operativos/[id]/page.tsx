@@ -19,11 +19,12 @@ import { clp } from "@/lib/clp";
 import { CampoMonto } from "@/components/campos";
 import { COSTO_MARCO_POR_PAR, desglosarCostos, type ItemConCosto } from "@/lib/costo-venta";
 import { conCostoFidesReal } from "@/lib/costo-fides-real";
-import { calcularSueldos, type BaseComision } from "@/lib/sueldos";
+import { cargarRepartoOperativo } from "@/lib/datos-caja-chequeo";
+import ResumenReparto from "@/components/resumen-reparto";
 import { type CatalogoLaboratorio } from "@/lib/costo-fides";
 import EliminarOperativo from "./eliminar-operativo";
 import { cargarVentasParaAviso, clasificarAvisos, destinatariosDeAvisos } from "@/lib/avisos";
-import { esVentaDeConsulta, totalConsultas } from "@/lib/consulta";
+import { esVentaDeConsulta } from "@/lib/consulta";
 import { origenCristal, precioVentaCristal, type PotenciasReceta } from "@/lib/precio-venta";
 
 // Detalle de un operativo: quién se examinó, quién compró, qué se le
@@ -254,29 +255,8 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   // cuenta y en efectivo ahora mismo, ver Reportes → Plata disponible.
   const utilidadActual = totalAbonado - totalCostos - totalRetiros;
 
-  // Cómo se reparte este operativo entre Isadora (comisión), ahorro del
-  // negocio y el resto dividido entre la mamá y Pablo. Usa "utilidadNeta"
-  // (lo vendido, no solo lo cobrado) porque es la misma base que la meta
-  // de utilidad y la que va a reportes — no la caja del momento.
-  // Las consultas ($5.000) suman a la caja y a la utilidad, pero no a la
-  // comisión de Isadora (lib/consulta.ts).
-  const totalConsultasOperativo = totalConsultas(
-    ventas.flatMap((v) => v.venta_items ?? []) as unknown as Parameters<typeof totalConsultas>[0]
-  );
-  const sueldos = calcularSueldos(totalVendido, utilidadNeta, {
-    comisionVendedoraPct: Number(operativo.comision_vendedora_pct),
-    comisionVendedoraBase: operativo.comision_vendedora_base as BaseComision,
-    ahorroPct: Number(operativo.ahorro_pct),
-    ventaSinComision: totalConsultasOperativo,
-  });
-  // Lo que falta transferir de verdad: el reparto de arriba menos lo que
-  // cada persona ya sacó por adelantado contra este mismo operativo. Nunca
-  // negativo — si alguien retiró de más, eso no se le "cobra" acá.
-  const pendienteTransferir = {
-    isadora: Math.max(0, sueldos.comisionIsadora - (retirosPorPersona.get("isadora") ?? 0)),
-    madre: Math.max(0, sueldos.parteMadre - (retirosPorPersona.get("madre") ?? 0)),
-    pablo: Math.max(0, sueldos.partePablo - (retirosPorPersona.get("pablo") ?? 0)),
-  };
+  const reparto = rol === "admin" && tenantId
+    ? await cargarRepartoOperativo(supabase, tenantId, id, hoyEnChile()) : null;
 
   // Próximas entregas: de las ventas de este operativo, las que tienen una
   // OT con fecha estimada, para que el resumen de cierre avise qué falta
@@ -740,27 +720,15 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
         <details className="group rounded-2xl bg-sky-50 p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden sm:col-span-2" open>
           <summary className="cursor-pointer list-none">
             <p className="text-sm text-sky-800">
-              💵 Sueldos de este operativo <span className="text-sky-400 group-open:hidden">▸</span>
+              Reparto <span className="text-sky-400 group-open:hidden">▸</span>
               <span className="hidden text-sky-400 group-open:inline">▾</span>
-            </p>
-            <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              <span>
-                Isadora ({Number(operativo.comision_vendedora_pct)}%) por transferir:{" "}
-                <span className="font-bold text-sky-900">{clp(pendienteTransferir.isadora)}</span>
-              </span>
-              <span>
-                Mamá por transferir: <span className="font-bold text-sky-900">{clp(pendienteTransferir.madre)}</span>
-              </span>
-              <span>
-                Pablo por transferir: <span className="font-bold text-sky-900">{clp(pendienteTransferir.pablo)}</span>
-              </span>
             </p>
           </summary>
           <div className="mt-3 flex flex-col gap-3 border-t border-sky-100 pt-3">
             {/* El % se edita acá arriba, antes del desglose, para que no
                 haya que buscarlo — es lo primero que se ve al abrir la
                 tarjeta. */}
-            <form action={actualizarSueldosOperativo} className="grid grid-cols-1 gap-3 rounded-xl bg-white p-3 sm:grid-cols-3">
+            {!operativo.chequeo_id && <form action={actualizarSueldosOperativo} className="grid grid-cols-1 gap-3 rounded-xl bg-white p-3 sm:grid-cols-3">
               <input type="hidden" name="id" value={operativo.id} />
               <label className="flex flex-col gap-1 text-xs font-medium text-sky-900">
                 % comisión Isadora
@@ -796,82 +764,9 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
                   Guardar
                 </button>
               </div>
-            </form>
+            </form>}
 
-            <div className="flex flex-col gap-1.5 text-sm text-sky-800">
-              <div className="flex items-center justify-between">
-                <span>
-                  Comisión Isadora ({Number(operativo.comision_vendedora_pct)}% de{" "}
-                  {operativo.comision_vendedora_base === "utilidad_neta" ? "la utilidad neta" : "lo vendido"})
-                </span>
-                <span className="font-medium">{clp(sueldos.comisionIsadora)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>= Utilidad disponible</span>
-                <span className={`font-medium ${sueldos.utilidadDisponible < 0 ? "text-red-700" : ""}`}>
-                  {clp(sueldos.utilidadDisponible)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>− Ahorro ({Number(operativo.ahorro_pct)}%)</span>
-                <span className="font-medium">{clp(sueldos.ahorro)}</span>
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-white px-2 py-1.5 font-semibold">
-                <span>= Para dividir entre la mamá y Pablo</span>
-                <span>{clp(sueldos.restoParaDividir)}</span>
-              </div>
-              <div className="flex items-center justify-between pl-2">
-                <span>Mamá (50%)</span>
-                <span className="font-medium">{clp(sueldos.parteMadre)}</span>
-              </div>
-              <div className="flex items-center justify-between pl-2">
-                <span>Pablo (50%)</span>
-                <span className="font-medium">{clp(sueldos.partePablo)}</span>
-              </div>
-              {/* Lo ya retirado contra este operativo (Reportes → Retiros)
-                  se descuenta acá para que el número final sea justo lo
-                  que hay que transferir, no el bruto del reparto. */}
-              {(retirosPorPersona.get("isadora") ?? 0) > 0 && (
-                <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
-                  <span>− Isadora ya retiró</span>
-                  <span>{clp(retirosPorPersona.get("isadora") ?? 0)}</span>
-                </div>
-              )}
-              {(retirosPorPersona.get("madre") ?? 0) > 0 && (
-                <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
-                  <span>− Mamá ya retiró</span>
-                  <span>{clp(retirosPorPersona.get("madre") ?? 0)}</span>
-                </div>
-              )}
-              {(retirosPorPersona.get("pablo") ?? 0) > 0 && (
-                <div className="flex items-center justify-between pl-2 text-xs text-sky-700">
-                  <span>− Pablo ya retiró</span>
-                  <span>{clp(retirosPorPersona.get("pablo") ?? 0)}</span>
-                </div>
-              )}
-              <div className="mt-1 flex flex-col gap-1 rounded-lg bg-sky-100 px-2 py-1.5 font-bold text-sky-900">
-                <div className="flex items-center justify-between">
-                  <span>Isadora — por transferir</span>
-                  <span>{clp(pendienteTransferir.isadora)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Mamá — por transferir</span>
-                  <span>{clp(pendienteTransferir.madre)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Pablo — por transferir</span>
-                  <span>{clp(pendienteTransferir.pablo)}</span>
-                </div>
-              </div>
-              {sueldos.utilidadDisponible < 0 && (
-                <p className="mt-1 rounded-lg bg-red-50 px-2 py-1.5 text-xs font-medium text-red-800">
-                  La utilidad no alcanza para ahorro ni reparto.
-                </p>
-              )}
-              <p className="mt-1 text-xs text-sky-700">
-                Total del mes: Reportes → Sueldos del mes.
-              </p>
-            </div>
+            <ResumenReparto resumen={reparto} />
           </div>
         </details>
       </div>

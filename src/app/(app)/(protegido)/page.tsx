@@ -8,9 +8,7 @@ import { fechaConDia, hoyEnChile, inicioDelDia, finDelDia, rangoHorario, sumarDi
 import { leerTodas } from "@/lib/leer-todas";
 import { cargarAgenda } from "@/lib/agenda-servidor";
 import { diaBreve, mostrarFechas, rangosDisponibles, RUTA_AGENDA, urlAgenda } from "@/lib/agenda";
-import { disponibleTrasPendientes, resumirCaja } from "@/lib/caja";
-import { cargarPendientes } from "@/lib/resumen-pendientes";
-import { pendientePersonal } from "@/lib/caja-fuentes";
+import { resumirCaja } from "@/lib/caja";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import Icono, { type NombreIcono } from "@/components/icono";
 
@@ -34,17 +32,12 @@ function AccesosTrabajo() {
   );
 }
 
-async function saldoDisponible(supabase: Awaited<ReturnType<typeof createClient>>, tenantId: string) {
-  const [caja, pendientes, tenant, gastos, devoluciones] = await Promise.all([
+async function saldoRegistrado(supabase: Awaited<ReturnType<typeof createClient>>, tenantId: string) {
+  const [caja, tenant] = await Promise.all([
     supabase.rpc("caja_global").single(),
-    cargarPendientes(supabase),
     supabase.from("tenants").select("comision_debito_pct,comision_credito_pct").eq("id", tenantId).single(),
-    leerTodas((a, b) => supabase.from("gastos_globales").select("id,monto")
-      .eq("tenant_id", tenantId).eq("caja", "personal").order("id").range(a, b)),
-    leerTodas((a, b) => supabase.from("caja_movimientos").select("id,gasto_id,monto")
-      .eq("tenant_id", tenantId).not("gasto_id", "is", null).order("id").range(a, b)),
   ]);
-  if (caja.error || !caja.data || pendientes.error || tenant.error || gastos.error || devoluciones.error) return null;
+  if (caja.error || !caja.data || tenant.error) return null;
   const t = caja.data as {
     entro_efectivo: number; entro_digital: number; entro_debito: number;
     entro_credito: number; salio_efectivo: number; salio_digital: number;
@@ -57,9 +50,7 @@ async function saldoDisponible(supabase: Awaited<ReturnType<typeof createClient>
     comisionDebitoPct: Number(tenant.data?.comision_debito_pct ?? 0),
     comisionCreditoPct: Number(tenant.data?.comision_credito_pct ?? 0),
   });
-  const deuda = (gastos.data ?? []).reduce((suma, g) =>
-    suma + pendientePersonal(g.monto, (devoluciones.data ?? []).filter(d => d.gasto_id === g.id)), 0);
-  return disponibleTrasPendientes(saldo, { pagos: pendientes.resumen.total + (pendientes.impuestosPendientes??0), devoluciones: deuda, ahorro: pendientes.resumen.ahorro }).restante;
+  return saldo.hayDigital + saldo.hayEfectivo;
 }
 
 export default async function Dashboard() {
@@ -100,7 +91,7 @@ export default async function Dashboard() {
       .gte("fecha", inicioDelDia(hoy)).lte("fecha", finDelDia(hoy)).order("id").range(a, b)),
     supabase.from("ordenes_trabajo").select("id", { count: "exact", head: true }).eq("estado", "listo"),
     cargarAgenda(supabase, perfil.tenant_id, hoy, hasta),
-    saldoDisponible(supabase, perfil.tenant_id),
+    saldoRegistrado(supabase, perfil.tenant_id),
   ]);
   const libres = agenda.error ? [] : rangosDisponibles(agenda.disponibilidad, agenda.eventos, hoy, hasta).slice(0, 3);
   const proximos = agenda.eventos.filter(o => o.estado === "confirmado" || o.estado === "pendiente");
@@ -151,7 +142,7 @@ export default async function Dashboard() {
       <Link href="/caja" className="rounded-2xl bg-white p-4 shadow-sm">
         <p className="flex items-center gap-2 text-sm font-semibold text-accent-dark"><Icono nombre="caja" className="size-4" /> Caja</p>
         <p className={`my-1 text-2xl font-bold tabular-nums ${caja != null && caja < 0 ? "text-red-700" : ""}`}>{caja === null ? "—" : clp(caja)}</p>
-        <p className="text-xs text-tinta-suave">{caja === null ? "No disponible" : "Disponible tras pendientes"}</p>
+        <p className="text-xs text-tinta-suave">{caja === null ? "No disponible" : "Saldo registrado · ver reparto en Caja"}</p>
       </Link>
     </div>
 

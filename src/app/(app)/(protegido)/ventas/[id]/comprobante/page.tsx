@@ -20,7 +20,7 @@ import { fechaDocumentos } from '@/lib/fecha-documentos';
 
 export default async function ComprobantePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase, tenantId } = await exigirRolPagina(["admin", "ventas"]);
+  const { supabase, tenantId, rol } = await exigirRolPagina(["admin", "ventas"]);
 
   const [ventaRes, tenantRes, respaldoRes] = await Promise.all([
     supabase
@@ -118,7 +118,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
               ✎ Editar
             </Link>
           )}
-          {!venta.anulada && <AnularVenta ventaId={venta.id} />}
+          {rol === "admin" && !venta.anulada && <AnularVenta ventaId={venta.id} />}
         </div>
       </div>
 

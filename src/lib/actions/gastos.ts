@@ -151,41 +151,6 @@ export async function crearRetiro(formData: FormData) {
   revalidatePath("/reportes");
 }
 
-// Marcar el sueldo del mes como pagado de verdad. Se guarda en la misma
-// tabla que los adelantos porque es exactamente el mismo movimiento de
-// plata — sale de una caja y baja lo que se le debe a esa persona — pero
-// con `es_sueldo` en true, para que en pantalla se distinga "ya retiró un
-// adelanto" de "el sueldo ya está pagado".
-//
-// El monto viene del formulario y no se recalcula acá: lo que se paga es
-// lo que el reporte mostró en ese momento, y si después cambia una venta
-// del mes, el pago ya hecho no debe moverse solo.
-export async function pagarSueldo(formData: FormData) {
-  const { supabase, tenantId } = await requerirTenant();
-
-  const persona = String(formData.get("persona") ?? "");
-  const fecha = String(formData.get("fecha") ?? "").trim();
-  const monto = parsearMonto(formData.get("monto"));
-  const mes = String(formData.get("mes") ?? "").trim();
-  if (!(PERSONAS as readonly string[]).includes(persona) || !fecha || monto === null || monto === 0) return;
-
-  const { error } = await supabase.from("retiros_sueldo").insert({
-    tenant_id: tenantId,
-    persona,
-    fecha,
-    monto,
-    medio_pago: parsearMedioPago(formData.get("medio_pago")),
-    caja: parsearCaja(formData.get("caja")),
-    es_sueldo: true,
-    motivo: mes ? `Sueldo de ${mes} pagado` : "Sueldo pagado",
-  });
-  if (error) throw error;
-
-  revalidatePath("/impuestos");
-  revalidatePath("/gastos");
-  revalidatePath("/reportes");
-}
-
 export async function eliminarRetiro(formData: FormData) {
   const { supabase } = await requerirTenant();
   const id = String(formData.get("id") ?? "");

@@ -164,7 +164,7 @@ export default async function DetalleOT({ params }: { params: Promise<{ id: stri
         <h1 className="text-xl font-bold">Orden de trabajo #{ot.folio}</h1>
         <div className="flex items-center gap-2">
           <BotonImprimir />
-          <EliminarOT otId={ot.id} folio={ot.folio} irALista />
+          {rolRes.data === "admin" && <EliminarOT otId={ot.id} folio={ot.folio} irALista />}
         </div>
       </div>
 
