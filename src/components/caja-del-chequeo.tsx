@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import CajaFormulario from "@/components/caja-formulario";
 import GastosPersonales from "@/components/gastos-personales";
 import { GastoGeneralForm, GastoOperativoForm } from "@/components/registro-gasto";
+import { confirmarSaldoBanco } from "@/lib/actions/caja";
+import { disponibleParaRepartir } from "@/lib/caja-verificada";
 import { guardarRepartoChequeo } from "@/lib/actions/chequeos";
 import { guardarPagoCostosChequeo } from "@/lib/actions/cierre";
 import type { Chequeo, SedeChequeo } from "@/lib/chequeos";
@@ -81,26 +83,32 @@ function RecuadroCostos({ datos, titulo, clave, chequeo, hoy }: {
   });
   const total = filas.reduce((sum, f) => sum + f.total, 0);
   const pendientes = filas.filter(f => f.pendiente > 0);
-  const saldo = pendientes.reduce((sum, f) => sum + f.pendiente, 0);
+  const coberturaGlobal = clave === "marcos" && datos.caja.coberturaMarcos > 0;
+  const saldo = clave === "marcos" ? datos.caja.marcosPendientes : pendientes.reduce((sum, f) => sum + f.pendiente, 0);
   return <details className={`group ${panel} ${clave === "fides" ? colores.azul : colores.ambar}`}>
     <summary className={resumen}>
       <span>
         <span className="block text-sm">{titulo}</span>
         <b className="block text-2xl tabular-nums">{clp(total)}</b>
         <span className={`mt-1 inline-block rounded-md px-2 py-1 text-xs ${saldo ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}>
-          {saldo ? `Por pagar ${clp(saldo)}` : total ? "Pagado" : "Sin costos"}
+          {saldo ? `${clave === "marcos" ? "Reserva pendiente" : "Por pagar"} ${clp(saldo)}` : coberturaGlobal ? "Cubierto por reposición" : total ? "Pagado" : "Sin costos"}
         </span>
       </span>
       <span className="shrink-0 text-right text-xs">Por sede <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-180">⌄</span></span>
     </summary>
     <div className="mt-3 space-y-3">
-      {clave === "marcos" && <p className="text-xs">Usa Reintegros para devolver compras hechas con dinero personal.</p>}
-      {pendientes.length > 1 && <PagoCostos filas={pendientes} clave={clave} chequeo={chequeo} hoy={hoy} />}
+      {clave === "marcos" && <p className="text-xs">
+        {datos.caja.reposicionMarcos > 0 ? `Reposición registrada ${clp(datos.caja.reposicionMarcos)} · Cubre ${clp(datos.caja.coberturaMarcos)} de la reserva.`
+          : "Si compraste marcos para reponer los vendidos, registra una reposición en Gastos."}
+      </p>}
+      {!coberturaGlobal && pendientes.length > 1 && <PagoCostos filas={pendientes} clave={clave} chequeo={chequeo} hoy={hoy} />}
       <ul className="divide-y divide-tinta/10">
         {filas.filter(f => f.total || f.pagado).map(f => <li key={f.id} className="space-y-1.5 py-2.5 text-sm">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3"><b>{f.nombre}</b><strong className="tabular-nums">{clp(f.total)}</strong></div>
-          <p className="text-xs text-tinta-suave">Pagado {clp(f.pagado)} · Pendiente {clp(f.pendiente)}</p>
-          <PagoCostos filas={[f]} clave={clave} chequeo={chequeo} hoy={hoy} />
+          {!coberturaGlobal && <>
+            <p className="text-xs text-tinta-suave">Pagado {clp(f.pagado)} · Pendiente {clp(f.pendiente)}</p>
+            <PagoCostos filas={[f]} clave={clave} chequeo={chequeo} hoy={hoy} />
+          </>}
         </li>)}
       </ul>
       {total === 0 && <p className="text-sm text-tinta-suave">Sin costos calculados para las sedes.</p>}
@@ -108,14 +116,27 @@ function RecuadroCostos({ datos, titulo, clave, chequeo, hoy }: {
   </details>;
 }
 
-export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, efectivo, efectivoVerificado, cuenta, bancoRegistrado }: {
+export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, efectivo, efectivoVerificado, cuenta, bancoRegistrado, bancoManual }: {
   chequeo: Chequeo; opciones: Chequeo[]; sedes: SedeChequeo[]; datos: Datos; hoy: string;
   efectivo: number | null; efectivoVerificado: boolean; cuenta: SaldoMercadoPago; bancoRegistrado: number | null;
+  bancoManual: { saldo: number; confirmado_en: string } | null;
 }) {
   const { caja, n, sii } = datos;
   const nombres = etiquetasReparto(datos.tenant?.reparto_etiquetas);
-  const saldoEnVivo = cuenta.estado === "disponible";
-  const saldo = saldoEnVivo ? cuenta.disponible : bancoRegistrado;
+  const hora = (fecha: string) => new Intl.DateTimeFormat("es-CL", {
+    timeZone: "America/Santiago", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(fecha));
+  const saldoConfirmado = cuenta.estado === "disponible" ? cuenta.disponible : bancoManual?.saldo ?? null;
+  const saldo = saldoConfirmado ?? (cuenta.estado === "reporte" ? cuenta.disponible : bancoRegistrado);
+  const fuenteBanco = cuenta.estado === "disponible" ? "Mercado Pago en vivo"
+    : bancoManual ? `Confirmado · ${hora(bancoManual.confirmado_en)}`
+    : cuenta.estado === "reporte" ? `Último reporte · ${hora(cuenta.hasta)}` : "Según movimientos registrados";
+  const ivaPorReservar = Math.max(caja.ivaPendienteCaja, sii?.saldo ?? 0);
+  const compromisos = caja.fidesPendiente + caja.marcosPendientes + caja.terrenoPendiente
+    + caja.porReembolsar + caja.comisionPendiente + ivaPorReservar;
+  const pendiente = Object.values(caja.repartoPendiente).reduce((a, b) => a + b, 0);
+  const disponibleHoy = sii ? disponibleParaRepartir(saldoConfirmado, efectivoVerificado ? efectivo : null,
+    compromisos, caja.saldoTrasPagos, pendiente) : null;
   const total = saldo !== null && efectivo !== null ? saldo + efectivo : null;
   const comision = Number(chequeo.comision_isadora_pct ?? 10);
   const ahorro = Number(chequeo.ahorro_pct);
@@ -127,12 +148,12 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, e
   const mesPago = sii && formatoMes.format(new Date(sii.siguiente));
 
   return <>
-    <section aria-label="Saldos de la óptica" className="space-y-2">
+    <section id="saldos" aria-label="Saldos de la óptica" className="scroll-mt-20 space-y-2">
       <h2 className="text-lg font-bold">Dinero de la óptica</h2>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-        <Indicador titulo="Cuenta óptica" valor={saldo} tono="verde" detalle={saldoEnVivo ? "Disponible en Mercado Pago" : "Según movimientos registrados"} />
-        <Indicador titulo="Efectivo" valor={efectivo} detalle={efectivoVerificado ? "Según último conteo" : "Según movimientos registrados"} />
-        <Indicador titulo="Total disponible" valor={total} tono="azul" detalle={saldoEnVivo && efectivoVerificado ? "Cuenta + efectivo" : "Estimado · cuenta + efectivo"} />
+        <Indicador titulo="Cuenta óptica" valor={saldo} tono="verde" detalle={fuenteBanco} />
+        <Indicador titulo="Efectivo" valor={efectivo} detalle={efectivoVerificado ? "Contado hoy" : "Estimado · falta contar"} />
+        <Indicador titulo="Total disponible" valor={total} tono="azul" detalle={saldoConfirmado !== null && efectivoVerificado ? "Cuenta + efectivo contado" : "Referencia · verificar saldos"} />
         <Indicador titulo="Por cobrar" valor={n.porCobrar} tono="ambar" detalle={chequeo.nombre} />
       </dl>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -155,7 +176,19 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, e
             <div className="flex justify-between gap-2"><dt>Cuenta registrada en Lentia</dt><dd>{bancoRegistrado === null ? "Por verificar" : clp(bancoRegistrado)}</dd></div>
             {cuenta.estado === "reporte" && <div className="flex justify-between gap-2"><dt>Último reporte de Mercado Pago</dt><dd>{clp(cuenta.disponible)}</dd></div>}
           </dl>
-          <Link href="/caja?ver=cuadrar" className="mt-2 inline-block text-sm font-semibold underline">Cuadrar efectivo y cuenta</Link>
+          <Link href="/caja?ver=cuadrar" className="mt-2 inline-block text-sm font-semibold underline">Contar efectivo</Link>
+          {cuenta.estado !== "disponible" && <details className="mt-3">
+            <summary className="cursor-pointer text-sm font-semibold">Confirmar saldo de Mercado Pago</summary>
+            <div className="mt-2">
+              <CajaFormulario guardar={confirmarSaldoBanco} texto="Guardar saldo confirmado">
+                <input type="hidden" name="id" value={randomUUID()} />
+                <input type="hidden" name="chequeo" value={chequeo.id} />
+                <label className="text-sm">Saldo que ves en Mercado Pago (CLP)
+                  <input required type="number" name="saldo" min="0" max="999999999999" step="1" className={campo} />
+                </label>
+              </CajaFormulario>
+            </div>
+          </details>}
         </Desplegable>
       </div>
     </section>
@@ -207,21 +240,42 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, e
 
     <section id="reparto" className="space-y-3 scroll-mt-20" aria-labelledby="titulo-reparto">
       <h2 id="titulo-reparto" className="text-xl font-bold">Reparto del chequeo</h2>
-      <dl className="grid grid-cols-2 gap-2 sm:gap-3">
-        <Indicador titulo="Líquido para ahorro y reparto" valor={n.reparto.utilidadDisponible} tono="verde" detalle="Después de IVA, costos, gastos y comisión" />
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+        <Indicador titulo="Disponible para repartir hoy" valor={disponibleHoy} tono="verde"
+          detalle={disponibleHoy === null ? "Requiere saldo y efectivo confirmados e IVA calculado" : "Después de reservar los compromisos"} />
+        <Indicador titulo="Reparto si cobramos todo" valor={Math.max(0, caja.proyectado)} tono="azul" detalle="Proyección sobre ventas registradas" />
         <Indicador titulo="IVA reservado del chequeo" valor={n.iva} tono="ambar" detalle={datos.ivaSinCredito ? "Estimado sin crédito fiscal de los meses sin datos" : "Incluido en el cálculo del líquido"} />
       </dl>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-        <Indicador titulo={nombres.isadora} valor={n.comisionVentas} detalle={`${comision}% de las ventas`} tono="azul" />
-        <Indicador titulo="Ahorro" valor={n.reparto.ahorro} detalle={`${ahorro}% del líquido`} tono="verde" />
-        <Indicador titulo={nombres.madre} valor={n.reparto.parteMadre} detalle={`${partePamela}% del resto`} />
-        <Indicador titulo={nombres.pablo} valor={n.reparto.partePablo} detalle={`${100 - partePamela}% del resto`} />
+        <Indicador titulo={nombres.isadora} valor={caja.comisionPendiente} detalle={`${comision}% de las ventas`} tono="azul" />
+        <Indicador titulo="Ahorro" valor={caja.repartoPendiente.ahorro} detalle={`${ahorro}% del líquido`} tono="verde" />
+        <Indicador titulo={nombres.madre} valor={caja.repartoPendiente.madre} detalle={`${partePamela}% del resto`} />
+        <Indicador titulo={nombres.pablo} valor={caja.repartoPendiente.pablo} detalle={`${100 - partePamela}% del resto`} />
       </dl>
       <p className="text-sm text-tinta-suave">
-        Vendido <b>{clp(n.vendido)}</b> · Reparto estimado sobre las ventas
-        {n.reservaCompraPersonal > 0 && <> · Incluye reserva para devolver {clp(n.reservaCompraPersonal)} de inventario</>}
+        Vendido <b>{clp(n.vendido)}</b> · Reparto estimado pendiente de pago
       </p>
-      <p className="text-sm text-tinta-suave">Caja cobrada del chequeo después de compromisos e IVA <b>{clp(caja.saldoTrasPagos)}</b></p>
+      <Desplegable titulo="Ver el cálculo del reparto">
+        <dl className="space-y-1 text-sm">
+          {[
+            ["Cobrado del chequeo", n.cobrado],
+            ["Gastos y reintegros pagados", -caja.salidas],
+            ["Comisiones de tarjeta", -caja.comisionTarjeta],
+            ["Sueldos y ahorro ya retirados, netos", -caja.retirosNetos],
+            ["Cristales por pagar", -caja.fidesPendiente],
+            ["Reposición de marcos aún reservada", -caja.marcosPendientes],
+            ["Gastos de terreno por pagar", -caja.terrenoPendiente],
+            ["Reintegros por pagar", -caja.porReembolsar],
+            ["Comisión de ventas por pagar", -caja.comisionPendiente],
+            ["IVA pendiente del chequeo", -caja.ivaPendienteCaja],
+            ["Caja cobrada después de compromisos", caja.saldoTrasPagos],
+            ["Ventas pendientes de cobro", n.porCobrar],
+          ].filter(([, valor]) => valor !== 0).map(([etiqueta, valor]) => (
+            <div key={etiqueta} className="flex justify-between gap-2"><dt>{etiqueta}</dt><dd className="tabular-nums">{clp(Number(valor))}</dd></div>
+          ))}
+        </dl>
+        {sii && <p className="mt-2 text-xs text-tinta-suave">Para el disponible de hoy se reservan {clp(ivaPorReservar)} en impuestos.</p>}
+      </Desplegable>
       <Desplegable titulo="Editar porcentajes">
         <CajaFormulario guardar={guardarRepartoChequeo} texto="Guardar reparto">
           <input type="hidden" name="chequeo_id" value={chequeo.id} />
