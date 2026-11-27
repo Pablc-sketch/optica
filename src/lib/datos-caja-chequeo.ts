@@ -87,8 +87,9 @@ export async function cargarCajaChequeo(
     { comisionIsadoraPct: Number(chequeo.comision_isadora_pct ?? 10), parteMadrePct: Number(chequeo.reparto_pamela_pct ?? 50) },
     reservaCompraPersonal, iva);
   const caja = resumirCajaChequeo(n, chequeo.id, [...propios, ...gastosExternos.flatMap(res => res.data ?? [])],
-    vinculados, devoluciones.flatMap(res => res.data ?? []), retiros, gastosSii);
-  return { n, caja, compartidos, ventas, ivaSinCredito, sii: periodos.find(p => p.periodo === mesActual)?.sii ?? null, tenant: tenant.data };
+    vinculados, devoluciones.flatMap(res => res.data ?? []), retiros, gastosSii,
+    { ahorroPct: Number(chequeo.ahorro_pct), parteMadrePct: Number(chequeo.reparto_pamela_pct ?? 50) });
+  return { n: { ...n, reparto: caja.reparto }, caja, compartidos, ventas, ivaSinCredito, sii: periodos.find(p => p.periodo === mesActual)?.sii ?? null, tenant: tenant.data };
 }
 
 async function cargarSiiPeriodo(

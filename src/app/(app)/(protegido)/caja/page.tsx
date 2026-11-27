@@ -6,11 +6,11 @@ import { exigirRolPagina } from '@/lib/autorizacion';
 import { cargarPendientes } from '@/lib/resumen-pendientes';
 import { leerTodas } from '@/lib/leer-todas';
 import { clp } from '@/lib/clp';
-import { hoyEnChile, fechaLegible } from '@/lib/fechas';
+import { hoyEnChile, fechaLegible, diaEnChile } from '@/lib/fechas';
 import {etiquetasReparto} from '@/lib/etiquetas-reparto';
 import { pendientePersonal } from '@/lib/caja-fuentes';
 import {leerEstadoCuenta} from '@/lib/cuenta-mercadopago';
-import { efectivoDesdeConteo, prioridadCaja } from '@/lib/caja-verificada';
+import { efectivoDesdeConteo, prioridadCaja, confirmarSaldoDesdeRegistro } from '@/lib/caja-verificada';
 import { resumenSedeCaja, sedesDeCaja } from '@/lib/caja-operativo';
 import type { VentaParaCierre } from '@/lib/cierre-operativo';
 import ActualizarCajaMercadoPago from '@/components/actualizar-caja-mercadopago';
@@ -57,12 +57,13 @@ export default async function Caja({ searchParams }: {
       <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudieron cargar los chequeos de la caja.</p>
     </div>;
     if (chequeo) {
-      const [integrantes, cuenta, caja, conteo] = await Promise.all([
+      const [integrantes, cuenta, caja, conteo, bancoConfirmado] = await Promise.all([
         leerTodas((a,b) => supabase.from('operativos').select('*').eq('tenant_id', tenantId).eq('chequeo_id', chequeo.id)
           .neq('estado', 'cancelado').order('fecha').order('hora_inicio', { nullsFirst: false }).order('id').range(a,b)),
         leerEstadoCuenta(tenantId),
         supabase.rpc('caja_global').single(),
-        supabase.from('caja_conteos').select('contado,esperado').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(1),
+        supabase.from('caja_conteos').select('contado,esperado,created_at').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(1),
+        supabase.from('caja_saldos_confirmados').select('saldo,saldo_registrado,confirmado_en').eq('tenant_id', tenantId).order('confirmado_en', { ascending: false }).order('id').limit(1),
       ]);
       const sedes = (integrantes.data ?? []) as SedeChequeo[];
       const datos = integrantes.error ? null : await cargarCajaChequeo(supabase, tenantId, chequeo, sedes, hoy);
@@ -75,14 +76,18 @@ export default async function Caja({ searchParams }: {
         comisionDebitoPct: Number(datos.tenant?.comision_debito_pct ?? 0),
         comisionCreditoPct: Number(datos.tenant?.comision_credito_pct ?? 0),
       }) : null;
-      const efectivoContado = libro && !conteo.error ? efectivoDesdeConteo(libro.hayEfectivo, conteo.data?.[0]) : null;
+      const conteoGuardado = conteo.error ? null : conteo.data?.[0];
+      const efectivoContado = libro ? efectivoDesdeConteo(libro.hayEfectivo, conteoGuardado) : null;
+      const efectivoVerificado = Boolean(conteoGuardado && libro?.hayEfectivo === conteoGuardado.esperado
+        && diaEnChile(conteoGuardado.created_at) === hoy);
+      const bancoManual = confirmarSaldoDesdeRegistro(libro?.hayDigital ?? null, hoy, bancoConfirmado.error ? null : bancoConfirmado.data?.[0]);
       return <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-6">
         <CabeceraPagina seccion="Operación" titulo="Caja y gastos" acciones={<ActualizarCajaMercadoPago compacto />} />
         {navegacion}
         {guardado}
         {datos ? <CajaDelChequeo chequeo={chequeo} opciones={chequeos} sedes={sedes} datos={datos} hoy={hoy}
-          efectivo={efectivoContado ?? libro?.hayEfectivo ?? null} efectivoVerificado={efectivoContado !== null}
-          cuenta={cuenta.saldo} bancoRegistrado={libro?.hayDigital ?? null} />
+          efectivo={efectivoContado ?? libro?.hayEfectivo ?? null} efectivoVerificado={efectivoVerificado}
+          cuenta={cuenta.saldo} bancoRegistrado={libro?.hayDigital ?? null} bancoManual={bancoManual} />
           : <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudo calcular el chequeo. Recarga para reintentar.</p>}
       </div>;
     }

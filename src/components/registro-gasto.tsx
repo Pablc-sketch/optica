@@ -77,6 +77,7 @@ export function GastoGeneralForm({ hoy, digital, personal, chequeoId, comida = f
           <option value="peajes">Peajes y TAG</option>
         </>}
         <option value="compra_inventario">Inventario / equipamiento</option>
+        {chequeoId && desdeCaja && <option value="reposicion_marcos">Reposición de marcos del chequeo</option>}
         <option value="arriendo">Arriendo</option>
       </select>
     </label>}

@@ -17,6 +17,7 @@ export const prefijoCosto = (clave: ClaveCosto) => `Costo operativo · ${clave} 
 // Fides y marcos no son columnas del operativo: su monto sale de lo vendido.
 export const PREFIJO_FIDES = "Fides · ";
 export const PREFIJO_MARCOS = "Marcos · ";
+export const PREFIJO_REPOSICION_MARCOS = "Reposición de marcos · ";
 export type PagoCosto = { descripcion: string; monto: number };
 export type AsignacionCosto = { id: string; gasto_id: string; operativo_id: string; clave: string; monto: number; anulado_en: string | null };
 export const esPagoDeCosto = (descripcion: string) => /^(Costo operativo · |Fides · |Marcos · )/.test(descripcion);

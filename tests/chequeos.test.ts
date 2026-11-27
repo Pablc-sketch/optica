@@ -107,3 +107,31 @@ it("descuenta el IVA antes del ahorro y no vuelve a reservar un pago del SII ya 
   expect(caja).toMatchObject({ gastosPagados: 4000, ivaPendienteCaja: 6000, saldoTrasPagos: 50_000 });
   expect(resumirCajaChequeo(n, "grupo", [], [], [], []).saldoTrasPagos).toBe(caja.saldoTrasPagos);
 });
+
+it("aplica una reposición pagada a la reserva de marcos y registra su desembolso completo", () => {
+  const compra: GastoChequeo = {
+    id: "compra", fecha: "2026-11-25", descripcion: "Reposición de marcos · comprobante",
+    monto: 7_000, caja: "digital", categoria: "compra_inventario",
+    operativo_id: null, chequeo_id: "grupo", nota: null, monto_estimado: false,
+  };
+  const adelanto = { ...compra, id: "personal", caja: "personal", descripcion: "Compra inicial", monto: 10_000 };
+  const ventaLente = { ...venta("a", 100_000, 70_000), venta_items: [{
+    cantidad: 1, producto_id: null, precio_unitario: 100_000,
+    ordenes_trabajo: { costo_laboratorio: 6000, costo_laboratorio_2: null, estado: "laboratorio",
+      marco_propio: false, marco_propio_2: false, armazon_producto_id: null, armazon_producto_id_2: null },
+  }] };
+  const n = resumirChequeo([sede("a")], [], [ventaLente], 0, 20, 0, 0,
+    { comisionIsadoraPct: 10, parteMadrePct: 50 }, 10_000, 10_000);
+  const reglas = { ahorroPct: 20, parteMadrePct: 50 };
+  const calcular = (gastos: GastoChequeo[], devuelto = 0) => resumirCajaChequeo(n, "grupo", gastos, [],
+    [{ gasto_id: adelanto.id, monto: devuelto }], [], new Set(), reglas);
+
+  const antes = calcular([adelanto]);
+  expect(antes).toMatchObject({ marcos: 5000, marcosPendientes: 5000, porReembolsar: 10_000, proyectado: 59_000 });
+
+  const despues = calcular([adelanto, compra]);
+  expect(despues).toMatchObject({ marcos: 5000, coberturaMarcos: 5000, marcosPendientes: 0, gastosPagados: 7000,
+    porReembolsar: 10_000, proyectado: 57_000, repartoPendiente: { ahorro: 11_400, madre: 22_800, pablo: 22_800 } });
+  expect(calcular([adelanto, compra], 10_000)).toMatchObject({ porReembolsar: 0, reintegrosPagados: 10_000, proyectado: 57_000 });
+  expect(calcular([adelanto, { ...compra, monto: 3000 }])).toMatchObject({ coberturaMarcos: 3000, marcosPendientes: 2000, proyectado: 59_000 });
+});

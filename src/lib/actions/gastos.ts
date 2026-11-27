@@ -6,6 +6,7 @@ import { requerirPerfil } from "@/lib/autorizacion";
 import { montoCaja } from "@/lib/caja-fuentes";
 import { fechaValidaDocumento } from "@/lib/fecha-documentos";
 import { hoyEnChile } from "@/lib/fechas";
+import { PREFIJO_REPOSICION_MARCOS } from "@/lib/pagos-operativo";
 
 // Mismo patrón que el resto de actions administrativas: el tenant sale de
 // la base, nunca del formulario.
@@ -53,11 +54,13 @@ export async function crearGastoGlobal(formData: FormData) {
   const comida = formData.get("comida") === "1";
   const categoria = String(formData.get("categoria") ?? "");
   const etiquetas: Record<string, string> = { comida: "Comida", bencina: "Bencina y transporte", peajes: "Peajes y TAG" };
+  const reposicion = !comida && categoria === "reposicion_marcos";
   const prefijo = comida ? etiquetas.comida : Object.hasOwn(etiquetas, categoria) ? etiquetas[categoria] : "";
-  const descripcion = prefijo && detalle ? `${prefijo} · ${detalle}` : detalle;
+  const descripcion = reposicion && detalle ? PREFIJO_REPOSICION_MARCOS + detalle : prefijo && detalle ? `${prefijo} · ${detalle}` : detalle;
   const nota = String(formData.get("nota") ?? "").trim();
   const monto = montoCaja(formData.get("monto"));
   const chequeoId = String(formData.get("chequeo_id") ?? "");
+  if (reposicion && !chequeoId) throw new Error("Elige el chequeo de la reposición.");
   if (chequeoId && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(chequeoId)) throw new Error("Chequeo no válido.");
   if (!fechaValidaDocumento(fecha) || fecha > hoyEnChile() || !descripcion || descripcion.length > 250 || nota.length>1000 || monto === null) throw new Error("Revisa la fecha, descripción y monto del gasto.");
   const fuente = String(formData.get("caja") ?? "");
@@ -73,7 +76,7 @@ export async function crearGastoGlobal(formData: FormData) {
     descripcion,
     nota,
     monto,
-    categoria: !comida && (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
+    categoria: reposicion ? "compra_inventario" : !comida && (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
     medio_pago: parsearMedioPago(formData.get("medio_pago")),
     caja: fuente,
   });

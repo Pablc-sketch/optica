@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requerirPerfil, SinPermiso } from '@/lib/autorizacion';
+import { resumirCaja } from '@/lib/caja';
 import { montoCaja } from '@/lib/caja-fuentes';
 import { hoyEnChile } from '@/lib/fechas';
 import { fechaValidaDocumento } from '@/lib/fecha-documentos';
@@ -95,4 +96,31 @@ export async function registrarGastoCajaOperativo(_: ResultadoCaja, f: FormData)
     if (typeof sede === 'string' && uuidAgenda.test(sede)) params.append('sede', sede);
   }
   redirect(`/caja?${params}`);
+}
+
+
+export async function confirmarSaldoBanco(_: ResultadoCaja, form: FormData): Promise<ResultadoCaja> {
+  const { supabase, tenantId } = await requerirPerfil({ roles: ['admin'], suscripcion: true });
+  const id = String(form.get('id') ?? '');
+  const chequeo = String(form.get('chequeo') ?? '');
+  const monto = montoCaja(form.get('saldo'), true);
+  if (!uuidAgenda.test(id) || !uuidAgenda.test(chequeo) || monto === null || monto > 999999999999) {
+    return { error: 'Ingresa el saldo que ves en la cuenta.' };
+  }
+  const [totales, tenant] = await Promise.all([
+    supabase.rpc('caja_global').single(),
+    supabase.from('tenants').select('comision_debito_pct,comision_credito_pct').eq('id', tenantId).single(),
+  ]);
+  const t = totales.data as { entro_efectivo: number; salio_efectivo: number; entro_digital: number;
+    entro_debito: number; entro_credito: number; salio_digital: number } | null;
+  if (!t || totales.error || tenant.error) return { error: 'Lentia no pudo leer los movimientos actuales. Vuelve a intentar.' };
+  const libro = resumirCaja({
+    entroEfectivo: t.entro_efectivo, salioEfectivo: t.salio_efectivo, entroDigital: t.entro_digital,
+    entroDebito: t.entro_debito, entroCredito: t.entro_credito, salioDigital: t.salio_digital,
+  }, { comisionDebitoPct: Number(tenant.data.comision_debito_pct ?? 0), comisionCreditoPct: Number(tenant.data.comision_credito_pct ?? 0) });
+  const { error } = await supabase.from('caja_saldos_confirmados')
+    .insert({ id, tenant_id: tenantId, saldo: monto, saldo_registrado: libro.hayDigital });
+  if (error && error.code !== '23505') return { error: 'No se pudo confirmar el saldo.' };
+  revalidatePath('/caja');
+  redirect(`/caja?chequeo=${chequeo}&guardado=1#saldos`);
 }
