@@ -74,7 +74,11 @@ export function cuentasDelChequeo(datos: Datos, saldos: Saldos, chequeo?: Pick<C
   if (ajuste !== 0) filas.push({ clave: "ajustes", titulo: "Otros ajustes", monto: ajuste,
     nota: "Pagos de más, reintegros o retiros por sobre lo que tocaba. Revisa el detalle de Caja." });
   const gastosTotal = filas.reduce((s, f) => s + f.monto, 0);
-  const porPagar = caja.fidesPendiente + caja.marcosPendientes + caja.ivaPendienteCaja + caja.terrenoPendiente;
+  // Lo que falta pagar a proveedores y el IVA que hay que guardar van por
+  // separado: el IVA no es un gasto ya hecho, es plata que no es nuestra.
+  const porPagar = caja.fidesPendiente + caja.marcosPendientes + caja.terrenoPendiente;
+  const ivaGuardar = caja.ivaPendienteCaja;
+  const pagado = gastosTotal - porPagar - ivaGuardar;
 
   const pct = Number(chequeo?.comision_isadora_pct ?? 10);
   const ahorroPct = Number(chequeo?.ahorro_pct ?? 0);
@@ -94,13 +98,21 @@ export function cuentasDelChequeo(datos: Datos, saldos: Saldos, chequeo?: Pick<C
   const cuenta = saldos.cuenta;
   const cuentaDisponible = cuenta.estado === "disponible" ? cuenta.disponible
     : saldos.saldoConfirmado ?? (cuenta.estado === "reporte" ? cuenta.disponible : null);
+  // Cuadre: lo que debería haber en la cuenta según los registros de Lentia
+  // (cobros digitales − comisiones − gastos y retiros pagados desde la
+  // cuenta, de toda la óptica) contra el saldo real. Si no calza, hay un
+  // movimiento sin registrar: una compra pagada desde la cuenta, una
+  // transferencia a otra cuenta o un cobro que no se anotó.
+  const cuentaSegunLentia = saldos.bancoRegistrado ?? null;
+  const diferenciaCuenta = cuentaDisponible !== null && cuentaSegunLentia !== null ? cuentaDisponible - cuentaSegunLentia : null;
 
   return {
     vendido: n.vendido, cobrado: n.cobrado, porCobrar: n.porCobrar, conSaldo: n.conSaldo,
     cobradoEfectivo, cobradoDigital: n.cobrado - cobradoEfectivo,
     cuentaDisponible, cuentaPorLiberar: cuenta.estado === "disponible" ? Math.max(0, cuenta.total - cuenta.disponible) : 0,
     efectivo: saldos.efectivo,
-    gastos: { filas, total: gastosTotal, porPagar },
+    cuentaSegunLentia, diferenciaCuenta,
+    gastos: { filas, total: gastosTotal, porPagar, ivaGuardar, pagado },
     compraStock: caja.compraStock,
     resultado,
     // Con pérdida los socios y el ahorro quedan en $0; la comisión de ventas se paga igual.
