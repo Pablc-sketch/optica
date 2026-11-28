@@ -38,7 +38,7 @@ export default async function PreciosPage({
     supabase
       .from("costos_cristales")
       .select(
-        `id, tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock,
+        `id, tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock, exige_tarifa,
          nombre_laboratorio, material_stock, material_laboratorio, diseno_laboratorio`
       )
       .order("tipo_lente")
@@ -181,8 +181,7 @@ export default async function PreciosPage({
           Lo que te cobra tu laboratorio por cada combinación y lo que le cobras al cliente. Todos
           los cristales se le piden al laboratorio, pero los que ya tiene hechos (<strong>stock</strong>)
           los cobra bastante más barato que los que <strong>talla a medida</strong>: por eso son dos
-          costos y no uno. Si dejas el de stock vacío, el punto de venta cobra el de tallado aunque
-          se marque &quot;de stock&quot;.
+          costos y no uno. Las combinaciones que requieren tarifa quedan por cotizar hasta fijar su precio de venta.
         </p>
         <p className="mt-1 text-xs text-tinta-suave">
           Los costos son del par completo: precio unitario del laboratorio × 2 + montaje + IVA.
@@ -245,14 +244,16 @@ export default async function PreciosPage({
                   // (precio_venta_stock puede ser null: ese rango nunca
                   // sale de stock para este tratamiento, y entonces no
                   // hay margen de stock que mostrar).
-                  const margenLab = c.precio_venta - c.costo;
+                  const margenLab = c.exige_tarifa && c.precio_venta <= 0 ? null : c.precio_venta - c.costo;
                   // Bifocal y Multifocal se venden SIEMPRE al mismo precio,
                   // salgan de stock o de laboratorio: si el laboratorio lo
                   // tiene hecho, la diferencia de costo queda para la óptica.
                   // Solo el Monofocal tiene un precio de stock aparte.
                   const tienePrecioStock = c.tipo_lente === "Monofocal";
-                  const precioStockEfectivo = tienePrecioStock ? (c.precio_venta_stock ?? c.precio_venta) : c.precio_venta;
-                  const margenStock = c.costo_stock !== null ? precioStockEfectivo - c.costo_stock : null;
+                  const precioStockEfectivo = tienePrecioStock
+                    ? (c.precio_venta_stock ?? (c.exige_tarifa ? 0 : c.precio_venta))
+                    : c.precio_venta;
+                  const margenStock = c.costo_stock !== null && precioStockEfectivo > 0 ? precioStockEfectivo - c.costo_stock : null;
                   return (
                     <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2">
                       <span className="min-w-56 flex-1 text-sm">
@@ -271,7 +272,7 @@ export default async function PreciosPage({
                         )}
                       </span>
                       <span className="text-xs text-tinta-suave">
-                        margen laboratorio {clp(margenLab)}
+                        {margenLab === null ? "Precio de venta pendiente" : `margen laboratorio ${clp(margenLab)}`}
                         {margenStock !== null && ` · margen stock ${clp(margenStock)}`}
                       </span>
                       <form action={actualizarCostoCristal} className="flex flex-wrap items-center gap-1.5">
@@ -299,7 +300,7 @@ export default async function PreciosPage({
                             <CampoMonto
                               name="precio_stock"
                               defaultValue={c.precio_venta_stock ?? undefined}
-                              placeholder="= laboratorio"
+                              placeholder={c.exige_tarifa ? "Por cotizar" : "= laboratorio"}
                               className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
                             />
                           </label>
@@ -308,7 +309,8 @@ export default async function PreciosPage({
                           {tienePrecioStock ? "Venta (laboratorio)" : "Venta (stock o laboratorio)"}
                           <CampoMonto
                             name="precio"
-                            defaultValue={c.precio_venta}
+                            defaultValue={c.exige_tarifa && c.precio_venta <= 0 ? undefined : c.precio_venta}
+                            placeholder={c.exige_tarifa ? "Por cotizar" : undefined}
                             className="w-24 rounded-lg border border-tinta-suave/30 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
                           />
                         </label>

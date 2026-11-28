@@ -28,6 +28,7 @@ export type FilaCristal = MapaCristal & {
   costo: number;
   precio_venta: number;
   precio_venta_stock: number | null;
+  exige_tarifa?: boolean;
 };
 
 // Las potencias de la receta que importan para el cristal.
@@ -99,7 +100,7 @@ export function origenCristal(
 // factorVenta es solo el respaldo para una fila que todavía no tiene
 // precio fijado en /precios.
 export function precioVentaCristal(
-  fila: Pick<FilaCristal, "tipo_lente" | "costo" | "precio_venta" | "precio_venta_stock">,
+  fila: Pick<FilaCristal, "tipo_lente" | "costo" | "precio_venta" | "precio_venta_stock" | "exige_tarifa">,
   origen: "stock" | "laboratorio",
   factorVenta = 0
 ): number {
@@ -111,5 +112,7 @@ export function precioVentaCristal(
   ) {
     return fila.precio_venta_stock;
   }
+  if (fila.exige_tarifa && fila.tipo_lente === "Monofocal" && origen === "stock") return 0;
+  if (fila.exige_tarifa) return fila.precio_venta;
   return fila.precio_venta > 0 ? fila.precio_venta : Math.round(fila.costo * factorVenta);
 }

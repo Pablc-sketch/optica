@@ -6,6 +6,7 @@ import { registrarVenta, type VentaInput } from "@/lib/actions/ventas";
 import { coincidePaciente } from "@/lib/buscar-paciente";
 import { filtrarProductos, marcoPorCodigo, sugerirDetallesMarco, sugerirMarcosPorCodigo } from "@/lib/buscar-producto";
 import ElegirCobroMercadoPago from "@/components/elegir-cobro-mercadopago";
+import SelectorCristal from "@/components/selector-cristal";
 import CampoVoucher from "@/components/campo-voucher";
 import { CampoPresupuestoPar, EstadoPresupuestoPar } from "@/components/presupuesto-par";
 import { requiereVoucher, validarVoucher } from "@/lib/voucher";
@@ -24,9 +25,9 @@ import type { SugerenciaExtra } from "@/lib/sugerencias";
 import { clp } from "@/lib/clp";
 import { formatearRut } from "@/lib/rut";
 import { formatearMonto, montoANumero } from "@/lib/formato";
-import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
+import { limitesDeRango, rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { IVA, type CatalogoLaboratorio, type CostoCristal as CostoReal } from "@/lib/costo-fides";
-import { costoRealCristal, origenCristal as origenDelCristal, precioVentaCristal } from "@/lib/precio-venta";
+import { costoRealCristal, ojosParaCristal, origenCristal as origenDelCristal, precioVentaCristal } from "@/lib/precio-venta";
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 
 type Paciente = { id: string; nombre: string; rut: string | null };
@@ -45,6 +46,7 @@ type CostoCristal = {
   // estaba separado. null = este rango nunca sale de stock para este
   // tratamiento, se cobra siempre precio_venta.
   precio_venta_stock: number | null;
+  exige_tarifa?: boolean;
   material_stock: string | null;
   material_laboratorio: string | null;
   diseno_laboratorio: string | null;
@@ -104,6 +106,7 @@ type LineaCarrito = {
   recargoEspecial?: number;
   recargoEditado?: boolean;
   esCortesia?: boolean;
+  precioPendiente?: boolean;
   nivelMarco?: NivelMarco;
   // El paciente trajo su propio marco: no hay productoId (no sale de
   // nuestro stock, no se descuenta inventario ni se cuenta el costo de
@@ -187,27 +190,30 @@ function numeroDePar(key: string): number {
   return Number(key.split("-")[1]);
 }
 
-function lineaDeCombo(
-  numero: number,
-  combo: CostoCristal,
-  factorVenta: number,
-  opciones?: { posicion?: "lejos" | "cerca"; sugerido?: boolean; esCortesia?: boolean; precioManual?: number }
-): LineaCarrito {
-  // El importe y la indicación de cortesía se guardan por separado.
-  const precio = opciones?.precioManual ?? precioDeCombo(combo, factorVenta, "laboratorio");
+type CambioLente = {
+  combo: CostoCristal;
+  posicion?: "lejos" | "cerca";
+  sugerido?: boolean;
+  esCortesia?: boolean;
+  precio: number;
+  precioPendiente: boolean;
+};
+
+function lineaDeCombo(numero: number, { combo, ...opciones }: CambioLente): LineaCarrito {
   return {
     key: `cristal-${numero}`,
-    descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${opciones?.esCortesia ? " (cortesía)" : ""}`,
+    descripcion: `Cristales ${nombreCristal(combo.tipo_lente, combo.tratamiento)}${opciones.esCortesia ? " (cortesía)" : ""}`,
     cantidad: 1,
-    precioUnitario: precio,
-    esCortesia: opciones?.esCortesia,
+    precioUnitario: opciones.precio,
+    esCortesia: opciones.esCortesia,
+    precioPendiente: opciones.precioPendiente,
     cristal: {
       tipoLente: combo.tipo_lente,
       rangoReceta: combo.rango_receta,
       tratamiento: combo.tratamiento,
       costoLaboratorio: combo.costo_stock ?? combo.costo,
-      posicion: opciones?.posicion,
-      sugerido: opciones?.sugerido,
+      posicion: opciones.posicion,
+      sugerido: opciones.sugerido,
     },
   };
 }
@@ -249,9 +255,7 @@ function FilaLente({
   catalogoLab: CatalogoLaboratorio;
   inicial: PrefillLente;
   guardado?: LineaCarrito;
-  onCambio: (
-    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esCortesia?: boolean; precioManual?: number } | null
-  ) => void;
+  onCambio: (datos: CambioLente | null) => void;
 }) {
   const [tipoLente, setTipoLente] = useState(guardado?.cristal?.tipoLente ?? inicial?.tipoLente ?? "");
   const [posicion, setPosicion] = useState<"lejos" | "cerca">((guardado?.cristal?.posicion ?? inicial?.posicion) === "cerca" ? "cerca" : "lejos");
@@ -274,6 +278,10 @@ function FilaLente({
       )
     : null;
   const rango = rangoAuto ?? rangoManual;
+  const limites = limitesDeRango(rango);
+  const fueraDeRango = receta && limites && ojosParaCristal(receta, tipoLente, posicionParaRango).some(
+    ojo => Math.abs(ojo.esfera ?? 0) > limites.esfera || Math.abs(ojo.cilindro ?? 0) > limites.cilindro
+  );
   const rangos = useMemo(
     () => [...new Set(costos.filter((c) => c.tipo_lente === tipoLente).map((c) => c.rango_receta))],
     [costos, tipoLente]
@@ -298,14 +306,36 @@ function FilaLente({
     return origenDelCristal(fila, receta, posicionParaRango, catalogoLab, hoyEnChile());
   }
 
+  const opciones = tratamientos.map(fila => {
+    const origen = origenReal(fila);
+    return {
+      id: fila.tratamiento,
+      nombre: fila.tratamiento,
+      tratamiento: fila.tratamiento,
+      origen,
+      precio: precioDeCombo(fila, factorVenta, origen),
+    };
+  });
+  const precioLista = opciones.find(opcion => opcion.id === tratamiento)?.precio ?? 0;
+
+  function avisarCambio(fila: CostoCristal, monto: number, lista: number, cortesia: boolean, esSugerido: boolean) {
+    onCambio({
+      combo: fila,
+      posicion: tipoLente === "Monofocal" ? posicion : undefined,
+      sugerido: esSugerido,
+      esCortesia: cortesia,
+      precio: monto,
+      precioPendiente: !!fila.exige_tarifa && lista <= 0 && monto <= 0,
+    });
+  }
+
   // Solo al montar: si venía precargada por la sugerencia del tecnólogo,
   // se suma sola al carrito apenas aparece la fila.
   useEffect(() => {
     if (combo && !guardado) {
-      const precioInicial = precioDeCombo(combo, factorVenta, origenReal(combo));
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- precarga el precio inicial de la fila solo al montar, no estado derivado de un evento
-      setPrecioTexto(formatearMonto(precioInicial));
-      onCambio({ combo, posicion: tipoLente === "Monofocal" ? posicion : undefined, sugerido, esCortesia, precioManual: precioInicial });
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- precarga el precio inicial de la fila solo al montar
+      setPrecioTexto(precioLista > 0 ? formatearMonto(precioLista) : "");
+      avisarCambio(combo, precioLista, precioLista, esCortesia, sugerido);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -318,21 +348,15 @@ function FilaLente({
       onCambio(null);
       return;
     }
-    const precioNuevo = precioDeCombo(elegido, factorVenta, origenReal(elegido));
-    setPrecioTexto(formatearMonto(precioNuevo));
-    onCambio({ combo: elegido, posicion: tipoLente === "Monofocal" ? posicion : undefined, esCortesia, precioManual: precioNuevo });
+    const precioNuevo = opciones.find(opcion => opcion.id === valor)?.precio ?? 0;
+    setPrecioTexto(precioNuevo > 0 ? formatearMonto(precioNuevo) : "");
+    avisarCambio(elegido, precioNuevo, precioNuevo, esCortesia, false);
   }
 
   function alternarCortesia(valor: boolean) {
     setEsCortesia(valor);
     if (!combo) return;
-    onCambio({
-      combo,
-      posicion: tipoLente === "Monofocal" ? posicion : undefined,
-      sugerido,
-      esCortesia: valor,
-      precioManual: montoANumero(precioTexto),
-    });
+    avisarCambio(combo, montoANumero(precioTexto), precioLista, valor, sugerido);
   }
 
   // Descuento puntual al paciente: se cambia el número acá mismo, sin tener
@@ -340,15 +364,7 @@ function FilaLente({
   function cambiarPrecio(texto: string) {
     const formateado = formatearMonto(texto);
     setPrecioTexto(formateado);
-    if (combo) {
-      onCambio({
-        combo,
-        posicion: tipoLente === "Monofocal" ? posicion : undefined,
-        sugerido,
-        esCortesia,
-        precioManual: montoANumero(formateado),
-      });
-    }
+    if (combo) avisarCambio(combo, montoANumero(formateado), precioLista, esCortesia, sugerido);
   }
 
   const select =
@@ -412,7 +428,9 @@ function FilaLente({
         {tipoLente &&
           (rangoAuto ? (
             <p className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">
-              Rango según la receta: <b>{rangoAuto}</b>
+              {fueraDeRango
+                ? "La receta supera los rangos de venta. Confirma disponibilidad para las potencias y el marco."
+                : <>Rango según la receta: <b>{rangoAuto}</b></>}
             </p>
           ) : (
             <label className="flex flex-col gap-1 text-xs font-medium">
@@ -440,19 +458,13 @@ function FilaLente({
             </label>
           ))}
 
-        {tipoLente && (
-          <label className="flex flex-col gap-1 text-xs font-medium">
-            Tratamiento
-            <select value={tratamiento} onChange={(e) => elegirTratamiento(e.target.value)} disabled={!rango} className={select}>
-              <option value="">Elegir…</option>
-              {tratamientos.map((c) => (
-                <option key={c.tratamiento} value={c.tratamiento}>
-                  {nombreCristal(c.tipo_lente, c.tratamiento)} — {clp(precioDeCombo(c, factorVenta, origenReal(c)))}
-                  {origenReal(c) === "stock" ? " · stock" : " · laboratorio"}
-                </option>
-              ))}
-            </select>
-          </label>
+        {tipoLente && rango && (
+          <SelectorCristal
+            key={`${tipoLente}-${rango}-${posicionParaRango}`}
+            opciones={opciones}
+            valor={tratamiento}
+            onChange={elegirTratamiento}
+          />
         )}
 
         {combo && (
@@ -485,8 +497,13 @@ function FilaLente({
                 />
               </div>
             </label>
-            {montoANumero(precioTexto) !== precioDeCombo(combo, factorVenta, origenReal(combo)) && (
-              <p className="text-xs text-tinta-suave">Precio de lista: {clp(precioDeCombo(combo, factorVenta, origenReal(combo)))}</p>
+            {combo.exige_tarifa && precioLista <= 0 && (
+              <p className="text-xs text-amber-900">
+                {montoANumero(precioTexto) > 0 ? "Precio ingresado para este par." : "Por cotizar. Confirma el precio e ingrésalo para seguir."}
+              </p>
+            )}
+            {precioLista > 0 && montoANumero(precioTexto) !== precioLista && (
+              <p className="text-xs text-tinta-suave">Precio de lista: {clp(precioLista)}</p>
             )}
             {sugerido && <p className="text-xs font-semibold text-violet-700">(sugerido en la receta)</p>}
           </div>
@@ -766,6 +783,7 @@ export default function PuntoDeVenta({
   // Orden estable Par 1, Par 2, … (por el número de la key),
   // independiente del orden en que se hayan ido completando las filas.
   const lineasCristal = carrito.filter((l) => l.cristal).sort((a, b) => numeroDePar(a.key) - numeroDePar(b.key));
+  const hayCristalesPorCotizar = lineasCristal.some(l => l.precioPendiente);
 
   // De dónde sale cada cristal y cuánto cuesta, calculado contra la lista
   // del laboratorio y la potencia de CADA OJO de esta receta. No se
@@ -983,18 +1001,13 @@ export default function PuntoDeVenta({
 
   function manejarCambioLente(
     numero: number,
-    datos: { combo: CostoCristal; posicion?: "lejos" | "cerca"; sugerido?: boolean; esCortesia?: boolean; precioManual?: number } | null
+    datos: CambioLente | null
   ) {
     const key = `cristal-${numero}`;
     setCarrito((prev) => {
       const sinEstaFila = prev.filter((l) => l.key !== key);
       if (!datos) return sinEstaFila.filter(l => l.recargoSlot !== numero && l.armazonSlot !== numero);
-      const cristal = lineaDeCombo(numero, datos.combo, factorVenta, {
-        posicion: datos.posicion,
-        sugerido: datos.sugerido,
-        esCortesia: datos.esCortesia,
-        precioManual: datos.precioManual,
-      });
+      const cristal = lineaDeCombo(numero, datos);
       return prev.some(l => l.key === key)
         ? prev.map(l => l.key === key ? cristal : l)
         : [...prev, cristal];
@@ -1473,7 +1486,8 @@ export default function PuntoDeVenta({
             <button
               type="button"
               onClick={() => setPaso(2)}
-              className={`${boton} flex-1 bg-violet-800 text-white hover:bg-violet-900`}
+              disabled={hayCristalesPorCotizar}
+              className={`${boton} flex-1 bg-violet-800 text-white hover:bg-violet-900 disabled:opacity-50`}
             >
               Continuar
             </button>
@@ -1932,7 +1946,7 @@ function Resumen({
                 />
                 {l.cantidad > 1 && <span className="font-semibold">{clp(l.cantidad * l.precioUnitario)}</span>}
               </div>
-            ) : <span className="font-semibold">{clp(l.cantidad * l.precioUnitario)}</span>}
+            ) : <span className="font-semibold">{l.precioPendiente ? "Por cotizar" : clp(l.cantidad * l.precioUnitario)}</span>}
             {l.armazonSlot === undefined && l.recargoSlot === undefined && (
               <button
                 type="button"

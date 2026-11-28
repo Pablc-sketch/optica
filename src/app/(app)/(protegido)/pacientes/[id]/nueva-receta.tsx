@@ -8,6 +8,7 @@ import { crearReceta, actualizarReceta } from "@/lib/actions/pacientes";
 import { encolarAtencion } from "@/lib/offline/atenciones";
 import { useAtenciones } from "@/lib/offline/use-atenciones";
 import { CampoAgudezaVisual, CampoDioptria } from "@/components/campos";
+import SelectorCristal from "@/components/selector-cristal";
 import { CampoPresupuestoPar, EstadoPresupuestoPar } from "@/components/presupuesto-par";
 import { rangoParaPosicion, nombreCristal } from "@/lib/cristales";
 import { clp } from "@/lib/clp";
@@ -157,60 +158,28 @@ function SelectorLenteConPrecio({
   });
 
   const deStock = opciones.filter((o) => o.origen === "stock");
-  const deLaboratorio = opciones.filter((o) => o.origen === "laboratorio");
   const esBifMulti = tiposPermitidos.some((t) => t !== "Monofocal");
   const motivoSinStock =
     esBifMulti && hayReceta && deStock.length === 0
       ? motivoFueraDeCajaMultifocal(ojosParaCristal(potencias, "Multifocal", "lejos"))
       : null;
 
-  const fila = (o: (typeof opciones)[number]) => {
-    const clave = `${o.fila.tipo_lente}|${o.fila.tratamiento}`;
-    return (
-      <label
-        key={clave}
-        className={`flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-xl border-2 px-3 py-2.5 text-sm has-checked:border-brand has-checked:shadow-sm ${
-          o.origen === "stock" && hayReceta ? "border-emerald-200 bg-emerald-50" : "border-transparent bg-white"
-        }`}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <input
-            type="radio"
-            checked={elegido === clave}
-            onChange={() => setElegido(clave)}
-            className="accent-brand"
-          />
-          <span className="min-w-0 font-medium">{nombreCristal(o.fila.tipo_lente, o.fila.tratamiento)}</span>
-          {o.origen === "stock" && hayReceta && (
-            <span className="shrink-0 rounded-full bg-emerald-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-              Stock
-            </span>
-          )}
+  const opcionesSelector = opciones.map(o => ({
+    id: `${o.fila.tipo_lente}|${o.fila.tratamiento}`,
+    nombre: nombreCristal(o.fila.tipo_lente, o.fila.tratamiento),
+    tratamiento: o.fila.tratamiento,
+    origen: hayReceta ? o.origen : undefined,
+    precio: o.precio,
+    detalle: categorias.length > 0 ? categorias.map(nivel => {
+      const precio = precioParConMarco(o.precio, nivel.id, recargosMarcos);
+      return (
+        <span key={nivel.id} className={nivel.id === "esencial" ? "block" : "block text-xs font-medium"}>
+          {nivel.nombre} {clp(precio)}
+          <EstadoPresupuestoPar precio={precio} presupuesto={presupuesto} />
         </span>
-        <span className="ml-auto flex flex-col items-end gap-1 text-right leading-tight">
-          {o.precio <= 0 ? <span className="font-semibold">Sin precio</span> : categorias.length === 0 ? (
-            <span className="font-semibold tabular-nums">
-              {clp(o.precio)}
-              <EstadoPresupuestoPar precio={o.precio} presupuesto={presupuesto} />
-            </span>
-          ) : categorias.map(n => {
-            const precio = precioParConMarco(o.precio, n.id, recargosMarcos);
-            return (
-              <span key={n.id} className={`tabular-nums ${n.id === "esencial" ? "font-semibold" : "text-xs"}`}>
-                {n.nombre} {clp(precio)}
-                <EstadoPresupuestoPar precio={precio} presupuesto={presupuesto} />
-              </span>
-            );
-          })}
-          {/* Un lente de stock también se puede mandar a tallar: si el
-              precio cambia, se muestra el de laboratorio también. */}
-          {o.origen === "stock" && hayReceta && o.precioLaboratorio !== o.precio && (
-            <span className="text-[11px] text-tinta-suave tabular-nums">tallado {clp(o.precioLaboratorio)}</span>
-          )}
-        </span>
-      </label>
-    );
-  };
+      );
+    }) : <>{clp(o.precio)}<EstadoPresupuestoPar precio={o.precio} presupuesto={presupuesto} /></>,
+  }));
 
   return (
     <fieldset className="rounded-xl border border-brand/25 bg-brand/5 p-3">
@@ -228,29 +197,14 @@ function SelectorLenteConPrecio({
         </div>
       )}
 
-      {hayReceta && (
-        <div className="mb-2 flex flex-col gap-1.5">
-          <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-            Cristales de stock
-          </p>
-          {deStock.length > 0 ? (
-            deStock.map(fila)
-          ) : (
-            <p className="rounded-lg bg-white px-3 py-2 text-xs text-tinta-suave">
-              Con esta receta no hay opciones de stock
-              {motivoSinStock ? `: ${motivoSinStock}.` : "."}
-              {esBifMulti && " Los bifocales y multifocales de stock son sin cilindro, esfera de 0 a +3.00 y ADD de +1.00 a +3.00."}
-            </p>
-          )}
-        </div>
+      {hayReceta && deStock.length === 0 && (
+        <p className="mb-2 rounded-lg bg-white px-3 py-2 text-xs text-tinta-suave">
+          Para esta receta las opciones son talladas
+          {motivoSinStock ? `: ${motivoSinStock}.` : "."}
+        </p>
       )}
 
-      <div className="flex flex-col gap-1.5">
-        <p className="text-xs font-bold uppercase tracking-wider text-tinta-suave">
-          {hayReceta ? "De laboratorio · se manda a tallar" : "Opciones"}
-        </p>
-        {(hayReceta ? deLaboratorio : opciones).map(fila)}
-      </div>
+      <SelectorCristal opciones={opcionesSelector} valor={elegido} onChange={setElegido} />
 
       {(() => {
         const sel = opciones.find((o) => `${o.fila.tipo_lente}|${o.fila.tratamiento}` === elegido);
@@ -260,7 +214,7 @@ function SelectorLenteConPrecio({
             <p className="text-xs font-bold uppercase tracking-wider text-tinta-suave">Elegido para este paciente</p>
             <p className="mt-0.5 font-semibold">{nombreCristal(sel.fila.tipo_lente, sel.fila.tratamiento)}</p>
             <p className="text-2xl font-bold tracking-tight text-brand-dark tabular-nums">
-              {sel.precio > 0 ? clp(sel.precio) : "Sin precio (revisa Precios)"}
+              {sel.precio > 0 ? clp(sel.precio) : "Por cotizar"}
             </p>
             {sel.precio > 0 && recargosMarcos && (
               <p className="my-2 text-sm">
@@ -272,10 +226,10 @@ function SelectorLenteConPrecio({
               {!hayReceta
                 ? "Escribe la receta para saber si sale de stock."
                 : sel.origen === "stock"
-                  ? sel.precioLaboratorio !== sel.precio
-                    ? `Se puede hacer de stock (este precio) o de laboratorio (${clp(sel.precioLaboratorio)}). Se pide de stock.`
-                    : "Se puede hacer de stock o de laboratorio. Se pide de stock."
-                  : "Solo de laboratorio: con esta receta no hay de stock."}
+                  ? sel.precioLaboratorio > 0 && sel.precioLaboratorio !== sel.precio
+                    ? `Figura en stock de Fides. Precio de referencia para tallado: ${clp(sel.precioLaboratorio)}.`
+                    : "Figura en stock de Fides."
+                  : "Se cotiza tallado a medida."}
             </p>
           </div>
         );
