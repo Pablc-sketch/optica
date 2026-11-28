@@ -52,3 +52,10 @@ export function disponibleDelReparto(datos: Datos, saldos: Awaited<ReturnType<ty
     + Math.max(deudaPersonal, caja.porReembolsar) + caja.comisionPendiente + iva + devoluciones;
   return caja.pagableConCaja(deudaPersonal > 0 ? -caja.comisionPendiente : saldoConfirmado + efectivo - compromisos);
 }
+
+
+// Registra un pago ya efectuado. El banco puede haber procesado la salida
+// antes de que administración la anote. El límite es lo cobrado en Lentia.
+export function sueldosRegistrables(datos: Datos) {
+  return datos.caja.pagableConCaja(datos.caja.saldoTrasPagos);
+}

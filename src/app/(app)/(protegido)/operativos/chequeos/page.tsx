@@ -5,6 +5,7 @@ import { cargarCajaChequeo } from "@/lib/datos-caja-chequeo";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import type { Chequeo, SedeChequeo } from "@/lib/chequeos";
 import { clp } from "@/lib/clp";
+import { PERSONAS_SUELDO } from "@/lib/reparto-operativos";
 import { etiquetasReparto } from "@/lib/etiquetas-reparto";
 import { fechaLegible, hoyEnChile } from "@/lib/fechas";
 import { leerTodas } from "@/lib/leer-todas";
@@ -119,12 +120,12 @@ export default async function ChequeosPage({ searchParams }: {
             <div><dt>Por cobrar</dt><dd className="font-semibold">{clp(f.porCobrar)}</dd></div>
             <div><dt>Cristales</dt><dd className="font-semibold">{clp(f.desglose.totalCristales)}</dd></div>
             <div><dt>Marcos estimados</dt><dd className="font-semibold">{clp(f.desglose.totalArmazones)}</dd></div>
-            <div><dt>Utilidad de la sede</dt><dd className="font-semibold">{clp(f.utilidad)}</dd></div>
+            <div><dt>Utilidad de la sede</dt><dd className="font-semibold">{clp(datos.repartoOperativos.find(r => r.sede.id === f.sede.id)?.utilidad ?? f.utilidad)}</dd></div>
           </dl>
           <div className="flex flex-wrap gap-3 text-sm font-semibold text-brand-dark">
             {f.conSaldo > 0 && <Link className="underline" href={`/cobros?op=${f.sede.id}&ver=deben`}>Ver a quién cobrar ({f.conSaldo})</Link>}
             <Link className="underline" href={`/entregas?chequeo=${chequeo.id}&op=${f.sede.id}`}>Ver pedidos</Link>
-            <Link className="underline" href={`/operativos/${f.sede.id}/cierre`}>Gastos y reparto</Link>
+            <Link className="underline" href={`/operativos/${f.sede.id}/cierre`}>Finalizar y pagar</Link>
           </div>
         </li>
       ))}</ul>
@@ -134,6 +135,18 @@ export default async function ChequeosPage({ searchParams }: {
       <summary className="cursor-pointer font-semibold">Gastos compartidos · {clp(n.gastosCompartidos)}</summary>
       {compartidos.filter(g => g.categoria !== "compra_inventario").map(g => <p key={g.id} className="mt-2 flex justify-between gap-2 text-sm"><span>{g.descripcion} · {fechaLegible(g.fecha)}</span><b>{clp(g.monto)}</b></p>)}
       <div className="mt-4 max-w-lg"><GastoGeneralForm hoy={hoy} digital="Cuenta de la óptica" personal="Dinero personal" chequeoId={chequeo.id} /></div>
+    </details>
+    <details className="rounded-lg border border-tinta/15 bg-white p-4">
+      <summary className="cursor-pointer font-semibold">Sueldos por operativo</summary>
+      <ul className="mt-2 divide-y divide-tinta/10">
+        {datos.repartoOperativos.map(f => <li key={f.sede.id} className="py-2">
+          <Link className="text-sm font-semibold underline" href={`/operativos/${f.sede.id}/cierre#sueldos`}>{f.sede.nombre}</Link>
+          <dl className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {PERSONAS_SUELDO.map(p => <div key={p} className="text-sm"><dt>{nombres[p]} por pagar</dt>
+              <dd className="font-semibold tabular-nums">{clp(f.pendiente[p])}</dd></div>)}
+          </dl>
+        </li>)}
+      </ul>
     </details>
     <details className="rounded-lg border border-tinta/15 bg-white p-4">
       <summary className="cursor-pointer font-semibold">Reparto pendiente estimado</summary>

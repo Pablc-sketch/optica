@@ -5,6 +5,7 @@ import { resumirChequeo, type AtencionChequeo, type Chequeo, type SedeChequeo, t
 import { inicioDelDia, sumarDias } from "./fechas";
 import { impuestoDeMes, ivaDelChequeo, periodoTributario, type MesImpuesto } from "./impuestos";
 import { leerTodas } from "./leer-todas";
+import { repartoPorOperativo } from "./reparto-operativos";
 import { disponibleDeGasto } from "./pagos-operativo";
 
 export const COLUMNAS_CHEQUEO = "id,nombre,desde,hasta,ahorro_pct,comision_isadora_pct,reparto_pamela_pct";
@@ -74,7 +75,7 @@ export async function cargarCajaChequeo(
         .in("operativo_id", lote).lte("fecha", hoy).order("id").range(a, b)),
       leerTodas((a, b) => supabase.from("gastos_asignaciones").select(columnasAsignacion).eq("tenant_id", tenantId)
         .in("operativo_id", lote).is("anulado_en", null).order("id").range(a, b)),
-      leerTodas((a, b) => supabase.from("retiros_sueldo").select("id,persona,monto").eq("tenant_id", tenantId)
+      leerTodas((a, b) => supabase.from("retiros_sueldo").select("id,persona,monto,operativo_id,fecha,created_at").eq("tenant_id", tenantId)
         .in("operativo_id", lote).lte("fecha", hoy).order("id").range(a, b)),
     ]))),
     chequeo.independiente ? { data: [], error: null } : leerTodas((a, b) => supabase.from("gastos_globales")
@@ -82,7 +83,7 @@ export async function cargarCajaChequeo(
       .lte("fecha", hoy).order("fecha", { ascending: false }).order("id").range(a, b)),
     supabase.from("tenants").select("comision_debito_pct,comision_credito_pct,reparto_etiquetas").eq("id", tenantId).single(),
     chequeo.independiente ? { data: [], error: null } : leerTodas((a, b) => supabase.from("retiros_sueldo")
-      .select("id,persona,monto").eq("tenant_id", tenantId).eq("chequeo_id", chequeo.id)
+      .select("id,persona,monto,operativo_id,fecha,created_at").eq("tenant_id", tenantId).eq("chequeo_id", chequeo.id)
       .lte("fecha", hoy).order("id").range(a, b)),
     supabase.from("retiros_sueldo").select("id").eq("tenant_id", tenantId)
       .is("operativo_id", null).is("chequeo_id", null).neq("monto", 0)
@@ -125,8 +126,14 @@ export async function cargarCajaChequeo(
 
   const vinculados = asignaciones.flatMap(res => res.data ?? []);
   const gastosSii = new Set(periodos.flatMap(p => p.sii?.gastosSii ?? []));
-  const gastosCompartidos = propios.reduce((suma, g) =>
-    suma + (gastosSii.has(g.id) || g.descripcion.startsWith("SII F29 · ") ? 0 : gastoDeResultado(g, vinculados)), 0);
+  const gastosDirectos = new Map<string, number>();
+  let gastosCompartidos = 0;
+  for (const gasto of propios) {
+    if (gastosSii.has(gasto.id) || gasto.descripcion.startsWith("SII F29 · ")) continue;
+    const importe = gastoDeResultado(gasto, vinculados);
+    gastosCompartidos += importe;
+    if (gasto.operativo_id) gastosDirectos.set(gasto.operativo_id, (gastosDirectos.get(gasto.operativo_id) ?? 0) + importe);
+  }
   const reservaCompraPersonal = propios.filter(g => g.caja === "personal" && g.categoria === "compra_inventario")
     .reduce((suma, g) => suma + disponibleDeGasto(g, vinculados), 0);
   const iva = periodos.reduce((suma, p) => suma + ivaDelChequeo(p.monto, p.sii), 0);
@@ -139,7 +146,8 @@ export async function cargarCajaChequeo(
   const caja = resumirCajaChequeo(n, chequeo.id, [...propios, ...gastosExternos.flatMap(res => res.data ?? [])],
     vinculados, devoluciones.flatMap(res => res.data ?? []), retiros, gastosSii,
     { ahorroPct: Number(chequeo.ahorro_pct), parteMadrePct: Number(chequeo.reparto_pamela_pct ?? 50) });
-  return { n: { ...n, reparto: caja.reparto }, caja, compartidos, ventas, ivaSinCredito,
+  const repartoOperativos = repartoPorOperativo(n, caja, retiros, gastosDirectos);
+  return { n: { ...n, reparto: caja.reparto }, caja, repartoOperativos, compartidos, ventas, ivaSinCredito,
     retirosSinAsignar: Boolean(retirosSinAsignar.data?.length), retiros, sii: periodos.find(p => p.periodo === mesActual)?.sii ?? null, tenant: tenant.data };
 }
 

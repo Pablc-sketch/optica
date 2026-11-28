@@ -54,7 +54,7 @@ export default async function OperativosPage() {
     leerTodas((a, b) => supabase
       .from("operativos")
       .select(
-        "id, nombre, tipo_venue, fecha, direccion, estado, notas, archivado_en, pagos_saldados_en"
+        "id, nombre, tipo_venue, fecha, direccion, estado, notas, archivado_en, pagos_saldados_en, cierre_financiero_en"
       )
       .order("fecha", { ascending: false }).order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("recetas").select("id, operativo_id").not("operativo_id", "is", null).order("id").range(a, b)),
@@ -149,7 +149,7 @@ export default async function OperativosPage() {
         <input type="hidden" name="id" value={o.id} />
         <input type="hidden" name="estado" value={o.estado === "planificado" ? "realizado" : "cancelado"} />
         <button className="rounded-lg border border-tinta-suave/30 px-3 py-1.5 text-xs font-medium transition hover:bg-white">
-          {o.estado === "planificado" ? "Marcar realizado" : "Cancelar"}
+          {o.estado === "planificado" ? "Marcar atención realizada" : "Cancelar"}
         </button>
       </form>
     );
@@ -197,6 +197,10 @@ export default async function OperativosPage() {
             {o.notas && <p className="mt-1 text-xs text-tinta-suave">{o.notas}</p>}
           </Link>
           <div className="flex flex-wrap gap-2">
+            {o.estado !== "cancelado" && <Link href={`/operativos/${o.id}/cierre#sueldos`}
+              className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white">
+              {o.cierre_financiero_en ? "Ver cierre" : "Finalizar y pagar"}
+            </Link>}
             {botonEstado(o)}
             {o.estado === "realizado" && botonArchivo(o.id, false)}
           </div>
