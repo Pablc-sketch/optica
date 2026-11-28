@@ -53,7 +53,8 @@ export async function crearGastoGlobal(formData: FormData) {
   const detalle = String(formData.get("descripcion") ?? "").trim();
   const comida = formData.get("comida") === "1";
   const categoria = String(formData.get("categoria") ?? "");
-  const etiquetas: Record<string, string> = { comida: "Comida", bencina: "Bencina y transporte", peajes: "Peajes y TAG" };
+  const etiquetas: Record<string, string> = { comida: "Comida", bencina: "Bencina y transporte", peajes: "Peajes y TAG",
+    hospedaje: "Hospedaje", equipos: "Arriendo de equipos" };
   const reposicion = !comida && categoria === "reposicion_marcos";
   const prefijo = comida ? etiquetas.comida : Object.hasOwn(etiquetas, categoria) ? etiquetas[categoria] : "";
   const descripcion = reposicion && detalle ? PREFIJO_REPOSICION_MARCOS + detalle : prefijo && detalle ? `${prefijo} · ${detalle}` : detalle;
@@ -76,7 +77,8 @@ export async function crearGastoGlobal(formData: FormData) {
     descripcion,
     nota,
     monto,
-    categoria: reposicion ? "compra_inventario" : !comida && (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
+    categoria: reposicion ? "compra_inventario" : categoria === "equipos" ? "arriendo"
+      : !comida && (CATEGORIAS_GASTO as readonly string[]).includes(categoria) ? categoria : "otro",
     medio_pago: parsearMedioPago(formData.get("medio_pago")),
     caja: fuente,
   });

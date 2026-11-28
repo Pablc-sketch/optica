@@ -125,7 +125,7 @@ export default async function ReportesPage({
     .select(
       `cantidad, precio_unitario, descuento, cristal_slot,
        productos:producto_id (costo, categoria),
-       ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
+       ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, marco_propio, marco_propio_2, marco_1:armazon_producto_id(costo), marco_2:armazon_producto_id_2(costo), tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
        ventas!inner (fecha, operativo_id, anulada)`
     )
     .eq("ventas.anulada", false)

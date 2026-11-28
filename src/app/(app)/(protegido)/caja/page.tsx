@@ -103,7 +103,7 @@ export default async function Caja({ searchParams }: {
       leerTodas((a, b) => supabase.from('ventas').select(
         `id,operativo_id,total,pagos_abonos(monto,medio_pago),
         venta_items(cantidad,precio_unitario,descuento,descripcion,cristal_slot,
-          ordenes_trabajo:ot_id(costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2),
+          ordenes_trabajo:ot_id(costo_laboratorio,costo_laboratorio_2,marco_propio,marco_propio_2,marco_1:armazon_producto_id(costo),marco_2:armazon_producto_id_2(costo),tipo_lente,tratamiento,tipo_lente_2,tratamiento_2),
           productos:producto_id(costo,categoria))`)
         .eq('tenant_id', tenantId).eq('anulada', false).in('operativo_id', ids).order('id').range(a, b)),
       leerTodas((a, b) => supabase.from('gastos_globales').select('id,operativo_id,descripcion,monto')

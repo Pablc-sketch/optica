@@ -125,7 +125,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
          pacientes:paciente_id (id, nombre, rut, telefono),
          venta_items (
            cantidad, precio_unitario, descuento, descripcion, cristal_slot,
-           ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio, costo_laboratorio_2),
+           ordenes_trabajo:ot_id (fecha_entrega_estimada, tipo_lente, tratamiento, costo_laboratorio, costo_laboratorio_2, marco_propio, marco_propio_2, marco_1:armazon_producto_id(costo), marco_2:armazon_producto_id_2(costo)),
            productos:producto_id (costo, categoria)
          ),
          pagos_abonos (monto, medio_pago)`

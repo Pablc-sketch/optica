@@ -37,7 +37,7 @@ export async function leerRentabilidad(supabase: SupabaseClient, tenantId: strin
         .from("ventas")
         .select(
           `id, operativo_id, total, paciente_id,
-           venta_items (cantidad, cristal_slot, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2), productos:producto_id (costo, categoria))`
+           venta_items (cantidad, cristal_slot, ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, marco_propio, marco_propio_2, marco_1:armazon_producto_id(costo), marco_2:armazon_producto_id_2(costo)), productos:producto_id (costo, categoria))`
         )
         .eq("tenant_id", tenantId)
         .eq("anulada", false)

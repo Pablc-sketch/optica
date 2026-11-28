@@ -92,7 +92,7 @@ async function prepararPagoCosto(ctx: Awaited<ReturnType<typeof admin>>, input: 
     const [ventas, tenant] = await Promise.all([
       leerTodas((a, b) => ctx.supabase.from("ventas").select(`id, total, pagos_abonos (monto, medio_pago),
         venta_items (producto_id, cantidad, precio_unitario, descuento, descripcion, cristal_slot,
-          ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2, marco_propio, marco_propio_2, armazon_producto_id, armazon_producto_id_2),
+          ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2, marco_propio, marco_propio_2, armazon_producto_id, armazon_producto_id_2, marco_1:armazon_producto_id(costo), marco_2:armazon_producto_id_2(costo)),
           productos:producto_id (costo, categoria))`).eq("operativo_id", op.id).eq("anulada", false).order("id").range(a, b)),
       ctx.supabase.from("tenants").select("comision_debito_pct, comision_credito_pct").single(),
     ]);

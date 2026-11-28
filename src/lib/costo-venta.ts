@@ -22,6 +22,12 @@ type OTConCosto = {
   tratamiento?: string | null;
   tipo_lente_2?: string | null;
   tratamiento_2?: string | null;
+  // Si la consulta los trae: el marco del paciente no se repone, y el marco
+  // de Inventario se repone a su costo real.
+  marco_propio?: boolean | null;
+  marco_propio_2?: boolean | null;
+  marco_1?: { costo: number | null } | { costo: number | null }[] | null;
+  marco_2?: { costo: number | null } | { costo: number | null }[] | null;
 };
 
 export type ItemConCosto = {
@@ -56,19 +62,24 @@ export type DesgloseCosto = {
 export function desglosarCostos(items: ItemConCosto[], costoMarco = COSTO_MARCO_POR_PAR): DesgloseCosto {
   const cristales: DesgloseCosto["cristales"] = [];
   let marcos = 0;
+  let totalArmazones = 0;
   let totalOtros = 0;
 
   for (const it of items) {
     const ot = uno(it.ordenes_trabajo);
     if (ot) {
-      const costo = (it.cristal_slot === 2 ? ot.costo_laboratorio_2 : ot.costo_laboratorio) ?? 0;
-      const tipoLente = it.cristal_slot === 2 ? ot.tipo_lente_2 : ot.tipo_lente;
-      const tratamiento = it.cristal_slot === 2 ? ot.tratamiento_2 : ot.tratamiento;
+      const segundo = it.cristal_slot === 2;
+      const costo = (segundo ? ot.costo_laboratorio_2 : ot.costo_laboratorio) ?? 0;
+      const tipoLente = segundo ? ot.tipo_lente_2 : ot.tipo_lente;
+      const tratamiento = segundo ? ot.tratamiento_2 : ot.tratamiento;
       cristales.push({
         descripcion: [tipoLente, tratamiento].filter(Boolean).join(" · ") || it.descripcion || "Cristal",
         costo: costo * it.cantidad,
       });
+      if (segundo ? ot.marco_propio_2 : ot.marco_propio) continue;
+      const real = Number(uno(segundo ? ot.marco_2 : ot.marco_1)?.costo ?? 0);
       marcos += it.cantidad;
+      totalArmazones += it.cantidad * (Number.isFinite(real) && real > 0 ? real : costoMarco);
       continue;
     }
     const producto = uno(it.productos);
@@ -79,7 +90,6 @@ export function desglosarCostos(items: ItemConCosto[], costoMarco = COSTO_MARCO_
   }
 
   const totalCristales = cristales.reduce((s, c) => s + c.costo, 0);
-  const totalArmazones = marcos * costoMarco;
   return { cristales, totalCristales, marcos, totalArmazones, totalOtros, total: totalCristales + totalArmazones + totalOtros };
 }
 

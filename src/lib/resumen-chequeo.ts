@@ -38,26 +38,33 @@ export function cuentasDelChequeo(datos: Datos, saldos: Saldos, chequeo?: Pick<C
   }
 
   const partesViaticos: { titulo: string; monto: number }[] = VIATICOS.map(([clave, titulo]) => ({ titulo, monto: total(clave) }));
-  if (n.gastosCompartidos) partesViaticos.push({ titulo: "Gastos del chequeo", monto: n.gastosCompartidos });
+  const equiposChequeo = datos.gastosEquipos ?? 0;
+  const otrosDelChequeo = n.gastosCompartidos - equiposChequeo;
+  if (otrosDelChequeo) partesViaticos.push({ titulo: "Gastos del chequeo", monto: otrosDelChequeo });
   const viaticos = partesViaticos.reduce((s, p) => s + p.monto, 0);
-  const equipos = total("costo_equipos");
+  const equipos = total("costo_equipos") + equiposChequeo;
   const diasEquipos = caja.costosPorSede.filter(f => f.costos.some(c => c.clave === "costo_equipos" && c.total > 0)).length;
+  const otrosProductos = n.filas.reduce((s, f) => s + f.desglose.totalOtros, 0);
   const mesIva = sii?.siguiente ? mesLargo(sii.siguiente) : null;
   const diaIva = sii?.venceEl ? Number(sii.venceEl.slice(8, 10)) : 12;
 
   const filas: { clave: ClaveGasto; titulo: string; monto: number; nota: string }[] = [
     { clave: "cristales", titulo: "Cristales", monto: caja.cristales,
       nota: `Laboratorio · ${n.pares} ${n.pares === 1 ? "par" : "pares"}${caja.fidesPendiente ? ` · falta pagar ${clp(caja.fidesPendiente)}` : " · pagado"}` },
-    { clave: "marcos", titulo: "Marcos", monto: caja.marcos,
+    { clave: "marcos", titulo: otrosProductos ? "Marcos y productos" : "Marcos", monto: caja.marcos,
       nota: `Reponer ${n.marcos} ${n.marcos === 1 ? "marco vendido" : "marcos vendidos"}, a su costo de Inventario`
+        + (otrosProductos ? ` · otros productos ${clp(otrosProductos)}` : "")
         + (caja.marcosPendientes ? ` · falta reponer ${clp(caja.marcosPendientes)}` : caja.marcos ? " · ya repuesto" : "") },
     { clave: "iva", titulo: "IVA", monto: n.iva,
-      nota: `${mesIva ? `Se paga el ${diaIva} de ${mesIva}` : "Se paga el mes siguiente"} · guardarlo${datos.ivaSinCredito ? " · estimado sin crédito fiscal" : ""}` },
+      nota: `${mesIva ? `Se paga el ${diaIva} de ${mesIva}` : "Se paga el mes siguiente"} · guardarlo`
+        + (datos.ivaSinCredito ? ` · estimado sin crédito fiscal: con las facturas de Fides baja ~${clp(Math.round(caja.cristales * 19 / 119))}` : "") },
     { clave: "viaticos", titulo: "Viáticos", monto: viaticos,
       nota: partesViaticos.filter(p => p.monto).map(p => `${p.titulo} ${clp(p.monto)}`).join(" · ") || "Sin viáticos cargados" },
     { clave: "equipos", titulo: "Arriendo de equipos", monto: equipos,
-      nota: equipos ? `${diasEquipos} ${diasEquipos === 1 ? "día" : "días"} con equipo${pendiente("costo_equipos") ? ` · falta pagar ${clp(pendiente("costo_equipos"))}` : ""}`
-        : "Sin cargar: anótalo en cada sede" },
+      nota: !equipos ? "Sin cargar: regístralo como gasto del chequeo (días × $52.000)"
+        : [equiposChequeo ? `Registrado para el chequeo ${clp(equiposChequeo)}` : "",
+          diasEquipos ? `${diasEquipos} ${diasEquipos === 1 ? "sede" : "sedes"} con equipo` : "",
+          pendiente("costo_equipos") ? `falta pagar ${clp(pendiente("costo_equipos"))}` : ""].filter(Boolean).join(" · ") },
     { clave: "tarjetas", titulo: "Comisión de tarjetas", monto: caja.comisionTarjeta, nota: "Lo que cobra Mercado Pago por débito y crédito" },
   ];
 

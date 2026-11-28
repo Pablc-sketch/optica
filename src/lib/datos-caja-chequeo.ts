@@ -129,10 +129,13 @@ export async function cargarCajaChequeo(
   const gastosSii = new Set(periodos.flatMap(p => p.sii?.gastosSii ?? []));
   const gastosDirectos = new Map<string, number>();
   let gastosCompartidos = 0;
+  // Arriendo de equipos registrado para todo el chequeo (días × tarifa).
+  let gastosEquipos = 0;
   for (const gasto of propios) {
     if (gastosSii.has(gasto.id) || gasto.descripcion.startsWith("SII F29 · ")) continue;
     const importe = gastoDeResultado(gasto, vinculados);
     gastosCompartidos += importe;
+    if (/equipo/i.test(gasto.descripcion)) gastosEquipos += importe;
     if (gasto.operativo_id) gastosDirectos.set(gasto.operativo_id, (gastosDirectos.get(gasto.operativo_id) ?? 0) + importe);
   }
   const reservaCompraPersonal = propios.filter(g => g.caja === "personal" && g.categoria === "compra_inventario")
@@ -148,7 +151,7 @@ export async function cargarCajaChequeo(
     vinculados, devoluciones.flatMap(res => res.data ?? []), retiros, gastosSii,
     { ahorroPct: Number(chequeo.ahorro_pct), parteMadrePct: Number(chequeo.reparto_pamela_pct ?? 50) });
   const repartoOperativos = repartoPorOperativo(n, caja, retiros, gastosDirectos);
-  return { n: { ...n, reparto: caja.reparto }, caja, repartoOperativos, compartidos, ventas, ivaSinCredito,
+  return { n: { ...n, reparto: caja.reparto }, caja, repartoOperativos, compartidos, ventas, ivaSinCredito, gastosEquipos,
     retirosSinAsignar: Boolean(retirosSinAsignar.data?.length), retiros, sii: periodos.find(p => p.periodo === mesActual)?.sii ?? null, tenant: tenant.data };
 }
 
