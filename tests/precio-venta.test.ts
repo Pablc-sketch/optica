@@ -164,3 +164,16 @@ describe("faltaPrecioCotizado: cristal por cotizar", () => {
     expect(faltaPrecioCotizado(false, 0, { precioUnitario: 0 })).toBe(false);
   });
 });
+
+describe("1.67 fotocromático gris (combinación nueva de Fides)", () => {
+  it("sin tarifa queda por cotizar en stock y en tallado, y exige el precio acordado salvo cortesía", () => {
+    const fila = { ...MONO_AR, tratamiento: "Adelgazado 1.67 Fotocromático Gris", rango_receta: "±6.00 / ±6.00",
+      material_stock: "CR AR FOTO GRIS 1.67", precio_venta: 0, precio_venta_stock: null, exige_tarifa: true };
+    for (const origen of ["stock", "laboratorio"] as const) {
+      const lista = precioVentaCristal(fila, origen, 6);
+      expect(lista).toBe(0);
+      expect(faltaPrecioCotizado(true, lista, { precioUnitario: 0 })).toBe(true);
+      expect(faltaPrecioCotizado(true, lista, { precioUnitario: 180_000 })).toBe(false);
+    }
+  });
+});

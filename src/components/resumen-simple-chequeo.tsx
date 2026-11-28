@@ -80,22 +80,30 @@ export default function ResumenSimpleChequeo({ chequeo, datos, saldos }: {
       </div>
     </dl>
 
-    <Recuadro tono="verde" titulo="Cobrado hasta ahora" valor={c.cobrado}
-      detalle={`${clp(c.cobradoDigital)} con tarjeta o transferencia · ${clp(c.cobradoEfectivo)} en efectivo`}>
-      <Fila titulo="Con tarjeta o transferencia" valor={c.cobradoDigital} nota="Entra a la cuenta de Mercado Pago" />
+    <Recuadro tono="verde" titulo="Pagado por los pacientes" valor={c.cobrado}
+      detalle="Lo que pagaron en este chequeo. No es la plata que hay hoy: abre para ver el cuadre.">
+      <Fila titulo="Con tarjeta o transferencia" valor={c.cobradoDigital} nota="La tarjeta llega a Mercado Pago; la transferencia, a la cuenta donde la recibes" />
       <Fila titulo="En efectivo" valor={c.cobradoEfectivo} nota="Lo cobrado en efectivo en este chequeo" />
       <div className="py-2 text-xs font-semibold uppercase tracking-wide">Hoy en la óptica (toda la plata, no solo de este chequeo)</div>
       {c.cuentaDisponible !== null
         ? <Fila titulo="Cuenta Mercado Pago" valor={c.cuentaDisponible} nota={notaCuenta} />
         : <p className="py-2">Cuenta Mercado Pago · {notaCuenta}</p>}
+      {c.cuentaSegunLentia !== null && <Fila titulo="Según lo registrado en Lentia" valor={c.cuentaSegunLentia}
+        nota="Cobros con tarjeta y transferencia − comisiones − gastos y retiros pagados desde la cuenta" />}
+      {c.diferenciaCuenta !== null && c.diferenciaCuenta !== 0 && <div className="py-2">
+        <Fila titulo={c.diferenciaCuenta < 0 ? "Falta en la cuenta" : "Sobra en la cuenta"} valor={Math.abs(c.diferenciaCuenta)}
+          nota={c.diferenciaCuenta < 0
+            ? "Salió plata que no está registrada: una compra (por ejemplo, marcos), un retiro o una transferencia a otra cuenta. Regístrala en Gastos."
+            : "Entró plata que no está registrada como cobro o depósito."} fuerte />
+      </div>}
       {c.cuentaPorLiberar > 0 && <Fila titulo="Mercado Pago aún no libera" valor={c.cuentaPorLiberar}
         nota="Ventas con tarjeta que todavía no llegan al saldo disponible" />}
       {c.efectivo !== null && <Fila titulo="Efectivo" valor={c.efectivo}
         nota={saldos.efectivoVerificado ? "Contado hoy" : "Según lo registrado · falta contarlo hoy"} />}
     </Recuadro>
 
-    <Recuadro tono="rojo" titulo="Gastos del chequeo" valor={c.gastos.total}
-      detalle={c.gastos.porPagar > 0 ? `Falta pagar ${clp(c.gastos.porPagar)}` : "Todo pagado"}>
+    <Recuadro tono="rojo" titulo="Costos del chequeo" valor={c.gastos.total}
+      detalle={`Ya pagado ${clp(c.gastos.pagado)} · Falta pagar ${clp(c.gastos.porPagar)} · IVA a guardar ${clp(c.gastos.ivaGuardar)}`}>
       {c.gastos.filas.map(f => <Fila key={f.clave} titulo={f.titulo} valor={f.monto} nota={f.nota} />)}
       <Fila titulo="Total gastos" valor={c.gastos.total} fuerte />
       {c.compraStock > 0 && <p className="py-2 text-xs">
