@@ -1,6 +1,6 @@
 import { calcularReparto, retirosPorPersona, type ReglasReparto, type RetiroReparto } from "./reparto";
 import type { resumirChequeo } from "./chequeos";
-import { COSTOS, PREFIJO_REPOSICION_MARCOS, costosDeSede, disponibleDeGasto, pagosConAsignaciones, type AsignacionCosto } from "./pagos-operativo";
+import { COSTOS, costosDeSede, disponibleDeGasto, esPagoDeCosto, pagosConAsignaciones, type AsignacionCosto } from "./pagos-operativo";
 
 export type GastoChequeo = {
   id: string; fecha: string; descripcion: string; monto: number; caja: string;
@@ -47,8 +47,10 @@ export function resumirCajaChequeo(
     const libre = propia ? Math.max(0, gasto.monto - asignadoTotal) : 0;
     const importe = asignado + libre;
     if (importe <= 0) continue;
-    if (gasto.chequeo_id === chequeoId && gasto.categoria === "compra_inventario" && !gasto.monto_estimado
-      && gasto.descripcion.startsWith(PREFIJO_REPOSICION_MARCOS)) reposicionMarcos += libre;
+    // Toda compra de stock del chequeo (marcos, inventario) repone primero los
+    // marcos vendidos. El resto es stock para próximos chequeos: sale de la
+    // caja, pero no se descuenta de los sueldos de este chequeo.
+    if (gasto.categoria === "compra_inventario" && !gasto.monto_estimado && !esPagoDeCosto(gasto.descripcion)) reposicionMarcos += libre;
     if (gasto.chequeo_id === chequeoId && /^Comida · /i.test(gasto.descripcion)) comidaCompartida += libre;
     if (gasto.caja === "personal") {
       const devuelto = devoluciones.filter(d => d.gasto_id === gasto.id).reduce((total, d) => total + d.monto, 0);
@@ -78,11 +80,12 @@ export function resumirCajaChequeo(
   const ivaPendienteCaja = Math.max(0, resumen.iva - pagosSiiEnCaja);
   const coberturaMarcos = Math.min(reservaMarcosInicial, reposicionMarcos);
   const marcosPendientes = reservaMarcosInicial - coberturaMarcos;
+  const compraStock = reposicionMarcos - coberturaMarcos;
   const saldoTrasPagos = cajaRegistrada - fidesPendiente - marcosPendientes - terrenoPendiente
-    - porReembolsar - comisionPendiente - ivaPendienteCaja;
+    - porReembolsar - comisionPendiente - ivaPendienteCaja + compraStock;
   const reparto = calcularReparto(saldoTrasPagos, resumen.porCobrar, comisionPendiente, retirado, reglas);
   return {
-    ...reparto, costosPorSede, reposicionMarcos, coberturaMarcos,
+    ...reparto, costosPorSede, reposicionMarcos, coberturaMarcos, compraStock,
     cristales: montoCostos("fides"), marcos: montoCostos("marcos"), comida: montoCostos("costo_comida") + comidaCompartida,
     fidesPendiente, marcosPendientes, ivaPendienteCaja, terrenoPendiente, otrosPendientes, salidas, gastosPagados, reintegrosPagados, retirosNetos,
     comisionTarjeta, comisionPendiente, porReembolsar, adelantos, pagados, cajaRegistrada, saldoTrasPagos,

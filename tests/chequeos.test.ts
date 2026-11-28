@@ -47,7 +47,9 @@ describe("Resumen de chequeos", () => {
       ...venta("a", 5000, 5000),
       venta_items: [{ cantidad: 1, producto_id: null, precio_unitario: 5000, descripcion: "Consulta / receta" }],
     }], 0, 0, 0);
-    expect(resumen).toMatchObject({ pares: 2, marcos: 2, ventas: 1, vendido: 55_000, comisionVentas: 5000, utilidad: 27_000 });
+    // El marco suelto del inventario cuesta lo que dice Inventario ($1.000); el
+    // de la OT sin costo cargado usa el costo por marco ($5.000).
+    expect(resumen).toMatchObject({ pares: 2, marcos: 2, ventas: 1, vendido: 55_000, comisionVentas: 5000, utilidad: 31_000 });
   });
 });
 
@@ -74,7 +76,10 @@ describe("Caja del chequeo", () => {
       [{ gasto_id: compra.id, monto: 4000 }], [], new Set(), reglas);
     expect(parcial).toMatchObject({
       cristales: 7000, marcos: 5000, comida: 5000, fidesPendiente: 5000, porReembolsar: 30_000,
-      cajaRegistrada: 59_000, saldoTrasPagos: 8_000, proyectado: 48_000,
+      // La compra adelantada repone los $5.000 de marcos vendidos; los otros
+      // $29.000 son stock: se reintegran desde la caja, no desde los sueldos.
+      coberturaMarcos: 5000, marcosPendientes: 0, compraStock: 29_000,
+      cajaRegistrada: 59_000, saldoTrasPagos: 42_000, proyectado: 82_000,
     });
   });
 });
@@ -123,14 +128,20 @@ it("aplica una reposición pagada a la reserva de marcos y registra su desembols
   const calcular = (gastos: GastoChequeo[], devuelto = 0) => resumirCajaChequeo(n, "grupo", gastos, [],
     [{ gasto_id: adelanto.id, monto: devuelto }], [], new Set(), reglas);
 
+  // Sin compras: el chequeo reserva $5.000 para reponer el marco vendido.
+  const sinCompras = calcular([]);
+  expect(sinCompras).toMatchObject({ marcos: 5000, marcosPendientes: 5000, compraStock: 0, proyectado: 59_000 + 10_000 });
+  // Con compras de stock (personal o de la cuenta), el sueldo no cambia:
+  // el chequeo paga solo los $5.000 del marco vendido.
   const antes = calcular([adelanto]);
-  expect(antes).toMatchObject({ marcos: 5000, marcosPendientes: 5000, porReembolsar: 10_000, proyectado: 59_000 });
-
+  expect(antes).toMatchObject({ coberturaMarcos: 5000, marcosPendientes: 0, compraStock: 5000, porReembolsar: 10_000,
+    proyectado: sinCompras.proyectado });
   const despues = calcular([adelanto, compra]);
-  expect(despues).toMatchObject({ marcos: 5000, coberturaMarcos: 5000, marcosPendientes: 0, gastosPagados: 7000,
-    porReembolsar: 10_000, proyectado: 57_000, repartoPendiente: { ahorro: 11_400, madre: 22_800, pablo: 22_800 } });
-  expect(calcular([adelanto, compra], 10_000)).toMatchObject({ porReembolsar: 0, reintegrosPagados: 10_000, proyectado: 57_000 });
-  expect(calcular([adelanto, { ...compra, monto: 3000 }])).toMatchObject({ coberturaMarcos: 3000, marcosPendientes: 2000, proyectado: 59_000 });
+  expect(despues).toMatchObject({ coberturaMarcos: 5000, marcosPendientes: 0, compraStock: 12_000, gastosPagados: 7000,
+    proyectado: sinCompras.proyectado, repartoPendiente: sinCompras.repartoPendiente });
+  expect(calcular([adelanto, compra], 10_000)).toMatchObject({ porReembolsar: 0, reintegrosPagados: 10_000, proyectado: sinCompras.proyectado });
+  expect(calcular([{ ...compra, monto: 3000 }])).toMatchObject({ coberturaMarcos: 3000, marcosPendientes: 2000, compraStock: 0,
+    proyectado: sinCompras.proyectado });
 });
 
 it("cuadra el ejemplo de la auditoría y difiere el reparto hasta que entre el saldo", () => {
@@ -162,4 +173,23 @@ it("limita los pagos de socios y ahorro a caja incluso si hubo un retiro por sob
   expect(pagable.madre).toBe(0);
   expect(pagable.pablo + pagable.ahorro).toBe(10_000);
   expect(pagable.isadora).toBe(10_000);
+});
+
+it("cobra cada marco vendido a su costo de Inventario y deja la compra de stock fuera del sueldo", () => {
+  const otPolo = { costo_laboratorio: 20_000, costo_laboratorio_2: null, estado: "laboratorio", marco_propio: false, marco_propio_2: false,
+    armazon_producto_id: "polo", armazon_producto_id_2: null, marco_1: { costo: 9000 } };
+  const otSinCosto = { ...otPolo, armazon_producto_id: "x", marco_1: { costo: 0 } };
+  const otPropio = { ...otPolo, marco_propio: true, armazon_producto_id: null, marco_1: null };
+  const lente = (ot: typeof otPolo | typeof otSinCosto | typeof otPropio) => ({ ...venta("a", 60_000, 60_000), venta_items: [{
+    cantidad: 1, producto_id: null, precio_unitario: 60_000, cristal_slot: 1, ordenes_trabajo: ot }] });
+  const n = resumirChequeo([sede("a")], [], [lente(otPolo), lente(otSinCosto), lente(otPropio)], 0, 0, 0, 10);
+  // Polo $9.000 + sin costo cargado $5.000; el del paciente no se repone.
+  expect(n).toMatchObject({ marcos: 2 });
+  const sinCompras = resumirCajaChequeo(n, "grupo", [], [], [], [], new Set(), reglas);
+  expect(sinCompras).toMatchObject({ marcos: 14_000, marcosPendientes: 14_000 });
+  const stock: GastoChequeo = { id: "stock", fecha: "2026-11-27", descripcion: "Marcos Polo y Silmo", monto: 380_000,
+    caja: "digital", categoria: "compra_inventario", operativo_id: null, chequeo_id: "grupo", nota: null, monto_estimado: false };
+  const conStock = resumirCajaChequeo(n, "grupo", [stock], [], [], [], new Set(), reglas);
+  expect(conStock).toMatchObject({ coberturaMarcos: 14_000, compraStock: 366_000, gastosPagados: 380_000,
+    proyectado: sinCompras.proyectado, repartoPendiente: sinCompras.repartoPendiente });
 });

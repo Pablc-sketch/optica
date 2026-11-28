@@ -2,6 +2,8 @@ import Link from "next/link";
 import CabeceraPagina from "@/components/cabecera-pagina";
 import { GastoGeneralForm } from "@/components/registro-gasto";
 import { cargarCajaChequeo } from "@/lib/datos-caja-chequeo";
+import { saldosReparto } from "@/lib/datos-reparto-disponible";
+import ResumenSimpleChequeo from "@/components/resumen-simple-chequeo";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import type { Chequeo, SedeChequeo } from "@/lib/chequeos";
 import { clp } from "@/lib/clp";
@@ -84,6 +86,7 @@ export default async function ChequeosPage({ searchParams }: {
   }
   const datos = await cargarCajaChequeo(supabase, tenantId, chequeo, integrantes, hoy);
   if (!datos) return <div className="space-y-4">{cabecera}<p role="alert" className="rounded-lg bg-red-50 p-4">No se pudo calcular el chequeo. Recarga para reintentar.</p></div>;
+  const saldos = await saldosReparto(supabase, tenantId, hoy, datos.tenant);
   const { n, caja, compartidos, ventas, tenant } = datos;
   const nombres = etiquetasReparto(tenant?.reparto_etiquetas);
   return <div className="mx-auto max-w-6xl space-y-5 pb-5">
@@ -99,8 +102,14 @@ export default async function ChequeosPage({ searchParams }: {
         <Link href={`${ruta}?chequeo=${chequeo.id}&modo=editar`} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Asignar sedes</Link>
       </div>
     </section>
-    <IndicadoresChequeo resumen={n} ventas={ventas} />
-    <IndicadoresCaja resumen={n} caja={caja} hoy={hoy} chequeoId={chequeo.id} comidaGuardada={params.guardado === "comida"} />
+    <ResumenSimpleChequeo chequeo={chequeo} datos={datos} saldos={saldos} />
+    <details open={params.guardado !== undefined} className="group rounded-2xl border border-tinta/15 bg-white/60 p-3 sm:p-4">
+      <summary className="cursor-pointer list-none font-semibold">Ver indicadores y costos detallados <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-180">⌄</span></summary>
+      <div className="mt-4 space-y-5">
+        <IndicadoresChequeo resumen={n} ventas={ventas} />
+        <IndicadoresCaja resumen={n} caja={caja} hoy={hoy} chequeoId={chequeo.id} comidaGuardada={params.guardado === "comida"} />
+      </div>
+    </details>
     <section aria-labelledby="sedes-chequeo" className="space-y-2">
       <h2 id="sedes-chequeo" className="text-lg font-bold">Por sede</h2>
       {!n.filas.length && <p className="rounded-lg bg-white p-4">Este chequeo todavía no tiene sedes asignadas.</p>}

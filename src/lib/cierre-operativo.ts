@@ -36,11 +36,13 @@ export function numerosDeOperativo(
   pctDebito: number,
   pctCredito: number,
   marcosUsados?: number,
+  // Costo real de esos marcos (Inventario). Sin él se usa el costo por marco.
+  costoMarcosUsados?: number,
 ): NumerosOperativo {
   const items = ventas.flatMap((v) => v.venta_items ?? []) as unknown as ItemConCosto[];
   const desglose = conCostoFidesReal(desglosarCostos(items, op.costo_marco_unitario ?? undefined), op.costo_fides_real);
   if (marcosUsados !== undefined) {
-    const costoMarcos = marcosUsados * (op.costo_marco_unitario ?? COSTO_MARCO_POR_PAR);
+    const costoMarcos = costoMarcosUsados ?? marcosUsados * (op.costo_marco_unitario ?? COSTO_MARCO_POR_PAR);
     desglose.total += costoMarcos - desglose.totalArmazones;
     desglose.totalArmazones = costoMarcos;
     desglose.marcos = marcosUsados;

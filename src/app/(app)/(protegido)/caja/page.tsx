@@ -79,7 +79,7 @@ export default async function Caja({ searchParams }: {
         {guardado}
         {ambito && datos && saldos
           ? <CajaDelChequeo chequeo={ambito.chequeo} opciones={chequeos} sedes={ambito.sedes} datos={datos}
-            hoy={hoy} saldos={saldos} version={version} />
+            hoy={hoy} saldos={saldos} version={version} abrirDetalle={params.guardado !== undefined} />
           : <p role="alert" className="rounded-xl bg-red-50 p-4">No se pudo calcular el reparto. Recarga para reintentar.</p>}
       </div>;
     }
