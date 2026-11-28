@@ -193,7 +193,15 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       if (!costo) {
         return { ok: false, error: `Falta la equivalencia con el laboratorio para ${c.tipoLente} ${c.tratamiento}. Revísala en Precios.` };
       }
-      preciosLista.set(c.cupo, precioVentaCristal(fila, costo.origen, Number(tenant?.factor_venta_cristales ?? 0)));
+      const precioLista = precioVentaCristal(fila, costo.origen, Number(tenant?.factor_venta_cristales ?? 0));
+      if (fila.exige_tarifa && precioLista <= 0) {
+        const linea = items.find(item => item.cristalSlot === c.cupo);
+        if (!linea || linea.precioUnitario <= 0) {
+          return { ok: false, error: `Ingresa el precio cotizado para ${c.tratamiento} antes de cerrar la venta.` };
+        }
+      } else {
+        preciosLista.set(c.cupo, precioLista);
+      }
       calculados.push({ c, costo });
     }
 

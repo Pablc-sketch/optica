@@ -112,6 +112,34 @@ describe("precioVentaCristal: lo que se le cobra al paciente", () => {
   it("sin precio fijado en /precios, cae al factor sobre el costo", () => {
     expect(precioVentaCristal({ ...MONO_AR, precio_venta: 0, precio_venta_stock: null }, "laboratorio", 2.5)).toBe(48195);
   });
+
+  it("1.67 de -14 en stock queda por cotizar si solo tiene tarifa de tallado", () => {
+    const fila = {
+      ...MONO_AR,
+      tratamiento: "Adelgazado 1.67 Filtro Azul",
+      rango_receta: "±6.00 / ±6.00",
+      material_stock: "CR AR BLUE 1.67",
+      precio_venta: 150000,
+      precio_venta_stock: null,
+      exige_tarifa: true,
+    };
+    const catalogo = {
+      ...CATALOGO,
+      stock: [{ material: "CR AR BLUE 1.67", diseno: "MONOFOCAL", esfera_max: 14, cilindro_max: 0, precio_unitario: 11900 }],
+    };
+    const r = receta({ od_esfera: -14, oi_esfera: -14 });
+    const origen = origenCristal(fila, r, "lejos", catalogo, DIA);
+    expect(origen).toBe("stock");
+    expect(precioVentaCristal(fila, origen, 6)).toBe(0);
+    expect(precioVentaCristal(fila, "laboratorio", 6)).toBe(150000);
+    expect(precioVentaCristal({ ...fila, precio_venta_stock: 100000 }, origen, 6)).toBe(100000);
+  });
+
+  it("un diseño nuevo sin tarifa evita usar automáticamente el factor de venta", () => {
+    const fila = { ...MULTI_AR, precio_venta: 0, precio_venta_stock: null, exige_tarifa: true };
+    expect(precioVentaCristal(fila, "laboratorio", 6)).toBe(0);
+    expect(precioVentaCristal({ ...fila, precio_venta: 190000 }, "stock", 6)).toBe(190000);
+  });
 });
 
 describe("sin receta guardada (operativo)", () => {

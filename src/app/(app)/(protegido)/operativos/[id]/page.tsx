@@ -142,7 +142,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     supabase
       .from("costos_cristales")
       .select(
-        `tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock,
+        `tipo_lente, rango_receta, tratamiento, costo, costo_stock, precio_venta, precio_venta_stock, exige_tarifa,
          material_stock, material_laboratorio, diseno_laboratorio, montaje_material,
          diseno_laboratorio_proximo, diseno_proximo_desde`
       ),
@@ -351,9 +351,10 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
     const fila = costosCristales.find(
       (c) => c.tipo_lente === tipoLente && c.tratamiento === tratamiento && c.rango_receta === rango
     );
-    if (!fila || fila.precio_venta <= 0) return null;
+    if (!fila) return null;
     const origen = origenCristal(fila, r, posicionRango, catalogoLab, hoyEnChile());
-    return { nombre: nombreCristal(tipoLente, tratamiento), precio: precioVentaCristal(fila, origen) };
+    const precio = precioVentaCristal(fila, origen);
+    return { nombre: nombreCristal(tipoLente, tratamiento), precio };
   };
 
   // La receta puede traer uno o dos lentes sugeridos ("Dos lentes
@@ -379,6 +380,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
       r.tipo === "lejos_y_cerca"
         ? cotizarLente(r, r.sugerencia_tipo_lente_cerca, r.sugerencia_tratamiento_cerca, "cerca")
         : null;
+    if ((principal && principal.precio <= 0) || (cerca && cerca.precio <= 0)) return null;
     if (principal && cerca) {
       return {
         nombre: `${principal.nombre} para lejos y ${cerca.nombre} para cerca`,
