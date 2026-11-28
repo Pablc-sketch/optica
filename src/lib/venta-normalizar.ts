@@ -46,6 +46,8 @@ export type ItemPedido = {
   cristalSlot?: Cupo | null;
   marcoSlot?: Cupo | null;
   armazonSlot?: Cupo | null;
+  // Lente regalado: puede ir en $0 aunque su tarifa esté por cotizar.
+  esCortesia?: boolean;
 };
 
 export type VentaNormalizada = {

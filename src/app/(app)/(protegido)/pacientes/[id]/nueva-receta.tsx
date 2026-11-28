@@ -170,7 +170,7 @@ function SelectorLenteConPrecio({
     tratamiento: o.fila.tratamiento,
     origen: hayReceta ? o.origen : undefined,
     precio: o.precio,
-    detalle: categorias.length > 0 ? categorias.map(nivel => {
+    detalle: <>{categorias.length > 0 ? categorias.map(nivel => {
       const precio = precioParConMarco(o.precio, nivel.id, recargosMarcos);
       return (
         <span key={nivel.id} className={nivel.id === "esencial" ? "block" : "block text-xs font-medium"}>
@@ -178,7 +178,12 @@ function SelectorLenteConPrecio({
           <EstadoPresupuestoPar precio={precio} presupuesto={presupuesto} />
         </span>
       );
-    }) : <>{clp(o.precio)}<EstadoPresupuestoPar precio={o.precio} presupuesto={presupuesto} /></>,
+    }) : <>{clp(o.precio)}<EstadoPresupuestoPar precio={o.precio} presupuesto={presupuesto} /></>}
+      {/* Un lente de stock también se puede mandar a tallar: si el precio
+          cambia, se muestra también el de laboratorio. */}
+      {hayReceta && o.origen === "stock" && o.precioLaboratorio > 0 && o.precioLaboratorio !== o.precio && (
+        <span className="block text-[11px] font-normal text-tinta-suave">tallado {clp(o.precioLaboratorio)}</span>
+      )}</>,
   }));
 
   return (

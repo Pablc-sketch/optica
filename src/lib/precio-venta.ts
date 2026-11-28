@@ -99,6 +99,16 @@ export function origenCristal(
 // El precio al que se le vende al paciente, según de dónde sale.
 // factorVenta es solo el respaldo para una fila que todavía no tiene
 // precio fijado en /precios.
+// Un cristal sin tarifa (por cotizar) necesita el precio que acordó la
+// vendedora, salvo que se regale: la cortesía puede ir en $0.
+export function faltaPrecioCotizado(
+  exigeTarifa: boolean | undefined, precioLista: number,
+  linea: { precioUnitario: number; esCortesia?: boolean } | undefined,
+): boolean {
+  if (!exigeTarifa || precioLista > 0) return false;
+  return !linea || (linea.precioUnitario <= 0 && !linea.esCortesia);
+}
+
 export function precioVentaCristal(
   fila: Pick<FilaCristal, "tipo_lente" | "costo" | "precio_venta" | "precio_venta_stock" | "exige_tarifa">,
   origen: "stock" | "laboratorio",
