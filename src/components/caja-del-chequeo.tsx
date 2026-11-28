@@ -8,6 +8,7 @@ import { confirmarSaldoBanco } from "@/lib/actions/caja";
 import { disponibleDelReparto, sueldosRegistrables, type saldosReparto } from "@/lib/datos-reparto-disponible";
 import { PERSONAS_SUELDO } from "@/lib/reparto-operativos";
 import SueldosReparto from "@/components/sueldos-reparto";
+import ResumenSimpleChequeo from "@/components/resumen-simple-chequeo";
 import { guardarRepartoChequeo } from "@/lib/actions/chequeos";
 import { guardarPagoCostosChequeo } from "@/lib/actions/cierre";
 import type { Chequeo, SedeChequeo } from "@/lib/chequeos";
@@ -117,9 +118,9 @@ function RecuadroCostos({ datos, titulo, clave, chequeo, hoy }: {
   </details>;
 }
 
-export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, saldos, version }: {
+export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, saldos, version, abrirDetalle }: {
   chequeo: Chequeo; opciones: Chequeo[]; sedes: SedeChequeo[]; datos: Datos; hoy: string;
-  saldos: Awaited<ReturnType<typeof saldosReparto>>; version: string | null;
+  saldos: Awaited<ReturnType<typeof saldosReparto>>; version: string | null; abrirDetalle?: boolean;
 }) {
   const { caja, n, sii } = datos;
   const nombres = { ...etiquetasReparto(datos.tenant?.reparto_etiquetas), ahorro: "Ahorro" };
@@ -148,6 +149,33 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, s
   const mesPago = sii && formatoMes.format(new Date(sii.siguiente));
 
   return <>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div><h2 className="text-xl font-bold">{chequeo.nombre}</h2><p className="text-sm text-tinta-suave">{fechaLegible(chequeo.desde)} al {fechaLegible(chequeo.hasta)}</p></div>
+      {!!opciones.length && <form action="/caja" className="flex items-center gap-2">
+        <label className="sr-only" htmlFor="selector-chequeo-resumen">Chequeo</label>
+        <select name="chequeo" id="selector-chequeo-resumen" defaultValue={chequeo.id} className="max-w-56 rounded-lg border border-tinta/20 bg-white p-2 text-sm">
+          {chequeo.independiente && <option value="">{chequeo.nombre}</option>}
+          {opciones.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
+        <button className="rounded-lg bg-tinta px-3 py-2 text-sm font-semibold text-white transition motion-safe:active:scale-95">Ver</button>
+      </form>}
+    </div>
+    <ResumenSimpleChequeo chequeo={chequeo} datos={datos} saldos={saldos} />
+    <Desplegable titulo="Registrar gasto (bencina, comida, hospedaje, equipos…)">
+      <div className="grid items-start gap-3 sm:grid-cols-2">
+        {!chequeo.independiente && <details className="rounded-xl border border-tinta/15 px-3">
+          <summary className="cursor-pointer py-2 text-sm font-semibold">De todo el chequeo</summary>
+          <div className="pb-3"><GastoGeneralForm hoy={hoy} chequeoId={chequeo.id} digital="Cuenta de la óptica" personal="Dinero personal" desdeCaja /></div>
+        </details>}
+        {sedes.some(s => s.fecha <= hoy) && <details className="rounded-xl border border-tinta/15 px-3">
+          <summary className="cursor-pointer py-2 text-sm font-semibold">De una sede</summary>
+          <div className="pb-3"><GastoOperativoForm sedes={sedes.filter(s => s.fecha <= hoy)} hoy={hoy} cajaChequeoId={chequeo.independiente ? undefined : chequeo.id} /></div>
+        </details>}
+      </div>
+    </Desplegable>
+    <details id="detalle" open={abrirDetalle} className="group rounded-2xl border border-tinta/15 bg-white/60 p-3 sm:p-4">
+      <summary className="cursor-pointer list-none font-semibold">Ver detalle completo: saldos, pagos y sueldos <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-180">⌄</span></summary>
+      <div className="mt-4 space-y-5">
     <section id="saldos" aria-label="Saldos de la óptica" className="scroll-mt-20 space-y-2">
       <h2 className="text-lg font-bold">Dinero de la óptica</h2>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
@@ -195,15 +223,7 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, s
 
     <section id="gastos" className="space-y-3 scroll-mt-20">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div><h2 className="text-xl font-bold">Costos y gastos</h2><p className="text-sm text-tinta-suave">{chequeo.nombre} · {fechaLegible(chequeo.desde)} al {fechaLegible(chequeo.hasta)}</p></div>
-        {!!opciones.length && <form action="/caja" className="flex items-center gap-2">
-          <label className="sr-only" htmlFor="selector-chequeo">Chequeo</label>
-          <select name="chequeo" id="selector-chequeo" defaultValue={chequeo.id} className="max-w-56 rounded-lg border border-tinta/20 bg-white p-2 text-sm">
-            {chequeo.independiente && <option value="">{chequeo.nombre}</option>}
-            {opciones.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-          <button className="rounded-lg bg-tinta px-3 py-2 text-sm font-semibold text-white transition motion-safe:active:scale-95">Ver</button>
-        </form>}
+        <h2 className="text-xl font-bold">Costos y gastos</h2>
       </div>
       <div id="costos" className="grid scroll-mt-20 items-start gap-3 sm:grid-cols-2">
         <RecuadroCostos datos={datos} titulo="Cristales" clave="fides" chequeo={chequeo} hoy={hoy} />
@@ -225,18 +245,6 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, s
             hoy={hoy} cajaChequeoId={chequeo.independiente ? undefined : chequeo.id} /> : <p className="text-sm">Sin reintegros pendientes.</p>}
         </Desplegable>
       </div>
-      <Desplegable titulo="Registrar gasto">
-        <div className="grid items-start gap-3 sm:grid-cols-2">
-          {!chequeo.independiente && <details className="rounded-xl border border-tinta/15 px-3">
-            <summary className="cursor-pointer py-2 text-sm font-semibold">De todo el chequeo</summary>
-            <div className="pb-3"><GastoGeneralForm hoy={hoy} chequeoId={chequeo.id} digital="Cuenta de la óptica" personal="Dinero personal" desdeCaja /></div>
-          </details>}
-          {sedes.some(s => s.fecha <= hoy) && <details className="rounded-xl border border-tinta/15 px-3">
-            <summary className="cursor-pointer py-2 text-sm font-semibold">De una sede</summary>
-            <div className="pb-3"><GastoOperativoForm sedes={sedes.filter(s => s.fecha <= hoy)} hoy={hoy} cajaChequeoId={chequeo.independiente ? undefined : chequeo.id} /></div>
-          </details>}
-        </div>
-      </Desplegable>
     </section>
 
     <section id="reparto" className="space-y-3 scroll-mt-20" aria-labelledby="titulo-reparto">
@@ -322,5 +330,7 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, s
         <Link href="/impuestos" className="mt-2 inline-block text-sm font-semibold underline">Ver control del SII</Link>
       </Desplegable>
     </section>
+      </div>
+    </details>
   </>;
 }

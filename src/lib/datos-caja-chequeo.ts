@@ -68,7 +68,8 @@ export async function cargarCajaChequeo(
       leerTodas((a, b) => supabase.from("ventas").select(
         `id,operativo_id,total,fecha,boleta_fecha,pagos_abonos(monto,medio_pago,fecha),
          venta_items(producto_id,cantidad,precio_unitario,descripcion,descuento,cristal_slot,
-           ordenes_trabajo:ot_id(estado,costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2,marco_propio,marco_propio_2,armazon_producto_id,armazon_producto_id_2),
+           ordenes_trabajo:ot_id(estado,costo_laboratorio,costo_laboratorio_2,tipo_lente,tratamiento,tipo_lente_2,tratamiento_2,marco_propio,marco_propio_2,armazon_producto_id,armazon_producto_id_2,
+             marco_1:armazon_producto_id(costo),marco_2:armazon_producto_id_2(costo)),
            productos:producto_id(costo,categoria))`
       ).eq("tenant_id", tenantId).eq("anulada", false).lt("fecha", corte).in("operativo_id", lote).order("id").range(a, b)),
       leerTodas((a, b) => supabase.from("gastos_globales").select(columnasGasto).eq("tenant_id", tenantId)
