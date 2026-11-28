@@ -200,7 +200,10 @@ export default async function VistaGastos({ filtros }: { filtros: FiltrosGastos 
   const cotizar = vista === 'rentabilidad' ? await cargarCatalogoParaCotizar(supabase) : null;
   const perfiles = cotizar ? cotizar.filas.filter(f => f.rango_receta === '±2.00 / ±2.00').flatMap(f => {
     const costo = costoRealCristal(f, null, 'lejos', cotizar.catalogo, hoy);
-    return costo ? [{ id: `${f.tipo_lente}|${f.tratamiento}`, nombre: `${f.tipo_lente} · ${f.tratamiento}`, precio: precioVentaCristal(f, costo.origen), costo: costo.costo, origen: costo.origen }] : [];
+    if (!costo) return [];
+    const precio = precioVentaCristal(f, costo.origen);
+    if (f.exige_tarifa && precio <= 0) return [];
+    return [{ id: `${f.tipo_lente}|${f.tratamiento}`, nombre: `${f.tipo_lente} · ${f.tratamiento}`, precio, costo: costo.costo, origen: costo.origen }];
   }) : [];
   const comisiones = lista.map(s => Number(s.comision_vendedora_pct ?? 10));
   return <div className="mx-auto max-w-6xl space-y-5 pb-8">
