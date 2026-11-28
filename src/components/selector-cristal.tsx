@@ -79,7 +79,11 @@ export default function SelectorCristal({
       {elegida && !editando ? (
         <button
           type="button"
-          onClick={() => setEditando(true)}
+          onClick={() => {
+            setEditando(true);
+            setBusqueda("");
+            setVerTodas(false);
+          }}
           className="flex w-full items-center justify-between gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5"
           aria-label={`Cambiar cristal, ${elegida.nombre}`}
         >

@@ -12,7 +12,7 @@ export async function cargarPendientes(supabase: Awaited<ReturnType<typeof creat
     leerTodas((a, b) => supabase.from("operativos").select("*").order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("ventas").select(`id, operativo_id, total, pagos_abonos (monto, medio_pago),
       venta_items (producto_id, cantidad, precio_unitario, descuento, descripcion, cristal_slot,
-        ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2, marco_propio, marco_propio_2, armazon_producto_id, armazon_producto_id_2),
+        ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2, marco_propio, marco_propio_2, armazon_producto_id, armazon_producto_id_2, marco_1:armazon_producto_id(costo), marco_2:armazon_producto_id_2(costo)),
         productos:producto_id (costo, categoria))`).eq("anulada", false).not("operativo_id", "is", null).order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("retiros_sueldo").select("id, operativo_id, chequeo_id, monto").order("id").range(a, b)),
     leerTodas((a, b) => supabase.from("gastos_globales").select("id, operativo_id, descripcion, monto").not("operativo_id", "is", null).order("id").range(a, b)),
@@ -27,9 +27,10 @@ export async function cargarPendientes(supabase: Awaited<ReturnType<typeof creat
   if (!error) for (const op of ops.data ?? []) {
     if (op.pagos_saldados_en || op.estado === "cancelado") continue;
     const ventasSede = (ventas.data ?? []).filter(v => v.operativo_id === op.id) as unknown as VentaChequeo[];
-    const marcos = ventasSede.reduce((suma, v) => suma + contarLentesYMarcos(v.venta_items ?? []).marcos, 0);
+    const conteo = ventasSede.map(v => contarLentesYMarcos(v.venta_items ?? [], op.costo_marco_unitario ?? undefined));
     const n = numerosDeOperativo(op, ventasSede,
-      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0), marcos);
+      Number(tenant.data?.comision_debito_pct ?? 0), Number(tenant.data?.comision_credito_pct ?? 0),
+      conteo.reduce((s, c) => s + c.marcos, 0), conteo.reduce((s, c) => s + c.costoMarcos, 0));
     const pagos = pagosConAsignaciones((gastos.data ?? []).filter((g) => g.operativo_id === op.id), asignaciones.data ?? [], op.id);
     const costos = pendientesCostos(op, pagos);
     lista.push({ operativoId: op.id, nombre: op.nombre, fecha: op.fecha,

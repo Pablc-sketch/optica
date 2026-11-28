@@ -13,7 +13,7 @@ import { precioListaMarco, validarRecargosVenta } from "@/lib/recargos-venta";
 import { esOpticaGlobal } from "@/lib/marca-optica";
 import { nombreNivelMarco } from "@/lib/niveles-marco";
 import { cargarCatalogoParaCotizar } from "@/lib/catalogo-laboratorio";
-import { costoRealCristal, precioVentaCristal } from "@/lib/precio-venta";
+import { costoRealCristal, faltaPrecioCotizado, precioVentaCristal } from "@/lib/precio-venta";
 import { rangoParaPosicion } from "@/lib/cristales";
 import { normalizarVenta, ubicacionDeCupo, type ArmazonPedido, type CristalPedido, type ItemPedido } from "@/lib/venta-normalizar";
 import { verificarVoucherConProveedor } from '@/lib/verificar-voucher-proveedor';
@@ -195,8 +195,7 @@ export async function registrarVenta(input: VentaInput): Promise<ResultadoVenta>
       }
       const precioLista = precioVentaCristal(fila, costo.origen, Number(tenant?.factor_venta_cristales ?? 0));
       if (fila.exige_tarifa && precioLista <= 0) {
-        const linea = items.find(item => item.cristalSlot === c.cupo);
-        if (!linea || linea.precioUnitario <= 0) {
+        if (faltaPrecioCotizado(fila.exige_tarifa, precioLista, items.find(item => item.cristalSlot === c.cupo))) {
           return { ok: false, error: `Ingresa el precio cotizado para ${c.tratamiento} antes de cerrar la venta.` };
         }
       } else {

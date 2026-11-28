@@ -71,10 +71,12 @@ export function GastoGeneralForm({ hoy, digital, personal, chequeoId, comida = f
     {!comida && <label className="block text-sm">Categoría
       <select name="categoria" className={campo}>
         <option value="otro">Otro gasto</option>
-        {desdeCaja && <>
+        {(desdeCaja || chequeoId) && <>
           <option value="bencina">Bencina y transporte</option>
           <option value="comida">Comida</option>
+          <option value="hospedaje">Hospedaje</option>
           <option value="peajes">Peajes y TAG</option>
+          {chequeoId && <option value="equipos">Arriendo de equipos (días × $52.000)</option>}
         </>}
         <option value="compra_inventario">Inventario / equipamiento</option>
         {chequeoId && desdeCaja && <option value="reposicion_marcos">Reposición de marcos del chequeo</option>}

@@ -18,7 +18,8 @@ const lente = (op: string, total: number, pagos: { monto: number; medio_pago: st
       armazon_producto_id: marco === null ? null : "m", armazon_producto_id_2: null, marco_1: marco === null ? null : { costo: marco } } }],
 }) as unknown as VentaChequeo;
 
-function armar(gastos: GastoChequeo[], retiros: { persona: string; monto: number }[] = []) {
+function armar(gastos: GastoChequeo[], retiros: { persona: string; monto: number }[] = []) { return armarCon(gastos, 0, retiros); }
+function armarCon(gastos: GastoChequeo[], gastosEquipos: number, retiros: { persona: string; monto: number }[] = []) {
   const sedes = [sede("Labrador", { costo_equipos: 52_000, costo_transporte: 25_000, costo_comida: 12_000 }),
     sede("El Rosario", { costo_equipos: 52_000 }), sede("Talagante")];
   const ventas = [
@@ -27,10 +28,10 @@ function armar(gastos: GastoChequeo[], retiros: { persona: string; monto: number
     lente("El Rosario", 160_000, [{ monto: 160_000, medio_pago: "transferencia" }], 18_000, 14_000),
   ];
   const iva = Math.round(470_000 * 19 / 119);
-  const n = resumirChequeo(sedes, [], ventas, 0, 2, 3, 10, 0, iva);
+  const n = resumirChequeo(sedes, [], ventas, gastosEquipos, 2, 3, 10, 0, iva);
   const caja = resumirCajaChequeo(n, "c", gastos, [], [], retiros, new Set(), { ahorroPct: 20, parteMadrePct: 50 });
   const datos = { n: { ...n, reparto: caja.reparto }, caja, ventas, sii: { saldo: iva, siguiente: "2026-12-01", venceEl: null },
-    ivaSinCredito: true, retirosSinAsignar: false, tenant: null } as never;
+    ivaSinCredito: true, retirosSinAsignar: false, tenant: null, gastosEquipos } as never;
   const saldos = { efectivo: 40_000, efectivoVerificado: true, saldoConfirmado: null, deudaPersonal: 0, devoluciones: 0,
     cuenta: { estado: "disponible", disponible: 150_000, total: 180_000, consultadoEn: "2026-11-28T15:00:00Z" } } as never;
   return cuentasDelChequeo(datos, saldos, { comision_isadora_pct: 10, ahorro_pct: 20 });
@@ -53,7 +54,7 @@ it("vendido − gastos = lo que queda para sueldos y ahorro, sin ajustes escondi
   expect(isadora).toBe(47_000);
   expect(c.perdida).toBe(false);
   expect(isadora + pamela + pablo + ahorro).toBe(c.resultado);
-  expect(c.gastos.filas.find(f => f.clave === "equipos")?.nota).toContain("2 días");
+  expect(c.gastos.filas.find(f => f.clave === "equipos")?.nota).toContain("2 sedes con equipo");
   expect(c.gastos.filas.find(f => f.clave === "iva")?.nota).toContain("12 de diciembre");
 });
 
@@ -73,4 +74,16 @@ it("un retiro mayor a lo que tocaba se avisa y no cambia el total", () => {
   expect(c.resultado).toBe(sin.resultado);
   expect(c.sueldos.personas.find(p => p.persona === "madre")?.nota).toContain("de más");
   expect(c.vendido - c.gastos.total).toBe(c.resultado);
+});
+
+it("el arriendo de equipos registrado para todo el chequeo va a Equipos, no a Viáticos", () => {
+  const equipos: GastoChequeo = { id: "e", fecha: "2026-11-28", descripcion: "Arriendo de equipos · 5 días", monto: 260_000,
+    caja: "digital", categoria: "arriendo", operativo_id: null, chequeo_id: "c", nota: null, monto_estimado: false };
+  const sin = armar([]);
+  const con = armarCon([equipos], 260_000);
+  const fila = (c: typeof sin, clave: string) => c.gastos.filas.find(f => f.clave === clave)?.monto;
+  expect(fila(con, "equipos")).toBe((fila(sin, "equipos") ?? 0) + 260_000);
+  expect(fila(con, "viaticos")).toBe(fila(sin, "viaticos"));
+  expect(con.resultado).toBe(sin.resultado - 260_000);
+  expect(con.vendido - con.gastos.total).toBe(con.resultado);
 });

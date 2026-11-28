@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CatalogoLaboratorio } from "../src/lib/costo-fides";
 import {
+  faltaPrecioCotizado,
   costoRealCristal,
   ojosParaCristal,
   origenCristal,
@@ -149,5 +150,17 @@ describe("sin receta guardada (operativo)", () => {
 
   it("multifocal: sin saber si trae cilindro, se cotiza tallado", () => {
     expect(origenCristal(MULTI_AR, null, "lejos", CATALOGO, DIA)).toBe("laboratorio");
+  });
+});
+
+describe("faltaPrecioCotizado: cristal por cotizar", () => {
+  it("exige precio si no hay tarifa, salvo que sea cortesía", () => {
+    expect(faltaPrecioCotizado(true, 0, { precioUnitario: 0 })).toBe(true);
+    expect(faltaPrecioCotizado(true, 0, undefined)).toBe(true);
+    expect(faltaPrecioCotizado(true, 0, { precioUnitario: 125_000 })).toBe(false);
+    expect(faltaPrecioCotizado(true, 0, { precioUnitario: 0, esCortesia: true })).toBe(false);
+    // Con tarifa o sin exigirla, nunca bloquea.
+    expect(faltaPrecioCotizado(true, 150_000, { precioUnitario: 0 })).toBe(false);
+    expect(faltaPrecioCotizado(false, 0, { precioUnitario: 0 })).toBe(false);
   });
 });

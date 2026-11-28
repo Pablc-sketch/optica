@@ -22,7 +22,10 @@ export function resumirCajaChequeo(
   const sedes = new Set(resumen.filas.map(f => f.sede.id));
   const costosPorSede = resumen.filas.map(f => {
     const pagos = gastos.filter(g => g.operativo_id === f.sede.id);
-    const costos = costosDeSede(f.sede, f.desglose, pagosConAsignaciones(pagos, asignaciones, f.sede.id));
+    // Marcos y otros productos vendidos (lentes de contacto, accesorios) se
+    // reponen igual: los dos entran en la reserva de reposición.
+    const costos = costosDeSede(f.sede, { totalCristales: f.desglose.totalCristales,
+      totalArmazones: f.desglose.totalArmazones + f.desglose.totalOtros }, pagosConAsignaciones(pagos, asignaciones, f.sede.id));
     return { sede: f.sede, costos: f.sede.pagos_saldados_en ? costos.map(c => ({ ...c, pagado: Math.max(c.total, c.pagado) })) : costos };
   });
   const costos = costosPorSede.flatMap(f => f.costos);

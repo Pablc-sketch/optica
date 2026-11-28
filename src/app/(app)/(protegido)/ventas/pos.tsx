@@ -325,7 +325,8 @@ function FilaLente({
       sugerido: esSugerido,
       esCortesia: cortesia,
       precio: monto,
-      precioPendiente: !!fila.exige_tarifa && lista <= 0 && monto <= 0,
+      // Una cortesía puede ir en $0 aunque el cristal esté por cotizar.
+      precioPendiente: !!fila.exige_tarifa && lista <= 0 && monto <= 0 && !cortesia,
     });
   }
 
@@ -1108,6 +1109,7 @@ export default function PuntoDeVenta({
         cristalSlot: l.cristal ? numeroDePar(l.key) : null,
         marcoSlot: l.recargoSlot ?? null,
         armazonSlot: l.armazonSlot ?? null,
+        ...(l.cristal && l.esCortesia ? { esCortesia: true } : {}),
       })),
       cristales: creaOT
         ? lineasCristal.map((l) => ({
