@@ -5,7 +5,7 @@ import type { ItemConCosto } from "./costo-venta";
 export type Chequeo = { id: string; nombre: string; desde: string; hasta: string; ahorro_pct: number; comision_isadora_pct?: number; reparto_pamela_pct?: number; independiente?: boolean };
 export type SedeChequeo = OperativoParaCierre & {
   id: string; nombre: string; fecha: string; fecha_fin: string | null; hora_inicio?: string | null;
-  direccion: string | null; estado: string; pagos_saldados_en?: string | null; chequeo_id: string | null;
+  direccion: string | null; estado: string; pagos_saldados_en?: string | null; cierre_financiero_en?: string | null; chequeo_id: string | null;
 };
 export type AtencionChequeo = { operativo_id: string; paciente_id: string };
 type MarcoOT = {

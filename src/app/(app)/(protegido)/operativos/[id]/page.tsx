@@ -94,7 +94,11 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
   const supabase = await createClient();
   const [{ data: tenantId }, { data: rol }] = await Promise.all([supabase.rpc("jwt_tenant_id"), supabase.rpc("jwt_rol")]);
   const puedeVender = rol === "admin" || rol === "ventas";
-  if (esPilotoTerreno(tenantId)) return <OperativoTerreno id={id}/>;
+  if (esPilotoTerreno(tenantId)) return <div className="space-y-3">
+    {rol === "admin" && <Link className="inline-block rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white"
+      href={`/operativos/${id}/cierre#sueldos`}>Utilidad, sueldos y cierre</Link>}
+    <OperativoTerreno id={id} />
+  </div>;
 
   const [
     operativoRes, recetasRes, ventasRes, retirosRes, costosRes, tenantRes,
@@ -766,7 +770,7 @@ export default async function DetalleOperativo({ params }: { params: Promise<{ i
               </div>
             </form>}
 
-            <ResumenReparto resumen={reparto} />
+            <ResumenReparto resumen={reparto} operativo={id} />
           </div>
         </details>
       </div>

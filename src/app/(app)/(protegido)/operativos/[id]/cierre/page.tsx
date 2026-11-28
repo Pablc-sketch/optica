@@ -1,63 +1,30 @@
-import { redirect } from "next/navigation";
-import { esPilotoTerreno } from "@/lib/piloto-terreno";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirRolPagina } from "@/lib/autorizacion";
 import { cargarRepartoOperativo } from "@/lib/datos-caja-chequeo";
 import { hoyEnChile } from "@/lib/fechas";
 import ResumenReparto from "@/components/resumen-reparto";
-import { clp } from "@/lib/clp";
-import { COSTO_MARCO_POR_PAR } from "@/lib/costo-venta";
-import { numerosDeOperativo, type VentaParaCierre } from "@/lib/cierre-operativo";
 import PagoCostoOperativo from "@/components/pago-costo-operativo";
-import { pagadoCon, pendientesCostos, PREFIJO_FIDES, PREFIJO_MARCOS, pagosConAsignaciones } from "@/lib/pagos-operativo";
-import { leerTodas } from "@/lib/leer-todas";
 import CostoFidesEditor from "@/components/costo-fides-editor";
 
 // Cerrar el operativo: cuánto se ganó de verdad y a quién hay que pagarle.
 // Cada "Marcar pagado" saca esa plata de la caja, así la cuenta de la app
 // muestra lo mismo que la cuenta real después de repartir.
-export default async function CierreOperativo({ params }: { params: Promise<{ id: string }> }) {
+export default async function CierreOperativo({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ guardado?: string }> }) {
   const { id } = await params;
   const { supabase, tenantId } = await exigirRolPagina(["admin"]);
-  if (esPilotoTerreno(tenantId)) redirect("/operativos/"+id);
-
-  const [opRes, ventasRes, tenantRes, reparto, fidesRes, asignacionesRes, deudaRes] = await Promise.all([
-    supabase.from("operativos").select("*").eq("id", id).maybeSingle(),
-    leerTodas((a, b) => supabase
-      .from("ventas")
-      .select(
-        `id, total, pagos_abonos (monto, medio_pago),
-         venta_items (cantidad, precio_unitario, descuento, descripcion, cristal_slot,
-           ordenes_trabajo:ot_id (costo_laboratorio, costo_laboratorio_2, tipo_lente, tratamiento, tipo_lente_2, tratamiento_2),
-           productos:producto_id (costo, categoria))`
-      )
-      .eq("operativo_id", id)
-      .eq("anulada", false).order("id").range(a, b)),
-    supabase.from("tenants").select("comision_debito_pct, comision_credito_pct, reparto_etiquetas").single(),
-    cargarRepartoOperativo(supabase, tenantId, id, hoyEnChile()),
-    leerTodas((a, b) => supabase.from("gastos_globales").select("id, descripcion, monto").eq("operativo_id", id).order("id").range(a, b)),
-    leerTodas((a,b) => supabase.from("gastos_asignaciones").select("id,gasto_id,operativo_id,clave,monto,anulado_en").eq("operativo_id",id).order("id").range(a,b)),
-    supabase.rpc('deuda_personal_pendiente'),
+  const anterior = await supabase.rpc("version_caja_reparto");
+  const [reparto, consulta] = await Promise.all([
+    cargarRepartoOperativo(supabase, tenantId, id, hoyEnChile()), searchParams,
   ]);
-  const op = opRes.data;
-  if (!op) notFound();
-  const error = opRes.error ?? tenantRes.error ?? ventasRes.error ?? fidesRes.error ?? asignacionesRes.error ?? deudaRes.error;
-
-  const ventas = ventasRes.data ?? [];
-  const n = numerosDeOperativo(
-    op,
-    ventas as unknown as VentaParaCierre[],
-    Number(tenantRes.data?.comision_debito_pct ?? 0),
-    Number(tenantRes.data?.comision_credito_pct ?? 0)
-  );
-  const { vendido, cobrado, gastos, desglose, cierre: c } = n;
-
-  const pagos = pagosConAsignaciones(fidesRes.data ?? [],asignacionesRes.data ?? [],id);
-  const fidesPagado = pagadoCon(pagos, PREFIJO_FIDES);
-  const marcosPagado = pagadoCon(pagos, PREFIJO_MARCOS);
-  const costos = pendientesCostos(op, pagos);
-  const porCobrar = n.porCobrar;
+  const posterior = await supabase.rpc("version_caja_reparto");
+  const version = !anterior.error && !posterior.error && anterior.data === posterior.data
+    ? posterior.data as string | null : null;
+  const fila = reparto?.datos.repartoOperativos.find(f => f.sede.id === id);
+  if (!reparto || !fila) notFound();
+  const op = fila.sede;
+  const costos = reparto.datos.caja.costosPorSede.find(f => f.sede.id === id)?.costos ?? [];
+  const nota = await supabase.from("operativos").select("costo_fides_nota").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -75,86 +42,18 @@ export default async function CierreOperativo({ params }: { params: Promise<{ id
         </Link>
       </div>
 
-      {error && (
-        <p className="rounded-xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
-          No se pudieron leer todos los datos. Recarga la página antes de pagar.
-        </p>
-      )}
-
-      {!error && <>
-      <section aria-label="Costos del operativo" className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold">Marcos</h2>
-          <p className="text-2xl font-bold tabular-nums">{clp(desglose.totalArmazones)}</p>
-          <p className="text-sm text-tinta-suave">{desglose.marcos} marcos · {clp(op.costo_marco_unitario ?? COSTO_MARCO_POR_PAR)} c/u</p>
-        </div>
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold">Cristales</h2>
-          <p className="text-2xl font-bold tabular-nums">{clp(desglose.totalCristales)}</p>
-          <p className="text-sm text-tinta-suave">{desglose.marcos} pares</p>
-        </div>
-        <div className="col-span-2 rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold">Gasto total</h2>
-          <p className="text-3xl font-bold tabular-nums">{clp(c.gastoTotal)}</p>
-          <p className="text-sm text-tinta-suave">Marcos, cristales, otros productos, operativo y comisiones.</p>
-        </div>
+      {consulta.guardado === "1" && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm">Registro guardado.</p>}
+      <ResumenReparto resumen={reparto} operativo={id} version={version} />
+      <section id="costos" className="space-y-3 scroll-mt-20">
+        <h2 className="text-lg font-bold">Costos y reintegros</h2>
+        {op.pagos_saldados_en ? <p className="rounded-xl bg-emerald-50 p-3 text-sm">Costos del operativo saldados.</p> : <>
+          {!nota.error && <CostoFidesEditor operativoId={id} actual={op.costo_fides_real ?? null} nota={nota.data?.costo_fides_nota ?? null} />}
+          <ul className="flex flex-col gap-3">
+            {costos.map(costo => <PagoCostoOperativo key={costo.clave} operativoId={id}
+              costoFidesActual={costo.clave === "fides" ? op.costo_fides_real ?? null : undefined} {...costo} />)}
+          </ul>
+        </>}
       </section>
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wider text-tinta-suave">
-          {porCobrar > 0 ? "Ganancia líquida estimada · falta cobrar" : "Ganancia líquida"}
-        </p>
-        <p className={`text-4xl font-bold tracking-tight tabular-nums ${c.gananciaLiquida < 0 ? "text-red-700" : "text-emerald-800"}`}>{clp(c.gananciaLiquida)}</p>
-        <p className="mt-1 text-sm text-tinta-suave">Después de costos y comisión de venta. Antes de ahorro y reparto.</p>
-        <div className="mt-2 grid grid-cols-3 gap-2 text-sm tabular-nums">
-          <div>
-            <p className="text-xs text-tinta-suave">Vendido</p>
-            <p className="font-bold">{clp(vendido)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-tinta-suave">Cobrado</p>
-            <p className="font-bold text-emerald-800">{clp(cobrado)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-tinta-suave">Falta cobrar</p>
-            <p className={`font-bold ${porCobrar > 0 ? "text-red-700" : ""}`}>{clp(porCobrar)}</p>
-          </div>
-        </div>
-        <details className="mt-2">
-          <summary className="cursor-pointer text-sm text-tinta-suave">Ver cómo se calcula</summary>
-          <table className="mt-2 w-full text-sm tabular-nums">
-            <tbody>
-              <tr><td className="py-1">Vendido</td><td className="text-right">{clp(vendido)}</td></tr>
-              <tr className="text-tinta-suave"><td className="py-1">− Cristales (laboratorio)</td><td className="text-right">−{clp(desglose.totalCristales)}</td></tr>
-              <tr className="text-tinta-suave"><td className="py-1">− Marcos ({desglose.marcos} × {clp(op.costo_marco_unitario ?? COSTO_MARCO_POR_PAR)})</td><td className="text-right">−{clp(desglose.totalArmazones)}</td></tr>
-              {desglose.totalOtros !== 0 && <tr className="text-tinta-suave"><td className="py-1">− Otros productos</td><td className="text-right">−{clp(desglose.totalOtros)}</td></tr>}
-              <tr className="text-tinta-suave"><td className="py-1">− Gastos (equipos, arriendo y personal)</td><td className="text-right">−{clp(gastos)}</td></tr>
-              <tr className="text-tinta-suave"><td className="py-1">− Comisión de la máquina</td><td className="text-right">−{clp(c.comisionTarjeta)}</td></tr>
-              <tr className="text-tinta-suave"><td className="py-1">− Comisión de venta</td><td className="text-right">−{clp(c.isadora)}</td></tr>
-              <tr className="border-t font-bold"><td className="py-1.5">Gasto total</td><td className="text-right">{clp(c.gastoTotal)}</td></tr>
-              <tr className="font-bold"><td className="py-1.5">Ganancia líquida{porCobrar > 0 ? " estimada" : ""}</td><td className="text-right">{clp(c.gananciaLiquida)}</td></tr>
-            </tbody>
-          </table>
-        </details>
-      </section>
-      </>}
-
-      {!error&&Number(deudaRes.data??0)>0&&<section className="rounded-2xl bg-amber-50 p-4"><h2 className="font-bold">Devolución personal prioritaria · {clp(Number(deudaRes.data))}</h2><p className="mt-2 text-sm">El reparto calculado es una proyección. Primero se devuelve el dinero financiado personalmente; los pagos de sueldos y ahorro quedan bloqueados hasta saldarlo.</p><Link href="/caja?ver=cuadrar#reintegros" className="mt-3 block font-semibold underline">Revisar la devolución</Link></section>}
-      {!error && op.pagos_saldados_en && (
-        <p className="rounded-2xl bg-emerald-50 p-4 font-semibold text-emerald-900">Pagos del operativo saldados.</p>
-      )}
-      {!error && !op.pagos_saldados_en && <>
-      <h2 id="costos" className="scroll-mt-6 text-lg font-bold">Costos por pagar</h2>
-      <CostoFidesEditor operativoId={id} actual={op.costo_fides_real ?? null} nota={op.costo_fides_nota ?? null} />
-      <ul className="flex flex-col gap-3">
-        <PagoCostoOperativo clave="fides" costoFidesActual={op.costo_fides_real ?? null} titulo="Laboratorio (cristales)" operativoId={id} total={desglose.totalCristales} pagado={fidesPagado} />
-        <PagoCostoOperativo clave="marcos" titulo={`Reponer marcos (${desglose.marcos})`} operativoId={id} total={desglose.totalArmazones} pagado={marcosPagado} />
-        {costos.map((costo) => <PagoCostoOperativo key={costo.clave} operativoId={id} {...costo} />)}
-      </ul>
-      <section id="sueldos" className="space-y-2 scroll-mt-6">
-        <h2 className="text-lg font-bold">Reparto</h2>
-        <ResumenReparto resumen={reparto} />
-      </section>
-      </>}
     </div>
   );
 }

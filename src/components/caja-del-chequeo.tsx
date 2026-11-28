@@ -5,9 +5,9 @@ import CajaFormulario from "@/components/caja-formulario";
 import GastosPersonales from "@/components/gastos-personales";
 import { GastoGeneralForm, GastoOperativoForm } from "@/components/registro-gasto";
 import { confirmarSaldoBanco } from "@/lib/actions/caja";
-import { disponibleDelReparto, type saldosReparto } from "@/lib/datos-reparto-disponible";
-import { registrarPagoReparto } from "@/lib/actions/reparto";
-import { PERSONAS_REPARTO } from "@/lib/reparto";
+import { disponibleDelReparto, sueldosRegistrables, type saldosReparto } from "@/lib/datos-reparto-disponible";
+import { PERSONAS_SUELDO } from "@/lib/reparto-operativos";
+import SueldosReparto from "@/components/sueldos-reparto";
 import { guardarRepartoChequeo } from "@/lib/actions/chequeos";
 import { guardarPagoCostosChequeo } from "@/lib/actions/cierre";
 import type { Chequeo, SedeChequeo } from "@/lib/chequeos";
@@ -134,7 +134,9 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, s
     : cuenta.estado === "reporte" ? `Último reporte · ${hora(cuenta.hasta)}` : "Según movimientos registrados";
   const ivaPorReservar = Math.max(caja.ivaPendienteCaja, sii?.saldo ?? 0);
   const pagable = disponibleDelReparto(datos, saldos);
-  const disponibleHoy = pagable && Object.values(pagable).reduce((a, b) => a + b, 0);
+  const disponibleHoy = pagable && PERSONAS_SUELDO.reduce((total, persona) => total + pagable[persona], 0);
+  const registro = !chequeo.independiente && !datos.retirosSinAsignar && version !== null && !saldos.deudaPersonal
+    ? { ambito: "chequeo" as const, id: chequeo.id, version, limite: sueldosRegistrables(datos) } : undefined;
   const total = saldo !== null && efectivo !== null ? saldo + efectivo : null;
   const comision = Number(chequeo.comision_isadora_pct ?? 10);
   const ahorro = Number(chequeo.ahorro_pct);
@@ -238,48 +240,40 @@ export default function CajaDelChequeo({ chequeo, opciones, sedes, datos, hoy, s
     </section>
 
     <section id="reparto" className="space-y-3 scroll-mt-20" aria-labelledby="titulo-reparto">
-      <h2 id="titulo-reparto" className="text-xl font-bold">Reparto · {chequeo.nombre}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="titulo-reparto" className="text-xl font-bold">Reparto · {chequeo.nombre}</h2>
+        <Link href="/caja?ver=sueldos" className="text-sm font-semibold underline">Sueldos globales de la óptica</Link>
+      </div>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <Indicador titulo="Disponible para repartir hoy" valor={disponibleHoy} tono="verde"
           detalle={datos.retirosSinAsignar ? "Hay retiros por conciliar" : disponibleHoy === null ? "Falta confirmar saldo o efectivo" : "Después de reservar los compromisos"} />
-        <Indicador titulo="Reparto si cobramos todo" valor={Math.max(0, caja.proyectado)} tono="azul" detalle="Proyección sobre ventas registradas" />
+        <Indicador titulo="Ahorro de la óptica" valor={caja.repartoPendiente.ahorro} tono="azul" detalle="Estimado después de cubrir costos y sueldos" />
         <Indicador titulo="IVA reservado del chequeo" valor={n.iva} tono="ambar" detalle={datos.ivaSinCredito ? "Estimado sin crédito fiscal de los meses sin datos" : "Incluido en el cálculo del líquido"} />
       </dl>
-      <div className="overflow-x-auto rounded-2xl bg-white p-3 text-sm shadow-sm">
-        <table className="w-full whitespace-nowrap">
-          <thead><tr className="text-left">
-            <th>Concepto</th><th className="text-right">Proyección pendiente</th><th className="text-right">Disponible hoy</th>
-          </tr></thead>
-          <tbody>{PERSONAS_REPARTO.map(persona => <tr key={persona} className="border-t border-tinta/10">
-            <th scope="row" className="py-2 pr-2 text-left">{nombres[persona]}</th>
-            <td className="py-2 text-right tabular-nums">{clp(caja.repartoPendiente[persona])}</td>
-            <td className="py-2 text-right font-semibold tabular-nums">{pagable ? clp(pagable[persona]) : "Por verificar"}</td>
-          </tr>)}</tbody>
-        </table>
+      <div className="rounded-2xl bg-white p-3 shadow-sm">
+        <h3 className="font-semibold">Sueldos del {chequeo.independiente ? "operativo" : "chequeo"}</h3>
+        <SueldosReparto nombres={nombres} pagado={caja.retirado} pendiente={caja.repartoPendiente} disponible={pagable} registro={registro} />
       </div>
+      <Desplegable titulo="Utilidad y sueldos por operativo">
+        <ul className="divide-y divide-tinta/10">
+          {datos.repartoOperativos.map(f => <li key={f.sede.id} className="space-y-2 py-2 text-sm">
+            <div className="flex flex-wrap justify-between gap-2">
+              <Link href={`/operativos/${f.sede.id}/cierre#sueldos`} className="font-semibold underline">{f.sede.nombre} · ver cierre</Link>
+              <span className="tabular-nums">Utilidad {clp(f.utilidad)}</span>
+            </div>
+            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {PERSONAS_SUELDO.map(p => <div key={p}><dt>{nombres[p]} por pagar</dt>
+                <dd className="font-semibold tabular-nums">{clp(f.pendiente[p])}</dd></div>)}
+              <div><dt>Por cobrar</dt><dd className="font-semibold tabular-nums">{clp(f.porCobrar)}</dd></div>
+            </dl>
+          </li>)}
+        </ul>
+      </Desplegable>
       {datos.retirosSinAsignar && <p className="rounded-xl bg-amber-50 p-3 text-sm">
         Asocia los retiros históricos antes de registrar otro pago. <Link href="/reportes#retiros" className="font-semibold underline">Ir a Reportes</Link>
       </p>}
       {!!saldos.devoluciones && <p className="text-sm">Reservado para devoluciones de ventas anuladas · {clp(saldos.devoluciones)}</p>}
       {!!saldos.deudaPersonal && <p className="text-sm">Reintegros personales prioritarios · {clp(saldos.deudaPersonal)}</p>}
-      {pagable && !datos.retirosSinAsignar && version !== null && PERSONAS_REPARTO.some(persona => pagable[persona] > 0) &&
-        <Desplegable titulo="Registrar pago de reparto">
-          <CajaFormulario guardar={registrarPagoReparto} texto="Registrar pago realizado">
-            <input name="id" type="hidden" value={randomUUID()} />
-            <input name="version" type="hidden" value={version} />
-            <input name={claveAmbito} type="hidden" value={chequeo.id} />
-            <div className="grid gap-2 sm:grid-cols-3">
-              <label className="text-sm">Concepto<select name="persona" className={campo}>
-                {PERSONAS_REPARTO.filter(persona => pagable[persona] > 0).map(persona =>
-                  <option key={persona} value={persona}>{nombres[persona]} · hasta {clp(pagable[persona])}</option>)}
-              </select></label>
-              <label className="text-sm">Caja<select name="caja" className={campo}>
-                <option value="digital">Cuenta de la óptica</option><option value="efectivo">Efectivo</option>
-              </select></label>
-              <label className="text-sm">Monto (CLP)<input name="monto" type="number" min="1" step="1" required className={campo} /></label>
-            </div>
-          </CajaFormulario>
-        </Desplegable>}
       <Desplegable titulo="Ver el cálculo del reparto">
         <dl className="space-y-1 text-sm">
           {[

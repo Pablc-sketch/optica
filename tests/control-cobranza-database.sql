@@ -54,6 +54,18 @@ begin
     raise exception 'Cambió el total al registrar el abono';
   end if;
 
+  version_guardada := public.version_caja_reparto();
+  execute 'reset role';
+  execute 'set local role service_role';
+  cambio := false;
+  begin
+    perform public.finalizar_sueldos_operativo(optica,administrador,operativo,version_guardada);
+  exception when check_violation then cambio := true;
+  end;
+  if not cambio then raise exception 'Finalizó una venta parcialmente cobrada'; end if;
+  execute 'reset role';
+  execute 'set local role authenticated';
+
   perform public.anular_venta(venta,'Prueba local');
   perform public.anular_venta(venta,'Reintento');
   select * into caja from public.caja_global();
@@ -97,7 +109,37 @@ begin
   if not exists(select 1 from public.retiros_sueldo where id=retiro and monto=1800 and chequeo_id=chequeo) then
     raise exception 'La asociación no conservó el importe histórico';
   end if;
+
+  version_guardada := public.version_caja_reparto();
+  execute 'reset role';
+  execute 'set local role service_role';
+  retiro := gen_random_uuid();
+  perform public.registrar_pago_reparto(optica,administrador,retiro,operativo,null,version_guardada,'madre',2000,'efectivo');
+  perform public.registrar_pago_reparto(optica,administrador,retiro,operativo,null,version_guardada,'madre',2000,'efectivo');
+  if not exists (select 1 from public.retiros_sueldo where id=retiro and operativo_id=operativo
+    and chequeo_id is null and reparto_verificado and monto=2000) then
+    raise exception 'No registró una vez el sueldo de la sede agrupada';
+  end if;
+  cambio := false;
+  begin
+    perform public.finalizar_sueldos_operativo(optica,administrador,operativo,version_guardada);
+  exception when serialization_failure then cambio := true;
+  end;
+  if not cambio then raise exception 'Aceptó finalizar con una versión desactualizada'; end if;
+
+  execute 'reset role';
+  execute 'set local role authenticated';
+  select * into caja from public.caja_global();
+  if caja.salio_efectivo<>7000 then raise exception 'El sueldo no se descontó una sola vez del efectivo'; end if;
+  version_guardada := public.version_caja_reparto();
+  execute 'reset role';
+  execute 'set local role service_role';
+  perform public.finalizar_sueldos_operativo(optica,administrador,operativo,version_guardada);
+  if not exists (select 1 from public.operativos where id=operativo and estado='realizado'
+    and cierre_financiero_en is not null and pagos_saldados_en is null) then
+    raise exception 'El cierre no quedó registrado o marcó los costos como saldados';
+  end if;
 end $$;
 
 rollback;
-select 'OK: permiso de anulación, cobro normal, corrección auditada, devolución, reintentos y asociación histórica' as verificacion;
+select 'OK: permiso de anulación, cobro normal, corrección auditada, devolución, reintentos, asociación histórica, pagos por sede y cierre' as verificacion;

@@ -25,18 +25,25 @@ import { buscarAmbitoReparto, cargarCajaChequeo, COLUMNAS_CHEQUEO } from '@/lib/
 import { saldosReparto } from '@/lib/datos-reparto-disponible';
 import type { Chequeo } from '@/lib/chequeos';
 import CajaHistorial from '@/components/caja-historial';
+import SueldosGlobales from '@/components/sueldos-globales';
 export const dynamic = 'force-dynamic';
 const campo = 'w-full min-w-0 rounded-xl border px-3 py-2.5';
-const vistas = [['resumen', 'Resumen'], ['gastos', 'Gastos'], ['movimientos', 'Movimientos'], ['pendientes', 'Pendientes'], ['cuadrar', 'Cuadrar']] as const;
+const vistas = [['resumen', 'Resumen'], ['sueldos', 'Sueldos globales'], ['gastos', 'Gastos'], ['movimientos', 'Movimientos'], ['pendientes', 'Pendientes'], ['cuadrar', 'Cuadrar']] as const;
 export default async function Caja({ searchParams }: {
-  searchParams: Promise<FiltrosGastos & { chequeo?: string; ver?: string; operativo?: string; sede?: string | string[] }>;
+  searchParams: Promise<FiltrosGastos & { chequeo?: string; ver?: string; mes?: string; operativo?: string; sede?: string | string[] }>;
 }) {
   const { supabase, tenantId } = await exigirRolPagina(['admin']);
   const piloto = esPilotoTerreno(tenantId);
   const params = await searchParams;
   const vista = vistas.find(([clave]) => clave === params.ver)?.[0] ?? 'resumen';
-  const navegacion = <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-5">{vistas.map(([clave,nombre]) => <Link key={clave} href={clave === 'resumen' ? '/caja' : `/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>;
+  const navegacion = <nav aria-label="Finanzas" className="grid grid-cols-2 gap-2 sm:grid-cols-6">{vistas.map(([clave,nombre]) => <Link key={clave} href={clave === 'resumen' ? '/caja' : `/caja?ver=${clave}`} aria-current={vista===clave?'page':undefined} className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold ${vista===clave?'bg-sidebar-active text-white':'bg-white shadow-sm hover:bg-sky-50'}`}>{nombre}</Link>)}</nav>;
   const guardado = params.guardado === '1' && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">Registro guardado.</p>;
+
+  if (vista === 'sueldos') return <div className="mx-auto max-w-6xl space-y-4 pb-6">
+    <CabeceraPagina seccion="Operación" titulo="Caja y gastos" />
+    {navegacion}
+    <SueldosGlobales supabase={supabase} tenantId={tenantId} mes={params.mes} />
+  </div>;
 
   if (vista === 'gastos') return <div className="mx-auto max-w-6xl space-y-4 pb-6">
     <CabeceraPagina seccion="Operación" titulo="Caja y gastos" />

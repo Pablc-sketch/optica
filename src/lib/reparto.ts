@@ -4,7 +4,14 @@ export const PERSONAS_REPARTO = ["isadora", "ahorro", "madre", "pablo"] as const
 export type PersonaReparto = typeof PERSONAS_REPARTO[number];
 export type MontosReparto = Record<PersonaReparto, number>;
 export type ReglasReparto = { ahorroPct: number; parteMadrePct: number };
-export type RetiroReparto = { persona: string; monto: number };
+export type RetiroReparto = {
+  persona: string;
+  monto: number;
+  operativo_id?: string | null;
+  fecha?: string;
+  created_at?: string;
+  id?: string;
+};
 
 export function retirosPorPersona(retiros: readonly RetiroReparto[]): MontosReparto {
   return Object.fromEntries(PERSONAS_REPARTO.map(persona => [
